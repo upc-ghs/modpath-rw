@@ -7,7 +7,9 @@ module GlobalDataModule
       mplistUnit, mpsimUnit, traceUnit, budchkUnit, aobsUnit, logUnit
     integer, save :: particleGroupCount
     integer, save :: gridFileType
+    integer, save :: logType
     integer, parameter :: niunit = 100
     character*200 :: mpnamFile, mpsimFile, mplistFile, mpbasFile, disFile,      &
-      tdisFile, gridFile, headFile, budgetFile, traceFile, gridMetaFile
+      tdisFile, gridFile, headFile, budgetFile, traceFile, gridMetaFile,        &
+      mplogFile
 end module
