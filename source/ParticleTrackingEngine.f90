@@ -18,7 +18,7 @@ module ParticleTrackingEngineModule
   implicit none
   
 ! Set default access status to private
-  private
+  !private
 
   type,public :: ParticleTrackingEngineType
 !    doubleprecision :: ReferenceTime = 0d0
@@ -1313,6 +1313,11 @@ subroutine pr_TrackPath(this, trackPathResult, traceModeOn, traceModeUnit,      
     globalY, globalZ
   integer :: timeIndex, n, count, nextCell
   logical :: continueLoop, isTimeSeriesPoint, isMaximumTime
+
+  ! RWPT (could be a pointer ?)
+  type(ModpathCellDataType), dimension(6) ::NeighborCellData
+
+
 !---------------------------------------------------------------------------------------------------------------
   
   ! Reset trackPathResult and initialize particleID
@@ -1334,7 +1339,26 @@ subroutine pr_TrackPath(this, trackPathResult, traceModeOn, traceModeUnit,      
   this%TrackCell%SteadyState = this%SteadyState
   this%TrackCell%TrackingOptions = this%TrackingOptions
   call this%FillCellBuffer(loc%CellNumber,  this%TrackCell%CellData)
-  
+ 
+  ! RWPT
+  ! Once cellBuffer has the data, 
+  ! populate the array with neighbor cells
+  ! Assuming only one connection per cell, that is
+  ! fully structured grid.
+  ! Only done for cells with a connection,
+  ! stills remains to be verified how to handle the case
+  ! without connection
+  do n = 1, 6
+      if ( this%TrackCell%CellData%GetFaceConnection(n,1) .gt. 0) then
+         !print *,'asd' 
+          !call this%FillCellBuffer( this%TrackCell%CellData%GetFaceConnection(n,1) , &
+          !    this%TrackCell%NeighborCellData(n) )
+          call this%FillCellBuffer( this%TrackCell%CellData%GetFaceConnection(n,1) , NeighborCellData(n) )
+      endif
+  end do
+  !this%TrackCell%NeighborCellData = NeighborCellData
+
+
   continueLoop = .true.
   isTimeSeriesPoint = .false.
   isMaximumTime = .false.
@@ -1359,10 +1383,19 @@ subroutine pr_TrackPath(this, trackPathResult, traceModeOn, traceModeUnit,      
       end if
       isMaximumTime = .false.
       if(stopTime .eq. maximumTrackingTime) isMaximumTime = .true.
-      
+
+      ! RWPT
+      ! Before (or in) this line sub cell velocities should be already initialized.
+      ! TrackCell%ExecuteTracking fills velocities for the corresponding subcell
+
+
+
       ! Start with the particle loacion loc and track it through the cell until it reaches
       ! an exit face or the tracking time reaches the value specified by stopTime
-      call this%TrackCell%ExecuteTracking(loc, stopTime, this%TrackCellResult)
+      !call this%TrackCell%ExecuteTracking(loc, stopTime, this%TrackCellResult)
+
+      ! RWPT
+      call this%TrackCell%ExecuteTracking(loc, stopTime, this%TrackCellResult, NeighborCellData)
       
       ! Check the status flag of the result to find out what to do next
       if(this%TrackCellResult%Status .eq. this%TrackCellResult%Status_Undefined()) then

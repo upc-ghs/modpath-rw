@@ -16,6 +16,10 @@ module TrackCellModule
     type(ParticleTrackingOptionsType) :: TrackingOptions
     type(TrackSubCellType),private :: TrackSubCell
     logical :: SteadyState
+
+    ! RWPT
+    !type(ModpathCellDataType), public, dimension(6) :: NeighborCellData
+
   contains
     procedure :: ExecuteTracking=>pr_ExecuteTracking
     ! Private methods
@@ -105,7 +109,7 @@ contains
   end function pr_AtCellExitFace
   
 !-------------------------------------------------------------------
-  subroutine pr_ExecuteTracking(this, initialLocation, maximumTime, trackCellResult)
+  subroutine pr_ExecuteTracking(this, initialLocation, maximumTime, trackCellResult, neighborCellData)
   implicit none
   class(TrackCellType) :: this
   type(ParticleLocationType),intent(in) :: initialLocation
@@ -116,6 +120,13 @@ contains
   logical :: stopIfNoSubCellExit,hasExit
   integer :: subRow,subColumn,count, layer, stopZone
   
+  ! RWPT
+  integer :: n
+  type(ModpathSubCellDataType), dimension(6) :: NeighborSubCellData
+  type(ModpathCellDataType), dimension(6) :: neighborCellData
+
+  type(ModpathSubCellDataType) :: localSubCellData
+
   stopIfNoSubCellExit = .true.
   
   ! Initialize cellResult
@@ -214,7 +225,37 @@ contains
     subRow,subColumn,this%TrackingOptions%BackwardTracking)
   subLoc =                                                                      &
     this%TrackSubCell%SubCellData%ConvertFromLocalParentCoordinate(initialLocation)
-  
+
+  print *, 'WILL FILL SUB CELL DATA BUFFERS AT TRACK CELL'
+  ! RWPT
+  !     - Either within the function FillSubCellDataBuffer
+  !       or within this class itself, subcelldatabuffers for the 
+  !       neighbor cells should be filled.
+  !     - Velocities of SubCellData associated to zero face connection, 
+  !       is set to zero.
+  do n = 1, 6
+      ! Tracking options for RWPT only forward
+      ! add some check or something
+      if ( this%CellData%GetFaceConnection(n,1) .gt. 0) then
+        call neighborCellData(n)%FillSubCellDataBuffer( NeighborSubCellData(n), &
+            1, 1, this%TrackingOptions%BackwardTracking )
+      else
+          ! Maybe create a function or invoke reset
+          NeighborSubCellData(n)%VX1 = 0
+          NeighborSubCellData(n)%VX2 = 0
+          NeighborSubCellData(n)%VY1 = 0
+          NeighborSubCellData(n)%VY2 = 0
+          NeighborSubCellData(n)%VZ1 = 0
+          NeighborSubCellData(n)%VZ2 = 0
+      endif
+  end do
+  !NeighborCellData = this%NeighborCellData
+  localSubCellData = this%TrackSubCell%SubCellData
+
+
+
+
+
   ! Loop through sub-cells until a stopping condition is met.
   ! The loop count is set to 100. If it goes through the loop 100 times then something is wrong. 
   ! In that case, trackCellResult%Status will be set to Undefined and the result will be returned.

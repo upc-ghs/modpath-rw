@@ -12,6 +12,7 @@ module TrackSubCellModule
   contains
     procedure,private :: CalculateDT=>pr_CalculateDT
     procedure,private :: NewXYZ=>pr_NewXYZ
+    procedure,private :: NewRWPTXYZ=>pr_NewRWPTXYZ
     procedure :: ExecuteTracking=>pr_ExecuteTracking
   end type
   
@@ -31,7 +32,17 @@ contains
   doubleprecision :: t,x,y,z
   integer :: exitFace,exitStatus
   integer :: statusVX,statusVY,statusVZ
-  
+
+  ! RWPT
+  doubleprecision :: alphat, alphal
+  doubleprecision :: vnorm, vnormxy
+  doubleprecision :: dmol
+  doubleprecision :: b11, b12, b13, b21, b22, b23, b31, b32
+  doubleprecision :: rdmx, rdmy, rdmz
+  doubleprecision :: bdx, bdy, bdz
+  doubleprecision :: divdx, divdy, divdz
+
+
   call trackingResult%Reset()
   
   cellNumber = initialLocation%CellNumber
@@ -71,10 +82,59 @@ contains
   vz2 = this%SubCellData%VZ2
   
   ! Compute time of travel to each possible exit face
+  ! - NOTES:
+  !     - CalculateDT performs the linear interpolation of velocities
+  !     - Before computing dispersion, requires velocities x,y,z 
   statusVX = this%CalculateDT(vx1, vx2, this%SubCellData%DX, initialX, vx, dvxdx, dtx)
   statusVY = this%CalculateDT(vy1, vy2, this%SubCellData%DY, initialY, vy, dvydy, dty)
   statusVZ = this%CalculateDT(vz1, vz2, this%SubCellData%DZ, initialZ, vz, dvzdz, dtz)
+ 
+  ! After this execution, velocities are already known
+  ! Thus it is possible to compute displacement
+  vnorm   = sqrt( vx**2 + vy**2 + vz**2 )
+  vnormxy = sqrt( vx**2 + vy**2 )
+  alphal  = 1
+  alphat  = 0.1
+  dmol    = 1e-8
   
+  ! Compute displacement matrix
+  ! Salamon et al 2006
+  ! What happens when vnorm = 0 ? Handling ?
+  b11 = vx*sqrt( 2*(alphal*vnorm + dmol) )/vnorm
+  b12 = -vx*vz*sqrt( 2*(alphat*vnorm + dmol) )/vnorm/vnormxy
+  b13 = -vy*sqrt( 2*(alphat*vnorm + dmol) )/vnormxy
+  b21 = vy*sqrt( 2*(alphal*vnorm + dmol) )/vnorm
+  b22 = -vy*vz*sqrt( 2*(alphat*vnorm + dmol) )/vnorm/vnormxy
+  b23 = vx*sqrt( 2*(alphat*vnorm + dmol) )/vnormxy
+  b31 = vz*sqrt( 2*(alphal*vnorm + dmol) )/vnorm
+  b32 = vnormxy*sqrt( 2*(alphat*vnorm + dmol) )/vnorm
+
+  ! Compute random numbers
+  call random_number( rdmx )
+  call random_number( rdmy )
+  call random_number( rdmz )
+
+  ! Compute displacement correction
+  bdx = b11*rdmx + b12*rdmy + b13*rdmz 
+  bdy = b21*rdmx + b22*rdmy + b23*rdmz 
+  bdz = b31*rdmx + b32*rdmy 
+
+
+  ! Divergence of dispersion 
+  ! solemari
+  !  - divDx=alphal*(dvxdx*cosine*(1+(1-alphatratio)*sine^2)+dvxdy*sine^3+dvydx*sine*(alphatratio-(1-alphatratio)*cosine^2)+dvydy*(1-alphatratio)*cosine^3);
+  !  - divDy=alphal*(dvydy*sine*(1+(1-alphatratio)*cosine^2)+dvydx*cosine^3+dvxdy*cosine*(alphatratio-(1-alphatratio)*sine^2)+dvxdx*(1-alphatratio)*sine^3);
+  divdx = 0.01*vx 
+  divdy = 0.01*vy 
+  divdz = 0.01*vz 
+
+
+  ! PAR2
+  !*vx = dDxxx + dDxyy + dDxzz;
+  !*vy = dDxyx + dDyyy + dDyzz;
+  !*vz = dDxzx + dDyzy + dDzzz;
+
+
   exitFace = 0
   dt = 1.0d+30
   if((statusVX .lt. 2) .or. (statusVY .lt. 2) .or. (statusVZ .lt. 2)) then
@@ -114,9 +174,14 @@ contains
   if(maximumTime .lt. t) then
     dt = maximumTime - initialTime
     t = maximumTime
-    x = this%NewXYZ(vx, dvxdx, vx1, vx2, dt, initialX, this%SubCellData%DX, statusVX)
-    y = this%NewXYZ(vy, dvydy, vy1, vy2, dt, initialY, this%SubCellData%DY, statusVY)
-    z = this%NewXYZ(vz, dvzdz, vz1, vz2, dt, initialZ, this%SubCellData%DZ, statusVZ)
+    !x = this%NewXYZ(vx, dvxdx, vx1, vx2, dt, initialX, this%SubCellData%DX, statusVX)
+    !y = this%NewXYZ(vy, dvydy, vy1, vy2, dt, initialY, this%SubCellData%DY, statusVY)
+    !z = this%NewXYZ(vz, dvzdz, vz1, vz2, dt, initialZ, this%SubCellData%DZ, statusVZ)
+    !NewRWPTXYZ(this,v,divd,bd,dt,x,dx)
+    x = this%NewRWPTXYZ(vx, divdx, bdx, dt, initialX, this%SubCellData%DX)
+    y = this%NewRWPTXYZ(vy, divdy, bdy, dt, initialY, this%SubCellData%DY)
+    z = this%NewRWPTXYZ(vz, divdz, bdz, dt, initialZ, this%SubCellData%DZ)
+
     trackingResult%ExitFace = 0
     trackingResult%FinalLocation%CellNumber = cellNumber
     trackingResult%FinalLocation%LocalX = x
@@ -129,18 +194,27 @@ contains
       ! then calculate the exit location and set the final time equal to the computed
       ! exit time.
       if((exitFace .eq. 1) .or. (exitFace .eq.2)) then
+          !x = 0d0
+          !y = this%NewXYZ(vy, dvydy, vy1, vy2, dt, initialY, this%SubCellData%DY, statusVY)
+          !z = this%NewXYZ(vz, dvzdz, vz1, vz2, dt, initialZ, this%SubCellData%DZ, statusVZ)
           x = 0d0
-          y = this%NewXYZ(vy, dvydy, vy1, vy2, dt, initialY, this%SubCellData%DY, statusVY)
-          z = this%NewXYZ(vz, dvzdz, vz1, vz2, dt, initialZ, this%SubCellData%DZ, statusVZ)
+          y = this%NewRWPTXYZ(vy, divdy, bdy, dt, initialY, this%SubCellData%DY)
+          z = this%NewRWPTXYZ(vz, divdz, bdz, dt, initialZ, this%SubCellData%DZ)
           if(exitFace .eq. 2) x = 1.0d0
       else if((exitFace .eq. 3) .or. (exitFace .eq.4)) then
-          x = this%NewXYZ(vx, dvxdx, vx1, vx2, dt, initialX, this%SubCellData%DX, statusVX)
+          !x = this%NewXYZ(vx, dvxdx, vx1, vx2, dt, initialX, this%SubCellData%DX, statusVX)
+          !y = 0d0
+          !z = this%NewXYZ(vz, dvzdz, vz1, vz2, dt, initialZ, this%SubCellData%DZ, statusVZ)
+          x = this%NewRWPTXYZ(vx, divdx, bdx, dt, initialX, this%SubCellData%DX)
           y = 0d0
-          z = this%NewXYZ(vz, dvzdz, vz1, vz2, dt, initialZ, this%SubCellData%DZ, statusVZ)
+          z = this%NewRWPTXYZ(vz, divdz, bdz, dt, initialZ, this%SubCellData%DZ)
           if(exitFace .eq. 4) y = 1.0d0
       else if((exitFace .eq. 5) .or. (exitFace .eq.6)) then
-          x = this%NewXYZ(vx, dvxdx, vx1, vx2, dt, initialX, this%SubCellData%DX, statusVX)
-          y = this%NewXYZ(vy, dvydy, vy1, vy2, dt, initialY, this%SubCellData%DY, statusVY)
+          !x = this%NewXYZ(vx, dvxdx, vx1, vx2, dt, initialX, this%SubCellData%DX, statusVX)
+          !y = this%NewXYZ(vy, dvydy, vy1, vy2, dt, initialY, this%SubCellData%DY, statusVY)
+          !z = 0d0
+          x = this%NewRWPTXYZ(vx, divdx, bdx, dt, initialX, this%SubCellData%DX)
+          y = this%NewRWPTXYZ(vy, divdy, bdy, dt, initialY, this%SubCellData%DY)
           z = 0d0
           if(exitFace .eq. 6) z = 1.0d0
       else
@@ -273,7 +347,7 @@ contains
   integer,intent(in) :: velocityProfileStatus
   doubleprecision,intent(in) :: v,dvdx,v1,v2,dt,x,dx
   doubleprecision :: newX
-  
+
   newX = x
   select case (velocityProfileStatus)
     case (1)
@@ -287,4 +361,17 @@ contains
   if(newX .gt. 1.0d0) newX = 1.0d0
   
   end function pr_NewXYZ
+
+  function pr_NewRWPTXYZ(this,v,divd,bd,dt,x,dx) result(newX)
+    implicit none
+    class(TrackSubCellType) :: this
+    doubleprecision,intent(in) :: v,divd,bd,dt,x,dx
+    doubleprecision :: newX
+
+    newX = x + ( v + divd )*dt/dx + bd*sqrt( dt )/dx ! verify what happens with dx, normalization
+
+    if(newX .lt. 0d0) newX = 0d0
+    if(newX .gt. 1.0d0) newX = 1.0d0
+  end function pr_NewRWPTXYZ
+
 end module TrackSubCellModule
