@@ -29,6 +29,7 @@ module TrackSubCellModule
     ! RWPT
     procedure :: NewRWPTXYZ=>pr_NewRWPTXYZ
     procedure :: ComputeCornerVelocities=>pr_ComputeCornerVelocities
+    procedure :: Trilinear=>pr_Trilinear
     procedure :: TrilinearDerivative=>pr_TrilinearDerivative
 
   end type
@@ -52,11 +53,6 @@ contains
 
   ! RWPT
   doubleprecision :: alphaT, alphaL, Dmol
-  doubleprecision :: vnorm, vnormxy
-  doubleprecision :: b11, b12, b13, b21, b22, b23, b31, b32
-  doubleprecision :: rdmx, rdmy, rdmz
-  doubleprecision :: bdx, bdy, bdz
-  !doubleprecision :: divdx, divdy, divdz
   doubleprecision, dimension(4) :: v000
   doubleprecision, dimension(4) :: v100
   doubleprecision, dimension(4) :: v010
@@ -69,6 +65,10 @@ contains
   doubleprecision :: dDxxdx, dDxydy, dDxzdz, &
                      dDxydx, dDyydy, dDyzdz, &
                      dDxzdx, dDyzdy, dDzzdz
+  doubleprecision :: vBx, vBy, vBz, vBnorm, vBnormxy
+  doubleprecision :: B11, B12, B13, B21, B22, B23, B31, B32
+  doubleprecision :: BDX, BDY, BDZ
+  doubleprecision :: rdmx, rdmy, rdmz
   !------------------------------------------------------------
 
   call trackingResult%Reset()
@@ -112,52 +112,21 @@ contains
   ! Compute time of travel to each possible exit face
   ! - NOTES:
   !     - CalculateDT performs the linear interpolation of velocities
-  !     - Before computing dispersion, requires velocities x,y,z 
+  !     - Before computing dispersion, requires velocities x,y,z
+  !     - CalculateDT defines three values of dt, one for each axis
+  !       which are then compared and used in computing the final 
+  !       position of particles 
   statusVX = this%CalculateDT(vx1, vx2, this%SubCellData%DX, initialX, vx, dvxdx, dtx)
   statusVY = this%CalculateDT(vy1, vy2, this%SubCellData%DY, initialY, vy, dvydy, dty)
   statusVZ = this%CalculateDT(vz1, vz2, this%SubCellData%DZ, initialZ, vz, dvzdz, dtz)
 
-
-
+  ! In the case of RWPT simulations, the value of deltat 
+  ! should be defined accordingly
   ! RWPT
-  ! After this execution, velocities are already known
-  ! Thus it is possible to compute displacement
-  !vnorm   = sqrt( vx**2 + vy**2 + vz**2 )
-  !vnormxy = sqrt( vx**2 + vy**2 )
-  !alphal  = 1
-  !alphat  = 0.1
-  !dmol    = 1e-8
   alphaL  = 1
   alphaT  = 0.1
   Dmol    = 1e-8
-  ! Compute displacement matrix
-  ! Salamon et al 2006
-  ! What happens when vnorm = 0 ? Handling ?
-  !b11 = vx*sqrt( 2*(alphal*vnorm + dmol) )/vnorm
-  !b12 = -vx*vz*sqrt( 2*(alphat*vnorm + dmol) )/vnorm/vnormxy
-  !b13 = -vy*sqrt( 2*(alphat*vnorm + dmol) )/vnormxy
-  !b21 = vy*sqrt( 2*(alphal*vnorm + dmol) )/vnorm
-  !b22 = -vy*vz*sqrt( 2*(alphat*vnorm + dmol) )/vnorm/vnormxy
-  !b23 = vx*sqrt( 2*(alphat*vnorm + dmol) )/vnormxy
-  !b31 = vz*sqrt( 2*(alphal*vnorm + dmol) )/vnorm
-  !b32 = vnormxy*sqrt( 2*(alphat*vnorm + dmol) )/vnorm
-  ! Compute random numbers
-  call random_number( rdmx )
-  call random_number( rdmy )
-  call random_number( rdmz )
-  ! Compute displacement correction
-  !bdx = b11*rdmx + b12*rdmy + b13*rdmz 
-  !bdy = b21*rdmx + b22*rdmy + b23*rdmz 
-  !bdz = b31*rdmx + b32*rdmy 
-  ! Divergence of dispersion 
-  ! solemari
-  !  - divDx=alphal*(dvxdx*cosine*(1+(1-alphatratio)*sine^2)+dvxdy*sine^3+dvydx*sine*(alphatratio-(1-alphatratio)*cosine^2)+dvydy*(1-alphatratio)*cosine^3);
-  !  - divDy=alphal*(dvydy*sine*(1+(1-alphatratio)*cosine^2)+dvydx*cosine^3+dvxdy*cosine*(alphatratio-(1-alphatratio)*sine^2)+dvxdx*(1-alphatratio)*sine^3);
-  !divdx = 0.01*vx 
-  !divdy = 0.01*vy 
-  !divdz = 0.01*vz 
 
-  
   ! Local copies of corner velocities
   v000 = this%vCorner000 
   v100 = this%vCorner100
@@ -264,6 +233,46 @@ contains
   divDx = dDxxdx + dDxydy + dDxzdz
   divDy = dDxydx + dDyydy + dDyzdz
   divDz = dDxzdx + dDyzdy + dDzzdz
+
+  
+  ! Compute displacement matrix
+  ! Velocities interpolation and norm
+  call this%Trilinear( initialX, initialY, initialZ,       &
+                       v000(1), v100(1), v010(1), v110(1), &
+                       v001(1), v101(1), v011(1), v111(1), &
+                       vBx )
+  call this%Trilinear( initialX, initialY, initialZ,       &
+                       v000(2), v100(2), v010(2), v110(2), &
+                       v001(2), v101(2), v011(2), v111(2), &
+                       vBy )
+  call this%Trilinear( initialX, initialY, initialZ,       &
+                       v000(3), v100(3), v010(3), v110(3), &
+                       v001(3), v101(3), v011(3), v111(3), &
+                       vBz )
+  vBnorm   = sqrt( vBx**2 + vBy**2 + vBz**2 )
+  vBnormxy = sqrt( vBx**2 + vBy**2 )
+
+  ! Displacement terms (Salamon et al. 2006)
+  ! What happens when vnorm = 0 ? Handling ?
+  B11 =       vBx*sqrt( 2*( alphaL*vBnorm + Dmol ) )/vBnorm
+  B12 =  -vBx*vBz*sqrt( 2*( alphaT*vBnorm + Dmol ) )/vBnorm/vBnormxy
+  B13 =      -vBy*sqrt( 2*( alphaT*vBnorm + Dmol ) )/vBnormxy
+  B21 =       vBy*sqrt( 2*( alphaL*vBnorm + Dmol ) )/vBnorm
+  B22 =  -vBy*vBz*sqrt( 2*( alphaT*vBnorm + Dmol ) )/vBnorm/vBnormxy
+  B23 =       vBx*sqrt( 2*( alphaT*vBnorm + Dmol ) )/vBnormxy
+  B31 =       vBz*sqrt( 2*( alphaL*vBnorm + Dmol ) )/vBnorm
+  B32 =  vBnormxy*sqrt( 2*( alphaT*vBnorm + Dmol ) )/vBnorm
+
+  ! Compute random numbers
+  call random_number( rdmx )
+  call random_number( rdmy )
+  call random_number( rdmz )
+  ! Compute displacement correction
+  BDX = B11*rdmx + B12*rdmy + B13*rdmz 
+  BDY = B21*rdmx + B22*rdmy + B23*rdmz 
+  BDZ = B31*rdmx + B32*rdmy 
+
+  
 
 
   ! RWPT
@@ -667,10 +676,39 @@ contains
               return 
       end select
 
-
   end subroutine pr_TrilinearDerivative
 
 
+  subroutine pr_Trilinear( this, x, y, z, v000, v100, v010, v110, v001, v101, v011, v111, output )
+      !-----------------------------------------------------------
+      ! Compute trilinear interpolation of corner velocities
+      ! for the given coordinates 
+      !  
+      ! Params
+      !     - x, y, z, doubleprecision: coordinates to interpolate
+      !     - vijk , doubleprecision: values at corresponding corners
+      !     - output, doubleprecision: the output variable
+      !-----------------------------------------------------------
+      ! Specifications
+      !-----------------------------------------------------------
+      implicit none
+      class (TrackSubCellType) :: this
+      doubleprecision :: x, y, z
+      doubleprecision :: v000, v100, v010, v110, v001, v101, v011, v111
+      doubleprecision :: output
+      doubleprecision :: v0, v1, v00, v10, v01, v11
+      !-----------------------------------------------------------
+
+      v00 = ( 1 - x )*v000 + x*v100
+      v01 = ( 1 - x )*v001 + x*v101
+      v10 = ( 1 - x )*v010 + x*v110
+      v11 = ( 1 - x )*v011 + x*v111
+      v0  = ( 1 - y )*v00  + y*v10
+      v1  = ( 1 - y )*v01  + y*v11
+
+      output = ( 1 - z )*v0 + z*v1
+
+  end subroutine pr_Trilinear
 
 
 
