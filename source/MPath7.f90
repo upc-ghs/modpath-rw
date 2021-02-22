@@ -409,8 +409,12 @@
     ! Open particle output files
     open(unit=endpointUnit, file=simulationData%EndpointFile, status='replace', &
       form='formatted', access='sequential')
+    !if((simulationData%SimulationType .eq. 2) .or.                              &
+    !  (simulationData%SimulationType .eq. 4)) then
+    ! RWPT
     if((simulationData%SimulationType .eq. 2) .or.                              &
-      (simulationData%SimulationType .eq. 4)) then
+       (simulationData%SimulationType .eq. 4) .or.                              &
+       (simulationData%SimulationType .eq. 5)) then
         open(unit=pathlineUnit, file=simulationData%PathlineFile,               &
           status='replace', form='formatted', access='sequential')
 !        open(unit=consolidatedPathlineUnit, file='consolidated.pathline7', status='replace', form='formatted', access='sequential')
@@ -420,8 +424,12 @@
           simulationData%ReferenceTime, modelGrid%OriginX, modelGrid%OriginY,   &
           modelGrid%RotationAngle)
     end if
+    !if((simulationData%SimulationType .eq. 3) .or.                              &
+    !  (simulationData%SimulationType .eq. 4)) then
+    ! RWPT
     if((simulationData%SimulationType .eq. 3) .or.                              &
-      (simulationData%SimulationType .eq. 4)) then
+       (simulationData%SimulationType .eq. 4) .or.                              &
+       (simulationData%SimulationType .eq. 5)) then
         open(unit=timeseriesUnit, file=simulationData%TimeseriesFile,           &
           status='replace', form='formatted', access='sequential')
         call WriteTimeseriesHeader(timeseriesUnit,                              &
@@ -687,8 +695,12 @@
                     end if
                     
                     ! Write particle output
+                    !if((simulationData%SimulationType .eq. 2) .or.              &
+                    !  (simulationData%SimulationType .eq. 4)) then
+                    ! RWPT
                     if((simulationData%SimulationType .eq. 2) .or.              &
-                      (simulationData%SimulationType .eq. 4)) then
+                       (simulationData%SimulationType .eq. 4) .or.              &
+                       (simulationData%SimulationType .eq. 5)) then
                         ! Write pathline to pathline file
                         if(plCount .gt. 1) then
                             pathlineRecordCount = pathlineRecordCount + 1
@@ -749,7 +761,11 @@
     end if
     
     ! Finalize and process binary pathline file if pathline format option = 1
-    if((simulationData%SimulationType .eq. 2) .or. (simulationData%SimulationType .eq. 4)) then
+    !if((simulationData%SimulationType .eq. 2) .or. (simulationData%SimulationType .eq. 4)) then
+    ! RWPT
+    if((simulationData%SimulationType .eq. 2) .or. &
+       (simulationData%SimulationType .eq. 4) .or. &
+       (simulationData%SimulationType .eq. 5)) then
         if(simulationData%PathlineFormatOption .eq. 1) then
             call ulog('Consolidating pathline segments.', logUnit)
             call ConsolidatePathlines(binPathlineUnit, pathlineUnit,            &

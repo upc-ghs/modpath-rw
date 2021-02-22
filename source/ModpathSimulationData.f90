@@ -228,12 +228,12 @@ contains
           icol = 1
           call urword(this%TimeseriesFile, icol, istart, istop, 0, n, r, 0, 0)
           this%TimeseriesFile = this%TimeseriesFile(istart:istop)
-          !IF(this%AdvectiveObservationsOption.EQ.2) then
-          !  read(inUnit, '(a)') this%AdvectiveObservationsFile
-          !  icol = 1
-          !  call urword(this%AdvectiveObservationsFile, icol, istart, istop, 0, n, r,0,0)
-          !  this%AdvectiveObservationsFile = this%AdvectiveObservationsFile(istart:istop)
-          !end if
+          IF(this%AdvectiveObservationsOption.EQ.2) then
+            read(inUnit, '(a)') this%AdvectiveObservationsFile
+            icol = 1
+            call urword(this%AdvectiveObservationsFile, icol, istart, istop, 0, n, r,0,0)
+            this%AdvectiveObservationsFile = this%AdvectiveObservationsFile(istart:istop)
+          end if
       case default
           call ustop('Invalid simulation type. Stop.')
   end select
