@@ -93,7 +93,14 @@ contains
   character(len=200) line
   DATA aname(1) /'              ZONE ARRAY'/
   DATA aname(2) /'                 RFACTOR'/
-  
+
+  ! RWPT
+  character(len=200) :: dispersionFile
+  integer :: dispersionUnit = 88
+
+
+  !---------------------------------------------
+
   ! Deallocate arrays
   if(allocated(this%Zones)) deallocate(this%Zones)
   if(allocated(this%Retardation)) deallocate(this%Retardation)
@@ -206,6 +213,27 @@ contains
             call urword(this%AdvectiveObservationsFile, icol, istart, istop, 0, n, r,0,0)
             this%AdvectiveObservationsFile = this%AdvectiveObservationsFile(istart:istop)
           end if
+      ! RWPT
+      case(5)
+          write(outUnit,'(A,I2,A)') 'Random Walk Particle Tracking with Pathline and Timeseries Analysis (Simulation type =', this%SimulationType, ')'
+          read(inUnit, '(a)') this%EndpointFile
+          icol = 1
+          call urword(this%EndpointFile,icol,istart,istop,0,n,r,0,0)
+          this%EndpointFile = this%EndpointFile(istart:istop)
+          read(inUnit, '(a)') this%PathlineFile
+          icol = 1
+          call urword(this%PathlineFile, icol, istart, istop, 0, n, r, 0, 0)
+          this%PathlineFile = this%PathlineFile(istart:istop)
+          read(inUnit, '(a)') this%TimeseriesFile
+          icol = 1
+          call urword(this%TimeseriesFile, icol, istart, istop, 0, n, r, 0, 0)
+          this%TimeseriesFile = this%TimeseriesFile(istart:istop)
+          !IF(this%AdvectiveObservationsOption.EQ.2) then
+          !  read(inUnit, '(a)') this%AdvectiveObservationsFile
+          !  icol = 1
+          !  call urword(this%AdvectiveObservationsFile, icol, istart, istop, 0, n, r,0,0)
+          !  this%AdvectiveObservationsFile = this%AdvectiveObservationsFile(istart:istop)
+          !end if
       case default
           call ustop('Invalid simulation type. Stop.')
   end select
@@ -228,7 +256,13 @@ contains
   if(this%BudgetCellsCount .gt. 0) then
       read(inUnit, *) (this%BudgetCells(n), n = 1, this%BudgetCellsCount)
   end if
-  
+ 
+  ! RWPT 
+  ! Only allow forward tracking for RWPT simulations
+  if ( ( this%SimulationType .eq. 5 ) .and. ( this%TrackingDirection .eq. 2 ) ) then 
+      call ustop('Random Walk Particle Tracking only accepts Forward tracking. Stop.')
+  end if
+
   ! Tracking direction
   select case(this%TrackingDirection)
     case(1)
@@ -303,8 +337,10 @@ contains
             call ustop('Invalid stop time code. Stop.')
     end select
   
+    ! RWPT
+    if((this%SimulationType .eq. 3) .or. (this%SimulationType .eq. 4) .or. (this%SimulationType .eq. 5)) then
     ! Time point data
-    if((this%SimulationType .eq. 3) .or. (this%SimulationType .eq. 4)) then
+    !if((this%SimulationType .eq. 3) .or. (this%SimulationType .eq. 4)) then
         read(inUnit, *) this%TimePointOption
         if(this%TimePointOption .eq. 1) then
             read(inUnit, *) this%TimePointCount, this%TimePointInterval
@@ -448,7 +484,7 @@ contains
     write(outUnit, '(a,i10)') 'Total number of particles = ', this%TotalParticleCount
     write(outUnit, *)
     end if
-      
+
     ! TrackingOptions data
     allocate(this%TrackingOptions)
     ! Initialize defaults
@@ -469,7 +505,80 @@ contains
     if(this%StoppingTimeOption .ne. 2) this%TrackingOptions%ExtendSteadyState = .false.
     if(this%StoppingTimeOption .eq. 3) this%TrackingOptions%SpecifyStoppingTime = .true.
     if(this%ZoneDataOption .eq. 1) this%TrackingOptions%SpecifyStoppingZone = .true.
+
+
+    ! RWPT
+    ! Assign specific RWPT options 
+    if (this%SimulationType .eq. 5)  then
   
+        ! Identify the simulation 
+        this%TrackingOptions%RandomWalkParticleTracking = .true.
+
+        ! Open the dispersion data file
+        read(inUnit, '(a)') dispersionFile
+        icol = 1
+        call urword(dispersionFile,icol,istart,istop,0,n,r,0,0)
+        dispersionFile = dispersionFile(istart:istop)
+        open( dispersionUnit, file=dispersionFile, status='old', access='sequential')
+
+        ! alphaL
+        read( dispersionUnit, * ) line
+        icol = 1
+        call urword(line,icol,istart,istop,3,n,r,0,0)
+        this%TrackingOptions%alphaL = r
+
+        ! alphaT
+        read( dispersionUnit, * ) line
+        icol = 1
+        call urword(line,icol,istart,istop,3,n,r,0,0)
+        this%TrackingOptions%alphaT = r
+
+        ! Dmol
+        read( dispersionUnit, * ) line
+        icol = 1
+        call urword(line,icol,istart,istop,3,n,r,0,0)
+        this%TrackingOptions%Dmol = r
+
+        ! Time Step kind 
+        read(dispersionUnit, '(a)') line
+        icol = 1
+        call urword(line,icol,istart,istop,1,n,r,0,0)
+        line = line(istart:istop)
+        ! Give a Courant
+        if ( line .eq. 'CONSTANT_CU' ) then
+            this%TrackingOptions%timeStepKind = 1
+            read( dispersionUnit, * ) line
+            icol = 1
+            call urword(line,icol,istart,istop,3,n,r,0,0)
+            this%TrackingOptions%timeStepParameters(1) = r
+        ! Give a Peclet
+        else if ( line .eq. 'CONSTANT_PE' ) then
+            this%TrackingOptions%timeStepKind = 2
+            read( dispersionUnit, * ) line
+            icol = 1
+            call urword(line,icol,istart,istop,3,n,r,0,0)
+            this%TrackingOptions%timeStepParameters(2) = r
+        ! Minimum between Courant and Peclet 
+        else if ( line .eq. 'MIN_CU_PE' ) then
+            this%TrackingOptions%timeStepKind = 3
+            read( dispersionUnit, * ) line
+            icol = 1
+            call urword(line,icol,istart,istop,3,n,r,0,0)
+            this%TrackingOptions%timeStepParameters(1) = r
+            read( dispersionUnit, * ) line
+            icol = 1
+            call urword(line,icol,istart,istop,3,n,r,0,0)
+            this%TrackingOptions%timeStepParameters(2) = r
+        else
+            call ustop('Invalid options for time step selection in RWPT simulation. stop.')
+        end if
+
+        ! Close the dispersion data file
+        close( dispersionUnit )
+
+    end if
+
+
   end subroutine pr_ReadData
 
 
