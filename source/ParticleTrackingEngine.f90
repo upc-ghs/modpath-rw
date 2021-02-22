@@ -1320,11 +1320,6 @@ subroutine pr_TrackPath(this, trackPathResult, traceModeOn, traceModeUnit,      
 
   ! RWPT
   type(ModpathSubCellDataType), dimension(18) :: neighborSubCellData
-  !type(ModpathCellDataType) :: neighborCellData, neighborConnectionCellData
-  !integer :: m, subCellCounter
-  ! Debugging
-  !type(ModpathCellDataType), dimension(6) :: neighborCellDataArray ! Debugging
-  !type(ModpathCellDataType) :: localCellData ! Debugging
 
 !---------------------------------------------------------------------------------------------------------------
   
@@ -1347,8 +1342,11 @@ subroutine pr_TrackPath(this, trackPathResult, traceModeOn, traceModeUnit,      
   this%TrackCell%SteadyState = this%SteadyState
   this%TrackCell%TrackingOptions = this%TrackingOptions
   call this%FillCellBuffer(loc%CellNumber,  this%TrackCell%CellData)
+
   ! RWPT
-  call this%FillNeighborSubCellData( neighborSubCellData ) 
+  if (this%TrackingOptions%RandomWalkParticleTracking) then
+      call this%FillNeighborSubCellData( neighborSubCellData ) 
+  end if
 
   continueLoop = .true.
   isTimeSeriesPoint = .false.
@@ -1359,7 +1357,9 @@ subroutine pr_TrackPath(this, trackPathResult, traceModeOn, traceModeUnit,      
       if(loc%CellNumber .ne. this%TrackCell%CellData%CellNumber) then
           call this%FillCellBuffer(loc%CellNumber, this%TrackCell%CellData)
           ! RWPT
-          call this%FillNeighborSubCellData( neighborSubCellData ) 
+          if (this%TrackingOptions%RandomWalkParticleTracking) then
+              call this%FillNeighborSubCellData( neighborSubCellData )
+          end if
       end if
       
       ! Find the next stopping time value (tmax), then track the particle through the cell starting at location loc.
@@ -1378,13 +1378,15 @@ subroutine pr_TrackPath(this, trackPathResult, traceModeOn, traceModeUnit,      
       if(stopTime .eq. maximumTrackingTime) isMaximumTime = .true.
 
 
+      ! RWPT
       ! Start with the particle loacion loc and track it through the cell until it reaches
       ! an exit face or the tracking time reaches the value specified by stopTime
-      !call this%TrackCell%ExecuteTracking(loc, stopTime, this%TrackCellResult)
+      if ( .not. this%TrackingOptions%RandomWalkParticleTracking ) then 
+          call this%TrackCell%ExecuteTracking(loc, stopTime, this%TrackCellResult)
+      else
+          call this%TrackCell%ExecuteRandomWalkParticleTracking(loc, stopTime, this%TrackCellResult, neighborSubCellData)
+      end if
 
-      ! RWPT
-      call this%TrackCell%ExecuteTracking(loc, stopTime, this%TrackCellResult, neighborSubCellData)
-      
       ! Check the status flag of the result to find out what to do next
       if(this%TrackCellResult%Status .eq. this%TrackCellResult%Status_Undefined()) then
           continueLoop = .false.

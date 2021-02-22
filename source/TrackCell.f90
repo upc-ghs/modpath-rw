@@ -16,12 +16,10 @@ module TrackCellModule
     type(ParticleTrackingOptionsType) :: TrackingOptions
     type(TrackSubCellType),private :: TrackSubCell
     logical :: SteadyState
-
-    ! RWPT
-    !type(ModpathCellDataType), public, dimension(6) :: NeighborCellData
-
   contains
     procedure :: ExecuteTracking=>pr_ExecuteTracking
+    ! RWPT
+    procedure :: ExecuteRandomWalkParticleTracking=>pr_ExecuteRandomWalkParticleTracking
     ! Private methods
     procedure,private :: FillSubCellDataBuffer=>pr_FillSubCellDataBuffer
     procedure,private :: AtCellExitFace=>pr_AtCellExitFace
@@ -109,7 +107,7 @@ contains
   end function pr_AtCellExitFace
   
 !-------------------------------------------------------------------
-  subroutine pr_ExecuteTracking(this, initialLocation, maximumTime, trackCellResult, neighborSubCellData)
+  subroutine pr_ExecuteTracking(this, initialLocation, maximumTime, trackCellResult)
   implicit none
   class(TrackCellType) :: this
   type(ParticleLocationType),intent(in) :: initialLocation
@@ -119,13 +117,6 @@ contains
   type(ParticleLocationType) :: subLoc,pLoc
   logical :: stopIfNoSubCellExit,hasExit
   integer :: subRow,subColumn,count, layer, stopZone
-  
-  ! RWPT
-  integer :: n
-  type(ModpathSubCellDataType), dimension(18) :: neighborSubCellData
-  ! Debugging
-  type(ModpathSubCellDataType) :: localSubCellData
-  !------------------------------------------------------------------
 
   stopIfNoSubCellExit = .true.
   
@@ -226,11 +217,6 @@ contains
   subLoc =                                                                      &
     this%TrackSubCell%SubCellData%ConvertFromLocalParentCoordinate(initialLocation)
 
-  ! RWPT
-  ! Initialize corner velocities
-  call this%TrackSubCell%ComputeCornerVelocities( neighborSubCellData )  
-
-
   ! Loop through sub-cells until a stopping condition is met.
   ! The loop count is set to 100. If it goes through the loop 100 times then something is wrong. 
   ! In that case, trackCellResult%Status will be set to Undefined and the result will be returned.
@@ -241,9 +227,6 @@ contains
       if(subCellResult%Status .eq. subCellResult%Status_Undefined()) then
           trackCellResult%Status = trackCellResult%Status_Undefined()
           return
-      ! RWPT 
-      ! This branch block is related to unstructured grid
-      ! internal faces is linked to conceptualization of that case
       else if(subCellResult%Status .eq. subCellResult%Status_ExitAtInternalFace()) then
           pLoc = this%TrackSubCell%SubCellData%ConvertToLocalParentCoordinate(subCellResult%FinalLocation)
           pLoc%Layer = layer
@@ -315,9 +298,6 @@ contains
                 trackCellResult%Status = trackCellResult%Status_Undefined()
                 return
           end select
-      ! RWPT
-      ! This branch is for handling the case of fully structured grid
-      ! in which particles leave only at cell faces.
       else if(subCellResult%Status .eq. subCellResult%Status_ExitAtCellFace()) then
           ! The particle has reached a cell boundary face, set trackCellResult status
           ! and exit face and then return. Status = 2 (ReachedBoundaryFace)
@@ -347,6 +327,253 @@ contains
   trackCellResult%Status = trackCellResult%Status_Undefined()   
   
   end subroutine pr_ExecuteTracking
+
+
+! RWPT 
+!------------------------------------------------------------------------
+  subroutine pr_ExecuteRandomWalkParticleTracking(this, initialLocation, maximumTime, trackCellResult, neighborSubCellData)
+      !------------------------------------------------------------------
+      ! This function is a clone of ExecuteTracking, but includes 
+      ! intermediate step of corner velocities computation 
+      ! required for RWPT simulations. Also invokes the corresponding 
+      ! function from TrackSubCell module
+      !------------------------------------------------------------------
+      ! Specifications
+      !------------------------------------------------------------------
+      implicit none
+      class(TrackCellType) :: this
+      type(ParticleLocationType),intent(in) :: initialLocation
+      type(TrackCellResultType),intent(inout) :: trackCellResult
+      doubleprecision,intent(in) :: maximumTime
+      type(TrackSubCellResultType) :: subCellResult
+      type(ParticleLocationType) :: subLoc,pLoc
+      logical :: stopIfNoSubCellExit,hasExit
+      integer :: subRow,subColumn,count, layer, stopZone
+      ! RWPT
+      integer :: n
+      type(ModpathSubCellDataType), dimension(18) :: neighborSubCellData
+      !------------------------------------------------------------------
+
+      stopIfNoSubCellExit = .true.
+      
+      ! Initialize cellResult
+      call trackCellResult%Reset()
+      trackCellResult%CellNumber = this%CellData%CellNumber
+      trackCellResult%ExitFace = 0
+      trackCellResult%Status = trackCellResult%Status_Undefined()
+      trackCellResult%MaximumTime = maximumTime
+      
+      ! If the initial location cell number does not match this cell or any of the local coordinates
+      ! are less than 0 or greater than 1, then set status to InvalidLocation and return.
+      layer = initialLocation%Layer
+      if((initialLocation%CellNumber .ne. trackCellResult%CellNumber) .or. (.not. initialLocation%Valid())) then
+          trackCellResult%Status = trackCellResult%Status_InvalidLocation()
+          return
+      end if
+      
+      ! If the initial location cell is inactive for this time step, set status to InactiveCell
+      if(this%CellData%IboundTS .eq. 0) then
+          trackCellResult%Status = trackCellResult%Status_InactiveCell()
+          return
+      end if
+      
+      ! Add the initial location to the TrackingPoints list
+      call trackCellResult%TrackingPoints%AddItem(initialLocation)
+      
+      ! Check for stopping conditions
+      
+      ! Check to see if this cell is an automatic stop zone cell
+      stopZone = this%TrackingOptions%StopZone;
+      if(stopZone .gt. 0) then
+          if(this%CellData%Zone .eq. stopZone) then
+            trackCellResult%Status = trackCellResult%Status_StopZoneCell()
+            return;
+          end if
+      end if
+      
+      ! If the cell has no exit face then:
+      !   1. If the system is steady state, set status NoExitPossible and return immediately
+      !   2. If the system is transient, tracking is backward, and SourceFlow is not equal to 0, set status to 
+      !      NoExitPossible and return immediately
+      !   3. If the system is transient, tracking is forware, and SinkFlow is not equal to 0, set status to
+      !      NoExitPossible and return immediately
+      !
+      ! First check to see if cell has at least one exit face.
+      hasExit = this%CellData%HasExitFace(this%TrackingOptions%BackwardTracking)
+      if(.not. hasExit) then
+          if(this%SteadyState) then
+              trackCellResult%Status = trackCellResult%Status_NoExitPossible()
+              return;
+          else
+              if((this%TrackingOptions%BackwardTracking) .and. (this%CellData%SourceFlow .ne. 0.0d0)) then
+                   trackCellResult%Status = trackCellResult%Status_NoExitPossible()
+                   return;
+              else if((.not. this%TrackingOptions%BackwardTracking) .and. (this%CellData%SinkFlow .ne. 0.0d0)) then
+                   trackCellResult%Status = trackCellResult%Status_NoExitPossible()
+                   return;
+              end if
+          end if
+      end if
+      
+      ! Check weak sink/source stopping option
+      if(this%TrackingOptions%BackwardTracking) then
+          if(this%TrackingOptions%StopAtWeakSources) then
+              if(this%CellData%SourceFlow .ne. 0.0d0) then 
+                  trackCellResult%Status = trackCellResult%Status_StopAtWeakSource()
+                  return;
+              else
+                  if(.not. this%SteadyState) stopIfNoSubCellExit = .false.
+              end if
+          end if
+      else
+          if(this%TrackingOptions%StopAtWeakSinks) then
+              if(this%CellData%SinkFlow .ne. 0.0d0) then
+                  trackCellResult%Status = trackCellResult%Status_StopAtWeakSink()
+                  return;
+              else
+                  if(.not. this%SteadyState) stopIfNoSubCellExit = .false.
+              end if
+          end if
+      end if
+      
+      ! No immediate stopping condition was found, so loop through sub-cells until a stopping condition is reached.
+          
+      ! Find the sub-cell that contains the initial location
+      call this%FindSubCell(initialLocation,subRow,subColumn)
+      
+      ! If subRow or subColumn returns 0 then an error occurred. Set Status = Undefined and return
+      if((subRow .eq. 0) .or. (subColumn .eq. 0)) then
+          trackCellResult%Status = trackCellResult%Status_Undefined()
+          return
+      end if
+      
+      ! Initialize the sub-cell buffer and convert the initial location to the equivalent local sub-cell coordinates.
+      call this%CellData%FillSubCellDataBuffer(this%TrackSubCell%SubCellData,       &
+        subRow,subColumn,this%TrackingOptions%BackwardTracking)
+      subLoc =                                                                      &
+        this%TrackSubCell%SubCellData%ConvertFromLocalParentCoordinate(initialLocation)
+
+      ! RWPT
+      ! Initialize corner velocities
+      call this%TrackSubCell%ComputeCornerVelocities( neighborSubCellData )  
+
+      ! Loop through sub-cells until a stopping condition is met.
+      ! The loop count is set to 100. If it goes through the loop 100 times then something is wrong. 
+      ! In that case, trackCellResult%Status will be set to Undefined and the result will be returned.
+      do count = 1, 100
+          call this%TrackSubCell%ExecuteRandomWalkParticleTracking( stopIfNoSubCellExit,subLoc, &
+              maximumTime, subCellResult, this%TrackingOptions )
+      
+          ! Check subCellResult status and process accordingly
+          if(subCellResult%Status .eq. subCellResult%Status_Undefined()) then
+              trackCellResult%Status = trackCellResult%Status_Undefined()
+              return
+          ! RWPT 
+          ! This branch block is related to unstructured grid
+          ! internal faces is linked to conceptualization of that case
+          else if(subCellResult%Status .eq. subCellResult%Status_ExitAtInternalFace()) then
+              pLoc = this%TrackSubCell%SubCellData%ConvertToLocalParentCoordinate(subCellResult%FinalLocation)
+              pLoc%Layer = layer
+              call trackCellResult%TrackingPoints%AddItem(pLoc)
+              
+              select case (subCellResult%ExitFace)
+                case (1)
+                    if(subCellResult%Column .ne. 2) then
+                        ! Face 1 cannot be an internal face unless the column index equals 2.
+                        ! If so, set trackCellResult%Status to Undefined and return.
+                        trackCellResult%Status = trackCellResult%Status_Undefined()
+                        return
+                    end if
+                    subLoc%LocalX = 1.0d0
+                    subLoc%LocalY = subCellResult%FinalLocation%LocalY
+                    subLoc%LocalZ = subCellResult%FinalLocation%LocalZ
+                    subLoc%TrackingTime = subCellResult%FinalLocation%TrackingTime
+                    subColumn = 1
+                    call this%CellData%FillSubCellDataBuffer(                       &
+                      this%TrackSubCell%SubCellData,subRow,subColumn,               &
+                      this%TrackingOptions%BackwardTracking)
+                case (2)
+                    if(subCellResult%Column .ne. 1) then
+                        ! Face 2 cannot be an internal face unless the column index equals 1.
+                        ! If so, set trackCellResult%Status to Undefined and return.
+                        trackCellResult%Status = trackCellResult%Status_Undefined()
+                        return
+                    end if
+                    subLoc%LocalX = 0.0d0
+                    subLoc%LocalY = subCellResult%FinalLocation%LocalY
+                    subLoc%LocalZ = subCellResult%FinalLocation%LocalZ
+                    subLoc%TrackingTime = subCellResult%FinalLocation%TrackingTime
+                    subColumn = 2
+                    call this%CellData%FillSubCellDataBuffer(                       &
+                      this%TrackSubCell%SubCellData,subRow,subColumn,               &
+                      this%TrackingOptions%BackwardTracking)
+                case (3)
+                    if(subCellResult%Row .ne. 1) then
+                        ! Face 3 cannot be an internal face unless the row index equals 1.
+                        ! If so, set trackCellResult%Status to Undefined and return.
+                        trackCellResult%Status = trackCellResult%Status_Undefined()
+                        return
+                    end if
+                    subLoc%LocalX = subCellResult%FinalLocation%LocalX
+                    subLoc%LocalY = 1.0d0
+                    subLoc%LocalZ = subCellResult%FinalLocation%LocalZ
+                    subLoc%TrackingTime = subCellResult%FinalLocation%TrackingTime
+                    subRow = 2
+                    call this%CellData%FillSubCellDataBuffer(                       &
+                      this%TrackSubCell%SubCellData, subRow, subColumn,             &
+                      this%TrackingOptions%BackwardTracking)
+                case (4)
+                    if(subCellResult%Row .ne. 2) then
+                        ! Face 4 cannot be an internal face unless the row index equals 2.
+                        ! If so, set trackCellResult%Status to Undefined and return.
+                        trackCellResult%Status = trackCellResult%Status_Undefined()
+                        return
+                    end if
+                    subLoc%LocalX = subCellResult%FinalLocation%LocalX
+                    subLoc%LocalY = 0.0d0
+                    subLoc%LocalZ = subCellResult%FinalLocation%LocalZ
+                    subLoc%TrackingTime = subCellResult%FinalLocation%TrackingTime
+                    subRow = 1
+                    call this%CellData%FillSubCellDataBuffer(                       &
+                      this%TrackSubCell%SubCellData, subRow, subColumn,             &
+                      this%TrackingOptions%BackwardTracking)
+                case default
+                    ! Something went wrong. Set trackCellResult%Status equal to Undefined and return
+                    trackCellResult%Status = trackCellResult%Status_Undefined()
+                    return
+              end select
+          ! RWPT
+          ! This branch is for handling the case of fully structured grid
+          ! in which particles leave only at cell faces.
+          else if(subCellResult%Status .eq. subCellResult%Status_ExitAtCellFace()) then
+              ! The particle has reached a cell boundary face, set trackCellResult status
+              ! and exit face and then return. Status = 2 (ReachedBoundaryFace)
+              pLoc = this%TrackSubCell%SubCellData%ConvertToLocalParentCoordinate(subCellResult%FinalLocation)
+              pLoc%Layer = layer
+              call trackCellResult%TrackingPoints%AddItem(pLoc)
+              trackCellResult%Status = trackCellResult%Status_ExitAtCellFace()
+              trackCellResult%ExitFace = subCellResult%ExitFace
+              trackCellResult%NextCellNumber = subCellResult%ExitFaceConnection
+              return
+          else if(subCellResult%Status .eq. subCellResult%Status_ReachedMaximumTime()) then
+              pLoc = this%TrackSubCell%SubCellData%ConvertToLocalParentCoordinate(subCellResult%FinalLocation)
+              pLoc%Layer = layer
+              call trackCellResult%TrackingPoints%AddItem(pLoc)
+              trackCellResult%Status = trackCellResult%Status_ReachedStoppingTime()
+              trackCellResult%ExitFace = subCellResult%ExitFace
+              trackCellResult%NextCellNumber = pLoc%CellNumber
+              return
+          else if(subCellResult%Status .eq. subCellResult%Status_NoExitPossible()) then
+              trackCellResult%Status = trackCellResult%Status_NoExitPossible()
+              return
+          end if
+          
+      end do
+
+      ! If it gets this far something when wrong, so process the error condition and return
+      trackCellResult%Status = trackCellResult%Status_Undefined()   
   
+  end subroutine pr_ExecuteRandomWalkParticleTracking
+
   
 end module TrackCellModule

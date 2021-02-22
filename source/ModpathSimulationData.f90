@@ -215,7 +215,7 @@ contains
           end if
       ! RWPT
       case(5)
-          write(outUnit,'(A,I2,A)') 'Random Walk Particle Tracking with Pathline and Timeseries Analysis (Simulation type =', this%SimulationType, ')'
+          write(outUnit,'(A,I2,A)') 'RWPT with Pathline and Timeseries Analysis (Simulation type =', this%SimulationType, ')'
           read(inUnit, '(a)') this%EndpointFile
           icol = 1
           call urword(this%EndpointFile,icol,istart,istop,0,n,r,0,0)
