@@ -27,12 +27,12 @@ module TrackSubCellModule
     procedure :: ExecuteTracking=>pr_ExecuteTracking
 
     ! RWPT
-    procedure :: NewRWPTXYZ=>pr_NewRWPTXYZ
     procedure :: ComputeCornerVelocities=>pr_ComputeCornerVelocities
     procedure :: Trilinear=>pr_Trilinear
     procedure :: TrilinearDerivative=>pr_TrilinearDerivative
     procedure :: DispersionDivergence=>pr_DispersionDivergence
     procedure :: DisplacementRandom=>pr_DisplacementRandom
+    procedure :: DetectExitFaceAndUpdateTimeStep=>pr_DetectExitFaceAndUpdateTimeStep
 
   end type
   
@@ -55,27 +55,14 @@ contains
 
   ! RWPT
   doubleprecision :: alphaT, alphaL, Dmol
-  !doubleprecision, dimension(4) :: v000
-  !doubleprecision, dimension(4) :: v100
-  !doubleprecision, dimension(4) :: v010
-  !doubleprecision, dimension(4) :: v110
-  !doubleprecision, dimension(4) :: v001
-  !doubleprecision, dimension(4) :: v101
-  !doubleprecision, dimension(4) :: v011
-  !doubleprecision, dimension(4) :: v111
-  !doubleprecision :: dDxxdx, dDxydy, dDxzdz, &
-  !                   dDxydx, dDyydy, dDyzdz, &
-  !                   dDxzdx, dDyzdy, dDzzdz
-  !doubleprecision :: vBx, vBy, vBz, vBnorm, vBnormxy
-  !doubleprecision :: B11, B12, B13, B21, B22, B23, B31, B32
   doubleprecision :: divDx, divDy, divDz
   doubleprecision :: dBx, dBy, dBz
   doubleprecision :: dx, dy, dz
   doubleprecision :: nx, ny, nz
   doubleprecision :: dxrw, dyrw, dzrw
-  doubleprecision :: dinterface, dtravel
-  logical :: continueTimeLoop
-  doubleprecision :: ANormal, BNormal, z1, z2, zsqrt
+  logical         :: continueTimeLoop
+  logical         :: reachedMaximumTime
+  doubleprecision, dimension(3) :: dts
   !------------------------------------------------------------
 
   call trackingResult%Reset()
@@ -121,6 +108,11 @@ contains
   dy = this%SubCellData%DY
   dz = this%SubCellData%DZ
 
+  ! Initialize positions
+  x = initialLocation%LocalX
+  y = initialLocation%LocalY
+  z = initialLocation%LocalZ
+
 
   ! RWPT
   ! COMPUTE A DELTA T FOR THE TRACK CELL
@@ -130,11 +122,6 @@ contains
   !     - CalculateDT defines three values of dt, one for each axis
   !       which are then compared and used in computing the final 
   !       position of particles 
-  statusVX = this%CalculateDT(vx1, vx2, this%SubCellData%DX, initialX, vx, dvxdx, dtx)
-  statusVY = this%CalculateDT(vy1, vy2, this%SubCellData%DY, initialY, vy, dvydy, dty)
-  statusVZ = this%CalculateDT(vz1, vz2, this%SubCellData%DZ, initialZ, vz, dvzdz, dtz)
-  dt = 0.1*min( dtx, dty, dtz ) 
-
   ! RWPT
   ! In the case with hydrodynamic dispersion 
   ! particles should be moved in several time 
@@ -153,214 +140,134 @@ contains
   ! which requires a detection mechanism
   ! At each time iteration, quantities related to 
   ! RWPT should be recomputed 
-      
+  statusVX = this%CalculateDT(vx1, vx2, this%SubCellData%DX, initialX, vx, dvxdx, dtx)
+  statusVY = this%CalculateDT(vy1, vy2, this%SubCellData%DY, initialY, vy, dvydy, dty)
+  statusVZ = this%CalculateDT(vz1, vz2, this%SubCellData%DZ, initialZ, vz, dvzdz, dtz)
+
+  dts(1) = dtx
+  dts(2) = dty
+  dts(3) = dtz
+  dt = 0.001*minval( dts, dts > 0 )
+  
 
   ! At this point we have defined a reasonable dt
   t = initialTime + dt
 
-  alphaL = 1
-  alphaT = 0.1
-  Dmol   = 1.0d-8
+  alphaL = 0
+  alphaT = 0
+  Dmol   = 0
 
-  !!------- 
-  !! RWPT
-  !!-------
-  !exitFace = 0
-  !continueTimeLoop = .true.
-  !!LOCAL TIME LOOP
-  !do while( continueTimeLoop )
+  !------- 
+  ! RWPT
+  !-------
+  exitFace = 0
+  continueTimeLoop = .true.
+  reachedMaximumTime = .false.
+  !LOCAL TIME LOOP
+  do while( continueTimeLoop )
 
-  !    print *, 'TIMEEE LOOP'
-  !    print *, t
-
-  !    ! Compare maximumTime with current time 
-  !    if (maximumTime .lt. t) then
-  !        ! Closure procedure, because current time is higher than the 
-  !        ! maximum
-  !        ! -----
-  !        ! Original modpath performs a last advancement of particles 
-  !        ! by recomputing dt considering the maximum time 
-  !        ! -----
-  !        ! Recompute dt taking into account 
-  !        ! maximumTime and move particles 
-  !         
-  !        dt = maximumTime - initialTime
-  !        t  = maximumTime
-  !    
-  !        ! Advance particles for the given delta t
-  !        ! RWPT MOVEMENT  
-  !        ! Compute new x, y, z   
-  !        ! Requires verification of valid positions
-  !    
-  !        trackingResult%ExitFace = 0
-  !        trackingResult%FinalLocation%CellNumber = cellNumber
-  !        trackingResult%FinalLocation%LocalX = x
-  !        trackingResult%FinalLocation%LocalY = y
-  !        trackingResult%FinalLocation%LocalZ = z
-  !        trackingResult%FinalLocation%TrackingTime = t
-  !        trackingResult%Status = trackingResult%Status_ReachedMaximumTime()
-  !    
-  !        continueTimeLoop = .false.
-  !    
-  !    else
-  !        ! We can continue because there is time available yet
-  !        !
-  !        ! RWPT MOVEMENT
-  !        ! Interpolate velocities
-  !        vx = ( 1.0d0 - x )*vx1 + x*vx2
-  !        vy = ( 1.0d0 - y )*vy1 + y*vy2
-  !        vz = ( 1.0d0 - z )*vz1 + z*vz2
-  !        call this%DispersionDivergence( x, y, z, alphaL, alphaT, Dmol, divDx, divDy, divDz )
-  !        call this%DisplacementRandom( x, y, z, alphaL, alphaT, Dmol, dBx, dBy, dBz )
-  !        ! Delta rwpt
-  !        dxrw = ( vx + divDx )*dt/dx + dBx*sqrt( dt )/dx
-  !        dyrw = ( vy + divDy )*dt/dy + dBy*sqrt( dt )/dy
-  !        dzrw = ( vz + divDz )*dt/dz + dBz*sqrt( dt )/dz
-  !        !call this%RandomWalk( x, y, z, dt)
-  !        nx = x + dxrw
-  !        ny = y + dyrw
-  !        nz = z + dzrw
-  !        ! END RWPT MOVEMENT
-  !         
-  !        ! DETECT exitFace
-  !        ! This should be the detection of cell exit
-  !        ! modpath knows the exitFace by comparison of deltat's
-  !        ! here we need the exit detection mechanism
-  !        ! One idea is to force the particle into
-  !        ! the interface by computing the required dt
-  !        ! for that once the particle have surpassed cell limits 
-  !        ! This would required information used in RWPT MOVEMENT
-  !        ! so the process should be incorporated into that
-  !        ! function
-  !        if (                                             &
-  !            ( nx .gt. 1.0d0 ) .or. ( nx .lt. 0d0 )  .or. &
-  !            ( ny .gt. 1.0d0 ) .or. ( ny .lt. 0d0 )  .or. &
-  !            ( nz .gt. 1.0d0 ) .or. ( nz .lt. 0d0 )       & 
-  !        ) then                                           
-  !    
-  !            ! Traveled distance
-  !            dtravel = sqrt( dxrw**2 + dyrw**2 + dzrw**2 )
-  !    
-  !            ! There should be something that analyzes precedence
-  !            ! what happened first, maybe something involving dt
-  !            if ( ( nx .gt. 1.0d0 ) .or. ( nx .lt. 0d0 )  ) then ! leaving through x face
-  !                if ( nx .gt. 1.0d0 ) then 
-  !                    dinterface = dtravel*( 1.0d0 - x )/( nx - x )
-  !                    nx         = 1.0d0
-  !                    exitFace   = 2
-  !                else 
-  !                    dinterface = dtravel*x/abs( nx - x )
-  !                    nx         = 0d0
-  !                    exitFace   = 1
-  !                end if 
-  !            else if ( ( ny .gt. 1.0d0 ) .or. ( ny .lt. 0d0 )  ) then ! leaving through y face
-  !                if ( ny .gt. 1.0d0 ) then 
-  !                    dinterface = dtravel*( 1.0d0 - y )/( ny - y )
-  !                    ny         = 1.0d0
-  !                    exitFace   = 4
-  !                else 
-  !                    dinterface = dtravel*y/abs( ny - y )
-  !                    ny         = 0d0
-  !                    exitFace   = 3
-  !                end if
-  !            else if ( ( nz .gt. 1.0d0 ) .or. ( nz .lt. 0d0 )  ) then ! leaving through z face
-  !                if ( nz .gt. 1.0d0 ) then
-  !                    dinterface = dtravel*( 1.0d0 - z )/( nz - z )
-  !                    nz         = 1.0d0
-  !                    exitFace   = 6
-  !                else
-  !                    dinterface = dtravel*z/abs( nz - z )
-  !                    nz         = 0d0
-  !                    exitFace   = 5
-  !                end if 
-  !            end if
-  !        
-  !            ! Given dinterface, now compute new dt
-  !            ANormal = ( ( vx + divDx )*dxrw/dx + ( vy + divDy )*dyrw/dy + ( vz + divDz )*dzrw/dz )/dtravel
-  !            BNormal = ( dBx*dxrw/dx + dBy*dyrw/dy + dBz*dzrw/dz )/dtravel
-  !            zsqrt = sqrt( BNormal**2 + 4*dinterface*ANormal )
-  !            z1    = (-BNormal + zsqrt )/( 2*ANormal )
-  !            z2    = (-BNormal - zsqrt )/( 2*ANormal )
-  !           
-  !            if ( z1 .gt. 0d0 ) then
-  !                dt = sqrt( z1 )
-  !            else if ( z2 .gt. 0d0 ) then
-  !                dt = sqrt( z2 )
-  !            else
-  !                ! Something wrong
-  !                ! If it gets this far, something went wrong. Signal an error condition by
-  !                ! setting Status = 0 (undefined) and then return.
-  !                trackingResult%ExitFace = exitFace
-  !                trackingResult%Status = trackingResult%Status_Undefined()
-  !                return
-  !            end if
-  !            
-  !            ! Find new displacements using the recomputed dt
-  !            ! and update new coordinates
-  !            if ( ( exitFace .eq. 1 ) .or. ( exitFace .eq. 2 ) ) then 
-  !                dyrw = ( vy + divDy )*dt/dy + dBy*sqrt( dt )/dy
-  !                dzrw = ( vz + divDz )*dt/dz + dBz*sqrt( dt )/dz
-  !                ny = y + dyrw
-  !                nz = z + dzrw
-  !            else if ( ( exitFace .eq. 3 ) .or. ( exitFace .eq. 4 ) ) then 
-  !                dxrw = ( vx + divDx )*dt/dx + dBx*sqrt( dt )/dx
-  !                dzrw = ( vz + divDz )*dt/dz + dBz*sqrt( dt )/dz
-  !                nx = x + dxrw
-  !                nz = z + dzrw
-  !            else if ( ( exitFace .eq. 5 ) .or. ( exitFace .eq. 6 ) ) then
-  !                dxrw = ( vx + divDx )*dt/dx + dBx*sqrt( dt )/dx
-  !                dyrw = ( vy + divDy )*dt/dy + dBy*sqrt( dt )/dy
-  !                nx = x + dxrw
-  !                ny = y + dyrw
-  !            else
-  !                ! Something wrong
-  !                ! If it gets this far, something went wrong. Signal an error condition by
-  !                ! setting Status = 0 (undefined) and then return.
-  !                trackingResult%ExitFace = exitFace
-  !                trackingResult%Status = trackingResult%Status_Undefined()
-  !                return
-  !            end if
-  !    
-  !            ! Update particle positions and time
-  !            x = nx
-  !            y = ny
-  !            z = nz
-  !            t = t + dt
-
-  !            continueTimeLoop = .false.         
-  !    
-  !        end if
-  !          
-  !        ! Update particle positions and time
-  !        x = nx
-  !        y = ny
-  !        z = nz
-  !        t = t + dt
-
-  !    end if
-  !   
-  !end do 
-  !! END LOCAL TIME LOOP 
-
-  !! Assign tracking result data and leave
-  !trackingResult%ExitFaceConnection = this%SubCellData%Connection(exitFace)
-  !if(this%SubCellData%Connection(exitFace) .lt. 0) then
-  !    ! This is the case for unstructured grid, NOT IMPLEMENTED YET
-  !    trackingResult%Status = trackingResult%Status_ExitAtInternalFace()
-  !else
-  !    trackingResult%Status = trackingResult%Status_ExitAtCellFace()
-  !end if
-  !trackingResult%ExitFace = exitFace
-  !trackingResult%FinalLocation%CellNumber = cellNumber
-  !trackingResult%FinalLocation%LocalX = x
-  !trackingResult%FinalLocation%LocalY = y
-  !trackingResult%FinalLocation%LocalZ = z
-  !trackingResult%FinalLocation%TrackingTime = t
- 
+      ! Recompute dt for maximumTime 
+      if (maximumTime .lt. t) then
+          dt = t - maximumTime
+          reachedMaximumTime = .true.
+      end if 
 
 
+      ! Move particle
 
-  !return
+      ! Interpolate velocities and
+      ! compute RWPT movement
+      vx = ( 1.0d0 - x )*vx1 + x*vx2
+      vy = ( 1.0d0 - y )*vy1 + y*vy2
+      vz = ( 1.0d0 - z )*vz1 + z*vz2
+      call this%DispersionDivergence( x, y, z, alphaL, alphaT, Dmol, divDx, divDy, divDz )
+      call this%DisplacementRandom( x, y, z, alphaL, alphaT, Dmol, dBx, dBy, dBz )
+      dxrw = ( vx + divDx )*dt + dBx*sqrt( dt )
+      dyrw = ( vy + divDy )*dt + dBy*sqrt( dt )
+      dzrw = ( vz + divDz )*dt + dBz*sqrt( dt )
+      nx   = x + dxrw/dx
+      ny   = y + dyrw/dy
+      nz   = z + dzrw/dz
+
+      !! Very unlikely for particles to fall exactly
+      !! on the interface
+
+      ! Detect if particle leaving the cell
+      ! and force the particle into exactly one
+      ! interface by computing the required dt
+      if (                                             &
+          ( nx .gt. 1.0d0 ) .or. ( nx .lt. 0d0 )  .or. &
+          ( ny .gt. 1.0d0 ) .or. ( ny .lt. 0d0 )  .or. &
+          ( nz .gt. 1.0d0 ) .or. ( nz .lt. 0d0 )       & 
+      ) then                                           
+      
+          call this%DetectExitFaceAndUpdateTimeStep(              &
+                  x, y, z, nx, ny, nz,                            &
+                  ( vx + divDx ), ( vy + divDy ), ( vz + divDz ), &
+                  dBx, dBy, dBz, t, dt, exitFace                  &
+              )
+
+          ! Find new displacements using the recomputed dt
+          ! and update coordinates
+          if ( ( exitFace .eq. 1 ) .or. ( exitFace .eq. 2 ) ) then 
+              dyrw = ( vy + divDy )*dt + dBy*sqrt( dt )
+              dzrw = ( vz + divDz )*dt + dBz*sqrt( dt )
+              ny = y + dyrw/dy
+              nz = z + dzrw/dz
+          else if ( ( exitFace .eq. 3 ) .or. ( exitFace .eq. 4 ) ) then 
+              dxrw = ( vx + divDx )*dt + dBx*sqrt( dt )
+              dzrw = ( vz + divDz )*dt + dBz*sqrt( dt )
+              nx = x + dxrw/dx
+              nz = z + dzrw/dz
+          else if ( ( exitFace .eq. 5 ) .or. ( exitFace .eq. 6 ) ) then
+              dxrw = ( vx + divDx )*dt + dBx*sqrt( dt )
+              dyrw = ( vy + divDy )*dt + dBy*sqrt( dt )
+              nx = x + dxrw/dx
+              ny = y + dyrw/dy
+          else
+              ! Something wrong
+              trackingResult%ExitFace = exitFace
+              trackingResult%Status = trackingResult%Status_Undefined()
+              return
+          end if
+     
+      end if
+
+      ! Update particle positions and time
+      x = nx
+      y = ny
+      z = nz
+      t = t + dt
+
+      ! Report and leave
+      if ( (reachedMaximumTime) .or. ( exitFace .ne. 0 ) ) then
+          if (reachedMaximumTime) then
+              ! In this case it is allowed for a particle
+              ! to reach the maximum time and eventually have an exit face
+              trackingResult%Status = trackingResult%Status_ReachedMaximumTime()
+          else
+              trackingResult%ExitFaceConnection = this%SubCellData%Connection(exitFace)
+              if(this%SubCellData%Connection(exitFace) .lt. 0) then
+                  ! This is the case for unstructured grid, NOT IMPLEMENTED YET
+                  trackingResult%Status = trackingResult%Status_ExitAtInternalFace()
+              else
+                  trackingResult%Status = trackingResult%Status_ExitAtCellFace()
+              end if
+          end if
+          trackingResult%ExitFace = exitFace
+          trackingResult%FinalLocation%CellNumber = cellNumber
+          trackingResult%FinalLocation%LocalX = x
+          trackingResult%FinalLocation%LocalY = y
+          trackingResult%FinalLocation%LocalZ = z
+          trackingResult%FinalLocation%TrackingTime = t
+          continueTimeLoop = .false.         
+      end if
+      
+  end do 
+  ! END LOCAL TIME LOOP 
+
+
+  return
 
 
 
@@ -491,7 +398,7 @@ contains
   !!    end if
   !!    
   !!    ! Assign tracking result data
-  !!    trackingResult%ExitFaceConnection = this%SubCellData%Connection(exitFace)
+  !!   trackingResult%ExitFaceConnection = this%SubCellData%Connection(exitFace)
   !!    if(this%SubCellData%Connection(exitFace) .lt. 0) then
   !!        trackingResult%Status = trackingResult%Status_ExitAtInternalFace()
   !!    else
@@ -629,19 +536,104 @@ contains
   end function pr_NewXYZ
 
 
+
   ! RWPT
-  ! NOT GOOD
-  function pr_NewRWPTXYZ(this,v,divd,bd,dt,x,dx) result(newX)
-    implicit none
-    class(TrackSubCellType) :: this
-    doubleprecision,intent(in) :: v,divd,bd,dt,x,dx
-    doubleprecision :: newX
+  subroutine pr_DetectExitFaceAndUpdateTimeStep( this, x, y, z, nx, ny, nz, & 
+                                    Ax, Ay, Az, Bx, By, Bz, t, dt, exitFace )
+      !----------------------------------------------------------------
+      ! Given the initial and updated coordinates, and rwpt terms, 
+      ! detects the exit face and recomputes time step to move the 
+      ! particle exactly into the corresponding interface 
+      ! 
+      ! Params:
+      !     - x, y, z    | doubleprecision |: initial local cell coordinates
+      !     - nx, ny, nz | doubleprecision |: coordinates after RWPT
+      !     - Ai, Bi     | doubleprecision |: RWPT terms 
+      !     - t, dt      | doubleprecision |: current time and time step
+      !     - exitFace   |     integer     |: exit face index
+      !----------------------------------------------------------------
+      ! Specifications
+      !----------------------------------------------------------------
+      implicit none
+      class (TrackSubCellType) :: this
+      ! input
+      doubleprecision :: x, y, z
+      doubleprecision :: nx, ny, nz
+      doubleprecision :: Ax, Ay, Az, Bx, By, Bz
+      doubleprecision, intent(inout) :: t, dt
+      integer, intent(inout)         :: exitFace
+      ! local
+      doubleprecision :: AFace, BFace, z1, z2, zsqrt, dInterface
+      doubleprecision :: dx, dy, dz
+      !----------------------------------------------------------------
 
-    newX = x + ( v + divd )*dt/dx + bd*sqrt( dt )/dx ! verify what happens with dx, normalization
+      ! Initialize
+      AFace = 0
+      BFace = 0
+      z1    = 0
+      z2    = 0
+      zsqrt = 0 
+      dInterface = 0
 
-    if(newX .lt. 0d0) newX = 0d0
-    if(newX .gt. 1.0d0) newX = 1.0d0
-  end function pr_NewRWPTXYZ
+      ! Local copies of cell size
+      dx = this%SubCellData%DX
+      dy = this%SubCellData%DY
+      dz = this%SubCellData%DZ
+
+      ! There should be something that analyzes precedence
+      ! what happened first, maybe something involving dt
+      if ( ( nx .gt. 1.0d0 ) .or. ( nx .lt. 0d0 )  ) then ! leaving through x face
+          AFace = Ax
+          BFace = Bx
+          if ( nx .gt. 1.0d0 ) then 
+              dInterface = dx*( 1.0d0 - x )
+              nx         = 1.0d0
+              exitFace   = 2
+          else 
+              dInterface = -dx*x
+              nx         = 0d0
+              exitFace   = 1
+          end if 
+      else if ( ( ny .gt. 1.0d0 ) .or. ( ny .lt. 0d0 )  ) then ! leaving through y face
+          AFace = Ay
+          BFace = By
+          if ( ny .gt. 1.0d0 ) then 
+              dInterface = dy*( 1.0d0 - y )
+              ny         = 1.0d0
+              exitFace   = 4
+          else 
+              dInterface = -dy*y
+              ny         = 0d0
+              exitFace   = 3
+          end if
+      else if ( ( nz .gt. 1.0d0 ) .or. ( nz .lt. 0d0 )  ) then ! leaving through z face
+          AFace = Az
+          BFace = Bz
+          if ( nz .gt. 1.0d0 ) then
+              dInterface = dz*( 1.0d0 - z )
+              nz         = 1.0d0
+              exitFace   = 6
+          else
+              dInterface = -dz*z
+              nz         = 0d0
+              exitFace   = 5
+          end if 
+      end if
+
+      ! Reset t, dt will be replaced
+      t = t - dt
+
+      ! Given dInterface, compute new dt
+      zsqrt = sqrt( BFace**2 + 4*dInterface*AFace )
+      z1    = (-BFace + zsqrt )/( 2*AFace )
+      z2    = (-BFace - zsqrt )/( 2*AFace )
+      if ( z1 .gt. 0d0 ) then
+          dt = z1**2
+      else if ( z2 .gt. 0d0 ) then
+          dt = z2**2
+      end if
+
+  end subroutine pr_DetectExitFaceAndUpdateTimeStep
 
 
   ! RWPT
