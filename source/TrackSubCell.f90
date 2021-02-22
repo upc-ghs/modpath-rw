@@ -349,6 +349,7 @@ contains
       doubleprecision :: dx, dy, dz
       doubleprecision :: nx, ny, nz
       doubleprecision :: dxrw, dyrw, dzrw
+      doubleprecision :: drwtol = 1.0d-14
       logical         :: continueTimeLoop
       logical         :: reachedMaximumTime
       doubleprecision, dimension(3) :: dts
@@ -402,6 +403,10 @@ contains
       y = initialLocation%LocalY
       z = initialLocation%LocalZ
 
+      ! Initialize dispersion
+      alphaL = trackingOptions%alphaL
+      alphaT = trackingOptions%alphaT
+      Dmol   = trackingOptions%Dmol
 
       ! RWPT
       ! COMPUTE A DELTA T FOR THE TRACK CELL
@@ -429,22 +434,68 @@ contains
       ! which requires a detection mechanism
       ! At each time iteration, quantities related to 
       ! RWPT should be recomputed 
-      statusVX = this%CalculateDT(vx1, vx2, this%SubCellData%DX, initialX, vx, dvxdx, dtx)
-      statusVY = this%CalculateDT(vy1, vy2, this%SubCellData%DY, initialY, vy, dvydy, dty)
-      statusVZ = this%CalculateDT(vz1, vz2, this%SubCellData%DZ, initialZ, vz, dvzdz, dtz)
 
-      dts(1) = dtx
-      dts(2) = dty
-      dts(3) = dtz
-      dt = 0.001*minval( dts, dts > 0 )
-      
+
+      !statusVX = this%CalculateDT(vx1, vx2, this%SubCellData%DX, initialX, vx, dvxdx, dtx)
+      !statusVY = this%CalculateDT(vy1, vy2, this%SubCellData%DY, initialY, vy, dvydy, dty)
+      !statusVZ = this%CalculateDT(vz1, vz2, this%SubCellData%DZ, initialZ, vz, dvzdz, dtz)
+
+      ! Compute time step
+      select case (trackingOptions%timeStepKind)
+          case (1)
+              ! Fix Courant 
+              dt = trackingOptions%timeStepParameters(1)/( &
+                  max(abs(vx1), abs(vx2))/dx +             &
+                  max(abs(vy1), abs(vy2))/dy +             &
+                  max(abs(vz1), abs(vz2))/dz )
+          case (2)
+              ! Fix Peclet 
+              dt = 1/( trackingOptions%timeStepParameters(2)*( &
+                  alphaL*max(abs(vx1), abs(vx2))/( dx**2 ) +   &
+                  alphaT*max(abs(vy1), abs(vy2))/( dy**2 ) +   &
+                  alphaT*max(abs(vz1), abs(vz2))/( dz**2 ) ) )
+          case (3)
+              ! Courant condition
+              dts(1) = trackingOptions%timeStepParameters(1)/( & 
+                  max(abs(vx1), abs(vx2))/dx +                 &
+                  max(abs(vy1), abs(vy2))/dy +                 &
+                  max(abs(vz1), abs(vz2))/dz )
+              ! Peclet condition
+              dts(2) = 1/( trackingOptions%timeStepParameters(2)*( &
+                  alphaL*max(abs(vx1), abs(vx2))/( dx**2 ) +       & 
+                  alphaT*max(abs(vy1), abs(vy2))/( dy**2 ) +       &
+                  alphaT*max(abs(vz1), abs(vz2))/( dz**2 ) ) )
+              ! Something very big
+              dts(3) = 1.0d30
+              ! Compute minimum
+              dt     = minval( dts, dts > 0 )
+          case default
+              ! Compute a value starting from estimated
+              ! quantities for the cell, although 
+              ! this should not happen, ever 
+              statusVX = this%CalculateDT(vx1, vx2, this%SubCellData%DX, initialX, vx, dvxdx, dtx)
+              statusVY = this%CalculateDT(vy1, vy2, this%SubCellData%DY, initialY, vy, dvydy, dty)
+              statusVZ = this%CalculateDT(vz1, vz2, this%SubCellData%DZ, initialZ, vz, dvzdz, dtz)
+              dts(1) = dtx
+              dts(2) = dty
+              dts(3) = dtz
+              dt = 0.001*minval( dts, dts > 0 )
+      end select
+
+      ! Something wrong, leave
+      if ( dt .eq. 0 ) then 
+          trackingResult%ExitFace = exitFace
+          trackingResult%Status = trackingResult%Status_Undefined()
+          trackingResult%FinalLocation%CellNumber = cellNumber
+          trackingResult%FinalLocation%LocalX = x
+          trackingResult%FinalLocation%LocalY = y
+          trackingResult%FinalLocation%LocalZ = z
+          trackingResult%FinalLocation%TrackingTime = t + dt
+          return
+      end if
 
       ! At this point we have defined a reasonable dt
       t = initialTime + dt
-
-      alphaL = 0
-      alphaT = 0
-      Dmol   = 0
 
       !------- 
       ! RWPT
@@ -460,7 +511,6 @@ contains
               dt = t - maximumTime
               reachedMaximumTime = .true.
           end if 
-
 
           ! Move particle
 
@@ -478,8 +528,21 @@ contains
           ny   = y + dyrw/dy
           nz   = z + dzrw/dz
 
-          !! Very unlikely for particles to fall exactly
-          !! on the interface
+          ! Verify that there is some movement, 
+          ! otherwise leave
+          if ( sqrt( dxrw**2 + dyrw**2 + dzrw**2 ) .lt. drwtol ) then
+              trackingResult%ExitFace = exitFace
+              trackingResult%Status = trackingResult%Status_Undefined()
+              trackingResult%FinalLocation%CellNumber = cellNumber
+              trackingResult%FinalLocation%LocalX = x
+              trackingResult%FinalLocation%LocalY = y
+              trackingResult%FinalLocation%LocalZ = z
+              trackingResult%FinalLocation%TrackingTime = t + dt
+              return
+          end if
+
+          ! Very unlikely for particles to fall exactly
+          ! on the interface
 
           ! Detect if particle leaving the cell
           ! and force the particle into exactly one
