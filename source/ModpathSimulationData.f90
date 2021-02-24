@@ -97,7 +97,7 @@ contains
   ! RWPT
   character(len=200) :: dispersionFile
   integer :: dispersionUnit = 88
-
+  integer :: iodispersion   = 0
 
   !---------------------------------------------
 
@@ -570,8 +570,33 @@ contains
             call urword(line,icol,istart,istop,3,n,r,0,0)
             this%TrackingOptions%timeStepParameters(2) = r
         else
-            call ustop('Invalid options for time step selection in RWPT simulation. stop.')
+            call ustop('RWPT: Invalid options for time step selection. Stop.')
         end if
+
+        ! Advection Integration Kind
+        read(dispersionUnit, '(a)', iostat=iodispersion) line
+
+        if ( iodispersion .lt. 0 ) then 
+            ! end of file
+            this%TrackingOptions%advectionKind = 1
+            write(outUnit,'(A)') 'RWPT: Advection integration not specified. Default to EXPONENTIAL.'
+        else
+            icol = 1
+            call urword(line,icol,istart,istop,1,n,r,0,0)
+            line = line(istart:istop)
+            select case(line)
+                case('EXPONENTIAL')
+                    this%TrackingOptions%advectionKind = 1
+                    write(outUnit,'(A)') 'RWPT: Advection integration is EXPONENTIAL.'
+                case('EULERIAN')
+                    this%TrackingOptions%advectionKind = 2
+                    write(outUnit,'(A)') 'RWPT: Advection integration is EULERIAN.'
+                case default
+                    this%TrackingOptions%advectionKind = 1
+                    write(outUnit,'(A)') 'RWPT: Advection integration not specified. Default to EXPONENTIAL.'
+            end select
+        end if
+
 
         ! Close the dispersion data file
         close( dispersionUnit )

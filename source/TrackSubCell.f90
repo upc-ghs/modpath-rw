@@ -31,15 +31,38 @@ module TrackSubCellModule
 
     ! RWPT
     procedure :: ExecuteRandomWalkParticleTracking=>pr_ExecuteRandomWalkParticleTracking
+    procedure :: LinearInterpolationVelocities=>pr_LinearInterpolationVelocities
+    procedure :: ComputeRandomWalkTimeStep=>pr_ComputeRandomWalkTimeStep
     procedure :: ComputeCornerVelocities=>pr_ComputeCornerVelocities
     procedure :: Trilinear=>pr_Trilinear
     procedure :: TrilinearDerivative=>pr_TrilinearDerivative
     procedure :: DispersionDivergence=>pr_DispersionDivergence
     procedure :: DisplacementRandom=>pr_DisplacementRandom
     procedure :: DetectExitFaceAndUpdateTimeStep=>pr_DetectExitFaceAndUpdateTimeStep
-
+    procedure :: AdvectionDisplacementExponential=>pr_AdvectionDisplacementExponential
+    procedure :: AdvectionDisplacementEulerian=>pr_AdvectionDisplacementEulerian
+    ! not working 
+    !procedure(Advection), nopass, pointer :: AdvectionDisplacement
+    !procedure(Advection), nopass, pointer :: AdvectionDisplacement=>null()
   end type
-  
+
+
+  ! RWPT
+  ! Interface for advection method
+  abstract interface
+      subroutine Advection( this, x, y, z, dt, vx, vy, vz, dAdvx, dAdvy, dAdvz )
+          import TrackSubCellType
+          ! this
+          class(TrackSubCellType) :: this 
+          !input
+          doubleprecision, intent(in) :: x, y, z, dt
+          ! output
+          doubleprecision, intent(inout) :: vx, vy, vz
+          doubleprecision, intent(inout) :: dAdvx, dAdvy, dAdvz
+      end subroutine Advection
+  end interface
+
+
 contains
 !-------------------------------------------------------------------
   subroutine pr_ExecuteTracking(this,stopIfNoExit,initialLocation,maximumTime, trackingResult)
@@ -315,10 +338,10 @@ contains
   end function pr_NewXYZ
 
 
-
 ! RWPT
 !-------------------------------------------------------------------
-  subroutine pr_ExecuteRandomWalkParticleTracking(this,stopIfNoExit,initialLocation,maximumTime,trackingResult,trackingOptions)
+  subroutine pr_ExecuteRandomWalkParticleTracking(this,stopIfNoExit, &
+          initialLocation,maximumTime,trackingResult,trackingOptions)
       !------------------------------------------------------------
       ! Function moves particles following RWPT protocol.
       ! It has been adapted from ExecuteTracking but logic
@@ -335,8 +358,7 @@ contains
       type(TrackSubCellResultType),intent(inout) :: trackingResult
       integer :: cellNumber
       doubleprecision :: initialX,initialY,initialZ,initialTime
-      doubleprecision :: vx1,vx2,vy1,vy2,vz1,vz2
-      doubleprecision :: vx,dvxdx,dtx,vy,dvydy,dty,vz,dvzdz,dtz,dt
+      doubleprecision :: vx,vy,vz,dt
       doubleprecision :: t,x,y,z
       integer :: exitFace,exitStatus
       integer :: statusVX,statusVY,statusVZ
@@ -345,6 +367,7 @@ contains
       type(ParticleTrackingOptionsType),intent(in) :: trackingOptions
       doubleprecision :: alphaT, alphaL, Dmol
       doubleprecision :: divDx, divDy, divDz
+      doubleprecision :: dAdvx, dAdvy, dAdvz
       doubleprecision :: dBx, dBy, dBz
       doubleprecision :: dx, dy, dz
       doubleprecision :: nx, ny, nz
@@ -353,8 +376,10 @@ contains
       logical         :: continueTimeLoop
       logical         :: reachedMaximumTime
       doubleprecision, dimension(3) :: dts
+      procedure(Advection), pointer :: AdvectionDisplacement=>null()
       !------------------------------------------------------------
 
+      ! Initialize trackingResult
       call trackingResult%Reset()
       
       cellNumber = initialLocation%CellNumber
@@ -384,14 +409,14 @@ contains
           return
         end if
       end if
-      
-      ! Make local copies of face velocities for convenience
-      vx1 = this%SubCellData%VX1
-      vx2 = this%SubCellData%VX2
-      vy1 = this%SubCellData%VY1
-      vy2 = this%SubCellData%VY2
-      vz1 = this%SubCellData%VZ1
-      vz2 = this%SubCellData%VZ2
+
+      ! Assign advection displacement pointer
+      ! See if possible to define pointer within the type
+      if ( trackingOptions%advectionKind .eq. 1 ) then 
+          AdvectionDisplacement=>pr_AdvectionDisplacementExponential
+      else if ( trackingOptions%advectionKind .eq. 2 ) then 
+          AdvectionDisplacement=>pr_AdvectionDisplacementEulerian
+      end if
 
       ! Local copies of cell size
       dx = this%SubCellData%DX
@@ -408,79 +433,8 @@ contains
       alphaT = trackingOptions%alphaT
       Dmol   = trackingOptions%Dmol
 
-      ! RWPT
-      ! COMPUTE A DELTA T FOR THE TRACK CELL
-      ! - NOTES:
-      !     - CalculateDT performs the linear interpolation of velocities
-      !     - Before computing dispersion, requires velocities x,y,z
-      !     - CalculateDT defines three values of dt, one for each axis
-      !       which are then compared and used in computing the final 
-      !       position of particles 
-      ! RWPT
-      ! In the case with hydrodynamic dispersion 
-      ! particles should be moved in several time 
-      ! steps, in each tracked cell.
-      ! This is essentially due to the fact that 
-      ! the exit face of the particle is not know beforehand
-      ! as there is random motion of particles and dispersion.
-      ! Alternatives for computing delta t
-      !     - Constant
-      !     - Constant Courant 
-      !     - Constant Peclet
-      !     - Several alternatives 
-      ! The thing is, that given a deltat, 
-      ! there should a loop cycle that should run 
-      ! until the particle leaves the cell,
-      ! which requires a detection mechanism
-      ! At each time iteration, quantities related to 
-      ! RWPT should be recomputed 
-
-
-      !statusVX = this%CalculateDT(vx1, vx2, this%SubCellData%DX, initialX, vx, dvxdx, dtx)
-      !statusVY = this%CalculateDT(vy1, vy2, this%SubCellData%DY, initialY, vy, dvydy, dty)
-      !statusVZ = this%CalculateDT(vz1, vz2, this%SubCellData%DZ, initialZ, vz, dvzdz, dtz)
-
-      ! Compute time step
-      select case (trackingOptions%timeStepKind)
-          case (1)
-              ! Fix Courant 
-              dt = trackingOptions%timeStepParameters(1)/( &
-                  max(abs(vx1), abs(vx2))/dx +             &
-                  max(abs(vy1), abs(vy2))/dy +             &
-                  max(abs(vz1), abs(vz2))/dz )
-          case (2)
-              ! Fix Peclet 
-              dt = 1/( trackingOptions%timeStepParameters(2)*( &
-                  alphaL*max(abs(vx1), abs(vx2))/( dx**2 ) +   &
-                  alphaT*max(abs(vy1), abs(vy2))/( dy**2 ) +   &
-                  alphaT*max(abs(vz1), abs(vz2))/( dz**2 ) ) )
-          case (3)
-              ! Courant condition
-              dts(1) = trackingOptions%timeStepParameters(1)/( & 
-                  max(abs(vx1), abs(vx2))/dx +                 &
-                  max(abs(vy1), abs(vy2))/dy +                 &
-                  max(abs(vz1), abs(vz2))/dz )
-              ! Peclet condition
-              dts(2) = 1/( trackingOptions%timeStepParameters(2)*( &
-                  alphaL*max(abs(vx1), abs(vx2))/( dx**2 ) +       & 
-                  alphaT*max(abs(vy1), abs(vy2))/( dy**2 ) +       &
-                  alphaT*max(abs(vz1), abs(vz2))/( dz**2 ) ) )
-              ! Something very big
-              dts(3) = 1.0d30
-              ! Compute minimum
-              dt     = minval( dts, dts > 0 )
-          case default
-              ! Compute a value starting from estimated
-              ! quantities for the cell, although 
-              ! this should not happen, ever 
-              statusVX = this%CalculateDT(vx1, vx2, this%SubCellData%DX, initialX, vx, dvxdx, dtx)
-              statusVY = this%CalculateDT(vy1, vy2, this%SubCellData%DY, initialY, vy, dvydy, dty)
-              statusVZ = this%CalculateDT(vz1, vz2, this%SubCellData%DZ, initialZ, vz, dvzdz, dtz)
-              dts(1) = dtx
-              dts(2) = dty
-              dts(3) = dtz
-              dt = 0.001*minval( dts, dts > 0 )
-      end select
+      ! Compute time step for RWPT
+      call this%ComputeRandomWalkTimeStep( trackingOptions, dt )
 
       ! Something wrong, leave
       if ( dt .eq. 0 ) then 
@@ -497,33 +451,30 @@ contains
       ! At this point we have defined a reasonable dt
       t = initialTime + dt
 
-      !------- 
-      ! RWPT
-      !-------
+
+      ! Local cell time loop 
       exitFace = 0
       continueTimeLoop = .true.
       reachedMaximumTime = .false.
-      !LOCAL TIME LOOP
       do while( continueTimeLoop )
 
           ! Recompute dt for maximumTime 
           if (maximumTime .lt. t) then
-              dt = t - maximumTime
+              t  = t - dt
+              dt = maximumTime - t
+              t  = maximumTime
               reachedMaximumTime = .true.
           end if 
 
-          ! Move particle
-
-          ! Interpolate velocities and
-          ! compute RWPT movement
-          vx = ( 1.0d0 - x )*vx1 + x*vx2
-          vy = ( 1.0d0 - y )*vy1 + y*vy2
-          vz = ( 1.0d0 - z )*vz1 + z*vz2
+          ! Compute RWPT movement
           call this%DispersionDivergence( x, y, z, alphaL, alphaT, Dmol, divDx, divDy, divDz )
           call this%DisplacementRandom( x, y, z, alphaL, alphaT, Dmol, dBx, dBy, dBz )
-          dxrw = ( vx + divDx )*dt + dBx*sqrt( dt )
-          dyrw = ( vy + divDy )*dt + dBy*sqrt( dt )
-          dzrw = ( vz + divDz )*dt + dBz*sqrt( dt )
+          !call this%AdvectionDisplacementEulerian( x, y, z, dt, vx, vy, vz, dAdvx, dAdvy, dAdvz )
+          !call this%AdvectionDisplacementExponential( x, y, z, dt, vx, vy, vz, dAdvx, dAdvy, dAdvz )
+          call AdvectionDisplacement( this, x, y, z, dt, vx, vy, vz, dAdvx, dAdvy, dAdvz )
+          dxrw = dAdvx + divDx*dt + dBx*sqrt( dt )
+          dyrw = dAdvy + divDy*dt + dBy*sqrt( dt )
+          dzrw = dAdvz + divDz*dt + dBz*sqrt( dt )
           nx   = x + dxrw/dx
           ny   = y + dyrw/dy
           nz   = z + dzrw/dz
@@ -534,10 +485,10 @@ contains
               trackingResult%ExitFace = exitFace
               trackingResult%Status = trackingResult%Status_Undefined()
               trackingResult%FinalLocation%CellNumber = cellNumber
-              trackingResult%FinalLocation%LocalX = x
-              trackingResult%FinalLocation%LocalY = y
-              trackingResult%FinalLocation%LocalZ = z
-              trackingResult%FinalLocation%TrackingTime = t + dt
+              trackingResult%FinalLocation%LocalX = nx
+              trackingResult%FinalLocation%LocalY = ny
+              trackingResult%FinalLocation%LocalZ = nz
+              trackingResult%FinalLocation%TrackingTime = t
               return
           end if
 
@@ -585,11 +536,10 @@ contains
          
           end if
 
-          ! Update particle positions and time
+          ! Update particle positions
           x = nx
           y = ny
           z = nz
-          t = t + dt
 
           ! Report and leave
           if ( (reachedMaximumTime) .or. ( exitFace .ne. 0 ) ) then
@@ -614,13 +564,204 @@ contains
               trackingResult%FinalLocation%TrackingTime = t
               continueTimeLoop = .false.         
           end if
-          
+
+          ! Update time for the next cycle
+          t = t + dt
+
       end do 
-      ! END LOCAL TIME LOOP 
 
       return
 
   end subroutine pr_ExecuteRandomWalkParticleTracking
+
+
+  ! RWPT
+  subroutine pr_LinearInterpolationVelocities( this, x, y, z, vx, vy, vz )
+      !----------------------------------------------------------------
+      ! Computes velocity at given location using cell face velocities
+      ! 
+      ! Params:
+      !     - x, y, z    | doubleprecision |: local cell coordinates
+      !     - vx, vy, vz | doubleprecision |: holders for velocities 
+      !                                       
+      !----------------------------------------------------------------
+      ! Specifications
+      !----------------------------------------------------------------
+      implicit none
+      class(TrackSubCellType) :: this
+      !input
+      doubleprecision :: x, y, z
+      ! output
+      doubleprecision :: vx, vy, vz
+      !----------------------------------------------------------------
+
+      vx = ( 1.0d0 - x )*this%SubCellData%vx1 + x*this%SubCellData%vx2
+      vy = ( 1.0d0 - y )*this%SubCellData%vy1 + y*this%SubCellData%vy2
+      vz = ( 1.0d0 - z )*this%SubCellData%vz1 + z*this%SubCellData%vz2
+
+  end subroutine pr_LinearInterpolationVelocities
+
+
+  ! RWPT
+  subroutine pr_AdvectionDisplacementExponential( this, x, y, z, dt, vx, vy, vz, dAdvx, dAdvy, dAdvz )
+      !----------------------------------------------------------------
+      ! Compute advection displacement using exponential
+      ! expression
+      ! 
+      ! Params: 
+      !     - x, y, z    | doubleprecision |: local cell coordinates
+      !     - vx, vy, vz | doubleprecision |: holders for velocities 
+      !     - dAdvx, dAdvy, dAdvz | doubleprecision |: displacements
+      !
+      !----------------------------------------------------------------
+      ! Specifications
+      !----------------------------------------------------------------
+      implicit none
+      class(TrackSubCellType) :: this
+      !input
+      doubleprecision, intent(in) :: x, y, z, dt
+      ! output
+      doubleprecision, intent(inout) :: vx, vy, vz
+      doubleprecision, intent(inout) :: dAdvx, dAdvy, dAdvz
+      !local
+      doubleprecision :: dvxdx, dvydy, dvzdz
+      doubleprecision :: dvtol = 1.0d-10
+      !----------------------------------------------------------------
+
+      ! Compute velocities
+      call this%LinearInterpolationVelocities( x, y, z, vx, vy, vz )
+
+      ! Compute displacement
+      ! x
+      dvxdx = ( this%SubCellData%vx2 - this%SubCellData%vx1 )/this%SubCellData%dx
+      if ( ( abs(dvxdx) .gt. dvtol ) ) then
+          dAdvx = vx*( exp(dvxdx*dt) - 1.0d0 )/dvxdx
+      else
+          dAdvx = vx*dt
+      end if
+      ! y
+      dvydy = ( this%SubCellData%vy2 - this%SubCellData%vy1 )/this%SubCellData%dy
+      if ( ( abs(dvydy) .gt. dvtol ) ) then
+          dAdvy = vy*( exp(dvydy*dt) - 1.0d0 )/dvydy
+      else
+          dAdvy = vy*dt
+      end if
+      ! z
+      dvzdz = ( this%SubCellData%vz2 - this%SubCellData%vz1 )/this%SubCellData%dz
+      if ( ( abs(dvzdz) .gt. dvtol ) ) then
+          dAdvz = vz*( exp(dvzdz*dt) - 1.0d0 )/dvzdz
+      else
+          dAdvz = vz*dt
+      end if
+
+  end subroutine pr_AdvectionDisplacementExponential
+
+
+  ! RWPT
+  subroutine pr_AdvectionDisplacementEulerian( this, x, y, z, dt, vx, vy, vz, dAdvx, dAdvy, dAdvz )
+      !----------------------------------------------------------------
+      ! Compute advection displacement using eulerian approximation 
+      ! 
+      ! Params: 
+      !     - x, y, z    | doubleprecision |: local cell coordinates
+      !     - vx, vy, vz | doubleprecision |: holders for velocities 
+      !     - dAdvx, dAdvy, dAdvz | doubleprecision |: displacements
+      !
+      !----------------------------------------------------------------
+      ! Specifications
+      !----------------------------------------------------------------
+      implicit none
+      class(TrackSubCellType) :: this
+      !input
+      doubleprecision, intent(in) :: x, y, z, dt
+      ! output
+      doubleprecision, intent(inout) :: vx, vy, vz
+      doubleprecision, intent(inout) :: dAdvx, dAdvy, dAdvz
+      !!local
+      !doubleprecision :: dvx, dvy, dvz
+      !doubleprecision :: dx, dy, dz
+      !doubleprecision :: dvtol = 1.0d-10
+      !----------------------------------------------------------------
+
+      ! Compute velocities
+      call this%LinearInterpolationVelocities( x, y, z, vx, vy, vz )
+      
+      ! Compute displacements
+      dAdvx = vx*dt
+      dAdvy = vy*dt
+      dAdvz = vz*dt
+
+  end subroutine pr_AdvectionDisplacementEulerian
+
+
+  ! RWPT
+  subroutine pr_ComputeRandomWalkTimeStep( this, trackingOptions, dt )
+      !----------------------------------------------------------------
+      ! From user defined options, and cell properties, 
+      ! compute time step  
+      ! 
+      ! Params:
+      !     - trackingOptions | ParticleTrackingOptionsType |: simulation options
+      !     - dt | doubleprecision |: time step
+      !----------------------------------------------------------------
+      ! Specifications
+      !----------------------------------------------------------------
+      implicit none
+      class (TrackSubCellType) :: this
+      ! input
+      type(ParticleTrackingOptionsType),intent(in) :: trackingOptions
+      ! output
+      doubleprecision, intent(inout) :: dt
+      ! local
+      doubleprecision :: vx1, vx2, vy1, vy2, vz1, vz2 
+      doubleprecision :: dx, dy, dz
+      doubleprecision, dimension(2) :: dts
+      !----------------------------------------------------------------
+
+      ! Make local copies of face velocities for convenience
+      vx1 = this%SubCellData%VX1
+      vx2 = this%SubCellData%VX2
+      vy1 = this%SubCellData%VY1
+      vy2 = this%SubCellData%VY2
+      vz1 = this%SubCellData%VZ1
+      vz2 = this%SubCellData%VZ2
+   
+      ! Local copies of cell size
+      dx = this%SubCellData%DX
+      dy = this%SubCellData%DY
+      dz = this%SubCellData%DZ
+
+      ! Compute time step
+      select case (trackingOptions%timeStepKind)
+          case (1)
+              ! Fix Courant 
+              dt = trackingOptions%timeStepParameters(1)/( &
+                  max(abs(vx1), abs(vx2))/dx +             &
+                  max(abs(vy1), abs(vy2))/dy +             &
+                  max(abs(vz1), abs(vz2))/dz )
+          case (2)
+              ! Fix Peclet 
+              dt = 1/( trackingOptions%timeStepParameters(2)*(                  &
+                  trackingOptions%alphaL*max(abs(vx1), abs(vx2))/( dx**2 ) +    &
+                  trackingOptions%alphaT*max(abs(vy1), abs(vy2))/( dy**2 ) +    &
+                  trackingOptions%alphaT*max(abs(vz1), abs(vz2))/( dz**2 ) ) )
+          case (3)
+              ! Courant condition
+              dts(1) = trackingOptions%timeStepParameters(1)/( & 
+                  max(abs(vx1), abs(vx2))/dx +                 &
+                  max(abs(vy1), abs(vy2))/dy +                 &
+                  max(abs(vz1), abs(vz2))/dz )
+              ! Peclet condition
+              dts(2) = 1/( trackingOptions%timeStepParameters(2)*(              &
+                  trackingOptions%alphaL*max(abs(vx1), abs(vx2))/( dx**2 ) +    & 
+                  trackingOptions%alphaT*max(abs(vy1), abs(vy2))/( dy**2 ) +    &
+                  trackingOptions%alphaT*max(abs(vz1), abs(vz2))/( dz**2 ) ) )
+              ! Compute minimum
+              dt     = minval( dts, dts > 0 )
+      end select
+
+
+  end subroutine pr_ComputeRandomWalkTimeStep
 
 
   ! RWPT
@@ -646,6 +787,7 @@ contains
       doubleprecision :: x, y, z
       doubleprecision :: nx, ny, nz
       doubleprecision :: Ax, Ay, Az, Bx, By, Bz
+      ! output
       doubleprecision, intent(inout) :: t, dt
       integer, intent(inout)         :: exitFace
       ! local
@@ -719,6 +861,9 @@ contains
           dt = z2**2
       end if
 
+      ! Update time
+      t = t + dt
+
   end subroutine pr_DetectExitFaceAndUpdateTimeStep
 
 
@@ -756,11 +901,6 @@ contains
                          dDxydx, dDyydy, dDyzdz, &
                          dDxzdx, dDyzdy, dDzzdz
       !---------------------------------------------------------------- 
-
-      !! RWPT
-      !alphaL  = 1
-      !alphaT  = 0.1
-      !Dmol    = 1e-8
     
       ! Local copies of corner velocities
       ! pointers ?
@@ -960,10 +1100,6 @@ contains
   end subroutine pr_DisplacementRandom
 
 
-
-
-
-
   ! RWPT
   subroutine pr_ComputeCornerVelocities( this, neighborSubCellData )
       !----------------------------------------------------------------
@@ -1123,8 +1259,8 @@ contains
 
   subroutine pr_Trilinear( this, x, y, z, v000, v100, v010, v110, v001, v101, v011, v111, output )
       !-----------------------------------------------------------
-      ! Compute trilinear interpolation of corner velocities
-      ! for the given coordinates 
+      ! Compute trilinear interpolation of corner values
+      ! into the given coordinates 
       !  
       ! Params
       !     - x, y, z, doubleprecision: coordinates to interpolate
@@ -1150,7 +1286,6 @@ contains
       output = ( 1.0d0 - z )*v0   + z*v1
 
   end subroutine pr_Trilinear
-
 
 
 end module TrackSubCellModule

@@ -21,6 +21,7 @@ module ParticleTrackingOptionsModule
     doubleprecision               :: alphaL, alphaT, Dmol = 0
     integer                       :: timeStepKind
     doubleprecision, dimension(2) :: timeStepParameters = 0
+    integer                       :: advectionKind
 
   end type
   
