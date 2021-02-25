@@ -173,6 +173,7 @@ contains
     trackingResult%FinalLocation%LocalZ = z
     trackingResult%FinalLocation%TrackingTime = t
     trackingResult%Status = trackingResult%Status_ReachedMaximumTime()
+    print *, 'MAXIMUM TIME ', maximumTime
   else
       ! Otherwise, if the computed exit time is less than or equal to the maximum time,
       ! then calculate the exit location and set the final time equal to the computed
@@ -452,6 +453,13 @@ contains
       t = initialTime + dt
 
 
+      !if ( (x .eq. 1.0d0) .or. (y .eq. 1.0d0) .or. (z .eq. 1.0d0) ) then
+      !    print *, '**** Cell ', cellNumber
+      !    print *, '**** One of the coordinates is one'
+      !    print *, '**** x,y,z :: ', x, y, z
+      !end if      
+
+
       ! Local cell time loop 
       exitFace = 0
       continueTimeLoop = .true.
@@ -479,18 +487,18 @@ contains
           ny   = y + dyrw/dy
           nz   = z + dzrw/dz
 
-          ! Verify that there is some movement, 
-          ! otherwise leave
-          if ( sqrt( dxrw**2 + dyrw**2 + dzrw**2 ) .lt. drwtol ) then
-              trackingResult%ExitFace = exitFace
-              trackingResult%Status = trackingResult%Status_Undefined()
-              trackingResult%FinalLocation%CellNumber = cellNumber
-              trackingResult%FinalLocation%LocalX = nx
-              trackingResult%FinalLocation%LocalY = ny
-              trackingResult%FinalLocation%LocalZ = nz
-              trackingResult%FinalLocation%TrackingTime = t
-              return
-          end if
+          !! Verify that there is some movement, 
+          !! otherwise leave
+          !if ( sqrt( dxrw**2 + dyrw**2 + dzrw**2 ) .lt. drwtol ) then
+          !    trackingResult%ExitFace = exitFace
+          !    trackingResult%Status = trackingResult%Status_Undefined()
+          !    trackingResult%FinalLocation%CellNumber = cellNumber
+          !    trackingResult%FinalLocation%LocalX = nx
+          !    trackingResult%FinalLocation%LocalY = ny
+          !    trackingResult%FinalLocation%LocalZ = nz
+          !    trackingResult%FinalLocation%TrackingTime = t
+          !    return
+          !end if
 
           ! Very unlikely for particles to fall exactly
           ! on the interface
@@ -509,6 +517,10 @@ contains
                       ( vx + divDx ), ( vy + divDy ), ( vz + divDz ), &
                       dBx, dBy, dBz, t, dt, exitFace                  &
                   )
+
+              !if (reachedMaximumTime) then
+              !  print *, 'MAXIMUM TIME', maximumTime, ' TIME ', t, ' EXITFACE ', exitFace
+              !end if
 
               ! Find new displacements using the recomputed dt
               ! and update coordinates
@@ -718,6 +730,9 @@ contains
       doubleprecision, dimension(2) :: dts
       !----------------------------------------------------------------
 
+      ! Initialize
+      dts(:) = 0d0
+
       ! Make local copies of face velocities for convenience
       vx1 = this%SubCellData%VX1
       vx2 = this%SubCellData%VX2
@@ -786,13 +801,17 @@ contains
       ! input
       doubleprecision :: x, y, z
       doubleprecision :: nx, ny, nz
+      doubleprecision :: nnx, nny, nnz
       doubleprecision :: Ax, Ay, Az, Bx, By, Bz
       ! output
       doubleprecision, intent(inout) :: t, dt
       integer, intent(inout)         :: exitFace
+      integer :: exitFaceX, exitFaceY, exitFaceZ
+      integer :: imindt
       ! local
       doubleprecision :: AFace, BFace, z1, z2, zsqrt, dInterface
       doubleprecision :: dx, dy, dz
+      doubleprecision, dimension(3) :: dtxyz = 0
       !----------------------------------------------------------------
 
       ! Initialize
@@ -801,68 +820,159 @@ contains
       z1    = 0
       z2    = 0
       zsqrt = 0 
-      dInterface = 0
+      dInterface = 0d0
+      exitFaceX  = 0
+      exitFaceY  = 0
+      exitFaceZ  = 0
+      dtxyz(:)   = 0d0
 
       ! Local copies of cell size
       dx = this%SubCellData%DX
       dy = this%SubCellData%DY
       dz = this%SubCellData%DZ
 
+      ! Reset t, dt will be replaced
+      t = t - dt
+
       ! There should be something that analyzes precedence
-      ! what happened first, maybe something involving dt
-      if ( ( nx .gt. 1.0d0 ) .or. ( nx .lt. 0d0 )  ) then ! leaving through x face
+      ! what happened first, maybe something involving dt.
+      ! It is possible that the particle went through more
+      ! than one face, so it is needed a comparison
+      ! to determine what happened first
+
+      ! Leaving through x face
+      if ( ( nx .gt. 1.0d0 ) .or. ( nx .lt. 0d0 )  ) then
           AFace = Ax
           BFace = Bx
           if ( nx .gt. 1.0d0 ) then 
               dInterface = dx*( 1.0d0 - x )
-              nx         = 1.0d0
-              exitFace   = 2
+              nnx        = 1.0d0
+              exitFaceX  = 2
           else 
               dInterface = -dx*x
-              nx         = 0d0
-              exitFace   = 1
-          end if 
-      else if ( ( ny .gt. 1.0d0 ) .or. ( ny .lt. 0d0 )  ) then ! leaving through y face
+              nnx        = 0d0
+              exitFaceX  = 1
+          end if
+
+          ! If exactly in the interface, and new coordinate
+          ! goes through the cell face, the fastest 
+          ! possible outcome is the particle leaving trough it,
+          ! regardless of the other coordinates.
+          ! So essentially this forces inmediate transfer
+          ! to the next cell
+          if ( dInterface .eq. 0.0 ) then
+              exitFace = exitFaceX
+              nx = nnx
+              dt = 0.0
+              return
+          end if
+
+          ! Given dInterface, compute new dt
+          zsqrt = sqrt( BFace**2 + 4*dInterface*AFace )
+          z1    = (-BFace + zsqrt )/( 2*AFace )
+          z2    = (-BFace - zsqrt )/( 2*AFace )
+          if ( z1 .gt. 0d0 ) then
+              dtxyz(1) = z1**2
+          else if ( z2 .gt. 0d0 ) then
+              dtxyz(1) = z2**2
+          end if
+          if ( ( z1 .gt. 0d0 ) .and. ( z2 .gt. 0d0 ) ) print *, 'BOTH Z are zero in DTX'
+
+      end if
+
+      ! Leaving through z face
+      if ( ( ny .gt. 1.0d0 ) .or. ( ny .lt. 0d0 )  ) then
           AFace = Ay
           BFace = By
           if ( ny .gt. 1.0d0 ) then 
               dInterface = dy*( 1.0d0 - y )
-              ny         = 1.0d0
-              exitFace   = 4
+              nny        = 1.0d0
+              exitFaceY  = 4
           else 
               dInterface = -dy*y
-              ny         = 0d0
-              exitFace   = 3
+              nny        = 0d0
+              exitFaceY  = 3
           end if
-      else if ( ( nz .gt. 1.0d0 ) .or. ( nz .lt. 0d0 )  ) then ! leaving through z face
+
+          ! Force transfer to next cell
+          if ( dInterface .eq. 0.0 ) then
+              exitFace = exitFaceY
+              ny = nny
+              dt = 0.0
+              return
+          end if
+
+          ! Given dInterface, compute new dt
+          zsqrt = sqrt( BFace**2 + 4*dInterface*AFace )
+          z1    = (-BFace + zsqrt )/( 2*AFace )
+          z2    = (-BFace - zsqrt )/( 2*AFace )
+          if ( z1 .gt. 0d0 ) then
+              dtxyz(2) = z1**2
+          else if ( z2 .gt. 0d0 ) then
+              dtxyz(2) = z2**2
+          end if
+          if ( ( z1 .gt. 0d0 ) .and. ( z2 .gt. 0d0 ) ) print *, 'BOTH Z are zero in DTY'
+
+      end if
+
+      ! Leaving through z face
+      if ( ( nz .gt. 1.0d0 ) .or. ( nz .lt. 0d0 )  ) then
           AFace = Az
           BFace = Bz
           if ( nz .gt. 1.0d0 ) then
               dInterface = dz*( 1.0d0 - z )
-              nz         = 1.0d0
-              exitFace   = 6
+              nnz        = 1.0d0
+              exitFaceZ  = 6
           else
               dInterface = -dz*z
-              nz         = 0d0
-              exitFace   = 5
-          end if 
+              nnz        = 0d0
+              exitFaceZ  = 5
+          end if
+
+          ! Force transfer to next cell
+          if ( dInterface .eq. 0.0 ) then
+              exitFace = exitFaceZ
+              nz = nnz
+              dt = 0.0
+              return
+          end if
+
+          ! Given dInterface, compute new dt
+          zsqrt = sqrt( BFace**2 + 4*dInterface*AFace )
+          z1    = (-BFace + zsqrt )/( 2*AFace )
+          z2    = (-BFace - zsqrt )/( 2*AFace )
+          if ( z1 .gt. 0d0 ) then
+              dtxyz(3) = z1**2
+          else if ( z2 .gt. 0d0 ) then
+              dtxyz(3) = z2**2
+          end if
+          if ( ( z1 .gt. 0d0 ) .and. ( z2 .gt. 0d0 ) ) print *, 'BOTH Z are zero in DTZ'
+
       end if
 
-      ! Reset t, dt will be replaced
-      t = t - dt
+      ! Find minimum dt and 
+      ! assign values accordingly
+      imindt = minloc( dtxyz, dim=1, mask=(dtxyz > 0) )
+      dt     = dtxyz(imindt)
 
-      ! Given dInterface, compute new dt
-      zsqrt = sqrt( BFace**2 + 4*dInterface*AFace )
-      z1    = (-BFace + zsqrt )/( 2*AFace )
-      z2    = (-BFace - zsqrt )/( 2*AFace )
-      if ( z1 .gt. 0d0 ) then
-          dt = z1**2
-      else if ( z2 .gt. 0d0 ) then
-          dt = z2**2
+      if ( imindt .eq. 1 ) then
+          nx = nnx
+          exitFace = exitFaceX
+      else if ( imindt .eq. 2 ) then
+          ny = nny
+          exitFace = exitFaceY
+      else if ( imindt .eq. 3 ) then
+          nz = nnz
+          exitFace = exitFaceZ
       end if
+
+      if ( exitFace .eq. 0 ) then
+          print *, 'exitFace is zero and it should not'
+      end if 
 
       ! Update time
       t = t + dt
+
 
   end subroutine pr_DetectExitFaceAndUpdateTimeStep
 
