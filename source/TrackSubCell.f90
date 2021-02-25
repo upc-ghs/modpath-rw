@@ -173,7 +173,6 @@ contains
     trackingResult%FinalLocation%LocalZ = z
     trackingResult%FinalLocation%TrackingTime = t
     trackingResult%Status = trackingResult%Status_ReachedMaximumTime()
-    print *, 'MAXIMUM TIME ', maximumTime
   else
       ! Otherwise, if the computed exit time is less than or equal to the maximum time,
       ! then calculate the exit location and set the final time equal to the computed
