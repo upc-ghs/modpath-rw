@@ -543,6 +543,7 @@ contains
                   nx = x + dxrw/dx
                   ny = y + dyrw/dy
               else
+                  print *, '**** TrackSubCell: exitFace is zero'
                   ! Something wrong
                   trackingResult%ExitFace = exitFace
                   trackingResult%Status = trackingResult%Status_Undefined()
@@ -1194,7 +1195,7 @@ contains
       doubleprecision :: dt0
       doubleprecision :: nrf0, nrfprim, nrerror
       doubleprecision :: dvtol = 1.0d-10
-      doubleprecision :: nrtol = 1.0d-10
+      doubleprecision :: nrtol = 1.0d-08
       integer :: countIter
       integer :: maxIter = 10
       !----------------------------------------------------------------
@@ -1228,9 +1229,10 @@ contains
 
           ! NR error and new time step
           nrerror = -nrf0/nrfprim
-          dt0     = dt0 + nrerror ! It cannot be smaller than zero or zero
+          dt0     = dt0 + nrerror 
 
-          if ( dt0 .lt. 0d0 ) dt0 = 1.0d-8 
+          ! It can't be smaller than zero or zero
+          if ( dt0 .le. 0d0 ) dt0 = 1.0d-8 
 
       end do
 
