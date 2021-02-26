@@ -520,12 +520,13 @@ contains
               ! Recompute dt for exact interface
               call DetectExitFaceAndUpdateTimeStep( this, x, y, z, nx, ny, nz,  &
                 vx, vy, vz, divDx, divDy, divDz, dBx, dBy, dBz, t, dt, exitFace )
-              
+
               ! Given new dt, recompute advection displacements
               call AdvectionDisplacement( this, x, y, z, dt, vx, vy, vz,        & 
                                           dAdvx, dAdvy, dAdvz )
 
-              ! Find new RWPT displacements 
+              ! Find new RWPT displacements
+              ! Something faster maybe ? 
               if ( ( exitFace .eq. 1 ) .or. ( exitFace .eq. 2 ) ) then 
                   dyrw = dAdvy + divDy*dt + dBy*sqrt( dt )
                   dzrw = dAdvz + divDz*dt + dBz*sqrt( dt )
@@ -543,11 +544,16 @@ contains
                   nx = x + dxrw/dx
                   ny = y + dyrw/dy
               else
-                  print *, '**** TrackSubCell: exitFace is zero'
                   ! Something wrong
                   trackingResult%ExitFace = exitFace
                   trackingResult%Status = trackingResult%Status_Undefined()
                   return
+              end if
+
+              ! If maximumTime was reached, but particle left
+              ! the cell, then the condition is resetted
+              if (reachedMaximumTime) then 
+                  reachedMaximumTime = .false.
               end if
 
           end if
