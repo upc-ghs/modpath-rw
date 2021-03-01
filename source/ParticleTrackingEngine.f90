@@ -68,7 +68,10 @@ module ParticleTrackingEngineModule
     logical,allocatable,dimension(:),private :: SubFaceFlowsComputed
     type(ParticleLocationListType) :: LocBuffP
     type(ParticleLocationListType) :: LocBuffTS
-    
+
+    ! RWPT
+    type(ModpathSubCellDataType), dimension(18) :: NeighborSubCellData
+
   contains
     procedure :: Initialize=>pr_Initialize
     procedure :: Reset=>pr_Reset
@@ -1318,9 +1321,6 @@ subroutine pr_TrackPath(this, trackPathResult, traceModeOn, traceModeUnit,      
   integer :: timeIndex, n, count, nextCell
   logical :: continueLoop, isTimeSeriesPoint, isMaximumTime
 
-  ! RWPT
-  type(ModpathSubCellDataType), dimension(18) :: neighborSubCellData
-
 !---------------------------------------------------------------------------------------------------------------
   
   ! Reset trackPathResult and initialize particleID
@@ -1345,7 +1345,7 @@ subroutine pr_TrackPath(this, trackPathResult, traceModeOn, traceModeUnit,      
 
   ! RWPT
   if (this%TrackingOptions%RandomWalkParticleTracking) then
-      call this%FillNeighborSubCellData( neighborSubCellData ) 
+      call this%FillNeighborSubCellData( this%NeighborSubCellData ) 
   end if
 
   continueLoop = .true.
@@ -1358,7 +1358,7 @@ subroutine pr_TrackPath(this, trackPathResult, traceModeOn, traceModeUnit,      
           call this%FillCellBuffer(loc%CellNumber, this%TrackCell%CellData)
           ! RWPT
           if (this%TrackingOptions%RandomWalkParticleTracking) then
-              call this%FillNeighborSubCellData( neighborSubCellData )
+              call this%FillNeighborSubCellData( this%NeighborSubCellData )
           end if
       end if
       
@@ -1384,7 +1384,7 @@ subroutine pr_TrackPath(this, trackPathResult, traceModeOn, traceModeUnit,      
       if ( .not. this%TrackingOptions%RandomWalkParticleTracking ) then 
           call this%TrackCell%ExecuteTracking(loc, stopTime, this%TrackCellResult)
       else
-          call this%TrackCell%ExecuteRandomWalkParticleTracking(loc, stopTime, this%TrackCellResult, neighborSubCellData)
+          call this%TrackCell%ExecuteRandomWalkParticleTracking(loc, stopTime, this%TrackCellResult, this%NeighborSubCellData)
       end if
 
       ! Check the status flag of the result to find out what to do next
@@ -1552,13 +1552,8 @@ subroutine pr_FillNeighborSubCellData( this, neighborSubCellData )
         ! If connection exists
         if ( this%TrackCell%CellData%GetFaceConnection(n,1) .gt. 0) then
   
-            ! Reset the data buffer
-            ! It is self reseted in the method called for filling
-            !call neighborCellData%Reset()
-  
             ! Fill the data buffer
             call this%FillCellBuffer( this%TrackCell%CellData%GetFaceConnection(n,1) , neighborCellData )
-            !call this%FillCellBuffer( this%TrackCell%CellData%GetFaceConnection(n,1) , neighborCellDataArray(n) )
   
             ! Fill the subCell data buffer
             call neighborCellData%FillSubCellDataBuffer( neighborSubCellData( subCellCounter ), &

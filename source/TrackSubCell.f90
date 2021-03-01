@@ -5,6 +5,7 @@ module TrackSubCellModule
 
   ! RWPT 
   use ParticleTrackingOptionsModule,only : ParticleTrackingOptionsType
+  use omp_lib
   implicit none
   
 ! Set default access status to private
@@ -24,6 +25,10 @@ module TrackSubCellModule
     doubleprecision, dimension(4) :: vCorner011
     doubleprecision, dimension(4) :: vCorner111
 
+    ! RWPT Pointers
+    procedure(Advection), pass, pointer :: AdvectionDisplacement=>null()
+    procedure(ExitFaceAndTimeStep), pass, pointer :: ExitFaceAndUpdateTimeStep=>null()
+
   contains
     procedure,private :: CalculateDT=>pr_CalculateDT
     procedure,private :: NewXYZ=>pr_NewXYZ
@@ -40,9 +45,7 @@ module TrackSubCellModule
     procedure :: DisplacementRandom=>pr_DisplacementRandom
     procedure :: AdvectionDisplacementExponential=>pr_AdvectionDisplacementExponential
     procedure :: AdvectionDisplacementEulerian=>pr_AdvectionDisplacementEulerian
-    ! not working 
-    !procedure(Advection), nopass, pointer :: AdvectionDisplacement
-    !procedure(Advection), nopass, pointer :: AdvectionDisplacement=>null()
+    procedure :: NewtonRaphsonTimeStep=>NewtonRaphsonTimeStepExponentialAdvection
   end type
 
 
@@ -67,19 +70,20 @@ module TrackSubCellModule
       ! determined by advection model
       subroutine ExitFaceAndTimeStep( this, x, y, z, nx, ny, nz, & 
                  vx, vy, vz, divDx, divDy, divDz, dBx, dBy, dBz, &
-                 t, dt, exitFace )
+                 t, dt, dtxyz, exitFace )
           import TrackSubCellType
           ! this
           class(TrackSubCellType) :: this 
           ! input
-          doubleprecision :: x, y, z
-          doubleprecision :: nx, ny, nz
-          doubleprecision :: vx, vy, vz
-          doubleprecision :: divDx, divDy, divDz
-          doubleprecision :: dBx, dBy, dBz
+          doubleprecision, intent(in) :: x, y, z
+          doubleprecision, intent(in) :: nx, ny, nz
+          doubleprecision, intent(in) :: vx, vy, vz
+          doubleprecision, intent(in) :: divDx, divDy, divDz
+          doubleprecision, intent(in) :: dBx, dBy, dBz
           ! output
           doubleprecision, intent(inout) :: t, dt
           integer, intent(inout)         :: exitFace
+          doubleprecision, dimension(3), intent(inout) :: dtxyz
       end subroutine ExitFaceAndTimeStep
 
   end interface
@@ -402,8 +406,7 @@ contains
       logical         :: continueTimeLoop
       logical         :: reachedMaximumTime
       doubleprecision, dimension(3) :: dts
-      procedure(Advection), pointer :: AdvectionDisplacement=>null()
-      procedure(ExitFaceAndTimeStep), pointer :: DetectExitFaceAndUpdateTimeStep=>null()
+      doubleprecision, dimension(3) :: dtxyz
       !------------------------------------------------------------
 
       ! Needs cleaning
@@ -442,11 +445,11 @@ contains
       ! Assign advection displacement pointer
       ! See if possible to define pointer within the type
       if ( trackingOptions%advectionKind .eq. 1 ) then 
-          AdvectionDisplacement=>pr_AdvectionDisplacementExponential
-          DetectExitFaceAndUpdateTimeStep=>pr_DetectExitFaceAndUpdateTimeStepNewton
+          this%AdvectionDisplacement=>pr_AdvectionDisplacementExponential
+          this%ExitFaceAndUpdateTimeStep=>pr_DetectExitFaceAndUpdateTimeStepNewton
       else if ( trackingOptions%advectionKind .eq. 2 ) then 
-          AdvectionDisplacement=>pr_AdvectionDisplacementEulerian
-          DetectExitFaceAndUpdateTimeStep=>pr_DetectExitFaceAndUpdateTimeStepQuadratic
+          this%AdvectionDisplacement=>pr_AdvectionDisplacementEulerian
+          this%ExitFaceAndUpdateTimeStep=>pr_DetectExitFaceAndUpdateTimeStepQuadratic
       end if
 
       ! Local copies of cell size
@@ -500,7 +503,7 @@ contains
           call this%LinearInterpolationVelocities( x, y, z, vx, vy, vz )
           call this%DispersionDivergence( x, y, z, alphaL, alphaT, Dmol, divDx, divDy, divDz )
           call this%DisplacementRandom( x, y, z, alphaL, alphaT, Dmol, dBx, dBy, dBz )
-          call AdvectionDisplacement( this, x, y, z, dt, vx, vy, vz, dAdvx, dAdvy, dAdvz )
+          call this%AdvectionDisplacement( x, y, z, dt, vx, vy, vz, dAdvx, dAdvy, dAdvz )
           dxrw = dAdvx + divDx*dt + dBx*sqrt( dt )
           dyrw = dAdvy + divDy*dt + dBy*sqrt( dt )
           dzrw = dAdvz + divDz*dt + dBz*sqrt( dt )
@@ -517,13 +520,16 @@ contains
               ( nz .gt. 1.0d0 ) .or. ( nz .lt. 0d0 )       & 
           ) then                                           
 
+              dtxyz(:) = 0d0
+
               ! Recompute dt for exact interface
-              call DetectExitFaceAndUpdateTimeStep( this, x, y, z, nx, ny, nz,  &
-                vx, vy, vz, divDx, divDy, divDz, dBx, dBy, dBz, t, dt, exitFace )
+              call this%ExitFaceAndUpdateTimeStep( x, y, z, nx, ny, nz, &
+                                       vx, vy, vz, divDx, divDy, divDz, &
+                                       dBx, dBy, dBz, t, dt, dtxyz, exitFace )
 
               ! Given new dt, recompute advection displacements
-              call AdvectionDisplacement( this, x, y, z, dt, vx, vy, vz,        & 
-                                          dAdvx, dAdvy, dAdvz )
+              call this%AdvectionDisplacement( x, y, z, dt, vx, vy, vz, & 
+                                                    dAdvx, dAdvy, dAdvz )
 
               ! Find new RWPT displacements
               ! Something faster maybe ? 
@@ -532,17 +538,22 @@ contains
                   dzrw = dAdvz + divDz*dt + dBz*sqrt( dt )
                   ny = y + dyrw/dy
                   nz = z + dzrw/dz
+                  nx = 1.0d0
+                  if ( exitFace .eq. 1 ) nx=0d0
               else if ( ( exitFace .eq. 3 ) .or. ( exitFace .eq. 4 ) ) then 
                   dxrw = dAdvx + divDx*dt + dBx*sqrt( dt )
                   dzrw = dAdvz + divDz*dt + dBz*sqrt( dt )
                   nx = x + dxrw/dx
                   nz = z + dzrw/dz
-                  dyrw = dAdvy + divDy*dt + dBy*sqrt( dt )
+                  ny = 1.0d0
+                  if ( exitFace .eq. 3 ) ny=0d0
               else if ( ( exitFace .eq. 5 ) .or. ( exitFace .eq. 6 ) ) then
                   dxrw = dAdvx + divDx*dt + dBx*sqrt( dt )
                   dyrw = dAdvy + divDy*dt + dBy*sqrt( dt )
                   nx = x + dxrw/dx
                   ny = y + dyrw/dy
+                  nz = 1.0d0
+                  if ( exitFace .eq. 5 ) nz=0d0
               else
                   ! Something wrong
                   trackingResult%ExitFace = exitFace
@@ -790,7 +801,7 @@ contains
 
   ! RWPT
   subroutine pr_DetectExitFaceAndUpdateTimeStepQuadratic( this, x, y, z, nx, ny, nz, & 
-                     vx, vy, vz, divDx, divDy, divDz, dBx, dBy, dBz, t, dt, exitFace )
+               vx, vy, vz, divDx, divDy, divDz, dBx, dBy, dBz, t, dt, dtxyz, exitFace )
       !----------------------------------------------------------------
       ! Detects exit face and computes time step to force particle
       ! into the interface, using analytical quadratic solution method.
@@ -804,6 +815,7 @@ contains
       !     - dBx, dBy, dBz       : random dispersion displacements
       !     - t                   : current time
       !     - dt                  : time step
+      !     - dtxyz               : array for saving each dt
       !     - exitFace            : holder for exit face
       !  
       ! Interface:
@@ -814,21 +826,20 @@ contains
       implicit none
       class (TrackSubCellType) :: this
       ! input
-      doubleprecision :: x, y, z
-      doubleprecision :: nx, ny, nz
-      doubleprecision :: vx, vy, vz
-      doubleprecision :: divDx, divDy, divDz
-      doubleprecision :: dBx, dBy, dBz
+      doubleprecision, intent(in) :: x, y, z
+      doubleprecision, intent(in) :: nx, ny, nz
+      doubleprecision, intent(in) :: vx, vy, vz
+      doubleprecision, intent(in) :: divDx, divDy, divDz
+      doubleprecision, intent(in) :: dBx, dBy, dBz
       ! output
       doubleprecision, intent(inout) :: t, dt
       integer, intent(inout)         :: exitFace
+      doubleprecision, dimension(3), intent(inout) :: dtxyz
       ! local
       integer :: exitFaceX, exitFaceY, exitFaceZ
       integer :: imindt
-      doubleprecision :: nnx, nny, nnz
       doubleprecision :: dx, dy, dz
       doubleprecision :: dInterface
-      doubleprecision, dimension(3) :: dtxyz = 0
       doubleprecision :: AFace, BFace, z1, z2, zsqrt
       !----------------------------------------------------------------
 
@@ -839,7 +850,6 @@ contains
       z2         = 0d0
       zsqrt      = 0d0 
       dInterface = 0d0
-      dtxyz(:)   = 0d0
       exitFaceX  = 0
       exitFaceY  = 0
       exitFaceZ  = 0
@@ -858,18 +868,15 @@ contains
           ! Compute dInterface
           if ( nx .gt. 1.0d0 ) then 
               dInterface = dx*( 1.0d0 - x )
-              nnx        = 1.0d0
               exitFaceX  = 2
           else 
               dInterface = -dx*x
-              nnx        = 0d0
               exitFaceX  = 1
           end if
 
           ! Exactly at interface, force new cell
           if ( dInterface .eq. 0.0 ) then
               exitFace = exitFaceX
-              nx = nnx
               dt = 0.0
               return
           end if
@@ -899,18 +906,15 @@ contains
           ! Compute dInterface
           if ( ny .gt. 1.0d0 ) then 
               dInterface = dy*( 1.0d0 - y )
-              nny        = 1.0d0
               exitFaceY  = 4
           else 
               dInterface = -dy*y
-              nny        = 0d0
               exitFaceY  = 3
           end if
 
           ! Exactly at interface, force new cell
           if ( dInterface .eq. 0.0 ) then
               exitFace = exitFaceY
-              ny = nny
               dt = 0.0
               return
           end if
@@ -940,18 +944,15 @@ contains
           ! Compute dInterface
           if ( nz .gt. 1.0d0 ) then
               dInterface = dz*( 1.0d0 - z )
-              nnz        = 1.0d0
               exitFaceZ  = 6
           else
               dInterface = -dz*z
-              nnz        = 0d0
               exitFaceZ  = 5
           end if
 
           ! Exactly at interface, force new cell
           if ( dInterface .eq. 0.0 ) then
               exitFace = exitFaceZ
-              nz = nnz
               dt = 0.0
               return
           end if
@@ -979,13 +980,10 @@ contains
       imindt = minloc( dtxyz, dim=1, mask=(dtxyz > 0) )
       dt     = dtxyz(imindt)
       if ( imindt .eq. 1 ) then
-          nx = nnx
           exitFace = exitFaceX
       else if ( imindt .eq. 2 ) then
-          ny = nny
           exitFace = exitFaceY
       else if ( imindt .eq. 3 ) then
-          nz = nnz
           exitFace = exitFaceZ
       end if
 
@@ -997,7 +995,7 @@ contains
 
 
   subroutine pr_DetectExitFaceAndUpdateTimeStepNewton( this, x, y, z, nx, ny, nz, & 
-                   vx, vy, vz, divDx, divDy, divDz, dBx, dBy, dBz, t, dt, exitFace )
+            vx, vy, vz, divDx, divDy, divDz, dBx, dBy, dBz, t, dt, dtxyz, exitFace )
       !----------------------------------------------------------------
       ! Detects exit face and computes time step to force particle
       ! into the interface, using newton raphson method. 
@@ -1011,6 +1009,7 @@ contains
       !     - dBx, dBy, dBz       : random dispersion displacements
       !     - t                   : current time
       !     - dt                  : time step
+      !     - dtxyz               : array for saving each dt
       !     - exitFace            : holder for exit face
       !  
       ! Interface:
@@ -1021,21 +1020,20 @@ contains
       implicit none
       class (TrackSubCellType) :: this
       ! input
-      doubleprecision :: x, y, z
-      doubleprecision :: nx, ny, nz
-      doubleprecision :: vx, vy, vz
-      doubleprecision :: divDx, divDy, divDz
-      doubleprecision :: dBx, dBy, dBz
+      doubleprecision, intent(in) :: x, y, z
+      doubleprecision, intent(in) :: nx, ny, nz
+      doubleprecision, intent(in) :: vx, vy, vz
+      doubleprecision, intent(in) :: divDx, divDy, divDz
+      doubleprecision, intent(in) :: dBx, dBy, dBz
       ! output
       doubleprecision, intent(inout) :: t, dt
       integer, intent(inout)         :: exitFace
+      doubleprecision, dimension(3), intent(inout) :: dtxyz
       ! local
       integer :: exitFaceX, exitFaceY, exitFaceZ
       integer :: imindt
-      doubleprecision :: nnx, nny, nnz
       doubleprecision :: dx, dy, dz
       doubleprecision :: dInterface
-      doubleprecision, dimension(3) :: dtxyz = 0d0
       !----------------------------------------------------------------
 
       ! Initialize
@@ -1043,7 +1041,6 @@ contains
       exitFaceY  = 0
       exitFaceZ  = 0
       dInterface = 0d0
-      dtxyz(:)   = 0d0
 
       ! Local copies of cell size 
       dx = this%SubCellData%DX
@@ -1059,29 +1056,26 @@ contains
           ! Compute dInterface
           if ( nx .gt. 1.0d0 ) then 
               dInterface = dx*( 1.0d0 - x )
-              nnx        = 1.0d0
               exitFaceX  = 2
           else 
               dInterface = -dx*x
-              nnx        = 0d0
               exitFaceX  = 1
           end if
 
           ! Exactly at interface, force new cell
           if ( dInterface .eq. 0.0 ) then
               exitFace = exitFaceX
-              nx = nnx
               dt = 0.0
               return
           end if
 
           ! Solve
-          call NewtonRaphsonTimeStepExponentialAdvection( dt, vx,              &
-                                                          this%SubCellData%vx1,&
-                                                          this%SubCellData%vx2,&
-                                                          this%SubCellData%dx, &
-                                                          dInterface, divDx,   & 
-                                                          dBx, dtxyz(1) )
+          call this%NewtonRaphsonTimeStep( dt, vx,              &
+                                           this%SubCellData%vx1,&
+                                           this%SubCellData%vx2,&
+                                           this%SubCellData%dx, &
+                                           dInterface, divDx,   & 
+                                           dBx, dtxyz(1) )
       end if
 
 
@@ -1091,29 +1085,26 @@ contains
           ! Compute dInterface
           if ( ny .gt. 1.0d0 ) then 
               dInterface = dy*( 1.0d0 - y )
-              nny        = 1.0d0
               exitFaceY  = 4
           else 
               dInterface = -dy*y
-              nny        = 0d0
               exitFaceY  = 3
           end if
 
           ! Exactly at interface, force new cell
           if ( dInterface .eq. 0.0 ) then
               exitFace = exitFaceY
-              ny = nny
               dt = 0.0
               return
           end if
 
           ! Solve
-          call NewtonRaphsonTimeStepExponentialAdvection( dt, vy,              &
-                                                          this%SubCellData%vy1,&
-                                                          this%SubCellData%vy2,&
-                                                          this%SubCellData%dy, &
-                                                          dInterface, divDy,   & 
-                                                          dBy, dtxyz(2) )
+          call this%NewtonRaphsonTimeStep( dt, vy,              &
+                                           this%SubCellData%vy1,&
+                                           this%SubCellData%vy2,&
+                                           this%SubCellData%dy, &
+                                           dInterface, divDy,   & 
+                                           dBy, dtxyz(2) )
       end if
 
 
@@ -1123,45 +1114,41 @@ contains
           ! Compute dInterface
           if ( nz .gt. 1.0d0 ) then
               dInterface = dz*( 1.0d0 - z )
-              nnz        = 1.0d0
               exitFaceZ  = 6
           else
               dInterface = -dz*z
-              nnz        = 0d0
               exitFaceZ  = 5
           end if
 
           ! Exactly at interface, force new cell
           if ( dInterface .eq. 0.0 ) then
               exitFace = exitFaceZ
-              nz = nnz
               dt = 0.0
               return
           end if
 
           ! Solve
-          call NewtonRaphsonTimeStepExponentialAdvection( dt, vz,              &
-                                                          this%SubCellData%vz1,&
-                                                          this%SubCellData%vz2,&
-                                                          this%SubCellData%dz, &
-                                                          dInterface, divDz,   & 
-                                                          dBz, dtxyz(3) )
+          call this%NewtonRaphsonTimeStep( dt, vz,              &
+                                           this%SubCellData%vz1,&
+                                           this%SubCellData%vz2,&
+                                           this%SubCellData%dz, &
+                                           dInterface, divDz,   & 
+                                           dBz, dtxyz(3) )
       end if
+
 
       ! Find minimum dt and 
       ! assign values accordingly
       imindt = minloc( dtxyz, dim=1, mask=(dtxyz > 0) )
       dt     = dtxyz(imindt)
       if ( imindt .eq. 1 ) then
-          nx = nnx
           exitFace = exitFaceX
       else if ( imindt .eq. 2 ) then
-          ny = nny
           exitFace = exitFaceY
       else if ( imindt .eq. 3 ) then
-          nz = nnz
           exitFace = exitFaceZ
       end if
+
 
       ! Update time
       t = t + dt
@@ -1170,9 +1157,8 @@ contains
   end subroutine pr_DetectExitFaceAndUpdateTimeStepNewton
 
 
-  subroutine NewtonRaphsonTimeStepExponentialAdvection( dt, v, v1, v2, dx, &
-                                                      dInterface, divD, dB,&
-                                                      dtnr )
+  subroutine NewtonRaphsonTimeStepExponentialAdvection( this, dt, v, v1, v2, &
+                                              dx, dInterface, divD, dB, dtnr )
       !----------------------------------------------------------------
       ! Computes time step required to reach interface by RWPT
       ! with exponential integration of advection, only one axis
@@ -1191,6 +1177,7 @@ contains
       ! Specifications
       !----------------------------------------------------------------
       implicit none
+      class(TrackSubCellType) :: this
       ! input 
       doubleprecision, intent(in)  :: dt 
       doubleprecision, intent(in)  :: v, v1, v2, dx, dInterface, divD, dB
@@ -1676,238 +1663,4 @@ contains
 
 
 end module TrackSubCellModule
-
-
-
-
-
-!!! TRASH !!!
-
-
-
-      !! BAK
-      !! Leaving through x face
-      !if ( ( nx .gt. 1.0d0 ) .or. ( nx .lt. 0d0 )  ) then
-
-      !    AFace = dAdvx/dt + Ax
-      !    BFace = Bx
-
-      !    ! Compute dInterface
-      !    if ( nx .gt. 1.0d0 ) then 
-      !        dInterface = dx*( 1.0d0 - x )
-      !        nnx        = 1.0d0
-      !        exitFaceX  = 2
-      !    else 
-      !        dInterface = -dx*x
-      !        nnx        = 0d0
-      !        exitFaceX  = 1
-      !    end if
-
-      !    ! If exactly in the interface, and new coordinate
-      !    ! goes through the cell face, the fastest 
-      !    ! possible outcome is the particle leaving trough it,
-      !    ! regardless of the other coordinates.
-      !    ! So essentially this forces inmediate transfer
-      !    ! to the next cell
-      !    if ( dInterface .eq. 0.0 ) then
-
-      !        print *, '**** TrackSubCell: special case in x axis'
-      !        print *, '**** TrackSubCell: nx, ny, nz:', nx, ny, nz
-      !        print *, '**** TrackSubCell: x, y, z:', x, y, z
-
-      !        exitFace = exitFaceX
-      !        nx = nnx
-      !        dt = 0.0
-      !        return
-      !    end if
-
-      !    ! REFERENCE DT
-      !    zsqrt = sqrt( BFace**2 + 4*dInterface*AFace )
-      !    z1    = (-BFace + zsqrt )/( 2*AFace )
-      !    z2    = (-BFace - zsqrt )/( 2*AFace )
-      !    if ( z1 .gt. 0d0 ) then
-      !        refdt = z1**2
-      !    else if ( z2 .gt. 0d0 ) then
-      !        refdt = z2**2
-      !    end if
-
-      !    ! Given dInterface, compute new dt with
-      !    ! Newton-Raphson
-      !    dt0 = dt
-      !    do while( abs(nrerror) .gt. nrtol  )
-
-      !        ! As the coordinates are not changing, 
-      !        ! linear interpolation of velocities should be
-      !        ! taken outside
-      !        ! Advection model now is solving the three axes, it should
-      !        ! solve only one, right ?
-      !        !call AdvectionDisplacement( this, x, y, z, dt0, vx, vy, vz, dAdvx0, dAdvy0, dAdvz0 )
-      !        dvdx = ( this%SubCellData%vx2 - this%SubCellData%vx1 )/this%SubCellData%dx
-      !        if ( ( abs(dvdx) .gt. dvtol ) ) then
-      !            dAdv = vx*( exp(dvdx*dt0) - 1.0d0 )/dvdx
-      !        else
-      !            dAdv = vx*dt
-      !        end if
-
-      !        ! In reality, there should not be a term multiplying dt
-      !        ! as this will be computed from the "AdvectionModel"
-      !        ! This is required, regardless of analytical solution
-      !        ! The term dAdvx used the velocity gradient A_x, 
-      !        ! Thus, exponential function could compute it, 
-      !        ! and return the derivative, to be used into 
-      !        ! the analytical derivative function
-      !        nrf0  = dAdv + Ax*dt0 + Bx*sqrt( dt0 ) - dInterface
-
-      !        !! Evaluate in dt + eps
-      !        !! This is replaced by analytical solution
-      !        !call AdvectionDisplacement( this, x, y, z, dt0 + nreps, vx, vy, vz, dAdvxe, dAdvye, dAdvze )
-      !        !nrfe  = dAdvxe + Ax*( dt0 + nreps ) + Bx*sqrt( dt0 + nreps ) - dInterface
-      !        !! NR
-      !        !!nrfprim = ( nrfe - nrf0 )/nreps
-
-      !        ! This term could be computed analytically
-      !        nrfprim = vx*exp(dvdx*dt0) + Ax + 0.5*Bx/sqrt(dt0) 
-
-      !        nrerror = -nrf0/nrfprim
-      !        dt0     = dt0 + nrerror
-      !        
-      !    end do
-
-      !    print *, '**** TrackSubCell: Done Newton Raphson, error and dt', nrerror, dt0
-      !    print *, '**** TrackSubCell: Comparison refdt, nrdt', refdt, dt0
-
-      !    dtxyz(1) = dt0
-
-      !    call AdvectionDisplacement( this, x, y, z, dt0, vx, vy, vz, dAdvx, dAdvy, dAdvz )
-      !    dxrw = dAdvx + Ax*dt0 + Bx*sqrt( dt0 )
-      !    dyrw = dAdvy + Ay*dt0 + By*sqrt( dt0 )
-      !    dzrw = dAdvz + Az*dt0 + Bz*sqrt( dt0 )
-
-      !    print *, 'NEW POSITIONS WITH NEW DT FROM NR', x + dxrw/dx, y + dyrw/dy, z + dzrw/dz
-
-      !    call AdvectionDisplacement( this, x, y, z, refdt, vx, vy, vz, dAdvx, dAdvy, dAdvz )
-      !    dxrw = dAdvx + Ax*refdt + Bx*sqrt( refdt )
-      !    dyrw = dAdvy + Ay*refdt + By*sqrt( refdt )
-      !    dzrw = dAdvz + Az*refdt + Bz*sqrt( refdt )
-
-      !    print *, 'NEW POSITIONS WITH REF DT ', x + dxrw/dx, y + dyrw/dy, z + dzrw/dz
-
-      !    print *, 'ASD'
-
-
-      !end if
-
-
-
-      !! Leaving through z face
-      !if ( ( ny .gt. 1.0d0 ) .or. ( ny .lt. 0d0 )  ) then
-      !    AFace = Ay
-      !    BFace = By
-      !    if ( ny .gt. 1.0d0 ) then 
-      !        dInterface = dy*( 1.0d0 - y )
-      !        nny        = 1.0d0
-      !        exitFaceY  = 4
-      !    else 
-      !        dInterface = -dy*y
-      !        nny        = 0d0
-      !        exitFaceY  = 3
-      !    end if
-
-      !    ! Force transfer to next cell
-      !    if ( dInterface .eq. 0.0 ) then
-
-      !        print *, '**** TrackSubCell: special case in y axis'
-      !        print *, '**** TrackSubCell: nx, ny, nz:', nx, ny, nz
-      !        print *, '**** TrackSubCell: x, y, z:', x, y, z
-
-      !        exitFace = exitFaceY
-      !        ny = nny
-      !        dt = 0.0
-      !        return
-      !    end if
-
-      !    ! Given dInterface, compute new dt
-      !    zsqrt = sqrt( BFace**2 + 4*dInterface*AFace )
-      !    z1    = (-BFace + zsqrt )/( 2*AFace )
-      !    z2    = (-BFace - zsqrt )/( 2*AFace )
-      !    if ( z1 .gt. 0d0 ) then
-      !        dtxyz(2) = z1**2
-      !    else if ( z2 .gt. 0d0 ) then
-      !        dtxyz(2) = z2**2
-      !    end if
-      !    if ( ( z1 .gt. 0d0 ) .and. ( z2 .gt. 0d0 ) ) print *, 'BOTH Z are zero in DTY'
-
-      !end if
-
-      !! Leaving through z face
-      !if ( ( nz .gt. 1.0d0 ) .or. ( nz .lt. 0d0 )  ) then
-      !    AFace = Az
-      !    BFace = Bz
-      !    if ( nz .gt. 1.0d0 ) then
-      !        dInterface = dz*( 1.0d0 - z )
-      !        nnz        = 1.0d0
-      !        exitFaceZ  = 6
-      !    else
-      !        dInterface = -dz*z
-      !        nnz        = 0d0
-      !        exitFaceZ  = 5
-      !    end if
-
-      !    ! Force transfer to next cell
-      !    if ( dInterface .eq. 0.0 ) then
-
-      !        print *, '**** TrackSubCell: special case in z axis'
-      !        print *, '**** TrackSubCell: nx, ny, nz:', nx, ny, nz
-      !        print *, '**** TrackSubCell: x, y, z:', x, y, z
-
-      !        exitFace = exitFaceZ
-      !        nz = nnz
-      !        dt = 0.0
-      !        return
-      !    end if
-
-      !    ! Given dInterface, compute new dt
-      !    zsqrt = sqrt( BFace**2 + 4*dInterface*AFace )
-      !    z1    = (-BFace + zsqrt )/( 2*AFace )
-      !    z2    = (-BFace - zsqrt )/( 2*AFace )
-      !    if ( z1 .gt. 0d0 ) then
-      !        dtxyz(3) = z1**2
-      !    else if ( z2 .gt. 0d0 ) then
-      !        dtxyz(3) = z2**2
-      !    end if
-      !    if ( ( z1 .gt. 0d0 ) .and. ( z2 .gt. 0d0 ) ) print *, 'BOTH Z are zero in DTZ'
-
-      !end if
-
-      !! Find minimum dt and 
-      !! assign values accordingly
-      !imindt = minloc( dtxyz, dim=1, mask=(dtxyz > 0) )
-      !dt     = dtxyz(imindt)
-
-
-
-      !if ( imindt .eq. 1 ) then
-      !    nx = nnx
-      !    exitFace = exitFaceX
-      !else if ( imindt .eq. 2 ) then
-      !    ny = nny
-      !    exitFace = exitFaceY
-      !else if ( imindt .eq. 3 ) then
-      !    nz = nnz
-      !    exitFace = exitFaceZ
-      !end if
-
-      !if ( exitFace .eq. 0 ) then
-      !    print *, 'exitFace is zero and it should not'
-      !end if 
-
-
-      !print *, '**** TrackSubCell: dtxyz', dtxyz
-      !print *, '**** TrackSubCell: imindt', imindt
-      !print *, '**** TrackSubCell: dt', dt
-      !print *, '**** TrackSubCell: exitFace', exitFace
-      !print *, '**** TrackSubCell: END DetectExitFaceAndUpdateTimeStep ****************'
-
-      !! Update time
-      !t = t + dt
 
