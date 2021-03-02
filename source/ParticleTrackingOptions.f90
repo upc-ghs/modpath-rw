@@ -22,7 +22,7 @@ module ParticleTrackingOptionsModule
     integer                       :: timeStepKind
     doubleprecision, dimension(2) :: timeStepParameters = 0
     integer                       :: advectionKind
-
+    logical                       :: twoDimensions = .false.
   end type
   
 contains

@@ -575,7 +575,6 @@ contains
 
         ! Advection Integration Kind
         read(dispersionUnit, '(a)', iostat=iodispersion) line
-
         if ( iodispersion .lt. 0 ) then 
             ! end of file
             this%TrackingOptions%advectionKind = 1
@@ -597,9 +596,33 @@ contains
             end select
         end if
 
+        ! Domain dimensions option
+        read(dispersionUnit, '(a)', iostat=iodispersion) line
+        if ( iodispersion .lt. 0 ) then 
+            ! end of file
+            this%TrackingOptions%twoDimensions = .false.
+            write(outUnit,'(A)') 'RWPT: Number of dimensions not specified. Defaults to 3D.'
+        else
+            icol = 1
+            call urword(line,icol,istart,istop,1,n,r,0,0)
+            line = line(istart:istop)
+            select case(line)
+                case('2D')
+                    this%TrackingOptions%twoDimensions = .true.
+                    write(outUnit,'(A)') 'RWPT: Selected 2D domain solver.'
+                case('3D')
+                    this%TrackingOptions%twoDimensions = .false.
+                    write(outUnit,'(A)') 'RWPT: Selected 3D domain solver.'
+                case default
+                    this%TrackingOptions%twoDimensions = .false.
+                    write(outUnit,'(A)') 'RWPT: Invalid option for domain solver, defaults to 3D.'
+            end select
+        end if 
 
-        ! Close the dispersion data file
+
+        ! Close dispersion data file
         close( dispersionUnit )
+
 
     end if
 

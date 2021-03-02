@@ -5,7 +5,7 @@ module TrackSubCellModule
 
   ! RWPT 
   use ParticleTrackingOptionsModule,only : ParticleTrackingOptionsType
-  use omp_lib
+  use omp_lib ! mainly debugging
   implicit none
   
 ! Set default access status to private
@@ -43,6 +43,7 @@ module TrackSubCellModule
     procedure :: TrilinearDerivative=>pr_TrilinearDerivative
     procedure :: DispersionDivergence=>pr_DispersionDivergence
     procedure :: DisplacementRandom=>pr_DisplacementRandom
+    procedure :: GenerateStandardNormalRandom=>pr_GenerateStandardNormalRandom
     procedure :: AdvectionDisplacementExponential=>pr_AdvectionDisplacementExponential
     procedure :: AdvectionDisplacementEulerian=>pr_AdvectionDisplacementEulerian
     procedure :: NewtonRaphsonTimeStep=>NewtonRaphsonTimeStepExponentialAdvection
@@ -401,12 +402,16 @@ contains
       doubleprecision :: dBx, dBy, dBz
       doubleprecision :: dx, dy, dz
       doubleprecision :: nx, ny, nz
+      doubleprecision :: nnx, nny, nnz ! remove
       doubleprecision :: dxrw, dyrw, dzrw
       doubleprecision :: drwtol = 1.0d-14
       logical         :: continueTimeLoop
       logical         :: reachedMaximumTime
+      logical         :: twoDimensions
+      doubleprecision :: dtold
       doubleprecision, dimension(3) :: dts
       doubleprecision, dimension(3) :: dtxyz
+      integer :: dtLoopCounter, posRestartCounter
       !------------------------------------------------------------
 
       ! Needs cleaning
@@ -442,8 +447,7 @@ contains
         end if
       end if
 
-      ! Assign advection displacement pointer
-      ! See if possible to define pointer within the type
+      ! Assign pointers
       if ( trackingOptions%advectionKind .eq. 1 ) then 
           this%AdvectionDisplacement=>pr_AdvectionDisplacementExponential
           this%ExitFaceAndUpdateTimeStep=>pr_DetectExitFaceAndUpdateTimeStepNewton
@@ -458,9 +462,20 @@ contains
       dz = this%SubCellData%DZ
 
       ! Initialize positions
-      x = initialLocation%LocalX
-      y = initialLocation%LocalY
-      z = initialLocation%LocalZ
+      x  = initialLocation%LocalX
+      y  = initialLocation%LocalY
+      z  = initialLocation%LocalZ
+      nx = initialLocation%LocalX
+      ny = initialLocation%LocalY
+      nz = initialLocation%LocalZ
+
+      ! Initialize displacements
+      dxrw = 0d0
+      dyrw = 0d0
+      dzrw = 0d0
+
+      ! Initialize kind of domain solver
+      twoDimensions = trackingOptions%twoDimensions
 
       ! Initialize dispersion
       alphaL = trackingOptions%alphaL
@@ -470,6 +485,10 @@ contains
       ! Compute time step for RWPT
       call this%ComputeRandomWalkTimeStep( trackingOptions, dt )
 
+      ! Initializes current time
+      t     = initialTime
+      dtold = dt
+
       ! Something wrong, leave
       if ( dt .eq. 0 ) then 
           trackingResult%ExitFace = exitFace
@@ -478,18 +497,22 @@ contains
           trackingResult%FinalLocation%LocalX = x
           trackingResult%FinalLocation%LocalY = y
           trackingResult%FinalLocation%LocalZ = z
-          trackingResult%FinalLocation%TrackingTime = t + dt
+          trackingResult%FinalLocation%TrackingTime = t
           return
       end if
 
-      ! Initializes current time
-      t = initialTime + dt
+      ! Sanity counters
+      dtLoopCounter     = 0
+      posRestartCounter = 0
 
       ! Local cell time loop 
       exitFace = 0
       continueTimeLoop = .true.
       reachedMaximumTime = .false.
       do while( continueTimeLoop )
+
+          ! Update current time
+          t = t + dt
 
           ! Recompute dt for maximumTime 
           if (maximumTime .lt. t) then
@@ -499,26 +522,34 @@ contains
               reachedMaximumTime = .true.
           end if 
 
+          !! If position was restart several times, 
+          !! print a warning in the meantime
+          !if ( posRestartCounter .gt. 3 ) then 
+          !    print *, '**** TrackSubCell: particle position restarted ', posRestartCounter, ' times already.'
+          !end if 
+
           ! Compute RWPT movement
           call this%LinearInterpolationVelocities( x, y, z, vx, vy, vz )
           call this%DispersionDivergence( x, y, z, alphaL, alphaT, Dmol, divDx, divDy, divDz )
           call this%DisplacementRandom( x, y, z, alphaL, alphaT, Dmol, dBx, dBy, dBz )
           call this%AdvectionDisplacement( x, y, z, dt, vx, vy, vz, dAdvx, dAdvy, dAdvz )
           dxrw = dAdvx + divDx*dt + dBx*sqrt( dt )
-          dyrw = dAdvy + divDy*dt + dBy*sqrt( dt )
-          dzrw = dAdvz + divDz*dt + dBz*sqrt( dt )
           nx   = x + dxrw/dx
+          dyrw = dAdvy + divDy*dt + dBy*sqrt( dt )
           ny   = y + dyrw/dy
-          nz   = z + dzrw/dz
+          if ( .not. twoDimensions ) then 
+              dzrw = dAdvz + divDz*dt + dBz*sqrt( dt )
+              nz   = z + dzrw/dz
+          end if
 
           ! Detect if particle leaving the cell
           ! and force the particle into exactly one
           ! interface by computing the required dt
-          if (                                             &
+          do while (                                       &
               ( nx .gt. 1.0d0 ) .or. ( nx .lt. 0d0 )  .or. &
               ( ny .gt. 1.0d0 ) .or. ( ny .lt. 0d0 )  .or. &
               ( nz .gt. 1.0d0 ) .or. ( nz .lt. 0d0 )       & 
-          ) then                                           
+          )
 
               dtxyz(:) = 0d0
 
@@ -531,20 +562,30 @@ contains
               call this%AdvectionDisplacement( x, y, z, dt, vx, vy, vz, & 
                                                     dAdvx, dAdvy, dAdvz )
 
+
+              ! If maximumTime was reached, but particle left
+              ! the cell, then the condition is resetted
+              if (reachedMaximumTime) then
+                  reachedMaximumTime = .false.
+              end if
+
               ! Find new RWPT displacements
-              ! Something faster maybe ? 
               if ( ( exitFace .eq. 1 ) .or. ( exitFace .eq. 2 ) ) then 
                   dyrw = dAdvy + divDy*dt + dBy*sqrt( dt )
-                  dzrw = dAdvz + divDz*dt + dBz*sqrt( dt )
-                  ny = y + dyrw/dy
-                  nz = z + dzrw/dz
+                  ny   = y + dyrw/dy
+                  if ( .not. twoDimensions ) then
+                      dzrw = dAdvz + divDz*dt + dBz*sqrt( dt )
+                      nz   = z + dzrw/dz
+                  end if
                   nx = 1.0d0
                   if ( exitFace .eq. 1 ) nx=0d0
               else if ( ( exitFace .eq. 3 ) .or. ( exitFace .eq. 4 ) ) then 
                   dxrw = dAdvx + divDx*dt + dBx*sqrt( dt )
-                  dzrw = dAdvz + divDz*dt + dBz*sqrt( dt )
-                  nx = x + dxrw/dx
-                  nz = z + dzrw/dz
+                  nx   = x + dxrw/dx
+                  if ( .not. twoDimensions ) then 
+                      dzrw = dAdvz + divDz*dt + dBz*sqrt( dt )
+                      nz   = z + dzrw/dz
+                  end if
                   ny = 1.0d0
                   if ( exitFace .eq. 3 ) ny=0d0
               else if ( ( exitFace .eq. 5 ) .or. ( exitFace .eq. 6 ) ) then
@@ -555,24 +596,44 @@ contains
                   nz = 1.0d0
                   if ( exitFace .eq. 5 ) nz=0d0
               else
-                  ! Something wrong
-                  trackingResult%ExitFace = exitFace
-                  trackingResult%Status = trackingResult%Status_Undefined()
-                  return
+                  ! Restart nx, ny, nz and try again
+                  ! if not a valid time step and exitFace
+                  nx = x
+                  ny = y
+                  nz = z
+                  t  = t - dt
+                  dt = dtold
+                  dtLoopCounter = 0
+                  posRestartCounter = posRestartCounter + 1
+                  exit
               end if
 
-              ! If maximumTime was reached, but particle left
-              ! the cell, then the condition is resetted
-              if (reachedMaximumTime) then 
-                  reachedMaximumTime = .false.
+              ! Restart if method did not
+              ! found a valid position after two tries.
+              dtLoopCounter = dtLoopCounter + 1
+              if ( dtLoopCounter .eq. 2 ) then
+                  ! When using exponential integration 
+                  ! and rwpt, it has been observed that 
+                  ! new positions can pivot between invalid 
+                  ! positions which happened when not forcing NR 
+                  ! to return a new dt smaller than the previous.
+                  ! This block controls that if that happens, 
+                  ! positions are restarted after two tries, 
+                  ! and thus random displacements are recomputed.
+
+                  ! Restart nx, ny, nz and try again
+                  nx = x
+                  ny = y
+                  nz = z
+                  t  = t - dt
+                  dt = dtold
+                  exitFace = 0
+                  dtLoopCounter = 0
+                  posRestartCounter = posRestartCounter + 1
+                  exit
               end if
 
-          end if
-
-          ! Update particle positions
-          x = nx
-          y = ny
-          z = nz
+          end do
 
           ! Report and leave
           if ( (reachedMaximumTime) .or. ( exitFace .ne. 0 ) ) then
@@ -591,15 +652,27 @@ contains
               end if
               trackingResult%ExitFace = exitFace
               trackingResult%FinalLocation%CellNumber = cellNumber
-              trackingResult%FinalLocation%LocalX = x
-              trackingResult%FinalLocation%LocalY = y
-              trackingResult%FinalLocation%LocalZ = z
+              trackingResult%FinalLocation%LocalX = nx
+              trackingResult%FinalLocation%LocalY = ny
+              trackingResult%FinalLocation%LocalZ = nz
+
+              if (.not. trackingResult%FinalLocation%Valid() ) then 
+                  print *, 'DEBUG: ** TrackSubCell'
+                  print *, 'DEBUG: xyz', x, y, z
+                  print *, 'DEBUG: nxyz', nx, ny, nz
+                  print *, 'DEBUG: exitFace', exitFace
+              end if
+
               trackingResult%FinalLocation%TrackingTime = t
-              continueTimeLoop = .false.         
+              continueTimeLoop = .false.
+              return 
           end if
 
-          ! Update time for the next cycle
-          t = t + dt
+
+          ! Update particle positions
+          x = nx
+          y = ny
+          z = nz
 
       end do 
 
@@ -889,13 +962,14 @@ contains
           zsqrt = sqrt( BFace**2 + 4*dInterface*AFace )
           z1    = (-BFace + zsqrt )/( 2*AFace )
           z2    = (-BFace - zsqrt )/( 2*AFace )
-          if ( z1 .gt. 0d0 ) then
+
+          ! Compute new dt
+          if ( ( z1 .gt. 0d0 ) .and. ( z2 .gt. 0d0 ) ) then
+              dtxyz(1) = min( z1**2, z2**2 )
+          else if ( z1 .gt. 0d0 ) then
               dtxyz(1) = z1**2
           else if ( z2 .gt. 0d0 ) then
               dtxyz(1) = z2**2
-          end if
-          if ( ( z1 .gt. 0d0 ) .and. ( z2 .gt. 0d0 ) ) then
-              print *, '**** TrackSubCell: Update dt quadratic: Both z possible in DTX'
           end if
 
       end if
@@ -927,13 +1001,14 @@ contains
           zsqrt = sqrt( BFace**2 + 4*dInterface*AFace )
           z1    = (-BFace + zsqrt )/( 2*AFace )
           z2    = (-BFace - zsqrt )/( 2*AFace )
-          if ( z1 .gt. 0d0 ) then
+
+          ! Determine new dt
+          if ( ( z1 .gt. 0d0 ) .and. ( z2 .gt. 0d0 ) ) then
+              dtxyz(2) = min( z1**2, z2**2 )
+          else if ( z1 .gt. 0d0 ) then
               dtxyz(2) = z1**2
           else if ( z2 .gt. 0d0 ) then
               dtxyz(2) = z2**2
-          end if
-          if ( ( z1 .gt. 0d0 ) .and. ( z2 .gt. 0d0 ) ) then
-              print *, '**** TrackSubCell: Update dt quadratic: Both z possible in DTY'
           end if
 
       end if
@@ -965,14 +1040,15 @@ contains
           zsqrt = sqrt( BFace**2 + 4*dInterface*AFace )
           z1    = (-BFace + zsqrt )/( 2*AFace )
           z2    = (-BFace - zsqrt )/( 2*AFace )
-          if ( z1 .gt. 0d0 ) then
+
+          if ( ( z1 .gt. 0d0 ) .and. ( z2 .gt. 0d0 ) ) then
+              dtxyz(3) = min( z1**2, z2**2 )
+          else if ( z1 .gt. 0d0 ) then
               dtxyz(3) = z1**2
           else if ( z2 .gt. 0d0 ) then
               dtxyz(3) = z2**2
           end if
-          if ( ( z1 .gt. 0d0 ) .and. ( z2 .gt. 0d0 ) ) then
-              print *, '**** TrackSubCell: Update dt quadratic: Both z possible in DTZ'
-          end if
+
       end if
 
       ! Find minimum dt and 
@@ -1065,7 +1141,7 @@ contains
           ! Exactly at interface, force new cell
           if ( dInterface .eq. 0.0 ) then
               exitFace = exitFaceX
-              dt = 0.0
+              dt = .0
               return
           end if
 
@@ -1188,14 +1264,16 @@ contains
       doubleprecision :: dt0
       doubleprecision :: nrf0, nrfprim, nrerror
       doubleprecision :: dvtol = 1.0d-10
-      doubleprecision :: nrtol = 1.0d-08
+      doubleprecision :: nrtol = 1.0d-10
       integer :: countIter
-      integer :: maxIter = 10
+      integer :: maxIter = 100
       !----------------------------------------------------------------
 
       ! Initialize
       countIter = 0
-      dt0       = 0.5*dt
+      ! Force initial guess smaller
+      ! than original value
+      dt0       = 0.1*dt 
       nrf0      = 0d0
       nrfprim   = 0d0
       nrerror   = 1d6 ! Something big
@@ -1224,17 +1302,25 @@ contains
           nrerror = -nrf0/nrfprim
           dt0     = dt0 + nrerror 
 
-          ! It can't be smaller than zero or zero
-          if ( dt0 .le. 0d0 ) dt0 = 1.0d-8 
+          ! It can't be smaller than zero
+          if ( dt0 .lt. 0d0 ) dt0 = -0.5*dt0 
 
       end do
 
       ! Assign return value
       dtnr = dt0
 
+      ! If new value higher than the previous, return zero 
+      if ( dt0 .gt. dt) then
+          !print *, '*** TrackSubCell: Inconsistency in Newton Raphson, ', &
+          !    'new dt higher than previous, dt, dt0, nrerror', dt, dt0, nrerror 
+          dtnr = 0d0 ! Is this a proper exit condition ?
+      end if 
+
       ! If no convergence, return zero
-      if ( countIter .eq. maxIter ) then 
-          dtnr = 0d0
+      if ( ( countIter .eq. maxIter ) .and. ( abs(nrerror) .gt. nrtol ) ) then
+          !print *, '*** TrackSubCell: No convergence Newton Raphson dt, dt0, nrerror', dt, dt0, nrerror 
+          dtnr = 0d0 ! Is this a proper exit condition ?
       end if
 
   end subroutine NewtonRaphsonTimeStepExponentialAdvection
@@ -1260,7 +1346,7 @@ contains
       doubleprecision, intent(in) :: x, y, z
       doubleprecision, intent(in) :: alphaL, alphaT, Dmol
       ! output
-      doubleprecision             :: divDx, divDy, divDz
+      doubleprecision, intent(inout) :: divDx, divDy, divDz
       ! local
       doubleprecision, dimension(4) :: v000
       doubleprecision, dimension(4) :: v100
@@ -1274,7 +1360,12 @@ contains
                          dDxydx, dDyydy, dDyzdz, &
                          dDxzdx, dDyzdy, dDzzdz
       !---------------------------------------------------------------- 
-    
+
+      ! Initialize
+      divDx = 0d0
+      divDy = 0d0
+      divDz = 0d0
+
       ! Local copies of corner velocities
       ! pointers ?
       v000 = this%vCorner000 
@@ -1382,6 +1473,7 @@ contains
       divDy = dDxydx + dDyydy + dDyzdz
       divDz = dDxzdx + dDyzdy + dDzzdz
 
+
   end subroutine pr_DispersionDivergence
 
 
@@ -1403,14 +1495,15 @@ contains
       implicit none
       class (TrackSubCellType) :: this
       ! input
-      doubleprecision, intent(in) :: x, y, z
-      doubleprecision, intent(in) :: alphaL, alphaT, Dmol
+      doubleprecision, intent(in)    :: x, y, z
+      doubleprecision, intent(in)    :: alphaL, alphaT, Dmol
       ! output
-      doubleprecision             :: dBx, dBy, dBz
+      doubleprecision, intent(inout) :: dBx, dBy, dBz
       ! local
       doubleprecision :: vBx, vBy, vBz, vBnorm, vBnormxy
       doubleprecision :: B11, B12, B13, B21, B22, B23, B31, B32
       doubleprecision :: rdmx, rdmy, rdmz
+      !real ( kind = 4 ) :: rdmx, rdmy, rdmz
       doubleprecision, dimension(4) :: v000
       doubleprecision, dimension(4) :: v100
       doubleprecision, dimension(4) :: v010
@@ -1420,6 +1513,11 @@ contains
       doubleprecision, dimension(4) :: v011
       doubleprecision, dimension(4) :: v111
       !----------------------------------------------------------------
+
+      ! Initialize
+      dBx = 0d0
+      dBy = 0d0
+      dBz = 0d0
 
       ! Local copies of corner velocities
       ! pointers ?
@@ -1462,16 +1560,41 @@ contains
       B32 =  vBnormxy*sqrt( 2*( alphaT*vBnorm + Dmol ) )/vBnorm
     
       ! Compute random numbers
-      call random_number( rdmx )
-      call random_number( rdmy )
-      call random_number( rdmz )
+      call this%GenerateStandardNormalRandom( rdmx ) 
+      call this%GenerateStandardNormalRandom( rdmy ) 
+      call this%GenerateStandardNormalRandom( rdmz ) 
+
 
       ! Compute displacement times random
-      dBX = B11*rdmx + B12*rdmy + B13*rdmz 
-      dBY = B21*rdmx + B22*rdmy + B23*rdmz 
-      dBZ = B31*rdmx + B32*rdmy 
+      dBx = B11*rdmx + B12*rdmy + B13*rdmz 
+      dBy = B21*rdmx + B22*rdmy + B23*rdmz 
+      dBz = B31*rdmx + B32*rdmy 
+
 
   end subroutine pr_DisplacementRandom
+
+
+  ! RWPT
+  subroutine pr_GenerateStandardNormalRandom( this, random_value )
+      !----------------------------------------------------------------
+      ! Generate a random number from an standard normal distribution
+      ! Inherited from RW3D:library_gslib:random_normal
+      !
+      !----------------------------------------------------------------
+      ! Specifications
+      !----------------------------------------------------------------
+      implicit none
+      class(TrackSubCellType) :: this 
+      ! input/output
+      doubleprecision, intent(inout) :: random_value
+      ! local
+      doubleprecision :: harvest(12)
+      !----------------------------------------------------------------
+
+      call random_number (harvest)
+      random_value = sum(harvest)-6.d0
+
+  end subroutine
 
 
   ! RWPT
@@ -1486,6 +1609,8 @@ contains
       implicit none
       class (TrackSubCellType) :: this
       type(ModpathSubCellDataType), dimension(18) :: neighborSubCellData
+      logical :: twoDimensionsDomain
+      real    :: nominalFactor
       !----------------------------------------------------------------
 
       ! Do something more elegant please
@@ -1505,58 +1630,65 @@ contains
       ! in which there are four cells for computing 
       ! values at the corner, should be verified 
       ! and maybe computed by finding the valid cells
-      ! 
-      this%vCorner000(1) = 0.25*( this%SubCellData%VX1 + neighborSubCellData(7)%VX1  + &
+
+      ! In 2D, only corners with third
+      ! index equal 0
+
+      nominalFactor = 0.25 ! 3D
+      !twoDimensionsDomain = .true.
+      !if ( twoDimensionsDomain ) nominalFactor = 0.5 ! 2D
+
+      this%vCorner000(1) = nominalFactor*( this%SubCellData%VX1 + neighborSubCellData(7)%VX1  + &
           neighborSubCellData(13)%VX1 + neighborSubCellData(8)%VX1 )
-      this%vCorner100(1) = 0.25*( this%SubCellData%VX2 + neighborSubCellData(7)%VX2  + &
+      this%vCorner100(1) = nominalFactor*( this%SubCellData%VX2 + neighborSubCellData(7)%VX2  + &
           neighborSubCellData(13)%VX2 + neighborSubCellData(8)%VX2 )
-      this%vCorner010(1) = 0.25*( this%SubCellData%VX1 + neighborSubCellData(10)%VX1 + &
+      this%vCorner010(1) = nominalFactor*( this%SubCellData%VX1 + neighborSubCellData(10)%VX1 + &
           neighborSubCellData(13)%VX1 + neighborSubCellData(11)%VX1 )
-      this%vCorner110(1) = 0.25*( this%SubCellData%VX2 + neighborSubCellData(10)%VX2 + &
+      this%vCorner110(1) = nominalFactor*( this%SubCellData%VX2 + neighborSubCellData(10)%VX2 + &
           neighborSubCellData(13)%VX2 + neighborSubCellData(11)%VX2 )
-      this%vCorner001(1) = 0.25*( this%SubCellData%VX1 + neighborSubCellData(7)%VX1  + &
+      this%vCorner001(1) = nominalFactor*( this%SubCellData%VX1 + neighborSubCellData(7)%VX1  + &
           neighborSubCellData(16)%VX1 + neighborSubCellData(9)%VX1 )
-      this%vCorner101(1) = 0.25*( this%SubCellData%VX2 + neighborSubCellData(7)%VX2  + &
+      this%vCorner101(1) = nominalFactor*( this%SubCellData%VX2 + neighborSubCellData(7)%VX2  + &
           neighborSubCellData(16)%VX2 + neighborSubCellData(9)%VX2 )
-      this%vCorner011(1) = 0.25*( this%SubCellData%VX1 + neighborSubCellData(10)%VX1 + &
+      this%vCorner011(1) = nominalFactor*( this%SubCellData%VX1 + neighborSubCellData(10)%VX1 + &
           neighborSubCellData(16)%VX1 + neighborSubCellData(12)%VX1 )
-      this%vCorner111(1) = 0.25*( this%SubCellData%VX2 + neighborSubCellData(10)%VX2 + &
+      this%vCorner111(1) = nominalFactor*( this%SubCellData%VX2 + neighborSubCellData(10)%VX2 + &
           neighborSubCellData(16)%VX2 + neighborSubCellData(12)%VX2 )
 
 
-      this%vCorner000(2) = 0.25*( this%SubCellData%VY1 + neighborSubCellData(1)%VY1  + &
+      this%vCorner000(2) = nominalFactor*( this%SubCellData%VY1 + neighborSubCellData(1)%VY1  + &
           neighborSubCellData(13)%VY1 + neighborSubCellData(14)%VY1 )
-      this%vCorner010(2) = 0.25*( this%SubCellData%VY2 + neighborSubCellData(1)%VY2  + &
+      this%vCorner010(2) = nominalFactor*( this%SubCellData%VY2 + neighborSubCellData(1)%VY2  + &
           neighborSubCellData(13)%VY2 + neighborSubCellData(14)%VY2 )
-      this%vCorner100(2) = 0.25*( this%SubCellData%VY1 + neighborSubCellData(4)%VY1  + &
+      this%vCorner100(2) = nominalFactor*( this%SubCellData%VY1 + neighborSubCellData(4)%VY1  + &
           neighborSubCellData(13)%VY1 + neighborSubCellData(15)%VY1 )
-      this%vCorner110(2) = 0.25*( this%SubCellData%VY2 + neighborSubCellData(4)%VY2  + &
+      this%vCorner110(2) = nominalFactor*( this%SubCellData%VY2 + neighborSubCellData(4)%VY2  + &
           neighborSubCellData(13)%VY2 + neighborSubCellData(15)%VY2 )
-      this%vCorner001(2) = 0.25*( this%SubCellData%VY1 + neighborSubCellData(1)%VY1  + &
+      this%vCorner001(2) = nominalFactor*( this%SubCellData%VY1 + neighborSubCellData(1)%VY1  + &
           neighborSubCellData(16)%VY1 + neighborSubCellData(17)%VY1 )
-      this%vCorner011(2) = 0.25*( this%SubCellData%VY2 + neighborSubCellData(1)%VY2  + &
+      this%vCorner011(2) = nominalFactor*( this%SubCellData%VY2 + neighborSubCellData(1)%VY2  + &
           neighborSubCellData(16)%VY2 + neighborSubCellData(17)%VY2 )
-      this%vCorner101(2) = 0.25*( this%SubCellData%VY1 + neighborSubCellData(4)%VY1  + &
+      this%vCorner101(2) = nominalFactor*( this%SubCellData%VY1 + neighborSubCellData(4)%VY1  + &
           neighborSubCellData(16)%VY1 + neighborSubCellData(18)%VY1 )
-      this%vCorner111(2) = 0.25*( this%SubCellData%VY2 + neighborSubCellData(4)%VY2  + &
+      this%vCorner111(2) = nominalFactor*( this%SubCellData%VY2 + neighborSubCellData(4)%VY2  + &
           neighborSubCellData(16)%VY2 + neighborSubCellData(18)%VY2 )
 
 
-      this%vCorner000(3) = 0.25*( this%SubCellData%VZ1 + neighborSubCellData(1)%VZ1  + &
+      this%vCorner000(3) = nominalFactor*( this%SubCellData%VZ1 + neighborSubCellData(1)%VZ1  + &
           neighborSubCellData(7)%VZ1 + neighborSubCellData(2)%VZ1 )
-      this%vCorner001(3) = 0.25*( this%SubCellData%VZ2 + neighborSubCellData(1)%VZ2  + &
+      this%vCorner001(3) = nominalFactor*( this%SubCellData%VZ2 + neighborSubCellData(1)%VZ2  + &
           neighborSubCellData(7)%VZ2 + neighborSubCellData(2)%VZ2 )
-      this%vCorner100(3) = 0.25*( this%SubCellData%VZ1 + neighborSubCellData(4)%VZ1  + &
+      this%vCorner100(3) = nominalFactor*( this%SubCellData%VZ1 + neighborSubCellData(4)%VZ1  + &
           neighborSubCellData(7)%VZ1 + neighborSubCellData(5)%VZ1 )
-      this%vCorner101(3) = 0.25*( this%SubCellData%VZ2 + neighborSubCellData(4)%VZ2  + &
+      this%vCorner101(3) = nominalFactor*( this%SubCellData%VZ2 + neighborSubCellData(4)%VZ2  + &
           neighborSubCellData(7)%VZ2 + neighborSubCellData(5)%VZ2 )
-      this%vCorner010(3) = 0.25*( this%SubCellData%VZ1 + neighborSubCellData(1)%VZ1  + &
+      this%vCorner010(3) = nominalFactor*( this%SubCellData%VZ1 + neighborSubCellData(1)%VZ1  + &
           neighborSubCellData(10)%VZ1 + neighborSubCellData(3)%VZ1 )
-      this%vCorner011(3) = 0.25*( this%SubCellData%VZ2 + neighborSubCellData(1)%VZ2  + &
+      this%vCorner011(3) = nominalFactor*( this%SubCellData%VZ2 + neighborSubCellData(1)%VZ2  + &
           neighborSubCellData(10)%VZ2 + neighborSubCellData(3)%VZ2 )
-      this%vCorner110(3) = 0.25*( this%SubCellData%VZ1 + neighborSubCellData(4)%VZ1  + &
+      this%vCorner110(3) = nominalFactor*( this%SubCellData%VZ1 + neighborSubCellData(4)%VZ1  + &
           neighborSubCellData(10)%VZ1 + neighborSubCellData(6)%VZ1 )
-      this%vCorner111(3) = 0.25*( this%SubCellData%VZ2 + neighborSubCellData(4)%VZ2  + &
+      this%vCorner111(3) = nominalFactor*( this%SubCellData%VZ2 + neighborSubCellData(4)%VZ2  + &
           neighborSubCellData(10)%VZ2 + neighborSubCellData(6)%VZ2 )
 
 
@@ -1591,9 +1723,12 @@ contains
       integer :: direction
       doubleprecision :: x, y, z
       doubleprecision :: v000, v100, v010, v110, v001, v101, v011, v111
-      doubleprecision :: output
+      doubleprecision, intent(inout) :: output
       doubleprecision :: v0, v1, v00, v10, v01, v11
       !-----------------------------------------------------------
+
+      ! Initialize
+      output = 0d0
 
       select case (direction)
           ! x direction
@@ -1647,9 +1782,12 @@ contains
       class (TrackSubCellType) :: this
       doubleprecision :: x, y, z
       doubleprecision :: v000, v100, v010, v110, v001, v101, v011, v111
-      doubleprecision :: output
+      doubleprecision, intent(inout) :: output
       doubleprecision :: v0, v1, v00, v10, v01, v11
       !-----------------------------------------------------------
+      
+      ! Initialize
+      output = 0d0
 
       v00    = ( 1.0d0 - x )*v000 + x*v100
       v01    = ( 1.0d0 - x )*v001 + x*v101
