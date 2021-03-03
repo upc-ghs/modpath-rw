@@ -593,6 +593,15 @@
     activeCount = 0
     if(simulationData%ParticleGroupCount .gt. 0) then
         do groupIndex = 1, simulationData%ParticleGroupCount
+            !$omp parallel do                      &
+            !$omp private(p, traceModeOn)          & 
+            !$omp private(topActiveCellNumber)     &
+            !$omp private(pLoc, plCount, tsCount)  &
+            !$omp private(pCoordLast, pCoordFirst) &
+            !$omp private(trackPathResult, status) &
+            !$omp firstprivate(trackingEngine)     &
+            !$omp reduction(+:pendingCount)        & 
+            !$omp reduction(+:activeCount)
             do particleIndex = 1, simulationData%ParticleGroups(groupIndex)%TotalParticleCount
                 p => simulationData%ParticleGroups(groupIndex)%Particles(particleIndex)
                 ! Check particle status. 
@@ -694,11 +703,10 @@
                     else
                         ! Leave status set to active (status = 1)
                     end if
-                    
+
                     ! Write particle output
-                    !if((simulationData%SimulationType .eq. 2) .or.              &
-                    !  (simulationData%SimulationType .eq. 4)) then
-                    ! RWPT
+
+                    !$omp critical (pathline)
                     if((simulationData%SimulationType .eq. 2) .or.              &
                        (simulationData%SimulationType .eq. 4) .or.              &
                        (simulationData%SimulationType .eq. 6)) then
@@ -716,7 +724,9 @@
                             end select
                             
                         end if
-                    end if              
+                    end if
+                    !$omp end critical (pathline)
+                    !$omp critical (timeseries)
                     if(simulationData%SimulationType .ge. 3) then
                         if(tsCount .gt. 0) then
                         ! Write timeseries record to the timeseries file
@@ -725,9 +735,11 @@
                               groupIndex, ktime, nt, pCoordTP, geoRef, timeseriesUnit)
                         end if
                     end if
+                    !$omp end critical (timeseries)
                 end if
                 
             end do
+            !$omp end parallel do
         end do
     end if
     
