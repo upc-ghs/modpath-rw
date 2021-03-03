@@ -695,7 +695,7 @@ contains
       !----------------------------------------------------------------
       implicit none
       class(TrackSubCellType) :: this
-      !input
+      ! input
       doubleprecision :: x, y, z
       ! output
       doubleprecision :: vx, vy, vz
@@ -727,12 +727,12 @@ contains
       !----------------------------------------------------------------
       implicit none
       class(TrackSubCellType) :: this
-      !input
+      ! input
       doubleprecision, intent(in) :: x, y, z, dt
       doubleprecision, intent(in) :: vx, vy, vz
       ! output
       doubleprecision, intent(inout) :: dAdvx, dAdvy, dAdvz
-      !local
+      ! local
       doubleprecision :: dvxdx, dvydy, dvzdz
       doubleprecision :: dvtol = 1.0d-10
       !----------------------------------------------------------------
@@ -781,7 +781,7 @@ contains
       !----------------------------------------------------------------
       implicit none
       class(TrackSubCellType) :: this
-      !input
+      ! input
       doubleprecision, intent(in) :: x, y, z, dt
       doubleprecision, intent(in) :: vx, vy, vz
       ! output
@@ -1503,7 +1503,6 @@ contains
       doubleprecision :: vBx, vBy, vBz, vBnorm, vBnormxy
       doubleprecision :: B11, B12, B13, B21, B22, B23, B31, B32
       doubleprecision :: rdmx, rdmy, rdmz
-      !real ( kind = 4 ) :: rdmx, rdmy, rdmz
       doubleprecision, dimension(4) :: v000
       doubleprecision, dimension(4) :: v100
       doubleprecision, dimension(4) :: v010
@@ -1720,10 +1719,13 @@ contains
       !-----------------------------------------------------------
       implicit none
       class (TrackSubCellType) :: this
-      integer :: direction
-      doubleprecision :: x, y, z
-      doubleprecision :: v000, v100, v010, v110, v001, v101, v011, v111
+      ! input
+      integer        , intent(in):: direction
+      doubleprecision, intent(in):: x, y, z
+      doubleprecision, intent(in):: v000, v100, v010, v110, v001, v101, v011, v111
+      ! output
       doubleprecision, intent(inout) :: output
+      ! local
       doubleprecision :: v0, v1, v00, v10, v01, v11
       !-----------------------------------------------------------
 
@@ -1780,9 +1782,12 @@ contains
       !-----------------------------------------------------------
       implicit none
       class (TrackSubCellType) :: this
-      doubleprecision :: x, y, z
-      doubleprecision :: v000, v100, v010, v110, v001, v101, v011, v111
+      ! input
+      doubleprecision, intent(in):: x, y, z
+      doubleprecision, intent(in):: v000, v100, v010, v110, v001, v101, v011, v111
+      ! output
       doubleprecision, intent(inout) :: output
+      ! local
       doubleprecision :: v0, v1, v00, v10, v01, v11
       !-----------------------------------------------------------
       
