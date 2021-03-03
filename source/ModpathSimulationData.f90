@@ -215,6 +215,22 @@ contains
           end if
       ! RWPT
       case(5)
+          write(outUnit,'(A,I2,A)') 'RWPT with Timeseries Analysis (Simulation type =', this%SimulationType, ')'
+          read(inUnit, '(a)') this%EndpointFile
+          icol = 1
+          call urword(this%EndpointFile,icol,istart,istop,0,n,r,0,0)
+          this%EndpointFile = this%EndpointFile(istart:istop)
+          read(inUnit, '(a)') this%TimeseriesFile
+          icol = 1
+          call urword(this%TimeseriesFile, icol, istart, istop, 0, n, r, 0, 0)
+          this%TimeseriesFile = this%TimeseriesFile(istart:istop)
+          IF(this%AdvectiveObservationsOption.EQ.2) then
+            read(inUnit, '(a)') this%AdvectiveObservationsFile
+            icol = 1
+            call urword(this%AdvectiveObservationsFile, icol, istart, istop, 0, n, r,0,0)
+            this%AdvectiveObservationsFile = this%AdvectiveObservationsFile(istart:istop)
+          end if
+      case(6)
           write(outUnit,'(A,I2,A)') 'RWPT with Pathline and Timeseries Analysis (Simulation type =', this%SimulationType, ')'
           read(inUnit, '(a)') this%EndpointFile
           icol = 1
@@ -509,7 +525,7 @@ contains
 
     ! RWPT
     ! Assign specific RWPT options 
-    if (this%SimulationType .eq. 5)  then
+    if ( (this%SimulationType .eq. 5) .or. (this%SimulationType .eq. 6) ) then
   
         ! Identify the simulation 
         this%TrackingOptions%RandomWalkParticleTracking = .true.

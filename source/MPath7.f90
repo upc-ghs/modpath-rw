@@ -414,7 +414,7 @@
     ! RWPT
     if((simulationData%SimulationType .eq. 2) .or.                              &
        (simulationData%SimulationType .eq. 4) .or.                              &
-       (simulationData%SimulationType .eq. 5)) then
+       (simulationData%SimulationType .eq. 6)) then
         open(unit=pathlineUnit, file=simulationData%PathlineFile,               &
           status='replace', form='formatted', access='sequential')
 !        open(unit=consolidatedPathlineUnit, file='consolidated.pathline7', status='replace', form='formatted', access='sequential')
@@ -429,7 +429,8 @@
     ! RWPT
     if((simulationData%SimulationType .eq. 3) .or.                              &
        (simulationData%SimulationType .eq. 4) .or.                              &
-       (simulationData%SimulationType .eq. 5)) then
+       (simulationData%SimulationType .eq. 5) .or.                              &
+       (simulationData%SimulationType .eq. 6)) then
         open(unit=timeseriesUnit, file=simulationData%TimeseriesFile,           &
           status='replace', form='formatted', access='sequential')
         call WriteTimeseriesHeader(timeseriesUnit,                              &
@@ -700,7 +701,7 @@
                     ! RWPT
                     if((simulationData%SimulationType .eq. 2) .or.              &
                        (simulationData%SimulationType .eq. 4) .or.              &
-                       (simulationData%SimulationType .eq. 5)) then
+                       (simulationData%SimulationType .eq. 6)) then
                         ! Write pathline to pathline file
                         if(plCount .gt. 1) then
                             pathlineRecordCount = pathlineRecordCount + 1
@@ -765,7 +766,7 @@
     ! RWPT
     if((simulationData%SimulationType .eq. 2) .or. &
        (simulationData%SimulationType .eq. 4) .or. &
-       (simulationData%SimulationType .eq. 5)) then
+       (simulationData%SimulationType .eq. 6)) then
         if(simulationData%PathlineFormatOption .eq. 1) then
             call ulog('Consolidating pathline segments.', logUnit)
             call ConsolidatePathlines(binPathlineUnit, pathlineUnit,            &
@@ -791,7 +792,9 @@
     write(mplistUnit, '(1x/,a)', err=200) terminationMessage
     elapsedTime = dble(clockCountStop - clockCountStart) / dble(clockCountRate)
     write(mplistUnit, '(1X,A,E15.5,A)') 'Elapsed time = ', elapsedTime, ' seconds'
-    
+    ! RWPT
+    write(*, '(1X,A,E15.5,A)') 'Elapsed time = ', elapsedTime, ' seconds'
+
     ! Close files
 200 continue    
     close(mplistUnit)
