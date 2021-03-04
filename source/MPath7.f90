@@ -409,8 +409,7 @@
     ! Open particle output files
     open(unit=endpointUnit, file=simulationData%EndpointFile, status='replace', &
       form='formatted', access='sequential')
-    !if((simulationData%SimulationType .eq. 2) .or.                              &
-    !  (simulationData%SimulationType .eq. 4)) then
+
     ! RWPT
     if((simulationData%SimulationType .eq. 2) .or.                              &
        (simulationData%SimulationType .eq. 4) .or.                              &
@@ -424,8 +423,7 @@
           simulationData%ReferenceTime, modelGrid%OriginX, modelGrid%OriginY,   &
           modelGrid%RotationAngle)
     end if
-    !if((simulationData%SimulationType .eq. 3) .or.                              &
-    !  (simulationData%SimulationType .eq. 4)) then
+
     ! RWPT
     if((simulationData%SimulationType .eq. 3) .or.                              &
        (simulationData%SimulationType .eq. 4) .or.                              &
@@ -445,14 +443,31 @@
         write(traceModeUnit, '(1X,A,I10)')                                      &
           'Particle ID: ',simulationData%TraceID
     end if
-    
+
+    ! Open observation cells files
+    if ( simulationData%TrackingOptions%observationSimulation ) then
+        ! Open the unit and write the header
+        do n = 1, simulationData%TrackingOptions%nObservations
+            open( unit=simulationData%TrackingOptions%observationUnits(n),     &
+                  file=simulationData%TrackingOptions%observationFiles(n),     & 
+                  status='replace', form='formatted', access='sequential')
+            ! Write the corresponding header
+            call WriteObservationHeader(                              &
+                simulationData%TrackingOptions%observationUnits(n),   &
+                simulationData%TrackingOptions%observationCells(n),   &
+                simulationData%ReferenceTime,                         &
+                modelGrid%OriginX, modelGrid%OriginY,                 &
+                modelGrid%RotationAngle)
+        end do 
+    end if 
+
     ! Begin time step loop
     pathlineRecordCount = 0
     time = 0.0d0
     nt = 0
     if(allocated(cellData)) deallocate(cellData)
     allocate(cellData)
-    
+
     call ulog('Begin TIME_STEP_LOOP', logUnit)
     ! Call system_clock to get the start of the time step loop
     call system_clock(clockCountStart, clockCountRate, clockCountMax)
@@ -777,7 +792,18 @@
     ! Write particle summary information
     call WriteParticleSummaryInfo(simulationData, mplistUnit)
     
-100 continue    
+100 continue
+
+    ! Close observation units if any
+    if ( simulationData%TrackingOptions%observationSimulation ) then
+        do n = 1, simulationData%TrackingOptions%nObservations
+            close( simulationData%TrackingOptions%observationUnits(n) )
+        end do 
+        ! And deallocate arrays of observationa information
+        call simulationData%TrackingOptions%Reset()
+    end if 
+
+
     ! Deallocate major components
     call ulog('Begin memory deallocation.', logUnit)
     if(allocated(headReader)) deallocate(headReader)
@@ -1331,6 +1357,32 @@
     write(*, '(a)') ' '
     
     end subroutine WriteParticleSummaryInfo
-        
+
+
+    ! OBS
+    subroutine WriteObservationHeader(outUnit, cellNumber, referenceTime,   &
+                                             originX, originY, rotationAngle)
+        !-------
+        ! Doc me
+        !------
+        ! Specifications
+        !---
+        implicit none
+        integer,intent(in) :: outUnit, cellNumber
+        doubleprecision,intent(in) :: referenceTime, originX, originY, rotationAngle
+        integer :: version, subversion
+        !----------------------------------- 
+        version = 7
+        subversion = 2
+        write(outUnit, '(a,2i10)') 'MODPATH_CELL_OBSERVATION_FILE', version, subversion
+        write(outUnit, '(i8,1x,4e18.10)') cellNumber, referenceTime, originX, originY, &
+        rotationAngle
+        write(outUnit, '(a)') 'END HEADER'
+
+    end subroutine WriteObservationHeader
+
+
+
+
     end program MPath7
 

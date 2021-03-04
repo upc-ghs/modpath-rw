@@ -98,6 +98,9 @@ contains
   character(len=200) :: dispersionFile
   integer :: dispersionUnit = 88
   integer :: iodispersion   = 0
+  integer :: ioInUnit       = 0
+  integer :: nObservations  = 0
+  character(len=100) :: tempChar
 
   !---------------------------------------------
 
@@ -639,8 +642,50 @@ contains
         ! Close dispersion data file
         close( dispersionUnit )
 
-
     end if
+
+    ! Now try to read if any observation cells
+    ! limit the number of observations to two, during dev
+    read(inUnit, '(a)', iostat=ioInUnit) line
+    if ( ioInUnit .lt. 0 ) then 
+        ! No obs 
+        write(outUnit,'(A)') 'OBS: No observation cells.'
+    else 
+        ! Yes obs
+        icol = 1
+        call urword(line, icol, istart, istop, 2, n, r, 0, 0)
+        ! number of observations
+        if ( n .gt. 2 ) then 
+            ! out
+            call ustop('OBS: Max allowed observation cells equals 2. Stop.')
+        else if ( n .eq. 0 ) then 
+            ! no obs
+            write(outUnit,'(A)') 'OBS: No observation cells.'
+        else
+            ! ok
+            nObservations = n
+            write(outUnit,'(1X,A,I6,A)') 'OBS: ', nObservations, ' observation cells.'
+
+            ! Allocate observation arrays
+            call this%TrackingOptions%InitializeObservations( nObservations )
+
+            ! Read observation cells and assign 
+            ! proper variables
+            do nc = 1, nObservations
+                read(inUnit, '(a)', iostat=ioInUnit) line
+                icol = 1
+                call urword(line, icol, istart, istop, 2, n, r, 0, 0)
+                this%TrackingOptions%observationCells( nc ) = n
+                ! 5500 is just to move to a known place of id units, improve
+                this%TrackingOptions%observationUnits( nc ) = 5500 + nc
+                ! Write the cell ID
+                write( unit=tempChar, fmt=* )this%TrackingOptions%observationCells( nc )
+                ! Write the output file name
+                write( unit=this%TrackingOptions%observationFiles( nc ), fmt='(a)' )'cell_'//trim(adjustl(tempChar))//'.obs'
+            end do 
+
+        end if  
+    end if 
 
 
   end subroutine pr_ReadData
