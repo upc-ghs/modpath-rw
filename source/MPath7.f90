@@ -590,9 +590,11 @@
             !$omp private(pLoc, plCount, tsCount)  &
             !$omp private(pCoordLast, pCoordFirst) &
             !$omp private(trackPathResult, status) & 
+            !$omp private(pCoordTP)                & 
             !$omp firstprivate(trackingEngine)     &
             !$omp reduction(+:pendingCount)        & 
-            !$omp reduction(+:activeCount)
+            !$omp reduction(+:activeCount)         &
+            !$omp reduction(+:pathlineRecordCount) 
             do particleIndex = 1, simulationData%ParticleGroups(groupIndex)%TotalParticleCount
                 p => simulationData%ParticleGroups(groupIndex)%Particles(particleIndex)
                 ! Check particle status. 
