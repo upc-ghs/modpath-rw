@@ -275,7 +275,8 @@ contains
  
   ! RWPT 
   ! Only allow forward tracking for RWPT simulations
-  if ( ( this%SimulationType .eq. 5 ) .and. ( this%TrackingDirection .eq. 2 ) ) then 
+  if ( ( ( this%SimulationType .eq. 5 ) .or. ( this%SimulationType .eq. 6 ) ) &
+      .and. ( this%TrackingDirection .eq. 2 ) ) then 
       call ustop('Random Walk Particle Tracking only accepts Forward tracking. Stop.')
   end if
 
