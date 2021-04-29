@@ -38,13 +38,9 @@ module ModpathCellDataModule
     !integer,private :: ArraySizeMode = 1
     ! RWPT NEW PROPERTY
     integer, dimension(4) :: SubCellIds
-    !type(ModpathCellDataType), dimension(4) , pointer :: SubCellDataBuffer 
     type(ModpathCellDataType), pointer :: SubCellData => null()
     type(ModpathCellDataType), dimension(:), pointer :: SubCellDataBuffer  
     type(ModpathCellDataType), pointer :: ParentCellDataBuffer 
-    !type(ModpathCellDataType), allocatable, dimension(:), pointer :: SubCellDataBuffer 
-    !type(ModpathCellDataType), dimension(4), pointer :: SubCellDataBuffer
-    !type(ModpathCellDataType), dimension(4), pointer :: SubCellDataBuffer => null()
 
   contains
     procedure :: GetDZ=>pr_GetDZ
@@ -1739,7 +1735,14 @@ contains
     n = ((subCellData%Row - 1) * this%SubCellColumnCount) + subCellData%Column
     subCellData%Connection(6) = this%SubFaceConn6(n)
   end if
-  
+
+
+  ! RWPT
+  ! Assign additional properties to sub cell buffer
+  subCellData%Porosity    = this%Porosity 
+  subCellData%Retardation = this%Retardation 
+
+
   end subroutine pr_FillSubCellDataBuffer
 
 !------------------------------------------

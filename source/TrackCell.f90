@@ -458,8 +458,9 @@ contains
 
       ! RWPT
       ! Initialize corner velocities
-      call this%TrackSubCell%ComputeCornerVelocities( neighborSubCellData )  
+      call this%TrackSubCell%ComputeCornerVelocities( neighborSubCellData )
       call this%TrackSubCell%ComputeCornerDischarge( this%CellData, neighborCellData )  
+      call this%TrackSubCell%ComputeCornerPorosity( this%CellData, neighborCellData )  
       !call this%TrackSubCell%ComputeCornerDischarge( neighborCellData )  
       ! COMPUTATION OF CORNER VELOCITIES, REQUIRES SUBROW, SUBCOLUMN
       ! OR NOT. 
@@ -511,8 +512,9 @@ contains
                       this%TrackSubCell%SubCellData,subRow,subColumn,               &
                       this%TrackingOptions%BackwardTracking)
                     ! RWPT
+                    !call this%TrackSubCell%ComputeCornerVelocities( neighborSubCellData )
                     call this%TrackSubCell%ComputeCornerDischarge( this%CellData, neighborCellData )
-                    !call this%TrackSubCell%ComputeCornerDischarge( neighborCellData )
+                    call this%TrackSubCell%ComputeCornerPorosity( this%CellData, neighborCellData )  
                 case (2)
                     if(subCellResult%Column .ne. 1) then
                         ! Face 2 cannot be an internal face unless the column index equals 1.
@@ -529,8 +531,9 @@ contains
                       this%TrackSubCell%SubCellData,subRow,subColumn,               &
                       this%TrackingOptions%BackwardTracking)
                     ! RWPT
+                    !call this%TrackSubCell%ComputeCornerVelocities( neighborSubCellData )
                     call this%TrackSubCell%ComputeCornerDischarge( this%CellData, neighborCellData )
-                    !call this%TrackSubCell%ComputeCornerDischarge( neighborCellData )
+                    call this%TrackSubCell%ComputeCornerPorosity( this%CellData, neighborCellData )  
                 case (3)
                     if(subCellResult%Row .ne. 1) then
                         ! Face 3 cannot be an internal face unless the row index equals 1.
@@ -547,8 +550,9 @@ contains
                       this%TrackSubCell%SubCellData, subRow, subColumn,             &
                       this%TrackingOptions%BackwardTracking)
                     ! RWPT
+                    !call this%TrackSubCell%ComputeCornerVelocities( neighborSubCellData )
                     call this%TrackSubCell%ComputeCornerDischarge( this%CellData, neighborCellData )
-                    !call this%TrackSubCell%ComputeCornerDischarge( neighborCellData )
+                    call this%TrackSubCell%ComputeCornerPorosity( this%CellData, neighborCellData )  
                 case (4)
                     if(subCellResult%Row .ne. 2) then
                         ! Face 4 cannot be an internal face unless the row index equals 2.
@@ -565,8 +569,9 @@ contains
                       this%TrackSubCell%SubCellData, subRow, subColumn,             &
                       this%TrackingOptions%BackwardTracking)
                     ! RWPT
+                    !call this%TrackSubCell%ComputeCornerVelocities( neighborSubCellData )
                     call this%TrackSubCell%ComputeCornerDischarge( this%CellData, neighborCellData )
-                    !call this%TrackSubCell%ComputeCornerDischarge( neighborCellData )
+                    call this%TrackSubCell%ComputeCornerPorosity( this%CellData, neighborCellData )  
                 case default
                     ! Something went wrong. Set trackCellResult%Status equal to Undefined and return
                     trackCellResult%Status = trackCellResult%Status_Undefined()
@@ -607,4 +612,4 @@ contains
   end subroutine pr_ExecuteRandomWalkParticleTracking
 
   
-end module TrackCellModule
+ENd module TrackCellModule
