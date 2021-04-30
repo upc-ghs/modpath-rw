@@ -1469,9 +1469,11 @@ subroutine pr_TrackPath(this, trackPathResult, traceModeOn, traceModeUnit,      
   
       ! Write trace mode data if the trace mode is on for this particle
       if(traceModeOn) then
+         !$omp critical (tracedata)
          call WriteTraceData(traceModeUnit, this%TrackCell,                     &
            this%TrackCellResult, this%GetCurrentStressPeriod(),                 &
            this%GetCurrentTimeStep())
+         !$omp end critical (tracedata)
       end if
       
       ! If continueLoop is still set to true, go through the loop again. If set to false, exit the loop now.

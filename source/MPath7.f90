@@ -598,10 +598,12 @@
             !$omp private(topActiveCellNumber)     &
             !$omp private(pLoc, plCount, tsCount)  &
             !$omp private(pCoordLast, pCoordFirst) &
-            !$omp private(trackPathResult, status) &
+            !$omp private(trackPathResult, status) & 
+            !$omp private(pCoordTP)                & 
             !$omp firstprivate(trackingEngine)     &
             !$omp reduction(+:pendingCount)        & 
-            !$omp reduction(+:activeCount)
+            !$omp reduction(+:activeCount)         &
+            !$omp reduction(+:pathlineRecordCount) 
             do particleIndex = 1, simulationData%ParticleGroups(groupIndex)%TotalParticleCount
                 p => simulationData%ParticleGroups(groupIndex)%Particles(particleIndex)
                 ! Check particle status. 
@@ -650,7 +652,7 @@
                         p%GlobalZ = p%InitialGlobalZ
                     end if
                 end if
-         
+
                 ! Count the number of particles that are currently active or pending
                 ! release at the beginning of this pass.         
                 if(p%Status .EQ. 0) pendingCount = pendingCount + 1
@@ -703,16 +705,15 @@
                     else
                         ! Leave status set to active (status = 1)
                     end if
-
+                   
                     ! Write particle output
-
-                    !$omp critical (pathline)
                     if((simulationData%SimulationType .eq. 2) .or.              &
                        (simulationData%SimulationType .eq. 4) .or.              &
                        (simulationData%SimulationType .eq. 6)) then
                         ! Write pathline to pathline file
                         if(plCount .gt. 1) then
                             pathlineRecordCount = pathlineRecordCount + 1
+                            !$omp critical (pathline)
                             select case (simulationData%PathlineFormatOption)
                                 case (1)
                                     call WriteBinaryPathlineRecord(             &
@@ -722,20 +723,19 @@
                                     call WritePathlineRecord(trackPathResult,   &
                                       pathlineUnit, period, step, geoRef)
                             end select
-                            
+                            !$omp end critical (pathline)
                         end if
                     end if
-                    !$omp end critical (pathline)
-                    !$omp critical (timeseries)
                     if(simulationData%SimulationType .ge. 3) then
                         if(tsCount .gt. 0) then
                         ! Write timeseries record to the timeseries file
+                            !$omp critical (timeseries) 
                             pCoordTP => trackPathResult%ParticlePath%Timeseries%Items(1)
                             call WriteTimeseriesRecord(p%SequenceNumber, p%ID,  &
                               groupIndex, ktime, nt, pCoordTP, geoRef, timeseriesUnit)
+                            !$omp end critical (timeseries)
                         end if
                     end if
-                    !$omp end critical (timeseries)
                 end if
                 
             end do
