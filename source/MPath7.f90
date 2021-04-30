@@ -409,8 +409,6 @@
     ! Open particle output files
     open(unit=endpointUnit, file=simulationData%EndpointFile, status='replace', &
       form='formatted', access='sequential')
-    !if((simulationData%SimulationType .eq. 2) .or.                              &
-    !  (simulationData%SimulationType .eq. 4)) then
     ! RWPT
     if((simulationData%SimulationType .eq. 2) .or.                              &
        (simulationData%SimulationType .eq. 4) .or.                              &
@@ -424,8 +422,6 @@
           simulationData%ReferenceTime, modelGrid%OriginX, modelGrid%OriginY,   &
           modelGrid%RotationAngle)
     end if
-    !if((simulationData%SimulationType .eq. 3) .or.                              &
-    !  (simulationData%SimulationType .eq. 4)) then
     ! RWPT
     if((simulationData%SimulationType .eq. 3) .or.                              &
        (simulationData%SimulationType .eq. 4) .or.                              &
@@ -445,7 +441,7 @@
         write(traceModeUnit, '(1X,A,I10)')                                      &
           'Particle ID: ',simulationData%TraceID
     end if
-    
+
     ! Begin time step loop
     pathlineRecordCount = 0
     time = 0.0d0

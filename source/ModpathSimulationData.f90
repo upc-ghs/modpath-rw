@@ -275,7 +275,8 @@ contains
  
   ! RWPT 
   ! Only allow forward tracking for RWPT simulations
-  if ( ( this%SimulationType .eq. 5 ) .and. ( this%TrackingDirection .eq. 2 ) ) then 
+  if ( ( ( this%SimulationType .eq. 5 ) .or. ( this%SimulationType .eq. 6 ) ) &
+      .and. ( this%TrackingDirection .eq. 2 ) ) then 
       call ustop('Random Walk Particle Tracking only accepts Forward tracking. Stop.')
   end if
 
@@ -354,9 +355,9 @@ contains
     end select
   
     ! RWPT
-    if((this%SimulationType .eq. 3) .or. (this%SimulationType .eq. 4) .or. (this%SimulationType .eq. 5)) then
     ! Time point data
-    !if((this%SimulationType .eq. 3) .or. (this%SimulationType .eq. 4)) then
+    if((this%SimulationType .eq. 3) .or. (this%SimulationType .eq. 4) .or.  &
+       (this%SimulationType .eq. 5) .or. (this%SimulationType .eq. 6)) then
         read(inUnit, *) this%TimePointOption
         if(this%TimePointOption .eq. 1) then
             read(inUnit, *) this%TimePointCount, this%TimePointInterval
@@ -526,7 +527,7 @@ contains
     ! RWPT
     ! Assign specific RWPT options 
     if ( (this%SimulationType .eq. 5) .or. (this%SimulationType .eq. 6) ) then
-  
+
         ! Identify the simulation 
         this%TrackingOptions%RandomWalkParticleTracking = .true.
 
