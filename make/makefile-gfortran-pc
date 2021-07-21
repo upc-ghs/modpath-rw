@@ -6,7 +6,8 @@
 # the executable, and the executable name and path.
 OBJDIR = ./obj_temp
 BINDIR = .
-PROGRAM = mpath7gf.exe
+PROGRAM = mpath7dev
+#PROGRAM = mpath7gf.exe
 
 SOURCEDIR1=../source
 
@@ -17,7 +18,9 @@ ${SOURCEDIR1}
 
 # Define the Fortran compile flags
 FC = gfortran
-FFLAGS = -O2 -fbacktrace 
+#FFLAGS = -O2 -fbacktrace -fopenmp 
+FFLAGS = -g  -fbacktrace -fopenmp -Wextra -fcheck=bounds -fcheck=all
+
 
 # Define the C compile flags
 CC = gcc
@@ -73,6 +76,7 @@ $(OBJDIR)/ModpathCellDataContainer.o \
 $(OBJDIR)/ModpathSimulationData.o \
 $(OBJDIR)/ParticleManager.o \
 $(OBJDIR)/TrackCell.o \
+$(OBJDIR)/FlowModel.o \
 $(OBJDIR)/ParticleTrackingEngine.o \
 $(OBJDIR)/MPath7.o 
 

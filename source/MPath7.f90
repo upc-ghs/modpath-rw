@@ -49,6 +49,8 @@
     use BudgetRecordHeaderModule,only : BudgetRecordHeaderType
     use GeoReferenceModule,only : GeoReferenceType
     use CompilerVersion,only : get_compiler
+    ! FLOW MODEL
+    use FlowModelModule, only: FlowModelType
     implicit none
     
     ! Variables declarations
@@ -98,6 +100,9 @@
     character(len=80) compilerVersionText
     logical :: isTimeSeriesPoint, timeseriesRecordWritten
     
+   
+    ! FLOWMODEL
+    type(FlowModelType), allocatable :: flowModel
 !---------------------------------------------------------------------------------
     
     ! Set version
@@ -339,18 +344,35 @@
         terminationMessage = 'The simulation was terminated because there are no particles to track.'
         goto 100
     end if
-    
+   
+
     ! Initialize the particle tracking engine:
     call ulog('Allocate particle tracking engine component.', logUnit)
     allocate(trackingEngine)
-    call trackingEngine%Initialize(headReader, budgetReader, modelGrid,           &
-      basicData%HNoFlow, basicData%HDry, simulationData%TrackingOptions)
-    call trackingEngine%SetIBound(basicData%IBound,modelGrid%CellCount)
-    call trackingEngine%SetPorosity(basicData%Porosity, modelGrid%CellCount)
-    call trackingEngine%SetZones(simulationData%Zones, modelGrid%CellCount)
-    call trackingEngine%SetRetardation(simulationData%Retardation, modelGrid%CellCount)
-    call trackingEngine%SetDefaultIface(basicData%DefaultIfaceLabels,           &
+    allocate(flowModel)
+    ! ORIGINAL
+    !call trackingEngine%Initialize(headReader, budgetReader, modelGrid,           &
+    !  basicData%HNoFlow, basicData%HDry, simulationData%TrackingOptions)
+    !call trackingEngine%SetIBound(basicData%IBound,modelGrid%CellCount)
+    !call trackingEngine%SetPorosity(basicData%Porosity, modelGrid%CellCount)
+    !call trackingEngine%SetZones(simulationData%Zones, modelGrid%CellCount)
+    !call trackingEngine%SetRetardation(simulationData%Retardation, modelGrid%CellCount)
+    !call trackingEngine%SetDefaultIface(basicData%DefaultIfaceLabels,           &
+    !  basicData%DefaultIfaceValues, basicData%DefaultIfaceCount)
+    ! END ORIGINAL
+    ! FLOWMODEL
+    call flowModel%Initialize(headReader, budgetReader, modelGrid,&
+                                basicData%HNoFlow, basicData%HDry )
+    call flowModel%SetIBound(basicData%IBound,modelGrid%CellCount)
+    call flowModel%SetPorosity(basicData%Porosity, modelGrid%CellCount)
+    call flowModel%SetZones(simulationData%Zones, modelGrid%CellCount)
+    call flowModel%SetRetardation(simulationData%Retardation, modelGrid%CellCount)
+    call flowModel%SetDefaultIface(basicData%DefaultIfaceLabels,           &
       basicData%DefaultIfaceValues, basicData%DefaultIfaceCount)
+    call trackingEngine%Initialize(headReader, budgetReader, modelGrid,           &
+      basicData%HNoFlow, basicData%HDry, simulationData%TrackingOptions, flowModel)
+    ! END FLOWMODEL
+
     ! The trackingEngine initialization is complete
     
     ! Compute range of time steps to use in the time step loop
@@ -373,22 +395,28 @@
           simulationData%ReferenceTime
         call tdisData%GetPeriodAndStep(tdisData%CumulativeTimeStepCount, period, step)
         call tdisData%GetPeriodAndStep(tdisData%CumulativeTimeStepCount, period, step)
-        call trackingEngine%LoadTimeStep(period, step)
+        !call trackingEngine%LoadTimeStep(period, step)
+        ! FLOWMODEL
+        call flowModel%LoadTimeStep(period, step)
     else
         stoptime = simulationData%ReferenceTime
         call tdisData%GetPeriodAndStep(tdisData%CumulativeTimeStepCount, period, step)
-        call trackingEngine%LoadTimeStep(1, 1)
+        !call trackingEngine%LoadTimeStep(1, 1)
+        ! FLOWMODEL
+        call flowModel%LoadTimeStep(1, 1)
     end if
     !
     if(simulationData%StoppingTimeOption .eq. 2) then
         ! Set stoptime to 1.0d+30 if the EXTEND option is on and the boundary time step is steady state.
         ! If the boundary time step is transient, leave stoptime set to correspond to the beginning or 
         ! end of the simulation.
-        if(trackingEngine%SteadyState) stoptime = 1.0d+30
+        !if(trackingEngine%SteadyState) stoptime = 1.0d+30
+        if(flowModel%SteadyState) stoptime = 1.0d+30
     else if(simulationData%StoppingTimeOption .eq. 3) then
         ! If a specific stoptime was specified, always apply it if there is a steady-state time step at the beginning
         ! or end of the time domain of the simulation.
-        if(trackingEngine%SteadyState) then
+        !if(trackingEngine%SteadyState) then
+        if(flowModel%SteadyState) then
             stoptime = simulationData%StopTime
         else
         ! If the boundary time step is transient, do not set stoptime to the specified value if it would extend beyond
@@ -465,9 +493,12 @@
     call tdisData%GetPeriodAndStep(ktime, period, step)
     
     ! Load data for the current time step
-    call trackingEngine%LoadTimeStep(period, step)
+    !call trackingEngine%LoadTimeStep(period, step)
+    ! FLOWMODEL
+    call flowModel%LoadTimeStep(period, step)
     
-    if(trackingEngine%SteadyState) then
+    if(flowModel%SteadyState) then
+    !if(trackingEngine%SteadyState) then
       write(message,'(A,I5,A,I5,A,1PE12.5,A)') 'Processing Time Step ',step,        &
         ' Period ',period,'.  Time = ',tdisData%TotalTimes(ktime), &
         '  Steady-state flow'
@@ -576,7 +607,10 @@
     itend = 0
     call ulog('Begin TRACKING_INTERVAL_LOOP', logUnit)
     TRACKING_INTERVAL_LOOP: do while (itend .eq. 0)
-    
+   
+    print *, '-------------------------------------------------------------------------------'
+
+
     itend = 1
     maxTime = tsMax
     isTimeSeriesPoint = .false.
@@ -803,6 +837,8 @@
     if(allocated(budgetReader)) deallocate(budgetReader)
     if(allocated(tdisData)) deallocate(tdisData)
     if(allocated(trackingEngine)) deallocate(trackingEngine)
+    ! FLOW MODEL
+    if(allocated(flowModel)) deallocate(flowModel)
     if(allocated(basicData)) deallocate(basicData)
     if(allocated(simulationData)) deallocate(simulationData)
     call ulog('Memory deallocation complete.', logUnit)
