@@ -40,6 +40,7 @@
     
     use TimeDiscretizationDataModule,only : TimeDiscretizationDataType
     use ParticleTrackingEngineModule,only : ParticleTrackingEngineType
+    use FlowModelDataModule, only: FlowModelDataType
     use TrackPathResultModule,only : TrackPathResultType
     use ParticleLocationModule,only : ParticleLocationType
     use ParticleCoordinateModule,only : ParticleCoordinateType
@@ -49,8 +50,6 @@
     use BudgetRecordHeaderModule,only : BudgetRecordHeaderType
     use GeoReferenceModule,only : GeoReferenceType
     use CompilerVersion,only : get_compiler
-    ! FLOW MODEL
-    use FlowModelModule, only: FlowModelType
     implicit none
     
     ! Variables declarations
@@ -65,6 +64,7 @@
 
     type(TimeDiscretizationDataType), allocatable :: tdisData
     type(ParticleTrackingEngineType), allocatable,target :: trackingEngine
+    type(FlowModelDataType), allocatable :: flowModelData
     type(ModpathBasicDataType), allocatable, target :: basicData
     type(ModpathSimulationDataType), allocatable, target :: simulationData
     type(ModpathCellDataType), allocatable, target :: cellData
@@ -100,9 +100,6 @@
     character(len=80) compilerVersionText
     logical :: isTimeSeriesPoint, timeseriesRecordWritten
     
-   
-    ! FLOWMODEL
-    type(FlowModelType), allocatable :: flowModel
 !---------------------------------------------------------------------------------
     
     ! Set version
@@ -349,32 +346,20 @@
     ! Initialize the particle tracking engine:
     call ulog('Allocate particle tracking engine component.', logUnit)
     allocate(trackingEngine)
-    allocate(flowModel)
-    ! ORIGINAL
-    !call trackingEngine%Initialize(headReader, budgetReader, modelGrid,           &
-    !  basicData%HNoFlow, basicData%HDry, simulationData%TrackingOptions)
-    !call trackingEngine%SetIBound(basicData%IBound,modelGrid%CellCount)
-    !call trackingEngine%SetPorosity(basicData%Porosity, modelGrid%CellCount)
-    !call trackingEngine%SetZones(simulationData%Zones, modelGrid%CellCount)
-    !call trackingEngine%SetRetardation(simulationData%Retardation, modelGrid%CellCount)
-    !call trackingEngine%SetDefaultIface(basicData%DefaultIfaceLabels,           &
-    !  basicData%DefaultIfaceValues, basicData%DefaultIfaceCount)
-    ! END ORIGINAL
-    ! FLOWMODEL
-    call flowModel%Initialize(headReader, budgetReader, modelGrid,&
-                                basicData%HNoFlow, basicData%HDry )
-    call flowModel%SetIBound(basicData%IBound,modelGrid%CellCount)
-    call flowModel%SetPorosity(basicData%Porosity, modelGrid%CellCount)
-    call flowModel%SetZones(simulationData%Zones, modelGrid%CellCount)
-    call flowModel%SetRetardation(simulationData%Retardation, modelGrid%CellCount)
-    call flowModel%SetDefaultIface(basicData%DefaultIfaceLabels,           &
+    allocate(flowModelData)
+    call flowModelData%Initialize(headReader, budgetReader, modelGrid,&
+                                    basicData%HNoFlow, basicData%HDry )
+    call flowModelData%SetIBound(basicData%IBound,modelGrid%CellCount)
+    call flowModelData%SetPorosity(basicData%Porosity, modelGrid%CellCount)
+    call flowModelData%SetZones(simulationData%Zones, modelGrid%CellCount)
+    call flowModelData%SetRetardation(simulationData%Retardation, modelGrid%CellCount)
+    call flowModelData%SetDefaultIface(basicData%DefaultIfaceLabels, &
       basicData%DefaultIfaceValues, basicData%DefaultIfaceCount)
-    call trackingEngine%Initialize(headReader, budgetReader, modelGrid,           &
-      basicData%HNoFlow, basicData%HDry, simulationData%TrackingOptions, flowModel)
-    ! END FLOWMODEL
-
+    call trackingEngine%Initialize(headReader, budgetReader, modelGrid, &
+      basicData%HNoFlow, basicData%HDry, simulationData%TrackingOptions, flowModelData)
     ! The trackingEngine initialization is complete
-    
+   
+
     ! Compute range of time steps to use in the time step loop
     message ='Compute range of time steps. Prepare for time step loop'
     call ulog(message, logUnit)
@@ -395,28 +380,22 @@
           simulationData%ReferenceTime
         call tdisData%GetPeriodAndStep(tdisData%CumulativeTimeStepCount, period, step)
         call tdisData%GetPeriodAndStep(tdisData%CumulativeTimeStepCount, period, step)
-        !call trackingEngine%LoadTimeStep(period, step)
-        ! FLOWMODEL
-        call flowModel%LoadTimeStep(period, step)
+        call flowModelData%LoadTimeStep(period, step)
     else
         stoptime = simulationData%ReferenceTime
         call tdisData%GetPeriodAndStep(tdisData%CumulativeTimeStepCount, period, step)
-        !call trackingEngine%LoadTimeStep(1, 1)
-        ! FLOWMODEL
-        call flowModel%LoadTimeStep(1, 1)
+        call flowModelData%LoadTimeStep(1, 1)
     end if
     !
     if(simulationData%StoppingTimeOption .eq. 2) then
         ! Set stoptime to 1.0d+30 if the EXTEND option is on and the boundary time step is steady state.
         ! If the boundary time step is transient, leave stoptime set to correspond to the beginning or 
         ! end of the simulation.
-        !if(trackingEngine%SteadyState) stoptime = 1.0d+30
-        if(flowModel%SteadyState) stoptime = 1.0d+30
+        if(flowModelData%SteadyState) stoptime = 1.0d+30
     else if(simulationData%StoppingTimeOption .eq. 3) then
         ! If a specific stoptime was specified, always apply it if there is a steady-state time step at the beginning
         ! or end of the time domain of the simulation.
-        !if(trackingEngine%SteadyState) then
-        if(flowModel%SteadyState) then
+        if(flowModelData%SteadyState) then
             stoptime = simulationData%StopTime
         else
         ! If the boundary time step is transient, do not set stoptime to the specified value if it would extend beyond
@@ -493,12 +472,9 @@
     call tdisData%GetPeriodAndStep(ktime, period, step)
     
     ! Load data for the current time step
-    !call trackingEngine%LoadTimeStep(period, step)
-    ! FLOWMODEL
-    call flowModel%LoadTimeStep(period, step)
+    call flowModelData%LoadTimeStep(period, step)
     
-    if(flowModel%SteadyState) then
-    !if(trackingEngine%SteadyState) then
+    if(flowModelData%SteadyState) then
       write(message,'(A,I5,A,I5,A,1PE12.5,A)') 'Processing Time Step ',step,        &
         ' Period ',period,'.  Time = ',tdisData%TotalTimes(ktime), &
         '  Steady-state flow'
@@ -678,7 +654,7 @@
                                 p%Status = 7
                             end if
                         end if
-                        call modelGrid%ConvertToModelZ(p%InitialCellNumber,      &
+                        call modelGrid%ConvertToModelZ(p%InitialCellNumber, &
                           p%InitialLocalZ, p%InitialGlobalZ, .true.)
                         p%GlobalZ = p%InitialGlobalZ
                     end if
@@ -837,8 +813,7 @@
     if(allocated(budgetReader)) deallocate(budgetReader)
     if(allocated(tdisData)) deallocate(tdisData)
     if(allocated(trackingEngine)) deallocate(trackingEngine)
-    ! FLOW MODEL
-    if(allocated(flowModel)) deallocate(flowModel)
+    if(allocated(flowModelData)) deallocate(flowModelData)
     if(allocated(basicData)) deallocate(basicData)
     if(allocated(simulationData)) deallocate(simulationData)
     call ulog('Memory deallocation complete.', logUnit)
