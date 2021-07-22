@@ -180,6 +180,7 @@ contains
         !this%StoppingTime = 0.0d0
         this%CurrentStressPeriod = 0
         this%CurrentTimeStep = 0
+        this%HeadReader => null()
         this%BudgetReader => null()
         this%Grid => null()
         

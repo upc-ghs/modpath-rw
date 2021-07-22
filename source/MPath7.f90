@@ -354,9 +354,9 @@
     call flowModelData%SetZones(simulationData%Zones, modelGrid%CellCount)
     call flowModelData%SetRetardation(simulationData%Retardation, modelGrid%CellCount)
     call flowModelData%SetDefaultIface(basicData%DefaultIfaceLabels, &
-      basicData%DefaultIfaceValues, basicData%DefaultIfaceCount)
-    call trackingEngine%Initialize(headReader, budgetReader, modelGrid, &
-      basicData%HNoFlow, basicData%HDry, simulationData%TrackingOptions, flowModelData)
+            basicData%DefaultIfaceValues, basicData%DefaultIfaceCount)
+    call trackingEngine%Initialize(modelGrid, basicData%HNoFlow, basicData%HDry, &
+                                    simulationData%TrackingOptions, flowModelData)
     ! The trackingEngine initialization is complete
    
 
@@ -584,8 +584,6 @@
     call ulog('Begin TRACKING_INTERVAL_LOOP', logUnit)
     TRACKING_INTERVAL_LOOP: do while (itend .eq. 0)
    
-    print *, '-------------------------------------------------------------------------------'
-
 
     itend = 1
     maxTime = tsMax

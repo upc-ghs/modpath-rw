@@ -5,14 +5,11 @@ module ParticleTrackingEngineModule
   use ParticleCoordinateModule,only : ParticleCoordinateType
   use TrackCellModule,only : TrackCellType
   use TrackCellResultModule,only : TrackCellResultType
-  use BudgetReaderModule,only : BudgetReaderType
-  use HeadReaderModule,only : HeadReaderType
   use BudgetListItemModule,only : BudgetListItemType
   use ModflowRectangularGridModule,only : ModflowRectangularGridType
   use ModpathCellDataModule,only : ModpathCellDataType
   use ModpathSubCellDataModule,only : ModpathSubCellDataType
   use ParticleTrackingOptionsModule,only : ParticleTrackingOptionsType
-  use BudgetRecordHeaderModule,only : BudgetRecordHeaderType
   use FlowModelDataModule,only : FlowModelDataType
   use UtilMiscModule,only : TrimAll
 !  use ModpathUnstructuredBasicDataModule,only : ModpathUnstructuredBasicDataType
@@ -27,17 +24,16 @@ module ParticleTrackingEngineModule
     doubleprecision :: HDry = 0d0
     doubleprecision :: HNoFlow = 0d0
     type(ParticleTrackingOptionsType) :: TrackingOptions
-    type(ModpathCellDataType) :: CellDataBuffer
+    type(ModpathCellDataType)         :: CellDataBuffer
     logical :: Initialized = .false.
     logical :: SteadyState = .true.
-    integer :: DefaultIfaceCount
-    character(len=16),dimension(20) :: DefaultIfaceLabels
-    integer,dimension(20) :: DefaultIfaceValues
 
     ! FlowModelData
-    type(FlowModelDataType), pointer :: flowModelData
+    type(FlowModelDataType), pointer :: FlowModelData
 
     ! Pointers to flowModelData arrays
+    ! These may be removed by acccessing directly 
+    ! through flowModelData
     integer,dimension(:), pointer :: IBoundTS
     integer,dimension(:), pointer :: ArrayBufferInt
     doubleprecision,dimension(:), pointer :: Heads
@@ -58,18 +54,13 @@ module ParticleTrackingEngineModule
     doubleprecision,dimension(:),pointer :: Retardation
     
     ! Private variables
-    type(HeadReadertype),pointer :: HeadReader => null()
-    type(BudgetReaderType),pointer :: BudgetReader => null()
     class(ModflowRectangularGridType),pointer :: Grid => null()
     type(TrackCellType),private :: TrackCell
     type(TrackCellResultType),private :: TrackCellResult
     integer,private :: CurrentStressPeriod = 0
     integer,private :: CurrentTimeStep = 0
-    integer,private :: MaxReducedCellConnectionsCount = 17
-    doubleprecision,dimension(17),private :: CellFlowsBuffer
-    integer,dimension(17),private :: ReducedCellConnectionsBuffer
-    type(BudgetListItemType),dimension(:), pointer :: ListItemBuffer ! This never was private
-    logical,dimension(:),private, pointer :: SubFaceFlowsComputed    ! This is not private anymore
+    type(BudgetListItemType),dimension(:), pointer :: ListItemBuffer ! This was never private
+    logical,dimension(:),private, pointer :: SubFaceFlowsComputed    
     type(ParticleLocationListType) :: LocBuffP
     type(ParticleLocationListType) :: LocBuffTS
   
@@ -373,7 +364,7 @@ contains
     end function pr_FindTimeIndex
 
 
-    subroutine pr_Initialize(this,headReader, budgetReader, grid, hNoFlow, hDry, trackingOptions, flowModelData)
+    subroutine pr_Initialize(this, grid, hNoFlow, hDry, trackingOptions, flowModelData)
     !***************************************************************************************************************
     !
     !***************************************************************************************************************
@@ -381,13 +372,9 @@ contains
     !---------------------------------------------------------------------------------------------------------------
     implicit none
     class(ParticleTrackingEngineType) :: this
-    type(BudgetReaderType),intent(inout),target :: budgetReader
-    type(HeadReaderType),intent(inout),target :: headReader
     class(ModflowRectangularGridType),intent(inout),pointer :: grid
     type(ParticleTrackingOptionsType),intent(in) :: trackingOptions
     type(FlowModelDataType), intent(in), target :: flowModelData
-    integer :: cellCount,gridType
-    integer :: n, flowArraySize
     doubleprecision :: hNoFlow, hDry
     !---------------------------------------------------------------------------------------------------------------
    
@@ -397,39 +384,10 @@ contains
         ! Call Reset to make sure that all arrays are initially unallocated
         call this%Reset()
         
-        ! Return if the grid cell count equals 0
-        cellCount = grid%CellCount
-        if(cellCount .le. 0) return
-        
-        ! Check budget reader and grid data for compatibility and allocate appropriate cell-by-cell flow arrays
-        gridType = grid%GridType
-        select case (gridType)
-            case (1)
-                if((budgetReader%GetBudgetType() .ne. 1)) return
-                if((headReader%GridStyle .ne. 1) .or. (headReader%CellCount .ne. cellCount)) return
-                flowArraySize = budgetReader%GetFlowArraySize()
-                if(flowArraySize .ne. cellCount) return
-            case (2)
-                if((budgetReader%GetBudgetType() .ne. 2)) return
-                if((headReader%GridStyle .ne. 2) .or. (headReader%CellCount .ne. cellCount)) return
-                flowArraySize = budgetReader%GetFlowArraySize()
-                if(flowArraySize .ne. grid%JaCount) return
-            case (3, 4)
-                if((budgetReader%GetBudgetType() .ne. 2)) return
-                if((headReader%GridStyle .ne. 1) .or. (headReader%CellCount .ne. cellCount)) return
-                flowArraySize = budgetReader%GetFlowArraySize()
-                if(flowArraySize .ne. grid%JaCount) return
-            !case (4)
-            !    ! Not implemented
-            !    return
-            case default
-                return
-        end select
-        
         ! Pointer to flowModelData
-        this%flowModelData => flowModelData
+        this%FlowModelData => flowModelData
         
-        ! Pointers to flowModelData arrays
+        ! Pointers to flowModelData arrays ( remove ? )
         this%FlowsRightFace       => flowModelData%FlowsRightFace
         this%FlowsFrontFace       => flowModelData%FlowsFrontFace
         this%FlowsLowerFace       => flowModelData%FlowsLowerFace
@@ -451,9 +409,7 @@ contains
         this%ArrayBufferInt       => flowModelData%ArrayBufferInt
         
         
-        ! Set pointers to budgetReader and grid. Assign tracking options.
-        this%HeadReader => headReader
-        this%BudgetReader => budgetReader
+        ! Set pointer to grid. Assign tracking options.
         this%Grid => grid
         this%TrackingOptions = trackingOptions
         this%HNoFlow = hNoFlow
@@ -620,8 +576,8 @@ contains
         !this%StoppingTime = 0.0d0
         this%CurrentStressPeriod = 0
         this%CurrentTimeStep = 0
-        this%BudgetReader => null()
         this%Grid => null()
+        this%FlowModelData => null()
         
         this%IBoundTS             => null()
         this%ArrayBufferInt       => null()
@@ -690,8 +646,7 @@ contains
         call loc%SetData(location)
         
         ! Initialize TrackCell
-        this%TrackCell%SteadyState = this%flowModelData%SteadyState
-        !this%TrackCell%SteadyState = this%SteadyState
+        this%TrackCell%SteadyState = this%FlowModelData%SteadyState
         this%TrackCell%TrackingOptions = this%TrackingOptions
         call this%FillCellBuffer(loc%CellNumber,  this%TrackCell%CellData)
         
@@ -806,11 +761,9 @@ contains
         
             ! Write trace mode data if the trace mode is on for this particle
             if(traceModeOn) then
-               !$omp critical (tracedata)
                call WriteTraceData(traceModeUnit, this%TrackCell,                   &
-                 this%TrackCellResult, this%flowModelData%GetCurrentStressPeriod(), &
-                 this%flowModelData%GetCurrentTimeStep())
-               !$omp end critical (tracedata)
+                 this%TrackCellResult, this%FlowModelData%GetCurrentStressPeriod(), &
+                 this%FlowModelData%GetCurrentTimeStep())
             end if
             
             ! If continueLoop is still set to true, go through the loop again. If set to false, exit the loop now.
