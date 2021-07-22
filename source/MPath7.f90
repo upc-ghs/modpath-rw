@@ -661,7 +661,7 @@
                         p%Status = 1
                         if(p%Drape .eq. 0) then
                             ! Drape option is not in effect.
-                            if(flowModelData%IboundTS(p%CellNumber) .eq. 0) then
+                            if(trackingEngine%FlowModelData%IBoundTS(p%CellNumber) .eq. 0) then
                                 p%Status = 7
                             end if
                         else
