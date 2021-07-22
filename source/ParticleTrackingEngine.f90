@@ -5,64 +5,32 @@ module ParticleTrackingEngineModule
   use ParticleCoordinateModule,only : ParticleCoordinateType
   use TrackCellModule,only : TrackCellType
   use TrackCellResultModule,only : TrackCellResultType
-  use BudgetListItemModule,only : BudgetListItemType
   use ModflowRectangularGridModule,only : ModflowRectangularGridType
   use ModpathCellDataModule,only : ModpathCellDataType
   use ModpathSubCellDataModule,only : ModpathSubCellDataType
   use ParticleTrackingOptionsModule,only : ParticleTrackingOptionsType
   use FlowModelDataModule,only : FlowModelDataType
-  use UtilMiscModule,only : TrimAll
-!  use ModpathUnstructuredBasicDataModule,only : ModpathUnstructuredBasicDataType
   implicit none
   
-! Set default access status to private
+  ! Set default access status to private
   private
 
   type,public :: ParticleTrackingEngineType
-!    doubleprecision :: ReferenceTime = 0d0
-!    doubleprecision :: StoppingTime = 0d0
-    doubleprecision :: HDry = 0d0
-    doubleprecision :: HNoFlow = 0d0
+
     type(ParticleTrackingOptionsType) :: TrackingOptions
     type(ModpathCellDataType)         :: CellDataBuffer
+    type(ParticleLocationListType)    :: LocBuffP
+    type(ParticleLocationListType)    :: LocBuffTS
     logical :: Initialized = .false.
-    logical :: SteadyState = .true.
 
-    ! FlowModelData
-    type(FlowModelDataType), pointer :: FlowModelData
-
-    ! Pointers to flowModelData arrays
-    ! These may be removed by acccessing directly 
-    ! through flowModelData
-    integer,dimension(:), pointer :: IBoundTS
-    integer,dimension(:), pointer :: ArrayBufferInt
-    doubleprecision,dimension(:), pointer :: Heads
-    doubleprecision,dimension(:), pointer :: FlowsJA
-    doubleprecision,dimension(:), pointer :: FlowsRightFace
-    doubleprecision,dimension(:), pointer :: FlowsFrontFace
-    doubleprecision,dimension(:), pointer :: FlowsLowerFace
-    doubleprecision,dimension(:), pointer :: SourceFlows
-    doubleprecision,dimension(:), pointer :: SinkFlows
-    doubleprecision,dimension(:), pointer :: StorageFlows
-    doubleprecision,dimension(:), pointer :: BoundaryFlows
-    doubleprecision,dimension(:), pointer :: SubFaceFlows
-    doubleprecision,dimension(:), pointer :: ArrayBufferDbl
-    !integer,dimension(:),pointer :: LayerTypes
-    integer,dimension(:),pointer :: IBound
-    integer,dimension(:),pointer :: Zones
-    doubleprecision,dimension(:),pointer :: Porosity
-    doubleprecision,dimension(:),pointer :: Retardation
-    
-    ! Private variables
+    ! Derived type pointers
+    type(FlowModelDataType), pointer :: FlowModelData => null()
     class(ModflowRectangularGridType),pointer :: Grid => null()
+
+    ! Private variables
     type(TrackCellType),private :: TrackCell
     type(TrackCellResultType),private :: TrackCellResult
-    integer,private :: CurrentStressPeriod = 0
-    integer,private :: CurrentTimeStep = 0
-    type(BudgetListItemType),dimension(:), pointer :: ListItemBuffer ! This was never private
-    logical,dimension(:),private, pointer :: SubFaceFlowsComputed    
-    type(ParticleLocationListType) :: LocBuffP
-    type(ParticleLocationListType) :: LocBuffTS
+
   
   contains
 
@@ -98,7 +66,7 @@ contains
         n = cellNumber
         do while(.true.)
             if(n .eq. 0) return
-            if(this%IboundTS(n) .ne. 0) return
+            if(this%FlowModelData%IBoundTS(n) .ne. 0) return
             n = this%Grid%GetFaceConnection(n, 5, 1)
         end do
     
@@ -364,7 +332,7 @@ contains
     end function pr_FindTimeIndex
 
 
-    subroutine pr_Initialize(this, grid, hNoFlow, hDry, trackingOptions, flowModelData)
+    subroutine pr_Initialize(this, grid, trackingOptions, flowModelData)
     !***************************************************************************************************************
     !
     !***************************************************************************************************************
@@ -375,7 +343,6 @@ contains
     class(ModflowRectangularGridType),intent(inout),pointer :: grid
     type(ParticleTrackingOptionsType),intent(in) :: trackingOptions
     type(FlowModelDataType), intent(in), target :: flowModelData
-    doubleprecision :: hNoFlow, hDry
     !---------------------------------------------------------------------------------------------------------------
    
 
@@ -384,36 +351,10 @@ contains
         ! Call Reset to make sure that all arrays are initially unallocated
         call this%Reset()
         
-        ! Pointer to flowModelData
+        ! Initialize pointers and tracking options
         this%FlowModelData => flowModelData
-        
-        ! Pointers to flowModelData arrays ( remove ? )
-        this%FlowsRightFace       => flowModelData%FlowsRightFace
-        this%FlowsFrontFace       => flowModelData%FlowsFrontFace
-        this%FlowsLowerFace       => flowModelData%FlowsLowerFace
-        this%FlowsJA              => flowModelData%FlowsJA       
-        this%Porosity             => flowModelData%Porosity
-        this%Retardation          => flowModelData%Retardation
-        this%Zones                => flowModelData%Zones
-        this%IBound               => flowModelData%IBound 
-        this%IBoundTS             => flowModelData%IBoundTS             
-        this%Heads                => flowModelData%Heads                
-        this%SourceFlows          => flowModelData%SourceFlows          
-        this%SinkFlows            => flowModelData%SinkFlows            
-        this%StorageFlows         => flowModelData%StorageFlows         
-        this%SubFaceFlowsComputed => flowModelData%SubFaceFlowsComputed 
-        this%BoundaryFlows        => flowModelData%BoundaryFlows        
-        this%SubFaceFlows         => flowModelData%SubFaceFlows         
-        this%ListItemBuffer       => flowModelData%ListItemBuffer
-        this%ArrayBufferDbl       => flowModelData%ArrayBufferDbl
-        this%ArrayBufferInt       => flowModelData%ArrayBufferInt
-        
-        
-        ! Set pointer to grid. Assign tracking options.
         this%Grid => grid
         this%TrackingOptions = trackingOptions
-        this%HNoFlow = hNoFlow
-        this%HDry = hDry
         
         
         this%Initialized = .true.
@@ -440,9 +381,9 @@ contains
             buffer(n) = 0.0d0
         end do
         
-        count = size(this%FlowsJA)
+        count = size(this%FlowModelData%FlowsJA)
         do n = 1, count
-            buffer(n) = this%FlowsJA(n)
+            buffer(n) = this%FlowModelData%FlowsJA(n)
         end do
     
 
@@ -472,7 +413,7 @@ contains
         offset = this%Grid%JaOffsets(cellNumber)
         count = this%Grid%JaOffsets(cellNumber + 1) - offset
         do n = 1, count
-            buffer(n) = this%FlowsJA(offset + n)
+            buffer(n) = this%FlowModelData%FlowsJA(offset + n)
         end do
       
     end subroutine pr_FillCellFlowsBuffer
@@ -495,7 +436,7 @@ contains
 
         boundaryFlowsOffset = 6 * (cellNumber - 1)
         do n = 1, 6
-            boundaryFlows(n) = this%BoundaryFlows(boundaryFlowsOffset + n)
+            boundaryFlows(n) = this%FlowModelData%BoundaryFlows(boundaryFlowsOffset + n)
         end do
         
         layer = this%Grid%GetLayer(cellNumber)
@@ -506,23 +447,23 @@ contains
             case (1)
                 ! Set cell buffer data for a structured grid
                 call cellBuffer%SetDataStructured(cellNumber,this%Grid%CellCount,     &
-                  this%Grid,this%IBound,this%IBoundTS,                                &
-                  this%Porosity(cellNumber),this%Retardation(cellNumber),             &
-                  this%StorageFlows(cellNumber),this%SourceFlows(cellNumber),         &
-                  this%SinkFlows(cellNumber), this%FlowsRightFace,                    &
-                  this%FlowsFrontFace, this%FlowsLowerFace, boundaryFlows,            &
-                  this%Heads(cellNumber), cellType,                                   &
-                  this%Zones(cellNumber))
+                  this%Grid,this%FlowModelData%IBound,this%FlowModelData%IBoundTS,                        &
+                  this%FlowModelData%Porosity(cellNumber),this%FlowModelData%Retardation(cellNumber),     &
+                  this%FlowModelData%StorageFlows(cellNumber),this%FlowModelData%SourceFlows(cellNumber), &
+                  this%FlowModelData%SinkFlows(cellNumber), this%FlowModelData%FlowsRightFace,            &
+                  this%FlowModelData%FlowsFrontFace, this%FlowModelData%FlowsLowerFace, boundaryFlows,    &
+                  this%FlowModelData%Heads(cellNumber), cellType,                                   &
+                  this%FlowModelData%Zones(cellNumber))
             case (2)
                 ! Set cell buffer data for a MODFLOW-USG unstructured grid
                 call cellBuffer%SetDataUnstructured(cellNumber,this%Grid%CellCount,   &
                   this%Grid%JaCount,this%Grid,                                        &
-                  this%IBound,this%IBoundTS,                                          &
-                  this%Porosity(cellNumber),this%Retardation(cellNumber),             &
-                  this%StorageFlows(cellNumber),this%SourceFlows(cellNumber),         &
-                  this%SinkFlows(cellNumber), this%FlowsJA, boundaryFlows,            &
-                  this%Heads(cellNumber), cellType,                                   &
-                  this%Zones(cellNumber))
+                  this%FlowModelData%IBound,this%FlowModelData%IBoundTS,                                  &
+                  this%FlowModelData%Porosity(cellNumber),this%FlowModelData%Retardation(cellNumber),     &
+                  this%FlowModelData%StorageFlows(cellNumber),this%FlowModelData%SourceFlows(cellNumber), &
+                  this%FlowModelData%SinkFlows(cellNumber), this%FlowModelData%FlowsJA, boundaryFlows,    &
+                  this%FlowModelData%Heads(cellNumber), cellType,                                   &
+                  this%FlowModelData%Zones(cellNumber))
                 ! Compute internal sub-cell face flows for cells with multiple sub-cell
                 if(cellBuffer%GetSubCellCount() .gt. 1) then
                     call cellBuffer%ComputeSubCellFlows()
@@ -531,22 +472,22 @@ contains
                 ! Set cell buffer data for a MODFLOW-6 structured grid (DIS)
                 call cellBuffer%SetDataUnstructured(cellNumber,this%Grid%CellCount,   &
                   this%Grid%JaCount,this%Grid,                                        &
-                  this%IBound,this%IBoundTS,                                          &
-                  this%Porosity(cellNumber),this%Retardation(cellNumber),             &
-                  this%StorageFlows(cellNumber),this%SourceFlows(cellNumber),         &
-                  this%SinkFlows(cellNumber), this%FlowsJA, boundaryFlows,            &
-                  this%Heads(cellNumber), cellType,                                   &
-                  this%Zones(cellNumber))
+                  this%FlowModelData%IBound,this%FlowModelData%IBoundTS,                                  &
+                  this%FlowModelData%Porosity(cellNumber),this%FlowModelData%Retardation(cellNumber),     &
+                  this%FlowModelData%StorageFlows(cellNumber),this%FlowModelData%SourceFlows(cellNumber), &
+                  this%FlowModelData%SinkFlows(cellNumber), this%FlowModelData%FlowsJA, boundaryFlows,    &
+                  this%FlowModelData%Heads(cellNumber), cellType,                                   &
+                  this%FlowModelData%Zones(cellNumber))
             case (4)
                 ! Set cell buffer data for a MODFLOW-6 unstructured grid (DISV)
                 call cellBuffer%SetDataUnstructured(cellNumber,this%Grid%CellCount,   &
                   this%Grid%JaCount,this%Grid,                                        &
-                  this%IBound,this%IBoundTS,                                          &
-                  this%Porosity(cellNumber),this%Retardation(cellNumber),             &
-                  this%StorageFlows(cellNumber),this%SourceFlows(cellNumber),         &
-                  this%SinkFlows(cellNumber), this%FlowsJA, boundaryFlows,            &
-                  this%Heads(cellNumber), cellType,                                   &
-                  this%Zones(cellNumber))
+                  this%FlowModelData%IBound,this%FlowModelData%IBoundTS,                                  &
+                  this%FlowModelData%Porosity(cellNumber),this%FlowModelData%Retardation(cellNumber),     &
+                  this%FlowModelData%StorageFlows(cellNumber),this%FlowModelData%SourceFlows(cellNumber), &
+                  this%FlowModelData%SinkFlows(cellNumber), this%FlowModelData%FlowsJA, boundaryFlows,    &
+                  this%FlowModelData%Heads(cellNumber), cellType,                                   &
+                  this%FlowModelData%Zones(cellNumber))
                  ! Compute internal sub-cell face flows for cells with multiple sub-cells
                 if(cellBuffer%GetSubCellCount() .gt. 1) then
                     call cellBuffer%ComputeSubCellFlows()
@@ -571,35 +512,9 @@ contains
     class(ParticleTrackingEngineType) :: this
     !---------------------------------------------------------------------------------------------------------------
    
-
-        !this%ReferenceTime = 0.0d0
-        !this%StoppingTime = 0.0d0
-        this%CurrentStressPeriod = 0
-        this%CurrentTimeStep = 0
         this%Grid => null()
         this%FlowModelData => null()
         
-        this%IBoundTS             => null()
-        this%ArrayBufferInt       => null()
-        this%Heads                => null()
-        this%FlowsJA              => null()
-        this%FlowsRightFace       => null()
-        this%FlowsFrontFace       => null()
-        this%FlowsLowerFace       => null()
-        this%SourceFlows          => null()
-        this%SinkFlows            => null()
-        this%StorageFlows         => null()
-        this%BoundaryFlows        => null()
-        this%SubFaceFlows         => null()
-        this%ArrayBufferDbl       => null()
-        this%ListItemBuffer       => null()
-        this%SubFaceFlowsComputed => null()
-        this%IBound               => null()
-        this%Porosity             => null()
-        this%Retardation          => null()
-        this%Zones                => null()
-   
-
     end subroutine pr_Reset
 
 
@@ -695,7 +610,7 @@ contains
                 ! If so, convert loc from the current cell coordinates to the equivalent location in the new cell.
                 nextCell = this%TrackCellResult%NextCellNumber
                 if(nextCell .gt. 0) then
-                    if(this%IBoundTS(nextCell) .ne. 0) then
+                    if(this%FlowModelData%IBoundTS(nextCell) .ne. 0) then
                         ! The next cell is active
                         fromLocalX = this%TrackCellResult%TrackingPoints%Items(count)%LocalX
                         fromLocalY = this%TrackCellResult%TrackingPoints%Items(count)%LocalY

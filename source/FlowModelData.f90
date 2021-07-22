@@ -46,7 +46,7 @@ module FlowModelDataModule
       type(BudgetReaderType), pointer :: BudgetReader => null()
       class(ModflowRectangularGridType),pointer :: Grid => null()
       type(BudgetListItemType),allocatable,dimension(:) :: ListItemBuffer
-      logical,allocatable,dimension(:) :: SubFaceFlowsComputed ! Removed private
+      logical,allocatable,dimension(:), private :: SubFaceFlowsComputed
       
       ! Private variables
       integer,private :: CurrentStressPeriod = 0
