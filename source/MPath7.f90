@@ -345,7 +345,7 @@
 
     ! Initialize the particle tracking engine:
     call ulog('Allocate particle tracking engine component.', logUnit)
-    allocate(trackingEngine)
+    !allocate(trackingEngine)
     allocate(flowModelData)
     call flowModelData%Initialize(headReader, budgetReader, modelGrid,&
                                     basicData%HNoFlow, basicData%HDry )
@@ -355,7 +355,7 @@
     call flowModelData%SetRetardation(simulationData%Retardation, modelGrid%CellCount)
     call flowModelData%SetDefaultIface(basicData%DefaultIfaceLabels, &
             basicData%DefaultIfaceValues, basicData%DefaultIfaceCount)
-    call trackingEngine%Initialize(modelGrid, simulationData%TrackingOptions, flowModelData)
+    !call trackingEngine%Initialize(modelGrid, simulationData%TrackingOptions, flowModelData)
     ! The trackingEngine initialization is complete
    
 
@@ -492,22 +492,22 @@
     write(mplistUnit,'(1X,A)')                                                  &
       '----------------------------------------------------------------------------------------------'
     
-    ! Check water balance summary for the current time step
-    if(simulationData%BudgetOutputOption .gt. 0)                                &
-      call WriteWaterBalanceSummary(mplistUnit, trackingEngine, cellData)
-    
-    ! Check cell-by-cell budgets for this time step
-    if(simulationData%BudgetCellsCount .gt. 0) then
-        write(mplistUnit, *) 
-        write(mplistUnit, '(1X,A,I10,A)') 'Cell data will be printed for',      &
-          simulationData%BudgetCellsCount, ' cells.'
-        do n = 1, simulationData%BudgetCellsCount
-            call trackingEngine%FillCellBuffer(simulationData%BudgetCells(n),   &
-              cellData)
-            call trackingEngine%WriteCellBuffer(mplistUnit, cellData,           &
-              simulationData%TrackingOptions%BackwardTracking)
-        end do
-    end if
+    !! Check water balance summary for the current time step
+    !if(simulationData%BudgetOutputOption .gt. 0)                                &
+    !  call WriteWaterBalanceSummary(mplistUnit, trackingEngine, cellData)
+    !
+    !! Check cell-by-cell budgets for this time step
+    !if(simulationData%BudgetCellsCount .gt. 0) then
+    !    write(mplistUnit, *) 
+    !    write(mplistUnit, '(1X,A,I10,A)') 'Cell data will be printed for',      &
+    !      simulationData%BudgetCellsCount, ' cells.'
+    !    do n = 1, simulationData%BudgetCellsCount
+    !        call trackingEngine%FillCellBuffer(simulationData%BudgetCells(n),   &
+    !          cellData)
+    !        call trackingEngine%WriteCellBuffer(mplistUnit, cellData,           &
+    !          simulationData%TrackingOptions%BackwardTracking)
+    !    end do
+    !end if
     
     ! Compute the tracking time corresponding to the end or beginning 
     ! of this MODFLOW time step (depending on whether this is a forward 
@@ -582,7 +582,9 @@
     itend = 0
     call ulog('Begin TRACKING_INTERVAL_LOOP', logUnit)
     TRACKING_INTERVAL_LOOP: do while (itend .eq. 0)
-    
+   
+    print *, '---------------------------------------------------------------------'
+
     itend = 1
     maxTime = tsMax
     isTimeSeriesPoint = .false.
@@ -606,17 +608,17 @@
     activeCount = 0
     if(simulationData%ParticleGroupCount .gt. 0) then
         do groupIndex = 1, simulationData%ParticleGroupCount
-            !$omp parallel do schedule( dynamic,1 )          &
+            !$omp parallel                                   &
             !$omp default( none )                            &
-            !$omp shared( groupIndex )                       &
             !$omp shared( simulationData, modelGrid )        &
+            !$omp shared( flowModelData )                    &
             !$omp shared( geoRef )                           &
             !$omp shared( pathlineUnit, binPathlineUnit )    &
             !$omp shared( timeseriesUnit, traceModeUnit )    &
             !$omp shared( period, step, ktime, nt )          &
             !$omp shared( time, maxTime, isTimeSeriesPoint ) &
             !$omp shared( tPoint, tPointCount )              &
-            !$omp shared( flowModelData )                    &
+            !$omp shared( groupIndex )                       &
             !$omp private( p, traceModeOn )                  &
             !$omp private( topActiveCellNumber )             &
             !$omp private( pLoc, plCount, tsCount )          &
@@ -627,7 +629,12 @@
             !$omp firstprivate( trackingEngine )             &
             !$omp reduction( +:pendingCount )                &
             !$omp reduction( +:activeCount )                 &
-            !$omp reduction( +:pathlineRecordCount ) 
+            !$omp reduction( +:pathlineRecordCount )
+            ! Workaround for ifort
+            allocate( trackingEngine )
+            call trackingEngine%Initialize(modelGrid, simulationData%TrackingOptions, flowModelData)
+
+            !$omp do schedule( dynamic, 1 )
             do particleIndex = 1, simulationData%ParticleGroups(groupIndex)%TotalParticleCount
                 timeseriesRecordWritten = .false.
                 p => simulationData%ParticleGroups(groupIndex)%Particles(particleIndex)
@@ -784,7 +791,10 @@
                 end if
 
             end do
-            !$omp end parallel do
+            !$omp end do
+            deallocate( trackingEngine ) ! Needed ?
+            !$omp end parallel
+            !!$omp end parallel do
         end do
     end if
     
