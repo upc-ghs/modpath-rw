@@ -583,7 +583,10 @@
     itend = 0
     call ulog('Begin TRACKING_INTERVAL_LOOP', logUnit)
     TRACKING_INTERVAL_LOOP: do while (itend .eq. 0)
-   
+    
+
+    print *, '-------------------------------------------------------------------------------'
+
 
     itend = 1
     maxTime = tsMax
@@ -608,6 +611,27 @@
     activeCount = 0
     if(simulationData%ParticleGroupCount .gt. 0) then
         do groupIndex = 1, simulationData%ParticleGroupCount
+            !$omp parallel do schedule( dynamic,1 )          &
+            !$omp default( none )                            &
+            !$omp shared( groupIndex )                       &
+            !$omp shared( simulationData, modelGrid )        &
+            !$omp shared( geoRef )                           &
+            !$omp shared( pathlineUnit, binPathlineUnit )    &
+            !$omp shared( timeseriesUnit, traceModeUnit )    &
+            !$omp shared( period, step, ktime, nt )          &
+            !$omp shared( time, maxTime, isTimeSeriesPoint ) &
+            !$omp shared( tPoint, tPointCount )              &
+            !$omp private( p, traceModeOn )                  &
+            !$omp private( topActiveCellNumber )             &
+            !$omp private( pLoc, plCount, tsCount )          &
+            !$omp private( pCoordLast, pCoordFirst )         &
+            !$omp private( pCoordTP, pCoord )                &
+            !$omp private( trackPathResult, status )         &
+            !$omp private( timeseriesRecordWritten )         &
+            !$omp firstprivate( trackingEngine )             &
+            !$omp reduction( +:pendingCount )                &
+            !$omp reduction( +:activeCount )                 &
+            !$omp reduction( +:pathlineRecordCount ) 
             do particleIndex = 1, simulationData%ParticleGroups(groupIndex)%TotalParticleCount
                 timeseriesRecordWritten = .false.
                 p => simulationData%ParticleGroups(groupIndex)%Particles(particleIndex)
@@ -717,6 +741,7 @@
                         ! Write pathline to pathline file
                         if(plCount .gt. 1) then
                             pathlineRecordCount = pathlineRecordCount + 1
+                            !$omp critical (pathline)
                             select case (simulationData%PathlineFormatOption)
                                 case (1)
                                     call WriteBinaryPathlineRecord(             &
@@ -726,15 +751,17 @@
                                     call WritePathlineRecord(trackPathResult,   &
                                       pathlineUnit, period, step, geoRef)
                             end select
-                            
+                            !$omp end critical (pathline)
                         end if
-                    end if              
+                    end if
                     if(simulationData%SimulationType .ge. 3) then
                         if(tsCount .gt. 0) then
-                        ! Write timeseries record to the timeseries file
+                            ! Write timeseries record to the timeseries file
+                            !$omp critical (timeseries)
                             pCoordTP => trackPathResult%ParticlePath%Timeseries%Items(1)
                             call WriteTimeseriesRecord(p%SequenceNumber, p%ID,  &
                               groupIndex, ktime, nt, pCoordTP, geoRef, timeseriesUnit)
+                            !$omp end critical (timeseries)
                             timeseriesRecordWritten = .true.
                         end if
                     end if
@@ -754,11 +781,14 @@
                       call modelGrid%ConvertToModelXYZ(pCoord%CellNumber,       &
                         pCoord%LocalX, pCoord%LocalY, pCoord%LocalZ,            &
                         pCoord%GlobalX, pCoord%GlobalY, pCoord%GlobalZ)
+                      !$omp critical (timeseries)
                       call WriteTimeseriesRecord(p%SequenceNumber, p%ID,        &
                         groupIndex, ktime, nt, pCoord, geoRef, timeseriesUnit)
+                      !$omp end critical (timeseries)
                 end if
 
             end do
+            !$omp end parallel do
         end do
     end if
     
@@ -820,7 +850,8 @@
     write(mplistUnit, '(1x/,a)', err=200) terminationMessage
     elapsedTime = dble(clockCountStop - clockCountStart) / dble(clockCountRate)
     write(mplistUnit, '(1X,A,E15.5,A)') 'Elapsed time = ', elapsedTime, ' seconds'
-    
+    write(*, '(1X,A,E15.5,A)') 'Elapsed time = ', elapsedTime, ' seconds'
+
     ! Close files
 200 continue    
     close(mplistUnit)

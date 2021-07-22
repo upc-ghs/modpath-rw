@@ -17,7 +17,7 @@ ${SOURCEDIR1}
 
 # Define the Fortran compile flags
 FC = gfortran
-FFLAGS = -O2 -fbacktrace 
+FFLAGS = -O2 -fbacktrace -fopenmp 
 
 
 # Define the C compile flags
