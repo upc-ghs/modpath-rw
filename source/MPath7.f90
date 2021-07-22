@@ -583,10 +583,6 @@
     call ulog('Begin TRACKING_INTERVAL_LOOP', logUnit)
     TRACKING_INTERVAL_LOOP: do while (itend .eq. 0)
     
-
-    print *, '-------------------------------------------------------------------------------'
-
-
     itend = 1
     maxTime = tsMax
     isTimeSeriesPoint = .false.
@@ -620,6 +616,7 @@
             !$omp shared( period, step, ktime, nt )          &
             !$omp shared( time, maxTime, isTimeSeriesPoint ) &
             !$omp shared( tPoint, tPointCount )              &
+            !$omp shared( flowModelData )                    &
             !$omp private( p, traceModeOn )                  &
             !$omp private( topActiveCellNumber )             &
             !$omp private( pLoc, plCount, tsCount )          &
