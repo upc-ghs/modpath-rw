@@ -355,8 +355,7 @@
     call flowModelData%SetRetardation(simulationData%Retardation, modelGrid%CellCount)
     call flowModelData%SetDefaultIface(basicData%DefaultIfaceLabels, &
             basicData%DefaultIfaceValues, basicData%DefaultIfaceCount)
-    call trackingEngine%Initialize(modelGrid, basicData%HNoFlow, basicData%HDry, &
-                                    simulationData%TrackingOptions, flowModelData)
+    call trackingEngine%Initialize(modelGrid, simulationData%TrackingOptions, flowModelData)
     ! The trackingEngine initialization is complete
    
 
@@ -662,7 +661,7 @@
                         p%Status = 1
                         if(p%Drape .eq. 0) then
                             ! Drape option is not in effect.
-                            if(trackingEngine%IboundTS(p%CellNumber) .eq. 0) then
+                            if(flowModelData%IboundTS(p%CellNumber) .eq. 0) then
                                 p%Status = 7
                             end if
                         else
