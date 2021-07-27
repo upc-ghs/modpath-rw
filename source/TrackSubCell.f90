@@ -5,6 +5,7 @@ module TrackSubCellModule
 
   ! RWPT 
   use ParticleTrackingOptionsModule,only : ParticleTrackingOptionsType
+  use ModpathCellDataModule,only : ModpathCellDataType
   use omp_lib ! mainly debugging
   implicit none
   
@@ -25,6 +26,29 @@ module TrackSubCellModule
     doubleprecision, dimension(4) :: vCorner011
     doubleprecision, dimension(4) :: vCorner111
 
+    ! qx, qy, qz, qnorm
+    doubleprecision, dimension(4) :: qCorner000
+    doubleprecision, dimension(4) :: qCorner100
+    doubleprecision, dimension(4) :: qCorner010
+    doubleprecision, dimension(4) :: qCorner110
+    doubleprecision, dimension(4) :: qCorner001
+    doubleprecision, dimension(4) :: qCorner101
+    doubleprecision, dimension(4) :: qCorner011
+    doubleprecision, dimension(4) :: qCorner111
+
+    ! corner porosities
+    doubleprecision :: porosity000
+    doubleprecision :: porosity100
+    doubleprecision :: porosity010
+    doubleprecision :: porosity110
+    doubleprecision :: porosity001
+    doubleprecision :: porosity101
+    doubleprecision :: porosity011
+    doubleprecision :: porosity111
+
+    ! Prototype that might be used in production 
+    !doubleprecision, dimension(0:1,0:1,0:1) :: cornerPorosity
+
     ! RWPT Pointers
     procedure(Advection), pass, pointer :: AdvectionDisplacement=>null()
     procedure(ExitFaceAndTimeStep), pass, pointer :: ExitFaceAndUpdateTimeStep=>null()
@@ -39,10 +63,14 @@ module TrackSubCellModule
     procedure :: LinearInterpolationVelocities=>pr_LinearInterpolationVelocities
     procedure :: ComputeRandomWalkTimeStep=>pr_ComputeRandomWalkTimeStep
     procedure :: ComputeCornerVelocities=>pr_ComputeCornerVelocities
+    procedure :: ComputeCornerDischarge=>pr_ComputeCornerDischarge
     procedure :: Trilinear=>pr_Trilinear
     procedure :: TrilinearDerivative=>pr_TrilinearDerivative
     procedure :: DispersionDivergence=>pr_DispersionDivergence
+    procedure :: DispersionDivergenceDischarge=>pr_DispersionDivergenceDischarge
+    procedure :: ComputeCornerPorosity=>pr_ComputeCornerPorosity
     procedure :: DisplacementRandom=>pr_DisplacementRandom
+    procedure :: DisplacementRandomDischarge=>pr_DisplacementRandomDischarge
     procedure :: GenerateStandardNormalRandom=>pr_GenerateStandardNormalRandom
     procedure :: AdvectionDisplacementExponential=>pr_AdvectionDisplacementExponential
     procedure :: AdvectionDisplacementEulerian=>pr_AdvectionDisplacementEulerian
@@ -505,6 +533,19 @@ contains
       dtLoopCounter     = 0
       posRestartCounter = 0
 
+
+      !!!!!!!!!!1 DEV/REMOVE !!!!!!!!!!!!!!
+      !dBx = 0
+      !dBy = 0
+      !dBz = 0
+      !print *, '********************************************************'
+      !print *, '** TrackSubCell: cellNumber: ', cellNumber
+      !print *, '** TrackSubCell: initialTime: ', initialTime
+      !print *, '** TrackSubCell: LOOP ...'
+      !!print *, '********************************************************'
+      !!!!!!!!!!1 DEV/REMOVE !!!!!!!!!!!!!!
+
+
       ! Local cell time loop 
       exitFace = 0
       continueTimeLoop = .true.
@@ -522,17 +563,17 @@ contains
               reachedMaximumTime = .true.
           end if 
 
-          !! If position was restart several times, 
-          !! print a warning in the meantime
-          !if ( posRestartCounter .gt. 3 ) then 
-          !    print *, '**** TrackSubCell: particle position restarted ', posRestartCounter, ' times already.'
-          !end if 
-
           ! Compute RWPT movement
+          ! Discharge formulation
           call this%LinearInterpolationVelocities( x, y, z, vx, vy, vz )
-          call this%DispersionDivergence( x, y, z, alphaL, alphaT, Dmol, divDx, divDy, divDz )
-          call this%DisplacementRandom( x, y, z, alphaL, alphaT, Dmol, dBx, dBy, dBz )
+          call this%DispersionDivergenceDischarge( x, y, z, alphaL, alphaT, Dmol, divDx, divDy, divDz )
+          call this%DisplacementRandomDischarge( x, y, z, alphaL, alphaT, Dmol, dBx, dBy, dBz )
           call this%AdvectionDisplacement( x, y, z, dt, vx, vy, vz, dAdvx, dAdvy, dAdvz )
+          ! Velocities formulation
+          !call this%LinearInterpolationVelocities( x, y, z, vx, vy, vz )
+          !call this%DispersionDivergence( x, y, z, alphaL, alphaT, Dmol, divDx, divDy, divDz )
+          !call this%DisplacementRandom( x, y, z, alphaL, alphaT, Dmol, dBx, dBy, dBz )
+          !call this%AdvectionDisplacement( x, y, z, dt, vx, vy, vz, dAdvx, dAdvy, dAdvz )
           dxrw = dAdvx + divDx*dt + dBx*sqrt( dt )
           nx   = x + dxrw/dx
           dyrw = dAdvy + divDy*dt + dBy*sqrt( dt )
@@ -542,6 +583,11 @@ contains
               nz   = z + dzrw/dz
           end if
 
+          print *, '** TrackSubCell: TIME', t
+          print *, '** TrackSubCell: DT', dt
+          print *, '** TrackSubCell: dAdvx, divDx, dBx', dAdvx/dx, divDx*dt/dx, dBx*sqrt(dt)/dx
+          print *, '** TrackSubCell: dAdvy, divDy, dBy', dAdvy/dy, divDy*dt/dy, dBy*sqrt(dt)/dy
+
           ! Detect if particle leaving the cell
           ! and force the particle into exactly one
           ! interface by computing the required dt
@@ -550,6 +596,8 @@ contains
               ( ny .gt. 1.0d0 ) .or. ( ny .lt. 0d0 )  .or. &
               ( nz .gt. 1.0d0 ) .or. ( nz .lt. 0d0 )       & 
           )
+              
+              print *, '** TrackSubCell: LEAVING SUBCELL', nx, ny, nz
 
               dtxyz(:) = 0d0
 
@@ -562,6 +610,8 @@ contains
               call this%AdvectionDisplacement( x, y, z, dt, vx, vy, vz, & 
                                                     dAdvx, dAdvy, dAdvz )
 
+              print *, '** TrackSubCell: exitFace, t, dt', exitFace, t, dt
+
 
               ! If maximumTime was reached, but particle left
               ! the cell, then the condition is resetted
@@ -570,7 +620,7 @@ contains
               end if
 
               ! Find new RWPT displacements
-              if ( ( exitFace .eq. 1 ) .or. ( exitFace .eq. 2 ) ) then 
+              if ( ( exitFace .eq. 1 ) .or. ( exitFace .eq. 2 ) ) then
                   dyrw = dAdvy + divDy*dt + dBy*sqrt( dt )
                   ny   = y + dyrw/dy
                   if ( .not. twoDimensions ) then
@@ -593,9 +643,11 @@ contains
                   dyrw = dAdvy + divDy*dt + dBy*sqrt( dt )
                   nx = x + dxrw/dx
                   ny = y + dyrw/dy
-                  nz = 1.0d0
+                  z = 1.0d0
                   if ( exitFace .eq. 5 ) nz=0d0
               else
+                  print *, '** TrackSubCell: RESET_ODK'
+                  print *, nx, ny, nz
                   ! Restart nx, ny, nz and try again
                   ! if not a valid time step and exitFace
                   nx = x
@@ -605,6 +657,7 @@ contains
                   dt = dtold
                   dtLoopCounter = 0
                   posRestartCounter = posRestartCounter + 1
+                  print *, nx, ny, nz
                   exit
               end if
 
@@ -619,7 +672,8 @@ contains
                   ! to return a new dt smaller than the previous.
                   ! This block controls that if that happens, 
                   ! positions are restarted after two tries, 
-                  ! and thus random displacements are recomputed.
+                  
+                  print *, '** TrackSubCell: RESET_OUT'
 
                   ! Restart nx, ny, nz and try again
                   nx = x
@@ -644,7 +698,7 @@ contains
               else
                   trackingResult%ExitFaceConnection = this%SubCellData%Connection(exitFace)
                   if(this%SubCellData%Connection(exitFace) .lt. 0) then
-                      ! This is the case for unstructured grid, NOT IMPLEMENTED YET
+                      ! This is the case for unstructured grid
                       trackingResult%Status = trackingResult%Status_ExitAtInternalFace()
                   else
                       trackingResult%Status = trackingResult%Status_ExitAtCellFace()
@@ -665,9 +719,12 @@ contains
 
               trackingResult%FinalLocation%TrackingTime = t
               continueTimeLoop = .false.
-              return 
-          end if
 
+              !print *, '** TrackSubCell: FINAL TIME', t
+
+              return
+
+          end if
 
           ! Update particle positions
           x = nx
@@ -972,7 +1029,12 @@ contains
               dtxyz(1) = z2**2
           end if
 
+          ! If computed dt is higher than current
+          ! is not valid, set to zero
+          if ( dtxyz(1) .gt. dt ) dtxyz(1) = 0d0 
+
       end if
+
 
       ! Leaving through y face
       if ( ( ny .gt. 1.0d0 ) .or. ( ny .lt. 0d0 )  ) then
@@ -1011,7 +1073,12 @@ contains
               dtxyz(2) = z2**2
           end if
 
+          ! If computed dt is higher than current
+          ! is not valid, set to zero
+          if ( dtxyz(2) .gt. dt ) dtxyz(2) = 0d0 
+
       end if
+
 
       ! Leaving through z face
       if ( ( nz .gt. 1.0d0 ) .or. ( nz .lt. 0d0 )  ) then
@@ -1049,12 +1116,26 @@ contains
               dtxyz(3) = z2**2
           end if
 
+          ! If computed dt is higher than current
+          ! is not valid, set to zero
+          if ( dtxyz(3) .gt. dt ) dtxyz(3) = 0d0 
+           
       end if
+
+
+      ! If all dts where zero, restore t + dt
+      ! and leave
+      if ( all( dtxyz .eq. 0d0 ) ) then 
+          t = t + dt
+          return
+      end if
+
 
       ! Find minimum dt and 
       ! assign values accordingly
       imindt = minloc( dtxyz, dim=1, mask=(dtxyz > 0) )
       dt     = dtxyz(imindt)
+
       if ( imindt .eq. 1 ) then
           exitFace = exitFaceX
       else if ( imindt .eq. 2 ) then
@@ -1152,6 +1233,11 @@ contains
                                            this%SubCellData%dx, &
                                            dInterface, divDx,   & 
                                            dBx, dtxyz(1) )
+
+          ! If computed dt is higher than current
+          ! is not valid, set to zero
+          if ( dtxyz(1) .gt. dt ) dtxyz(1) = 0d0
+
       end if
 
 
@@ -1181,6 +1267,11 @@ contains
                                            this%SubCellData%dy, &
                                            dInterface, divDy,   & 
                                            dBy, dtxyz(2) )
+
+          ! If computed dt is higher than current
+          ! is not valid, set to zero
+          if ( dtxyz(2) .gt. dt ) dtxyz(2) = 0d0
+
       end if
 
 
@@ -1210,6 +1301,19 @@ contains
                                            this%SubCellData%dz, &
                                            dInterface, divDz,   & 
                                            dBz, dtxyz(3) )
+
+          ! If computed dt is higher than current
+          ! is not valid, set to zero
+          if ( dtxyz(3) .gt. dt ) dtxyz(3) = 0d0
+
+      end if
+
+
+      ! If all dts where zero, restore t + dt
+      ! and leave
+      if ( all( dtxyz .eq. 0d0 ) ) then 
+          t = t + dt
+          return
       end if
 
 
@@ -1264,7 +1368,11 @@ contains
       doubleprecision :: dt0
       doubleprecision :: nrf0, nrfprim, nrerror
       doubleprecision :: dvtol = 1.0d-10
-      doubleprecision :: nrtol = 1.0d-10
+      ! How to determine a proper tolerance ?
+      ! Convergence properties display 
+      ! problem dependence
+      !doubleprecision :: nrtol = 1.0d-3 
+      doubleprecision :: nrtol
       integer :: countIter
       integer :: maxIter = 100
       !----------------------------------------------------------------
@@ -1273,13 +1381,19 @@ contains
       countIter = 0
       ! Force initial guess smaller
       ! than original value
-      dt0       = 0.1*dt 
+      dt0       = 0.01*dt 
       nrf0      = 0d0
       nrfprim   = 0d0
       nrerror   = 1d6 ! Something big
 
+      ! Define nrtol from current dt
+      nrtol    = 0.1*dt
+
+      print *, '*** TrackSubCell: NewtonRapshonEXPONENTIAL: original DT', dt
+
       ! Iteration until convergence or maxIterations
-      do while( ( abs(nrerror) .gt. nrtol ) .and. ( countIter .lt. maxIter ) )
+      do while( ( abs(nrerror/dt) .gt. 0.01 ) .and. ( countIter .lt. maxIter ) )
+      !do while( ( abs(nrerror) .gt. nrtol ) .and. ( countIter .lt. maxIter ) )
 
           countIter = countIter + 1
 
@@ -1305,6 +1419,9 @@ contains
           ! It can't be smaller than zero
           if ( dt0 .lt. 0d0 ) dt0 = -0.5*dt0 
 
+          !print *, nrerror, dt0
+          
+
       end do
 
       ! Assign return value
@@ -1312,14 +1429,15 @@ contains
 
       ! If new value higher than the previous, return zero 
       if ( dt0 .gt. dt) then
-          !print *, '*** TrackSubCell: Inconsistency in Newton Raphson, ', &
-          !    'new dt higher than previous, dt, dt0, nrerror', dt, dt0, nrerror 
+          print *, '*** TrackSubCell: Inconsistency in Newton Raphson, ', &
+              'new dt higher than previous, dt, dt0, nrerror', dt, dt0, nrerror 
           dtnr = 0d0 ! Is this a proper exit condition ?
       end if 
 
       ! If no convergence, return zero
-      if ( ( countIter .eq. maxIter ) .and. ( abs(nrerror) .gt. nrtol ) ) then
-          !print *, '*** TrackSubCell: No convergence Newton Raphson dt, dt0, nrerror', dt, dt0, nrerror 
+      if ( ( countIter .eq. maxIter ) .and. ( abs(nrerror/dt) .gt. 0.01 ) ) then
+      !if ( ( countIter .eq. maxIter ) .and. ( abs(nrerror) .gt. nrtol ) ) then
+          print *, '*** TrackSubCell: No convergence Newton Raphson dt, dt0, nrerror', dt, dt0, nrerror 
           dtnr = 0d0 ! Is this a proper exit condition ?
       end if
 
@@ -1478,6 +1596,177 @@ contains
 
 
   ! RWPT
+  subroutine pr_DispersionDivergenceDischarge( this, x, y, z, alphaL, alphaT, Dmol, divDx, divDy, divDz )
+      !----------------------------------------------------------------
+      ! Compute dispersion divergence terms 
+      ! 
+      ! Params:
+      !     - x, y, z             : local cell coordinates
+      !     - alphaL              : longidutinal dispersivity
+      !     - alphaT              : transverse dispersivity
+      !     - Dmol                : molecular diffusion
+      !     - divDx, divDy, divDz : dispersion divergence, output 
+      !----------------------------------------------------------------
+      ! Specifications
+      !----------------------------------------------------------------
+      implicit none
+      class (TrackSubCellType)    :: this
+      ! input
+      doubleprecision, intent(in) :: x, y, z
+      doubleprecision, intent(in) :: alphaL, alphaT, Dmol
+      ! output
+      doubleprecision, intent(inout) :: divDx, divDy, divDz
+      ! local
+      doubleprecision, dimension(4) :: v000
+      doubleprecision, dimension(4) :: v100
+      doubleprecision, dimension(4) :: v010
+      doubleprecision, dimension(4) :: v110
+      doubleprecision, dimension(4) :: v001
+      doubleprecision, dimension(4) :: v101
+      doubleprecision, dimension(4) :: v011
+      doubleprecision, dimension(4) :: v111
+
+      doubleprecision :: p000
+      doubleprecision :: p100
+      doubleprecision :: p010
+      doubleprecision :: p110
+      doubleprecision :: p001
+      doubleprecision :: p101
+      doubleprecision :: p011
+      doubleprecision :: p111
+
+      doubleprecision :: dDxxdx, dDxydy, dDxzdz, &
+                         dDxydx, dDyydy, dDyzdz, &
+                         dDxzdx, dDyzdy, dDzzdz
+      !---------------------------------------------------------------- 
+
+      ! Initialize
+      divDx = 0d0
+      divDy = 0d0
+      divDz = 0d0
+
+      ! Local copies of SPECIFIC DISCHARGE
+      v000 = this%qCorner000 
+      v100 = this%qCorner100
+      v010 = this%qCorner010
+      v110 = this%qCorner110
+      v001 = this%qCorner001
+      v101 = this%qCorner101
+      v011 = this%qCorner011
+      v111 = this%qCorner111
+  
+      ! Porosities
+      p000 = this%porosity000 
+      p100 = this%porosity100
+      p010 = this%porosity010
+      p110 = this%porosity110
+      p001 = this%porosity001
+      p101 = this%porosity101
+      p011 = this%porosity011
+      p111 = this%porosity111
+
+
+      ! Direction, coordinates, corner values
+      call this%TrilinearDerivative( 1, x, y, z, &
+                ( alphaT*v000(4) + p000*Dmol ) + ( alphaL - alphaT )*v000(1)**2/v000(4), & 
+                ( alphaT*v100(4) + p100*Dmol ) + ( alphaL - alphaT )*v100(1)**2/v100(4), &
+                ( alphaT*v010(4) + p010*Dmol ) + ( alphaL - alphaT )*v010(1)**2/v010(4), &
+                ( alphaT*v110(4) + p110*Dmol ) + ( alphaL - alphaT )*v110(1)**2/v110(4), &
+                ( alphaT*v001(4) + p001*Dmol ) + ( alphaL - alphaT )*v001(1)**2/v001(4), &
+                ( alphaT*v101(4) + p101*Dmol ) + ( alphaL - alphaT )*v101(1)**2/v101(4), &
+                ( alphaT*v011(4) + p011*Dmol ) + ( alphaL - alphaT )*v011(1)**2/v011(4), &
+                ( alphaT*v111(4) + p111*Dmol ) + ( alphaL - alphaT )*v111(1)**2/v111(4), &
+                dDxxdx )
+      call this%TrilinearDerivative( 2, x, y, z, &
+                ( alphaT*v000(4) + p000*Dmol ) + ( alphaL - alphaT )*v000(2)**2/v000(4), &
+                ( alphaT*v100(4) + p100*Dmol ) + ( alphaL - alphaT )*v100(2)**2/v100(4), &
+                ( alphaT*v010(4) + p010*Dmol ) + ( alphaL - alphaT )*v010(2)**2/v010(4), &
+                ( alphaT*v110(4) + p110*Dmol ) + ( alphaL - alphaT )*v110(2)**2/v110(4), &
+                ( alphaT*v001(4) + p001*Dmol ) + ( alphaL - alphaT )*v001(2)**2/v001(4), &
+                ( alphaT*v101(4) + p101*Dmol ) + ( alphaL - alphaT )*v101(2)**2/v101(4), &
+                ( alphaT*v011(4) + p011*Dmol ) + ( alphaL - alphaT )*v011(2)**2/v011(4), &
+                ( alphaT*v111(4) + p111*Dmol ) + ( alphaL - alphaT )*v111(2)**2/v111(4), &
+                dDyydy )
+      call this%TrilinearDerivative( 3, x, y, z, &
+                ( alphaT*v000(4) + p000*Dmol ) + ( alphaL - alphaT )*v000(3)**2/v000(4), &
+                ( alphaT*v100(4) + p100*Dmol ) + ( alphaL - alphaT )*v100(3)**2/v100(4), &
+                ( alphaT*v010(4) + p010*Dmol ) + ( alphaL - alphaT )*v010(3)**2/v010(4), &
+                ( alphaT*v110(4) + p110*Dmol ) + ( alphaL - alphaT )*v110(3)**2/v110(4), &
+                ( alphaT*v001(4) + p001*Dmol ) + ( alphaL - alphaT )*v001(3)**2/v001(4), &
+                ( alphaT*v101(4) + p101*Dmol ) + ( alphaL - alphaT )*v101(3)**2/v101(4), &
+                ( alphaT*v011(4) + p011*Dmol ) + ( alphaL - alphaT )*v011(3)**2/v011(4), &
+                ( alphaT*v111(4) + p111*Dmol ) + ( alphaL - alphaT )*v111(3)**2/v111(4), &
+                dDzzdz )
+      call this%TrilinearDerivative( 1, x, y, z, & 
+                ( alphaL - alphaT )*v000(1)*v000(2)/v000(4), & 
+                ( alphaL - alphaT )*v100(1)*v100(2)/v100(4), &
+                ( alphaL - alphaT )*v010(1)*v010(2)/v010(4), &
+                ( alphaL - alphaT )*v110(1)*v110(2)/v110(4), &
+                ( alphaL - alphaT )*v001(1)*v001(2)/v001(4), &
+                ( alphaL - alphaT )*v101(1)*v101(2)/v101(4), &
+                ( alphaL - alphaT )*v011(1)*v011(2)/v011(4), &
+                ( alphaL - alphaT )*v111(1)*v111(2)/v111(4), &
+                dDxydx )
+      call this%TrilinearDerivative( 1, x, y, z, &
+                ( alphaL - alphaT )*v000(1)*v000(3)/v000(4), &
+                ( alphaL - alphaT )*v100(1)*v100(3)/v100(4), &
+                ( alphaL - alphaT )*v010(1)*v010(3)/v010(4), &
+                ( alphaL - alphaT )*v110(1)*v110(3)/v110(4), &
+                ( alphaL - alphaT )*v001(1)*v001(3)/v001(4), &
+                ( alphaL - alphaT )*v101(1)*v101(3)/v101(4), &
+                ( alphaL - alphaT )*v011(1)*v011(3)/v011(4), &
+                ( alphaL - alphaT )*v111(1)*v111(3)/v111(4), &
+                dDxzdx )
+      call this%TrilinearDerivative( 2, x, y, z, &
+                ( alphaL - alphaT )*v000(1)*v000(2)/v000(4), &
+                ( alphaL - alphaT )*v100(1)*v100(2)/v100(4), &
+                ( alphaL - alphaT )*v010(1)*v010(2)/v010(4), &
+                ( alphaL - alphaT )*v110(1)*v110(2)/v110(4), &
+                ( alphaL - alphaT )*v001(1)*v001(2)/v001(4), &
+                ( alphaL - alphaT )*v101(1)*v101(2)/v101(4), &
+                ( alphaL - alphaT )*v011(1)*v011(2)/v011(4), &
+                ( alphaL - alphaT )*v111(1)*v111(2)/v111(4), &
+                dDxydy )
+      call this%TrilinearDerivative( 2, x, y, z, &
+                ( alphaL - alphaT )*v000(2)*v000(3)/v000(4), &
+                ( alphaL - alphaT )*v100(2)*v100(3)/v100(4), &
+                ( alphaL - alphaT )*v010(2)*v010(3)/v010(4), &
+                ( alphaL - alphaT )*v110(2)*v110(3)/v110(4), &
+                ( alphaL - alphaT )*v001(2)*v001(3)/v001(4), &
+                ( alphaL - alphaT )*v101(2)*v101(3)/v101(4), &
+                ( alphaL - alphaT )*v011(2)*v011(3)/v011(4), &
+                ( alphaL - alphaT )*v111(2)*v111(3)/v111(4), &
+                dDyzdy )
+      call this%TrilinearDerivative( 3, x, y, z, &
+                ( alphaL - alphaT )*v000(1)*v000(3)/v000(4), &
+                ( alphaL - alphaT )*v100(1)*v100(3)/v100(4), &
+                ( alphaL - alphaT )*v010(1)*v010(3)/v010(4), &
+                ( alphaL - alphaT )*v110(1)*v110(3)/v110(4), &
+                ( alphaL - alphaT )*v001(1)*v001(3)/v001(4), &
+                ( alphaL - alphaT )*v101(1)*v101(3)/v101(4), &
+                ( alphaL - alphaT )*v011(1)*v011(3)/v011(4), &
+                ( alphaL - alphaT )*v111(1)*v111(3)/v111(4), &
+                dDxzdz )
+      call this%TrilinearDerivative( 3, x, y, z, &
+                ( alphaL - alphaT )*v000(2)*v000(3)/v000(4), &
+                ( alphaL - alphaT )*v100(2)*v100(3)/v100(4), &
+                ( alphaL - alphaT )*v010(2)*v010(3)/v010(4), &
+                ( alphaL - alphaT )*v110(2)*v110(3)/v110(4), &
+                ( alphaL - alphaT )*v001(2)*v001(3)/v001(4), &
+                ( alphaL - alphaT )*v101(2)*v101(3)/v101(4), &
+                ( alphaL - alphaT )*v011(2)*v011(3)/v011(4), &
+                ( alphaL - alphaT )*v111(2)*v111(3)/v111(4), &
+                dDyzdz )
+
+      divDx = ( dDxxdx + dDxydy + dDxzdz )/this%SubCellData%Porosity/this%SubCellData%Retardation
+      divDy = ( dDxydx + dDyydy + dDyzdz )/this%SubCellData%Porosity/this%SubCellData%Retardation
+      divDz = ( dDxzdx + dDyzdy + dDzzdz )/this%SubCellData%Porosity/this%SubCellData%Retardation
+
+
+  end subroutine pr_DispersionDivergenceDischarge
+
+
+  ! RWPT
   subroutine pr_DisplacementRandom( this, x, y, z, alphaL, alphaT, Dmol, dBx, dBy, dBz ) 
       !----------------------------------------------------------------
       ! Computes the product between displacement matrix and random 
@@ -1557,7 +1846,8 @@ contains
       B23 =       vBx*sqrt( 2*( alphaT*vBnorm + Dmol ) )/vBnormxy
       B31 =       vBz*sqrt( 2*( alphaL*vBnorm + Dmol ) )/vBnorm
       B32 =  vBnormxy*sqrt( 2*( alphaT*vBnorm + Dmol ) )/vBnorm
-    
+   
+
       ! Compute random numbers
       call this%GenerateStandardNormalRandom( rdmx ) 
       call this%GenerateStandardNormalRandom( rdmy ) 
@@ -1571,6 +1861,104 @@ contains
 
 
   end subroutine pr_DisplacementRandom
+
+
+  subroutine pr_DisplacementRandomDischarge( this, x, y, z, alphaL, alphaT, Dmol, dBx, dBy, dBz ) 
+      !----------------------------------------------------------------
+      ! Computes the product between displacement matrix and random 
+      ! vector
+      !
+      ! Params:
+      !     - x, y, z       : local cell coordinates
+      !     - alphaL        : longidutinal dispersivity
+      !     - alphaT        : transverse dispersivity
+      !     - Dmol          : molecular diffusion
+      !     - dBx, dBy, dBz : random dispersion displacement, output
+      !----------------------------------------------------------------
+      ! Specifications
+      !----------------------------------------------------------------
+      implicit none
+      class (TrackSubCellType) :: this
+      ! input
+      doubleprecision, intent(in)    :: x, y, z
+      doubleprecision, intent(in)    :: alphaL, alphaT, Dmol
+      ! output
+      doubleprecision, intent(inout) :: dBx, dBy, dBz
+      ! local
+      doubleprecision :: vBx, vBy, vBz, vBnorm, vBnormxy
+      doubleprecision :: B11, B12, B13, B21, B22, B23, B31, B32
+      doubleprecision :: rdmx, rdmy, rdmz
+      doubleprecision, dimension(4) :: v000
+      doubleprecision, dimension(4) :: v100
+      doubleprecision, dimension(4) :: v010
+      doubleprecision, dimension(4) :: v110
+      doubleprecision, dimension(4) :: v001
+      doubleprecision, dimension(4) :: v101
+      doubleprecision, dimension(4) :: v011
+      doubleprecision, dimension(4) :: v111
+      !----------------------------------------------------------------
+
+      ! Initialize
+      dBx = 0d0
+      dBy = 0d0
+      dBz = 0d0
+
+      ! Local copies of corner velocities
+      ! pointers ?
+      v000 = this%qCorner000 / this%porosity000 / this%SubCellData%Retardation  
+      v100 = this%qCorner100 / this%porosity100 / this%SubCellData%Retardation
+      v010 = this%qCorner010 / this%porosity010 / this%SubCellData%Retardation
+      v110 = this%qCorner110 / this%porosity110 / this%SubCellData%Retardation
+      v001 = this%qCorner001 / this%porosity001 / this%SubCellData%Retardation
+      v101 = this%qCorner101 / this%porosity101 / this%SubCellData%Retardation
+      v011 = this%qCorner011 / this%porosity011 / this%SubCellData%Retardation
+      v111 = this%qCorner111 / this%porosity111 / this%SubCellData%Retardation
+
+      ! Trilinear interpolation of velocities and norm
+      call this%Trilinear( x, y, z, &
+                           v000(1), v100(1), v010(1), v110(1), &
+                           v001(1), v101(1), v011(1), v111(1), &
+                           vBx )
+      call this%Trilinear( x, y, z, &
+                           v000(2), v100(2), v010(2), v110(2), &
+                           v001(2), v101(2), v011(2), v111(2), &
+                           vBy )
+      call this%Trilinear( x, y, z, &
+                           v000(3), v100(3), v010(3), v110(3), &
+                           v001(3), v101(3), v011(3), v111(3), &
+                           vBz )
+      vBnorm   = sqrt( vBx**2 + vBy**2 + vBz**2 )
+      vBnormxy = sqrt( vBx**2 + vBy**2 )
+    
+      ! Displacement matrix terms
+      ! Refs: Fernàndez-García et al. 2005; Salamon et al. 2006
+      ! Requires some kind of handling for the case 
+      ! of zero vBnorm
+      B11 =       vBx*sqrt( 2*( alphaL*vBnorm + Dmol ) )/vBnorm
+      B12 =  -vBx*vBz*sqrt( 2*( alphaT*vBnorm + Dmol ) )/vBnorm/vBnormxy
+      B13 =      -vBy*sqrt( 2*( alphaT*vBnorm + Dmol ) )/vBnormxy
+      B21 =       vBy*sqrt( 2*( alphaL*vBnorm + Dmol ) )/vBnorm
+      B22 =  -vBy*vBz*sqrt( 2*( alphaT*vBnorm + Dmol ) )/vBnorm/vBnormxy
+      B23 =       vBx*sqrt( 2*( alphaT*vBnorm + Dmol ) )/vBnormxy
+      B31 =       vBz*sqrt( 2*( alphaL*vBnorm + Dmol ) )/vBnorm
+      B32 =  vBnormxy*sqrt( 2*( alphaT*vBnorm + Dmol ) )/vBnorm
+   
+
+      ! Compute random numbers
+      call this%GenerateStandardNormalRandom( rdmx ) 
+      call this%GenerateStandardNormalRandom( rdmy ) 
+      call this%GenerateStandardNormalRandom( rdmz ) 
+
+
+      ! Compute displacement times random
+      dBx = B11*rdmx + B12*rdmy + B13*rdmz 
+      dBy = B21*rdmx + B22*rdmy + B23*rdmz 
+      dBz = B31*rdmx + B32*rdmy 
+
+
+  end subroutine pr_DisplacementRandomDischarge
+
+
 
 
   ! RWPT
@@ -1704,6 +2092,772 @@ contains
   end subroutine pr_ComputeCornerVelocities
 
 
+
+  subroutine pr_ComputeCornerDischarge( this, currentCellData, neighborCellData )
+      !----------------------------------------------------------------
+      ! From its subCellData and neighborSubCellData array, 
+      ! computes velocities at cell corners
+      !
+      !----------------------------------------------------------------
+      ! Specifications
+      !----------------------------------------------------------------
+      implicit none
+      class (TrackSubCellType) :: this
+      !type(ModpathSubCellDataType), dimension(18) :: neighborSubCellData
+      type(ModpathCellDataType) :: currentCellData
+      type(ModpathCellDataType), dimension(18) :: neighborCellData
+      integer, dimension(18,3) :: neighborSubCellIndexes ! nbcell, subRow, subColumn
+      doubleprecision, dimension(18,6) :: neighborSubCellFaceFlows ! nbcell, flowFaceNumber
+      doubleprecision, dimension(6)    :: centerSubCellFaceFlows
+      ! 8 corners with information of nc1, nc2, nc3, fN
+      integer, dimension(8,4)  :: cornerXComponentIndexes, cornerYComponentIndexes, cornerZComponentIndexes 
+      logical :: twoDimensionsDomain
+      real    :: flowContributionFactor
+      integer :: cid
+      doubleprecision :: dx, dy, dz, dz0, dz1
+      doubleprecision :: areaFlowX0, areaFlowX1
+      doubleprecision :: areaFlowY0, areaFlowY1
+      doubleprecision :: areaFlowZ
+      !----------------------------------------------------------------
+
+    
+      !print *, '** TrackSubCell:ComputeCornerDischarge: Computing corner specific discharge, maybe also porosities'
+      !print *, '** TrackSubCell:ComputeCornerDischarge: subcell indexes', this%SubCellData%Row, this%SubCellData%Column  
+
+
+      ! If current cell is not refined
+      if( currentCellData%GetSubCellCount() .eq. 1 ) then 
+
+          !print *, '** TrackSubCell:ComputeCornerDischarge: cell NOT REFINED'
+
+          neighborSubCellIndexes(1,:)  = [ 1,1,1]
+          neighborSubCellIndexes(2,:)  = [ 2,1,1]
+          neighborSubCellIndexes(3,:)  = [ 3,1,1]
+          neighborSubCellIndexes(4,:)  = [ 4,1,1]
+          neighborSubCellIndexes(5,:)  = [ 5,1,1]
+          neighborSubCellIndexes(6,:)  = [ 6,1,1]
+          neighborSubCellIndexes(7,:)  = [ 7,1,1]
+          neighborSubCellIndexes(8,:)  = [ 8,1,1]
+          neighborSubCellIndexes(9,:)  = [ 9,1,1]
+          neighborSubCellIndexes(10,:) = [10,1,1]
+          neighborSubCellIndexes(11,:) = [11,1,1]
+          neighborSubCellIndexes(12,:) = [12,1,1]
+          neighborSubCellIndexes(13,:) = [13,1,1]
+          neighborSubCellIndexes(14,:) = [14,1,1]
+          neighborSubCellIndexes(15,:) = [15,1,1]
+          neighborSubCellIndexes(16,:) = [16,1,1]
+          neighborSubCellIndexes(17,:) = [17,1,1]
+          neighborSubCellIndexes(18,:) = [18,1,1]
+
+      else
+
+          print *, '** TrackSubCell:ComputeCornerDischarge: cell REFINED'
+
+          ! Indexation of subcells follow the same convention
+          ! employed for track cells.
+          ! Index 0 refers to self track cell
+
+          ! Reference cell locations in neighbor cell buffer array
+          ! 1 : dc1
+          ! 2 : ic13
+          ! 3 : ic14
+          ! 4 : dc2
+          ! 5 : ic23
+          ! 6 : ic24
+          ! 7 : dc3
+          ! 8 : ic35
+          ! 9 : ic36
+          ! 10: dc4
+          ! 11: ic45
+          ! 12: ic46
+          ! 13: dc5
+          ! 14: ic51
+          ! 15: ic52
+          ! 16: dc6
+          ! 17: ic61
+          ! 18: ic62
+
+
+          ! Following indexes should be computed only once 
+          ! subRow and subColumn changes. If kept at this point, 
+          ! then computation is performed several times for the same 
+          ! subCell
+
+          ! subRow and subColumn determine indexes from NeighborCellData to be used 
+          ! in interpolation process
+          if ( this%SubCellData%Row .eq. 1 ) then
+              ! If subcell from first subRow 
+              if ( this%SubCellData%Column .eq. 1 ) then
+                  ! If subcell from first subColumn
+                  ! Review
+                  neighborSubCellIndexes(1,:)  = [ 1,1,2]
+                  neighborSubCellIndexes(2,:)  = [ 1,2,2]
+                  neighborSubCellIndexes(3,:)  = [ 3,2,2]
+                  neighborSubCellIndexes(4,:)  = [ 0,1,2]
+                  neighborSubCellIndexes(5,:)  = [ 0,2,2]
+                  neighborSubCellIndexes(6,:)  = [10,2,2]
+                  neighborSubCellIndexes(7,:)  = [ 0,2,1]
+                  neighborSubCellIndexes(8,:)  = [13,2,1]
+                  neighborSubCellIndexes(9,:)  = [16,2,1]
+                  neighborSubCellIndexes(10,:) = [10,2,1]
+                  neighborSubCellIndexes(11,:) = [11,2,1]
+                  neighborSubCellIndexes(12,:) = [12,2,1]
+                  neighborSubCellIndexes(13,:) = [13,1,1]
+                  neighborSubCellIndexes(14,:) = [14,1,2]
+                  neighborSubCellIndexes(15,:) = [13,1,2]
+                  neighborSubCellIndexes(16,:) = [16,1,1]
+                  neighborSubCellIndexes(17,:) = [17,1,2]
+                  neighborSubCellIndexes(18,:) = [16,1,2]
+              else
+                  ! If subcell from second subColumn
+                  ! Review
+                  neighborSubCellIndexes(1,:)  = [ 0,1,1]
+                  neighborSubCellIndexes(2,:)  = [ 0,2,1]
+                  neighborSubCellIndexes(3,:)  = [10,2,1]
+                  neighborSubCellIndexes(4,:)  = [ 4,1,1]
+                  neighborSubCellIndexes(5,:)  = [ 4,2,1]
+                  neighborSubCellIndexes(6,:)  = [ 6,2,1]
+                  neighborSubCellIndexes(7,:)  = [ 0,2,2]
+                  neighborSubCellIndexes(8,:)  = [13,2,2]
+                  neighborSubCellIndexes(9,:)  = [16,2,2]
+                  neighborSubCellIndexes(10,:) = [10,2,2]
+                  neighborSubCellIndexes(11,:) = [11,2,2]
+                  neighborSubCellIndexes(12,:) = [12,2,2]
+                  neighborSubCellIndexes(13,:) = [13,1,2]
+                  neighborSubCellIndexes(14,:) = [13,1,1]
+                  neighborSubCellIndexes(15,:) = [15,1,1]
+                  neighborSubCellIndexes(16,:) = [16,1,2]
+                  neighborSubCellIndexes(17,:) = [16,1,1]
+                  neighborSubCellIndexes(18,:) = [18,1,1]
+              end if        
+          else
+              ! If subcell from second subRow 
+              if ( this%SubCellData%Column .eq. 1 ) then 
+                  ! If subcell from first subColumn
+                  ! Review
+                  neighborSubCellIndexes(1,:)  = [ 1,2,2]
+                  neighborSubCellIndexes(2,:)  = [ 2,1,2]
+                  neighborSubCellIndexes(3,:)  = [ 1,1,2]
+                  neighborSubCellIndexes(4,:)  = [ 0,2,2]
+                  neighborSubCellIndexes(5,:)  = [ 7,1,2]
+                  neighborSubCellIndexes(6,:)  = [ 0,1,2]
+                  neighborSubCellIndexes(7,:)  = [ 7,1,1]
+                  neighborSubCellIndexes(8,:)  = [ 8,1,1]
+                  neighborSubCellIndexes(9,:)  = [ 9,1,1]
+                  neighborSubCellIndexes(10,:) = [ 0,1,1]
+                  neighborSubCellIndexes(11,:) = [13,1,1]
+                  neighborSubCellIndexes(12,:) = [16,1,1]
+                  neighborSubCellIndexes(13,:) = [13,2,1]
+                  neighborSubCellIndexes(14,:) = [14,2,2]
+                  neighborSubCellIndexes(15,:) = [13,2,2]
+                  neighborSubCellIndexes(16,:) = [16,2,1]
+                  neighborSubCellIndexes(17,:) = [17,2,2]
+                  neighborSubCellIndexes(18,:) = [16,2,2]
+              else
+                  ! If subcell from second subColumn
+                  ! Review
+                  neighborSubCellIndexes(1,:)  = [ 0,2,1]
+                  neighborSubCellIndexes(2,:)  = [ 7,1,1]
+                  neighborSubCellIndexes(3,:)  = [ 0,1,1]
+                  neighborSubCellIndexes(4,:)  = [ 4,2,1]
+                  neighborSubCellIndexes(5,:)  = [ 5,1,1]
+                  neighborSubCellIndexes(6,:)  = [ 4,1,1]
+                  neighborSubCellIndexes(7,:)  = [ 7,1,2]
+                  neighborSubCellIndexes(8,:)  = [ 8,1,2]
+                  neighborSubCellIndexes(9,:)  = [ 9,1,2]
+                  neighborSubCellIndexes(10,:) = [ 0,1,2]
+                  neighborSubCellIndexes(11,:) = [13,1,2]
+                  neighborSubCellIndexes(12,:) = [16,1,2]
+                  neighborSubCellIndexes(13,:) = [13,2,2]
+                  neighborSubCellIndexes(14,:) = [13,2,1]
+                  neighborSubCellIndexes(15,:) = [15,2,1]
+                  neighborSubCellIndexes(16,:) = [16,2,2]
+                  neighborSubCellIndexes(17,:) = [16,2,1]
+                  neighborSubCellIndexes(18,:) = [18,2,1]
+              end if        
+          end if 
+
+      end if 
+
+
+        
+
+
+      ! Convention for cell indexes of 
+      ! coordinate components
+      ! 1: 000
+      ! 2: 100
+      ! 3: 010
+      ! 4: 110
+      ! 5: 001
+      ! 6: 101
+      ! 7: 011
+      ! 8: 111
+
+      ! Cell indexes for x-component
+      ! Complete connection id
+      ! 000: 7-8-13   : fn1 : dc3-ic35-dc5
+      ! 100: 7-8-13   : fn2 : dc3-ic35-dc5
+      ! 010: 10-11-13 : fn1 : 
+      ! 110: 10-11-13 : fn2 :  
+      ! 001: 7-9-16   : fn1 :
+      ! 101: 7-9-16   : fn2 :
+      ! 011: 10-12-16 : fn1 :
+      ! 111: 10-12-16 : fn2 :
+      cornerXComponentIndexes(1,:) = [ 7, 8,13,1] 
+      cornerXComponentIndexes(2,:) = [ 7, 8,13,2] 
+      cornerXComponentIndexes(3,:) = [10,11,13,1] 
+      cornerXComponentIndexes(4,:) = [10,11,13,2] 
+      cornerXComponentIndexes(5,:) = [ 7, 9,16,1] 
+      cornerXComponentIndexes(6,:) = [ 7, 9,16,2] 
+      cornerXComponentIndexes(7,:) = [10,12,16,1] 
+      cornerXComponentIndexes(8,:) = [10,12,16,2] 
+
+      ! Cell indexes for y-component
+      ! Complete connection id
+      !000: 1-13-14 : fn3 :
+      !100: 4-13-15 : fn3 :
+      !010: 1-13-14 : fn4 :
+      !110: 4-13-15 : fn4 :
+      !001: 1-16-17 : fn3 :
+      !101: 4-16-18 : fn3 :
+      !011: 1-16-17 : fn4 :
+      !111: 4-16-18 : fn4 :
+      cornerYComponentIndexes(1,:) = [ 1,13,14,3] 
+      cornerYComponentIndexes(2,:) = [ 4,13,15,3] 
+      cornerYComponentIndexes(3,:) = [ 1,13,14,4] 
+      cornerYComponentIndexes(4,:) = [ 4,13,15,4] 
+      cornerYComponentIndexes(5,:) = [ 1,16,17,3] 
+      cornerYComponentIndexes(6,:) = [ 4,16,18,3] 
+      cornerYComponentIndexes(7,:) = [ 1,16,17,4] 
+      cornerYComponentIndexes(8,:) = [ 4,16,18,4]
+
+      ! Cell indexes for z-component
+      ! Complete connection id
+      !000: 1-2-7   : fn5 :
+      !100: 4-5-7   : fn5 :
+      !010: 1-3-10  : fn5 :
+      !110: 4-6-10  : fn5 :
+      !001: 1-2-7   : fn6 :
+      !101: 4-5-7   : fn6 :
+      !011: 1-3-10  : fn6 :
+      !111: 4-6-10  : fn6 :
+      cornerZComponentIndexes(1,:) = [ 1, 2, 7,5] 
+      cornerZComponentIndexes(2,:) = [ 4, 5, 7,5] 
+      cornerZComponentIndexes(3,:) = [ 1, 3,10,5] 
+      cornerZComponentIndexes(4,:) = [ 4, 6,10,5] 
+      cornerZComponentIndexes(5,:) = [ 1, 2, 7,6] 
+      cornerZComponentIndexes(6,:) = [ 4, 5, 7,6] 
+      cornerZComponentIndexes(7,:) = [ 1, 3,10,6] 
+      cornerZComponentIndexes(8,:) = [ 4, 6,10,6]
+
+
+      ! Given neighborSubCellIndexes, it is required to extract flows
+      ! for the given index, and after that, query such flow for 
+      ! ion of values at the corner
+
+      ! Fill array with face flow values for 
+      ! the corresponding set of subcells from 
+      ! the neighbor cells buffer
+      do cid = 1,18
+          if ( neighborSubCellIndexes( cid, 1 ) .ne. 0 ) then
+              call neighborCellData( neighborSubCellIndexes( cid, 1 ) )%FillSubCellFaceFlowsBuffer( &
+                                neighborSubCellIndexes( cid, 2 ), neighborSubCellIndexes( cid, 3 ), & 
+                                                                 neighborSubCellFaceFlows( cid, : ) )
+          else
+              call currentCellData%FillSubCellFaceFlowsBuffer( &
+                                neighborSubCellIndexes( cid, 2 ), neighborSubCellIndexes( cid, 3 ), & 
+                                                                 neighborSubCellFaceFlows( cid, : ) )
+          end if
+      end do
+
+
+      ! Fill faceFlows from current subcell
+      call currentCellData%FillSubCellFaceFlowsBuffer( &
+          this%SubCellData%Row, this%SubCellData%Column, centerSubCellFaceFlows )
+
+    
+      ! subcell faceflows buffer is filled, now use it for interpolation
+      ! to corner values
+
+      ! Compute cell sizes for areas computation
+      dx  = this%SubCellData%DX
+      dy  = this%SubCellData%DY
+      dz  = this%SubCellData%DZ
+      dz0 = neighborCellData(13)%GetDZ() ! query a lower layer cell and getdz 
+      dz1 = neighborCellData(16)%GetDZ() ! query an upper layer cell and getdz 
+
+
+      ! Missing areas, should divide sum of face flows
+      flowContributionFactor = 0.25 ! fraction of total face flow contributed to corner values
+      areaFlowX0             = flowContributionFactor*( dy*dz + dy*dz + dy*dz0 + dy*dz0 ) 
+      areaFlowX1             = flowContributionFactor*( dy*dz + dy*dz + dy*dz1 + dy*dz1 ) 
+      areaFlowY0             = flowContributionFactor*( dx*dz + dx*dz + dx*dz0 + dx*dz0 ) 
+      areaFlowY1             = flowContributionFactor*( dx*dz + dx*dz + dx*dz1 + dx*dz1 ) 
+      areaFlowZ              = dy*dx
+
+
+      ! Compute x-components
+      this%qCorner000(1) = flowContributionFactor*(&
+              centerSubCellFaceFlows(   cornerXComponentIndexes(1,4) ) + &
+              neighborSubCellFaceFlows( cornerXComponentIndexes(1,1), cornerXComponentIndexes(1,4) ) + & 
+              neighborSubCellFaceFlows( cornerXComponentIndexes(1,2), cornerXComponentIndexes(1,4) ) + &
+              neighborSubCellFaceFlows( cornerXComponentIndexes(1,3), cornerXComponentIndexes(1,4) )   &
+          )/areaFlowX0
+      this%qCorner100(1) = flowContributionFactor*(&
+              centerSubCellFaceFlows(   cornerXComponentIndexes(2,4) ) + &
+              neighborSubCellFaceFlows( cornerXComponentIndexes(2,1), cornerXComponentIndexes(2,4) ) + & 
+              neighborSubCellFaceFlows( cornerXComponentIndexes(2,2), cornerXComponentIndexes(2,4) ) + &
+              neighborSubCellFaceFlows( cornerXComponentIndexes(2,3), cornerXComponentIndexes(2,4) )   &
+          )/areaFlowX0
+      this%qCorner010(1) = flowContributionFactor*(&
+              centerSubCellFaceFlows(   cornerXComponentIndexes(3,4) ) + &
+              neighborSubCellFaceFlows( cornerXComponentIndexes(3,1), cornerXComponentIndexes(3,4) ) + & 
+              neighborSubCellFaceFlows( cornerXComponentIndexes(3,2), cornerXComponentIndexes(3,4) ) + &
+              neighborSubCellFaceFlows( cornerXComponentIndexes(3,3), cornerXComponentIndexes(3,4) )   &
+          )/areaFlowX0
+      this%qCorner110(1) = flowContributionFactor*(&
+              centerSubCellFaceFlows(   cornerXComponentIndexes(4,4) ) + &
+              neighborSubCellFaceFlows( cornerXComponentIndexes(4,1), cornerXComponentIndexes(4,4) ) + & 
+              neighborSubCellFaceFlows( cornerXComponentIndexes(4,2), cornerXComponentIndexes(4,4) ) + &
+              neighborSubCellFaceFlows( cornerXComponentIndexes(4,3), cornerXComponentIndexes(4,4) )   &
+          )/areaFlowX0
+      this%qCorner001(1) = flowContributionFactor*(&
+              centerSubCellFaceFlows(   cornerXComponentIndexes(5,4) ) + &
+              neighborSubCellFaceFlows( cornerXComponentIndexes(5,1), cornerXComponentIndexes(5,4) ) + & 
+              neighborSubCellFaceFlows( cornerXComponentIndexes(5,2), cornerXComponentIndexes(5,4) ) + &
+              neighborSubCellFaceFlows( cornerXComponentIndexes(5,3), cornerXComponentIndexes(5,4) )   &
+          )/areaFlowX1
+      this%qCorner101(1) = flowContributionFactor*(&
+              centerSubCellFaceFlows(   cornerXComponentIndexes(6,4) ) + &
+              neighborSubCellFaceFlows( cornerXComponentIndexes(6,1), cornerXComponentIndexes(6,4) ) + & 
+              neighborSubCellFaceFlows( cornerXComponentIndexes(6,2), cornerXComponentIndexes(6,4) ) + &
+              neighborSubCellFaceFlows( cornerXComponentIndexes(6,3), cornerXComponentIndexes(6,4) )   &
+          )/areaFlowX1
+      this%qCorner011(1) = flowContributionFactor*(&
+              centerSubCellFaceFlows(   cornerXComponentIndexes(7,4) ) + &
+              neighborSubCellFaceFlows( cornerXComponentIndexes(7,1), cornerXComponentIndexes(7,4) ) + & 
+              neighborSubCellFaceFlows( cornerXComponentIndexes(7,2), cornerXComponentIndexes(7,4) ) + &
+              neighborSubCellFaceFlows( cornerXComponentIndexes(7,3), cornerXComponentIndexes(7,4) )   &
+          )/areaFlowX1
+      this%qCorner111(1) = flowContributionFactor*(&
+              centerSubCellFaceFlows(   cornerXComponentIndexes(8,4) ) + &
+              neighborSubCellFaceFlows( cornerXComponentIndexes(8,1), cornerXComponentIndexes(8,4) ) + & 
+              neighborSubCellFaceFlows( cornerXComponentIndexes(8,2), cornerXComponentIndexes(8,4) ) + &
+              neighborSubCellFaceFlows( cornerXComponentIndexes(8,3), cornerXComponentIndexes(8,4) )   & 
+          )/areaFlowX1
+
+
+      ! Compute y-components
+      this%qCorner000(2) = flowContributionFactor*(&
+              centerSubCellFaceFlows(   cornerYComponentIndexes(1,4) ) + &
+              neighborSubCellFaceFlows( cornerYComponentIndexes(1,1), cornerYComponentIndexes(1,4) ) + & 
+              neighborSubCellFaceFlows( cornerYComponentIndexes(1,2), cornerYComponentIndexes(1,4) ) + &
+              neighborSubCellFaceFlows( cornerYComponentIndexes(1,3), cornerYComponentIndexes(1,4) )   &
+          )/areaFlowY0
+      this%qCorner100(2) = flowContributionFactor*(&
+              centerSubCellFaceFlows(   cornerYComponentIndexes(2,4) ) + &
+              neighborSubCellFaceFlows( cornerYComponentIndexes(2,1), cornerYComponentIndexes(2,4) ) + & 
+              neighborSubCellFaceFlows( cornerYComponentIndexes(2,2), cornerYComponentIndexes(2,4) ) + &
+              neighborSubCellFaceFlows( cornerYComponentIndexes(2,3), cornerYComponentIndexes(2,4) )   &
+          )/areaFlowY0
+      this%qCorner010(2) = flowContributionFactor*(&
+              centerSubCellFaceFlows(   cornerYComponentIndexes(3,4) ) + &
+              neighborSubCellFaceFlows( cornerYComponentIndexes(3,1), cornerYComponentIndexes(3,4) ) + & 
+              neighborSubCellFaceFlows( cornerYComponentIndexes(3,2), cornerYComponentIndexes(3,4) ) + &
+              neighborSubCellFaceFlows( cornerYComponentIndexes(3,3), cornerYComponentIndexes(3,4) )   &
+          )/areaFlowY0
+      this%qCorner110(2) = flowContributionFactor*(&
+              centerSubCellFaceFlows(   cornerYComponentIndexes(4,4) ) + &
+              neighborSubCellFaceFlows( cornerYComponentIndexes(4,1), cornerYComponentIndexes(4,4) ) + & 
+              neighborSubCellFaceFlows( cornerYComponentIndexes(4,2), cornerYComponentIndexes(4,4) ) + &
+              neighborSubCellFaceFlows( cornerYComponentIndexes(4,3), cornerYComponentIndexes(4,4) )   &
+          )/areaFlowY0
+      this%qCorner001(2) = flowContributionFactor*(&
+              centerSubCellFaceFlows(   cornerYComponentIndexes(5,4) ) + &
+              neighborSubCellFaceFlows( cornerYComponentIndexes(5,1), cornerYComponentIndexes(5,4) ) + & 
+              neighborSubCellFaceFlows( cornerYComponentIndexes(5,2), cornerYComponentIndexes(5,4) ) + &
+              neighborSubCellFaceFlows( cornerYComponentIndexes(5,3), cornerYComponentIndexes(5,4) )   &
+          )/areaFlowY1
+      this%qCorner101(2) = flowContributionFactor*(&
+              centerSubCellFaceFlows(   cornerYComponentIndexes(6,4) ) + &
+              neighborSubCellFaceFlows( cornerYComponentIndexes(6,1), cornerYComponentIndexes(6,4) ) + & 
+              neighborSubCellFaceFlows( cornerYComponentIndexes(6,2), cornerYComponentIndexes(6,4) ) + &
+              neighborSubCellFaceFlows( cornerYComponentIndexes(6,3), cornerYComponentIndexes(6,4) )   &
+          )/areaFlowY1
+      this%qCorner011(2) = flowContributionFactor*(&
+              centerSubCellFaceFlows(   cornerYComponentIndexes(7,4) ) + &
+              neighborSubCellFaceFlows( cornerYComponentIndexes(7,1), cornerYComponentIndexes(7,4) ) + & 
+              neighborSubCellFaceFlows( cornerYComponentIndexes(7,2), cornerYComponentIndexes(7,4) ) + &
+              neighborSubCellFaceFlows( cornerYComponentIndexes(7,3), cornerYComponentIndexes(7,4) )   &
+          )/areaFlowY1
+      this%qCorner111(2) = flowContributionFactor*(&
+              centerSubCellFaceFlows(   cornerYComponentIndexes(8,4) ) + &
+              neighborSubCellFaceFlows( cornerYComponentIndexes(8,1), cornerYComponentIndexes(8,4) ) + & 
+              neighborSubCellFaceFlows( cornerYComponentIndexes(8,2), cornerYComponentIndexes(8,4) ) + &
+              neighborSubCellFaceFlows( cornerYComponentIndexes(8,3), cornerYComponentIndexes(8,4) )   &
+          )/areaFlowY1
+
+
+      ! Compute z-components
+      this%qCorner000(3) = flowContributionFactor*(&
+              centerSubCellFaceFlows(   cornerZComponentIndexes(1,4) ) + &
+              neighborSubCellFaceFlows( cornerZComponentIndexes(1,1), cornerZComponentIndexes(1,4) ) + & 
+              neighborSubCellFaceFlows( cornerZComponentIndexes(1,2), cornerZComponentIndexes(1,4) ) + &
+              neighborSubCellFaceFlows( cornerZComponentIndexes(1,3), cornerZComponentIndexes(1,4) )   &
+          )/areaFlowZ
+      this%qCorner100(3) = flowContributionFactor*(&
+              centerSubCellFaceFlows(   cornerZComponentIndexes(2,4) ) + &
+              neighborSubCellFaceFlows( cornerZComponentIndexes(2,1), cornerZComponentIndexes(2,4) ) + & 
+              neighborSubCellFaceFlows( cornerZComponentIndexes(2,2), cornerZComponentIndexes(2,4) ) + &
+              neighborSubCellFaceFlows( cornerZComponentIndexes(2,3), cornerZComponentIndexes(2,4) )   &
+          )/areaFlowZ
+      this%qCorner010(3) = flowContributionFactor*(&
+              centerSubCellFaceFlows(   cornerZComponentIndexes(3,4) ) + &
+              neighborSubCellFaceFlows( cornerZComponentIndexes(3,1), cornerZComponentIndexes(3,4) ) + & 
+              neighborSubCellFaceFlows( cornerZComponentIndexes(3,2), cornerZComponentIndexes(3,4) ) + &
+              neighborSubCellFaceFlows( cornerZComponentIndexes(3,3), cornerZComponentIndexes(3,4) )   &
+          )/areaFlowZ
+      this%qCorner110(3) = flowContributionFactor*(&
+              centerSubCellFaceFlows(   cornerZComponentIndexes(4,4) ) + &
+              neighborSubCellFaceFlows( cornerZComponentIndexes(4,1), cornerZComponentIndexes(4,4) ) + & 
+              neighborSubCellFaceFlows( cornerZComponentIndexes(4,2), cornerZComponentIndexes(4,4) ) + &
+              neighborSubCellFaceFlows( cornerZComponentIndexes(4,3), cornerZComponentIndexes(4,4) )   &
+          )/areaFlowZ
+      this%qCorner001(3) = flowContributionFactor*(&
+              centerSubCellFaceFlows(   cornerZComponentIndexes(5,4) ) + &
+              neighborSubCellFaceFlows( cornerZComponentIndexes(5,1), cornerZComponentIndexes(5,4) ) + & 
+              neighborSubCellFaceFlows( cornerZComponentIndexes(5,2), cornerZComponentIndexes(5,4) ) + &
+              neighborSubCellFaceFlows( cornerZComponentIndexes(5,3), cornerZComponentIndexes(5,4) )   &
+          )/areaFlowZ
+      this%qCorner101(3) = flowContributionFactor*(&
+              centerSubCellFaceFlows(   cornerZComponentIndexes(6,4) ) + &
+              neighborSubCellFaceFlows( cornerZComponentIndexes(6,1), cornerZComponentIndexes(6,4) ) + & 
+              neighborSubCellFaceFlows( cornerZComponentIndexes(6,2), cornerZComponentIndexes(6,4) ) + &
+              neighborSubCellFaceFlows( cornerZComponentIndexes(6,3), cornerZComponentIndexes(6,4) )   &
+          )/areaFlowZ
+      this%qCorner011(3) = flowContributionFactor*(&
+              centerSubCellFaceFlows(   cornerZComponentIndexes(7,4) ) + &
+              neighborSubCellFaceFlows( cornerZComponentIndexes(7,1), cornerZComponentIndexes(7,4) ) + & 
+              neighborSubCellFaceFlows( cornerZComponentIndexes(7,2), cornerZComponentIndexes(7,4) ) + &
+              neighborSubCellFaceFlows( cornerZComponentIndexes(7,3), cornerZComponentIndexes(7,4) )   &
+          )/areaFlowZ
+      this%qCorner111(3) = flowContributionFactor*(&
+              centerSubCellFaceFlows(   cornerZComponentIndexes(8,4) ) + &
+              neighborSubCellFaceFlows( cornerZComponentIndexes(8,1), cornerZComponentIndexes(8,4) ) + & 
+              neighborSubCellFaceFlows( cornerZComponentIndexes(8,2), cornerZComponentIndexes(8,4) ) + &
+              neighborSubCellFaceFlows( cornerZComponentIndexes(8,3), cornerZComponentIndexes(8,4) )   &
+          )/areaFlowZ
+
+
+      ! norm
+      this%qCorner000(4) = sqrt( this%qCorner000(1)**2 + this%qCorner000(2)**2 + this%qCorner000(3)**2 )
+      this%qCorner100(4) = sqrt( this%qCorner100(1)**2 + this%qCorner100(2)**2 + this%qCorner100(3)**2 )
+      this%qCorner010(4) = sqrt( this%qCorner010(1)**2 + this%qCorner010(2)**2 + this%qCorner010(3)**2 )
+      this%qCorner110(4) = sqrt( this%qCorner110(1)**2 + this%qCorner110(2)**2 + this%qCorner110(3)**2 )
+      this%qCorner001(4) = sqrt( this%qCorner001(1)**2 + this%qCorner001(2)**2 + this%qCorner001(3)**2 )
+      this%qCorner101(4) = sqrt( this%qCorner101(1)**2 + this%qCorner101(2)**2 + this%qCorner101(3)**2 )
+      this%qCorner011(4) = sqrt( this%qCorner011(1)**2 + this%qCorner011(2)**2 + this%qCorner011(3)**2 )
+      this%qCorner111(4) = sqrt( this%qCorner111(1)**2 + this%qCorner111(2)**2 + this%qCorner111(3)**2 )
+
+      !print *, '** TrackSubCell:ComputeCornerDischarge: leaving the function' 
+
+
+
+
+
+
+
+
+
+
+
+  end subroutine pr_ComputeCornerDischarge
+
+
+  ! RWPT
+  subroutine pr_ComputeCornerPorosity( this, currentCellData, neighborCellData )
+      !----------------------------------------------------------------
+      ! From its subCellData and neighborSubCellData array, 
+      ! computes velocities at cell corners
+      !
+      !----------------------------------------------------------------
+      ! Specifications
+      !----------------------------------------------------------------
+      implicit none
+      class (TrackSubCellType) :: this
+      !type(ModpathSubCellDataType), dimension(18) :: neighborSubCellData
+      type(ModpathCellDataType) :: currentCellData
+      type(ModpathCellDataType), dimension(18) :: neighborCellData
+      integer, dimension(18,3) :: neighborSubCellIndexes ! nbcell, subRow, subColumn
+      doubleprecision, dimension(18) :: neighborSubCellPorosity 
+      doubleprecision, dimension(18) :: neighborSubCellVolume   
+      doubleprecision, dimension(6)    :: centerSubCellFaceFlows
+      ! 8 corners with information of nc1, nc2, nc3, fN
+      integer, dimension(8,6)  :: cornerPorosityIndexes ! 6 Initialized subcells + self + missing = 8
+      logical :: twoDimensionsDomain
+      real    :: flowContributionFactor
+      integer :: cid, scid
+      doubleprecision :: dx, dy, dz, dz0, dz1
+      doubleprecision :: areaFlowX0, areaFlowX1
+      doubleprecision :: areaFlowY0, areaFlowY1
+      doubleprecision :: areaFlowZ
+      doubleprecision :: volumeCenter
+      doubleprecision :: volumeLower 
+      doubleprecision :: volumeUpper
+      !-----------------------------------------------------------------
+
+
+      !print *, '** TrackSubCell:ComputeCornerPorosity: entered, constant value of', this%SubCellData%Porosity
+
+
+
+      ! This is the fallback for spatially 
+      ! constant porosity
+      this%porosity000 = this%SubCellData%Porosity   
+      this%porosity100 = this%SubCellData%Porosity
+      this%porosity010 = this%SubCellData%Porosity       
+      this%porosity110 = this%SubCellData%Porosity
+      this%porosity001 = this%SubCellData%Porosity
+      this%porosity101 = this%SubCellData%Porosity       
+      this%porosity011 = this%SubCellData%Porosity
+      this%porosity111 = this%SubCellData%Porosity
+
+
+      return 
+
+
+
+
+      !-------------------! THIS CODE IS FOR VARIABLE POROSITY CASE ! --------------------
+
+      ! Following indexes should be computed only once 
+      ! subRow and subColumn changes. If kept at this point, 
+      ! then computation is performed several times for the same 
+      ! subCell
+
+      ! subRow and subColumn determine indexes from NeighborCellData to be used 
+      ! in interpolation process
+      if ( this%SubCellData%Row .eq. 1 ) then
+          ! If subcell from first subRow 
+          if ( this%SubCellData%Column .eq. 1 ) then
+              ! If subcell from first subColumn
+              ! Review
+              neighborSubCellIndexes(1,:)  = [ 1,1,2]
+              neighborSubCellIndexes(2,:)  = [ 1,2,2]
+              neighborSubCellIndexes(3,:)  = [ 3,2,2]
+              neighborSubCellIndexes(4,:)  = [ 0,1,2]
+              neighborSubCellIndexes(5,:)  = [ 0,2,2]
+              neighborSubCellIndexes(6,:)  = [10,2,2]
+              neighborSubCellIndexes(7,:)  = [ 0,2,1]
+              neighborSubCellIndexes(8,:)  = [13,2,1]
+              neighborSubCellIndexes(9,:)  = [16,2,1]
+              neighborSubCellIndexes(10,:) = [10,2,1]
+              neighborSubCellIndexes(11,:) = [11,2,1]
+              neighborSubCellIndexes(12,:) = [12,2,1]
+              neighborSubCellIndexes(13,:) = [13,1,1]
+              neighborSubCellIndexes(14,:) = [14,1,2]
+              neighborSubCellIndexes(15,:) = [13,1,2]
+              neighborSubCellIndexes(16,:) = [16,1,1]
+              neighborSubCellIndexes(17,:) = [17,1,2]
+              neighborSubCellIndexes(18,:) = [16,1,2]
+          else
+              ! If subcell from second subColumn
+              ! Review
+              neighborSubCellIndexes(1,:)  = [ 0,1,1]
+              neighborSubCellIndexes(2,:)  = [ 0,2,1]
+              neighborSubCellIndexes(3,:)  = [10,2,1]
+              neighborSubCellIndexes(4,:)  = [ 4,1,1]
+              neighborSubCellIndexes(5,:)  = [ 4,2,1]
+              neighborSubCellIndexes(6,:)  = [ 6,2,1]
+              neighborSubCellIndexes(7,:)  = [ 0,2,2]
+              neighborSubCellIndexes(8,:)  = [13,2,2]
+              neighborSubCellIndexes(9,:)  = [16,2,2]
+              neighborSubCellIndexes(10,:) = [10,2,2]
+              neighborSubCellIndexes(11,:) = [11,2,2]
+              neighborSubCellIndexes(12,:) = [12,2,2]
+              neighborSubCellIndexes(13,:) = [13,1,2]
+              neighborSubCellIndexes(14,:) = [13,1,1]
+              neighborSubCellIndexes(15,:) = [15,1,1]
+              neighborSubCellIndexes(16,:) = [16,1,2]
+              neighborSubCellIndexes(17,:) = [16,1,1]
+              neighborSubCellIndexes(18,:) = [18,1,1]
+          end if        
+      else
+          ! If subcell from second subRow 
+          if ( this%SubCellData%Column .eq. 1 ) then 
+              ! If subcell from first subColumn
+              ! Review
+              neighborSubCellIndexes(1,:)  = [ 1,2,2]
+              neighborSubCellIndexes(2,:)  = [ 2,1,2]
+              neighborSubCellIndexes(3,:)  = [ 1,1,2]
+              neighborSubCellIndexes(4,:)  = [ 0,2,2]
+              neighborSubCellIndexes(5,:)  = [ 7,1,2]
+              neighborSubCellIndexes(6,:)  = [ 0,1,2]
+              neighborSubCellIndexes(7,:)  = [ 7,1,1]
+              neighborSubCellIndexes(8,:)  = [ 8,1,1]
+              neighborSubCellIndexes(9,:)  = [ 9,1,1]
+              neighborSubCellIndexes(10,:) = [ 0,1,1]
+              neighborSubCellIndexes(11,:) = [13,1,1]
+              neighborSubCellIndexes(12,:) = [16,1,1]
+              neighborSubCellIndexes(13,:) = [13,2,1]
+              neighborSubCellIndexes(14,:) = [14,2,2]
+              neighborSubCellIndexes(15,:) = [13,2,2]
+              neighborSubCellIndexes(16,:) = [16,2,1]
+              neighborSubCellIndexes(17,:) = [17,2,2]
+              neighborSubCellIndexes(18,:) = [16,2,2]
+          else
+              ! If subcell from second subColumn
+              ! Review
+              neighborSubCellIndexes(1,:)  = [ 0,2,1]
+              neighborSubCellIndexes(2,:)  = [ 7,1,1]
+              neighborSubCellIndexes(3,:)  = [ 0,1,1]
+              neighborSubCellIndexes(4,:)  = [ 4,2,1]
+              neighborSubCellIndexes(5,:)  = [ 5,1,1]
+              neighborSubCellIndexes(6,:)  = [ 4,1,1]
+              neighborSubCellIndexes(7,:)  = [ 7,1,2]
+              neighborSubCellIndexes(8,:)  = [ 8,1,2]
+              neighborSubCellIndexes(9,:)  = [ 9,1,2]
+              neighborSubCellIndexes(10,:) = [ 0,1,2]
+              neighborSubCellIndexes(11,:) = [13,1,2]
+              neighborSubCellIndexes(12,:) = [16,1,2]
+              neighborSubCellIndexes(13,:) = [13,2,2]
+              neighborSubCellIndexes(14,:) = [13,2,1]
+              neighborSubCellIndexes(15,:) = [15,2,1]
+              neighborSubCellIndexes(16,:) = [16,2,2]
+              neighborSubCellIndexes(17,:) = [16,2,1]
+              neighborSubCellIndexes(18,:) = [18,2,1]
+          end if        
+      end if 
+
+
+
+      ! Compute cell sizes for areas computation
+      dx  = this%SubCellData%DX
+      dy  = this%SubCellData%DY
+      dz  = this%SubCellData%DZ
+      dz0 = neighborCellData(13)%GetDZ() ! query a lower layer cell and getdz 
+      dz1 = neighborCellData(16)%GetDZ() ! query an upper layer cell and getdz 
+
+
+      volumeCenter = dx*dy*dz
+      volumeLower  = dx*dy*dz0
+      volumeUpper  = dx*dy*dz1
+
+
+      do cid = 1,18
+
+          ! Fill porosities 
+          if ( neighborSubCellIndexes( cid, 1 ) .gt. 0 ) then
+              ! A no center cell
+
+              if ( neighborCellData( neighborSubCellIndexes( cid, 1 ) )%CellNumber .ne. -999 ) then
+                  ! the buffer is a normal cell
+                  neighborSubCellPorosity( cid ) = neighborCellData( neighborSubCellIndexes( cid,  1 ) )%Porosity
+              else
+                  ! if the buffer is a custom cell
+                  ! Compute subcell index
+                  ! HERE WE HAD A COLUMNCOUNT
+       
+           scid = ( neighborSubCellIndexes( cid, 2 ) - 1 )*2  + neighborSubCellIndexes( cid, 3 )
+
+                  ! Get porosity from subcell index. This
+                  ! should work fine in cases that 
+                  ! interpolation grid has nested subcells
+                  ! as required subcells for porosity are direct connections
+                  ! and for a smoothed usg, direct connections
+                  ! will be regular/real cells with defined porosity and not
+                  ! custom/linked cells. 
+                  neighborSubCellPorosity( cid ) = &
+                      neighborCellData( neighborSubCellIndexes( cid,  1 ) )%SubCellDataBuffer( scid )%Porosity
+              end if
+          else
+              ! The center cell
+              neighborSubCellPorosity( cid ) = currentCellData%Porosity
+          end if
+
+          
+          ! Fill cell volumes 
+          if ( neighborCellData( neighborSubCellIndexes( cid, 1 ))%Layer .eq. currentCellData%Layer ) then
+              neighborSubCellVolume( cid ) = volumeCenter
+          else if ( neighborCellData( neighborSubCellIndexes( cid, 1 ))%Layer .gt. currentCellData%Layer ) then
+              ! Remember that deeper layers have higher index
+              neighborSubCellVolume( cid ) = volumeLower
+          else
+              ! Is an upper layer
+              neighborSubCellVolume( cid ) = volumeUpper
+          end if
+
+      end do
+
+
+      ! Convention for cell indexes of 
+      ! coordinate components
+      ! 1: 000
+      ! 2: 100
+      ! 3: 010
+      ! 4: 110
+      ! 5: 001
+      ! 6: 101
+      ! 7: 011
+      ! 8: 111
+      cornerPorosityIndexes(1,:) = [ 1, 2,  7,  8, 13, 14 ] 
+      cornerPorosityIndexes(2,:) = [ 4, 5,  7,  8, 13, 15 ] 
+      cornerPorosityIndexes(3,:) = [ 1, 3, 10, 11, 13, 14 ] 
+      cornerPorosityIndexes(4,:) = [ 4, 6, 10, 12, 16, 18 ] 
+      cornerPorosityIndexes(5,:) = [ 1, 2,  7,  9, 16, 17 ] 
+      cornerPorosityIndexes(6,:) = [ 4, 5,  7,  9, 16, 18 ] 
+      cornerPorosityIndexes(7,:) = [ 1, 3, 10, 12, 16, 17 ] 
+      cornerPorosityIndexes(8,:) = [ 4, 6, 10, 11, 13, 15 ] 
+
+
+      ! Now access required indexes for each corner
+      ! In this step it is required initialization
+      ! of porosity and volume of corner cells 
+      ! not initialized in buffer because are 
+      ! not required for flow purposes
+      ! (related to volumeUpper or volumeLower according to corner).
+      ! Remember that it is also required to consider 
+      ! contribution of the center cell
+
+
+      ! So the missing parameter it is only the porosity
+      ! of the surrounding cube corners
+
+
+      ! Functions for building cells 
+      ! are defined at ParticleTrackingEngine.f90
+      ! Thus building corner cells makes sense when 
+      ! working at that file. 
+      ! Rather than define the missing things at this file.
+
+
+
+
+
+
+
+      ! Missing areas, should divide sum of face flows
+      !! Corner porosities follow similar indexation 
+      !! as corner discharge
+      !! Compute equivalent corner volume
+      !cornerVolumeZ0 = 1/8*( 4*dx*dy*dz + 4*dx*dy*dz0 )
+      !cornerVolumeZ1 = 1/8*( 4*dx*dy*dz + 4*dx*dy*dz1 )
+
+      !! Corner porosities follow similar indexation 
+      !! as corner discharge
+      !! Compute equivalent corner volume
+      !cornerVolumeZ0 = 1/8*( 4*dx*dy*dz + 4*dx*dy*dz0 )
+      !cornerVolumeZ1 = 1/8*( 4*dx*dy*dz + 4*dx*dy*dz1 )
+
+
+      !! Porosity is used as prototype of new variable structure
+      !this%cornerPorosity(0,0,0) = 
+
+  end subroutine pr_ComputeCornerPorosity
+
+
+  ! RWPT
   subroutine pr_TrilinearDerivative( this, direction, x, y, z, v000, v100, v010, v110, v001, v101, v011, v111, output )
       !-----------------------------------------------------------
       ! Compute derivative of a trilinear interpolation in a given
@@ -1807,3 +2961,100 @@ contains
 
 end module TrackSubCellModule
 
+
+
+
+
+
+! -----------   TRASH ------------
+! 22-04-2021
+
+      ! Cell indexes for x-component
+      ! Complete connection id
+      ! 000: 7-8-13   : fn1 : dc3-ic35-dc5
+      ! 100: 7-8-13   : fn2 : dc3-ic35-dc5
+      ! 010: 10-11-13 : fn1 : 
+      ! 110: 10-11-13 : fn2 :  
+      ! 001: 7-9-16   : fn1 :
+      ! 101: 7-9-16   : fn2 :
+      ! 011: 10-12-16 : fn1 :
+      ! 111: 10-12-16 : fn2 :
+
+      ! x-components at each corner
+      !this%vCorner000(1) = nominalFactor*( this%SubCellData%VX1 + neighborSubCellData(7)%VX1  + &
+      !    neighborSubCellData(13)%VX1 + neighborSubCellData(8)%VX1 )
+      !this%vCorner100(1) = nominalFactor*( this%SubCellData%VX2 + neighborSubCellData(7)%VX2  + &
+      !    neighborSubCellData(13)%VX2 + neighborSubCellData(8)%VX2 )
+      !this%vCorner010(1) = nominalFactor*( this%SubCellData%VX1 + neighborSubCellData(10)%VX1 + &
+      !    neighborSubCellData(13)%VX1 + neighborSubCellData(11)%VX1 )
+      !this%vCorner110(1) = nominalFactor*( this%SubCellData%VX2 + neighborSubCellData(10)%VX2 + &
+      !    neighborSubCellData(13)%VX2 + neighborSubCellData(11)%VX2 )
+      !this%vCorner001(1) = nominalFactor*( this%SubCellData%VX1 + neighborSubCellData(7)%VX1  + &
+      !    neighborSubCellData(16)%VX1 + neighborSubCellData(9)%VX1 )
+      !this%vCorner101(1) = nominalFactor*( this%SubCellData%VX2 + neighborSubCellData(7)%VX2  + &
+      !    neighborSubCellData(16)%VX2 + neighborSubCellData(9)%VX2 )
+      !this%vCorner011(1) = nominalFactor*( this%SubCellData%VX1 + neighborSubCellData(10)%VX1 + &
+      !    neighborSubCellData(16)%VX1 + neighborSubCellData(12)%VX1 )
+      !this%vCorner111(1) = nominalFactor*( this%SubCellData%VX2 + neighborSubCellData(10)%VX2 + &
+      !    neighborSubCellData(16)%VX2 + neighborSubCellData(12)%VX2 )
+
+
+      ! Cell indexes for y-component
+      ! Complete connection id
+      !000: 1-13-14 : fn3 :
+      !010: 1-13-14 : fn4 :
+      !100: 4-13-15 : fn3 :
+      !110: 4-13-15 : fn4 :
+      !001: 1-16-17 : fn3 :
+      !011: 1-16-17 : fn4 :
+      !101: 4-16-18 : fn3 :
+      !111: 4-16-18 : fn4 :
+
+      ! y-components at each corner
+      !this%vCorner000(2) = nominalFactor*( this%SubCellData%VY1 + neighborSubCellData(1)%VY1  + &
+      !    neighborSubCellData(13)%VY1 + neighborSubCellData(14)%VY1 )
+      !this%vCorner010(2) = nominalFactor*( this%SubCellData%VY2 + neighborSubCellData(1)%VY2  + &
+      !    neighborSubCellData(13)%VY2 + neighborSubCellData(14)%VY2 )
+      !this%vCorner100(2) = nominalFactor*( this%SubCellData%VY1 + neighborSubCellData(4)%VY1  + &
+      !    neighborSubCellData(13)%VY1 + neighborSubCellData(15)%VY1 )
+      !this%vCorner110(2) = nominalFactor*( this%SubCellData%VY2 + neighborSubCellData(4)%VY2  + &
+      !    neighborSubCellData(13)%VY2 + neighborSubCellData(15)%VY2 )
+      !this%vCorner001(2) = nominalFactor*( this%SubCellData%VY1 + neighborSubCellData(1)%VY1  + &
+      !    neighborSubCellData(16)%VY1 + neighborSubCellData(17)%VY1 )
+      !this%vCorner011(2) = nominalFactor*( this%SubCellData%VY2 + neighborSubCellData(1)%VY2  + &
+      !    neighborSubCellData(16)%VY2 + neighborSubCellData(17)%VY2 )
+      !this%vCorner101(2) = nominalFactor*( this%SubCellData%VY1 + neighborSubCellData(4)%VY1  + &
+      !    neighborSubCellData(16)%VY1 + neighborSubCellData(18)%VY1 )
+      !this%vCorner111(2) = nominalFactor*( this%SubCellData%VY2 + neighborSubCellData(4)%VY2  + &
+      !    neighborSubCellData(16)%VY2 + neighborSubCellData(18)%VY2 )
+
+
+      ! Cell indexes for z-component
+      ! Complete connection id
+      !000: 1-2-7   : fn5 :
+      !001: 1-2-7   : fn6 :
+      !100: 4-5-7   : fn5 :
+      !101: 4-5-7   : fn6 :
+      !010: 1-3-10  : fn5 :
+      !011: 1-3-10  : fn6 :
+      !110: 4-6-10  : fn5 :
+      !111: 4-6-10  : fn6 :
+
+
+      ! z-components at each corner
+      !this%vCorner000(3) = nominalFactor*( this%SubCellData%VZ1 + neighborSubCellData(1)%VZ1  + &
+      !    neighborSubCellData(7)%VZ1 + neighborSubCellData(2)%VZ1 )
+      !this%vCorner001(3) = nominalFactor*( this%SubCellData%VZ2 + neighborSubCellData(1)%VZ2  + &
+      !    neighborSubCellData(7)%VZ2 + neighborSubCellData(2)%VZ2 )
+      !this%vCorner100(3) = nominalFactor*( this%SubCellData%VZ1 + neighborSubCellData(4)%VZ1  + &
+      !    neighborSubCellData(7)%VZ1 + neighborSubCellData(5)%VZ1 )
+      !this%vCorner101(3) = nominalFactor*( this%SubCellData%VZ2 + neighborSubCellData(4)%VZ2  + &
+      !    neighborSubCellData(7)%VZ2 + neighborSubCellData(5)%VZ2 )
+      !this%vCorner010(3) = nominalFactor*( this%SubCellData%VZ1 + neighborSubCellData(1)%VZ1  + &
+      !    neighborSubCellData(10)%VZ1 + neighborSubCellData(3)%VZ1 )
+      !this%vCorner011(3) = nominalFactor*( this%SubCellData%VZ2 + neighborSubCellData(1)%VZ2  + &
+      !    neighborSubCellData(10)%VZ2 + neighborSubCellData(3)%VZ2 )
+      !this%vCorner110(3) = nominalFactor*( this%SubCellData%VZ1 + neighborSubCellData(4)%VZ1  + &
+      !    neighborSubCellData(10)%VZ1 + neighborSubCellData(6)%VZ1 )
+      !this%vCorner111(3) = nominalFactor*( this%SubCellData%VZ2 + neighborSubCellData(4)%VZ2  + &
+      !    neighborSubCellData(10)%VZ2 + neighborSubCellData(6)%VZ2 )

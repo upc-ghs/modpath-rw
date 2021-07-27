@@ -20,14 +20,28 @@ module ModpathCellDataModule
     integer :: CellNumber, Layer, Ibound, IboundTS, Zone, LayerType
     doubleprecision :: DX, DY, MinX, MinY, Bottom, Top, Head, Porosity,Retardation,SourceFlow,SinkFlow,StorageFlow
     
-    ! private data    
-    integer,private :: SubCellRowCount,SubCellColumnCount,ReducedConnectionCount
-    integer,private,dimension(6) :: SubFaceCounts,PotentialConnectionsCount,SubFaceBoundaryCounts
-    integer,private,dimension(2) :: SubFaceConn1,SubFaceConn2,SubFaceConn3,SubFaceConn4
-    integer,private,dimension(4) :: SubFaceConn5,SubFaceConn6
-    doubleprecision,private,dimension(4) :: SubCellFlows,Q5,Q6
-    doubleprecision,private,dimension(2) :: Q1,Q2,Q3,Q4
-    integer,private :: ArraySizeMode = 1
+    ! private data
+    ! RWPT: remove privates 
+    integer :: SubCellRowCount,SubCellColumnCount,ReducedConnectionCount
+    integer,dimension(6) :: SubFaceCounts,PotentialConnectionsCount,SubFaceBoundaryCounts
+    integer,dimension(2) :: SubFaceConn1,SubFaceConn2,SubFaceConn3,SubFaceConn4
+    integer,dimension(4) :: SubFaceConn5,SubFaceConn6
+    doubleprecision,dimension(4) :: SubCellFlows,Q5,Q6
+    doubleprecision,dimension(2) :: Q1,Q2,Q3,Q4
+    integer :: ArraySizeMode = 1
+    !integer,private :: SubCellRowCount,SubCellColumnCount,ReducedConnectionCount
+    !integer,private,dimension(6) :: SubFaceCounts,PotentialConnectionsCount,SubFaceBoundaryCounts
+    !integer,private,dimension(2) :: SubFaceConn1,SubFaceConn2,SubFaceConn3,SubFaceConn4
+    !integer,private,dimension(4) :: SubFaceConn5,SubFaceConn6
+    !doubleprecision,private,dimension(4) :: SubCellFlows,Q5,Q6
+    !doubleprecision,private,dimension(2) :: Q1,Q2,Q3,Q4
+    !integer,private :: ArraySizeMode = 1
+    ! RWPT NEW PROPERTY
+    integer, dimension(4) :: SubCellIds
+    type(ModpathCellDataType), pointer :: SubCellData => null()
+    type(ModpathCellDataType), dimension(:), pointer :: SubCellDataBuffer  
+    type(ModpathCellDataType), pointer :: ParentCellDataBuffer 
+
   contains
     procedure :: GetDZ=>pr_GetDZ
     procedure :: GetArraySizeMode=>pr_GetArraySizeMode
@@ -1721,7 +1735,14 @@ contains
     n = ((subCellData%Row - 1) * this%SubCellColumnCount) + subCellData%Column
     subCellData%Connection(6) = this%SubFaceConn6(n)
   end if
-  
+
+
+  ! RWPT
+  ! Assign additional properties to sub cell buffer
+  subCellData%Porosity    = this%Porosity 
+  subCellData%Retardation = this%Retardation 
+
+
   end subroutine pr_FillSubCellDataBuffer
 
 !------------------------------------------

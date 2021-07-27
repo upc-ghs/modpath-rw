@@ -331,7 +331,9 @@ contains
 
 ! RWPT 
 !------------------------------------------------------------------------
-  subroutine pr_ExecuteRandomWalkParticleTracking(this, initialLocation, maximumTime, trackCellResult, neighborSubCellData)
+  subroutine pr_ExecuteRandomWalkParticleTracking(this, initialLocation, maximumTime, trackCellResult, &
+                                                                  neighborSubCellData, neighborCellData)
+  !subroutine pr_ExecuteRandomWalkParticleTracking(this, initialLocation, maximumTime, trackCellResult, neighborSubCellData)
       !------------------------------------------------------------------
       ! This function is a clone of ExecuteTracking, but includes 
       ! intermediate step of corner velocities computation 
@@ -352,6 +354,7 @@ contains
       ! RWPT
       integer :: n
       type(ModpathSubCellDataType), dimension(18) :: neighborSubCellData
+      type(ModpathCellDataType), dimension(18) :: neighborCellData
       !------------------------------------------------------------------
 
       stopIfNoSubCellExit = .true.
@@ -455,12 +458,28 @@ contains
 
       ! RWPT
       ! Initialize corner velocities
-      call this%TrackSubCell%ComputeCornerVelocities( neighborSubCellData )  
+      call this%TrackSubCell%ComputeCornerVelocities( neighborSubCellData )
+      call this%TrackSubCell%ComputeCornerDischarge( this%CellData, neighborCellData )  
+      call this%TrackSubCell%ComputeCornerPorosity( this%CellData, neighborCellData )  
+      !call this%TrackSubCell%ComputeCornerDischarge( neighborCellData )  
+      ! COMPUTATION OF CORNER VELOCITIES, REQUIRES SUBROW, SUBCOLUMN
+      ! OR NOT. 
+      ! Implementation could be done like
+      ! initializing all corner velocities in just one execution 
+      ! or doit when sub cell changes.
+     
+
 
       ! Loop through sub-cells until a stopping condition is met.
       ! The loop count is set to 100. If it goes through the loop 100 times then something is wrong. 
       ! In that case, trackCellResult%Status will be set to Undefined and the result will be returned.
       do count = 1, 100
+
+          ! RWPT
+          ! It is possible that computation of corner velocities should 
+          ! be done here. At this point, subRow, subColumn are known 
+          ! for the corresponding case.
+
           call this%TrackSubCell%ExecuteRandomWalkParticleTracking( stopIfNoSubCellExit,subLoc, &
               maximumTime, subCellResult, this%TrackingOptions )
       
@@ -492,6 +511,10 @@ contains
                     call this%CellData%FillSubCellDataBuffer(                       &
                       this%TrackSubCell%SubCellData,subRow,subColumn,               &
                       this%TrackingOptions%BackwardTracking)
+                    ! RWPT
+                    !call this%TrackSubCell%ComputeCornerVelocities( neighborSubCellData )
+                    call this%TrackSubCell%ComputeCornerDischarge( this%CellData, neighborCellData )
+                    call this%TrackSubCell%ComputeCornerPorosity( this%CellData, neighborCellData )  
                 case (2)
                     if(subCellResult%Column .ne. 1) then
                         ! Face 2 cannot be an internal face unless the column index equals 1.
@@ -507,6 +530,10 @@ contains
                     call this%CellData%FillSubCellDataBuffer(                       &
                       this%TrackSubCell%SubCellData,subRow,subColumn,               &
                       this%TrackingOptions%BackwardTracking)
+                    ! RWPT
+                    !call this%TrackSubCell%ComputeCornerVelocities( neighborSubCellData )
+                    call this%TrackSubCell%ComputeCornerDischarge( this%CellData, neighborCellData )
+                    call this%TrackSubCell%ComputeCornerPorosity( this%CellData, neighborCellData )  
                 case (3)
                     if(subCellResult%Row .ne. 1) then
                         ! Face 3 cannot be an internal face unless the row index equals 1.
@@ -522,6 +549,10 @@ contains
                     call this%CellData%FillSubCellDataBuffer(                       &
                       this%TrackSubCell%SubCellData, subRow, subColumn,             &
                       this%TrackingOptions%BackwardTracking)
+                    ! RWPT
+                    !call this%TrackSubCell%ComputeCornerVelocities( neighborSubCellData )
+                    call this%TrackSubCell%ComputeCornerDischarge( this%CellData, neighborCellData )
+                    call this%TrackSubCell%ComputeCornerPorosity( this%CellData, neighborCellData )  
                 case (4)
                     if(subCellResult%Row .ne. 2) then
                         ! Face 4 cannot be an internal face unless the row index equals 2.
@@ -537,6 +568,10 @@ contains
                     call this%CellData%FillSubCellDataBuffer(                       &
                       this%TrackSubCell%SubCellData, subRow, subColumn,             &
                       this%TrackingOptions%BackwardTracking)
+                    ! RWPT
+                    !call this%TrackSubCell%ComputeCornerVelocities( neighborSubCellData )
+                    call this%TrackSubCell%ComputeCornerDischarge( this%CellData, neighborCellData )
+                    call this%TrackSubCell%ComputeCornerPorosity( this%CellData, neighborCellData )  
                 case default
                     ! Something went wrong. Set trackCellResult%Status equal to Undefined and return
                     trackCellResult%Status = trackCellResult%Status_Undefined()
@@ -545,6 +580,7 @@ contains
           ! RWPT
           ! This branch is for handling the case of fully structured grid
           ! in which particles leave only at cell faces.
+          ! Note that each branch leaves the function
           else if(subCellResult%Status .eq. subCellResult%Status_ExitAtCellFace()) then
               ! The particle has reached a cell boundary face, set trackCellResult status
               ! and exit face and then return. Status = 2 (ReachedBoundaryFace)
@@ -576,4 +612,4 @@ contains
   end subroutine pr_ExecuteRandomWalkParticleTracking
 
   
-end module TrackCellModule
+ENd module TrackCellModule
