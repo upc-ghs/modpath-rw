@@ -6,7 +6,7 @@
 # the executable, and the executable name and path.
 OBJDIR = ./obj_temp
 BINDIR = .
-PROGRAM = mpath7gf.exe
+PROGRAM = mpath7dev
 
 SOURCEDIR1=../source
 
@@ -17,7 +17,7 @@ ${SOURCEDIR1}
 
 # Define the Fortran compile flags
 FC = gfortran
-FFLAGS = -O2 -fbacktrace 
+FFLAGS = -O2 -fbacktrace -fopenmp 
 
 # Define the C compile flags
 CC = gcc
@@ -61,12 +61,12 @@ $(OBJDIR)/TrackPathResult.o \
 $(OBJDIR)/ModflowRectangularGrid.o \
 $(OBJDIR)/ModpathBasicData.o \
 $(OBJDIR)/RectangularGridDisMf6.o \
+$(OBJDIR)/ModpathCellData.o \
 $(OBJDIR)/TrackSubCell.o \
 $(OBJDIR)/RectangularGridDisvMf6.o \
 $(OBJDIR)/StartingLocationReader.o \
 $(OBJDIR)/RectangularGridDis.o \
 $(OBJDIR)/RectangularGridDisuMfusg.o \
-$(OBJDIR)/ModpathCellData.o \
 $(OBJDIR)/TrackCellResult.o \
 $(OBJDIR)/RectangularGridDisuMf6.o \
 $(OBJDIR)/ModpathCellDataContainer.o \
