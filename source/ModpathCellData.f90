@@ -37,10 +37,9 @@ module ModpathCellDataModule
     !doubleprecision,private,dimension(2) :: Q1,Q2,Q3,Q4
     !integer,private :: ArraySizeMode = 1
     ! RWPT NEW PROPERTY
-    integer, dimension(4) :: SubCellIds
-    type(ModpathCellDataType), pointer :: SubCellData => null()
-    type(ModpathCellDataType), dimension(:), pointer :: SubCellDataBuffer  
-    type(ModpathCellDataType), pointer :: ParentCellDataBuffer 
+    logical :: fromSubCell = .false.
+    integer :: parentCellNumber
+    integer :: parentSubRow, parentSubColumn
 
   contains
     procedure :: GetDZ=>pr_GetDZ
@@ -401,6 +400,14 @@ contains
       this%SubFaceConn6(n) = 0
       this%SubCellFlows(n) = 0.0d0
   end do
+
+
+  ! RWPT-USG 
+  this%fromSubCell = .false.
+  this%parentCellNumber = 0
+  this%parentSubRow    = 0
+  this%parentSubColumn = 0
+
 
   end subroutine pr_Reset
 
