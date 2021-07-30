@@ -2104,9 +2104,7 @@ contains
       !----------------------------------------------------------------
       implicit none
       class (TrackSubCellType) :: this
-      !type(ModpathSubCellDataType), dimension(18) :: neighborSubCellData
       type(ModpathCellDataType) :: currentCellData
-      !type(ModpathCellDataType), dimension(18) :: neighborCellData
       type(ModpathCellDataType), dimension(2,18) :: neighborCellData
       integer, dimension(18,3) :: neighborSubCellIndexes ! nbcell, subRow, subColumn
       doubleprecision, dimension(18,6) :: neighborSubCellFaceFlows ! nbcell, flowFaceNumber
@@ -2128,144 +2126,13 @@ contains
       neighborSubCellIndexes = currentCellData%GetNeighborSubCellIndexes( &
                              this%SubCellData%Row, this%SubCellData%Column )
 
+      ! Fill neighbor cells flows
+      call pr_FillNeighborSubCellsFaceFlows( this, currentCellData, neighborCellData, &
+                                     neighborSubCellIndexes, neighborSubCellFaceFlows )
 
-      ! If current cell is not refined, easy peazy
-      if ( currentCellData%GetSubCellCount() .eq. 1 ) then 
-
-        print *, 'CURRENT CELL IS NOT REFINED'
-
-        ! Fill array with face flow values for 
-        ! the corresponding set of subcells from 
-        ! the neighbor cells buffer
-        do cid = 1,18
-            if ( neighborSubCellIndexes( cid, 1 ) .ne. 0 ) then
-                call neighborCellData( 1, neighborSubCellIndexes( cid, 1 ) )%FillSubCellFaceFlowsBuffer( &
-                                     neighborSubCellIndexes( cid, 2 ), neighborSubCellIndexes( cid, 3 ), & 
-                                                                      neighborSubCellFaceFlows( cid, : ) )
-            else
-                call currentCellData%FillSubCellFaceFlowsBuffer( &
-                                  neighborSubCellIndexes( cid, 2 ), neighborSubCellIndexes( cid, 3 ), & 
-                                                                   neighborSubCellFaceFlows( cid, : ) )
-            end if
-        end do
-
-
-        ! Fill faceFlows from current subcell
-        call currentCellData%FillSubCellFaceFlowsBuffer( &
-            this%SubCellData%Row, this%SubCellData%Column, centerSubCellFaceFlows )
-
-
-      else 
-
-        print *, 'CURRENT CELL IS REFINED'
-
-
-        ! DEBUG/DEV
-        ! Print a report
-        print *, 'TrackSubCell: will compute discharges'
-        print *, '********************************************************************************************'
-        print *, '** ComputeCornerDischarge:  neighbors information for TrackCell', currentCellData%CellNumber
-        print *, '** ComputeCornerDischarge: subcell indexes',  this%SubCellData%Row, this%SubCellData%Column
-        print *, '********************************************************************************************'
-
-        do n = 1, 18
-            print *, '-------------------------------------------------------------------'
-            print *, '   -- Should fill flows with indexes: ', neighborSubCellIndexes( n, : )
-            print *, '   -- NeighborCellBuffer ', neighborSubCellIndexes( n, 1 )
-
-            if ( neighborSubCellIndexes( n, 1 ) .eq. 0 ) then
-                print *, '   -- Will fill with subcell data from itself '
-                call currentCellData%FillSubCellFaceFlowsBuffer( &
-                                  neighborSubCellIndexes( n, 2 ), neighborSubCellIndexes( n, 3 ), & 
-                                                                   neighborSubCellFaceFlows( n, : ) )
-            else
-                print *, '   -- Will fill with data from neighbor '
-
-                if ( neighborCellData( 2, neighborSubCellIndexes( n, 1 ) )%CellNumber .gt. 0 ) then 
-                    print *, '   -- This is a DOUBLE BUFFER'
-                    print *, '   -- Based on requested face direction should determine INDEX'
-
-                    ! By design are not refined
-                    if ( neighborCellData( 2, neighborSubCellIndexes( n, 1 ) )%requestedFromDirection .eq. 1 ) then 
-                        print *, '   -- X DIRECTION THEN LOCATION IN BUFFER IS GIVEN BY SUBCELL ROW'
-                        call neighborCellData(&
-                            neighborSubCellIndexes( n, 2 ),&
-                            neighborSubCellIndexes( n, 1 ) )%FillSubCellFaceFlowsBuffer( &
-                                                  1, 1, neighborSubCellFaceFlows( n, : ) )
-
-                        print *, '   -- FILLING FROM CELLNUMBER',&
-                        neighborCellData(&
-                            neighborSubCellIndexes( n, 2 ), &
-                            neighborSubCellIndexes( n, 1 ) )%CellNumber
-
-                    else if ( neighborCellData( 2, neighborSubCellIndexes( n, 1 ) )%requestedFromDirection .eq. 2 ) then 
-                        print *, '   -- Y DIRECTION THEN LOCATION IN BUFFER IS GIVEN BY SUBCELL COLUMN'
-                        call neighborCellData(&
-                            neighborSubCellIndexes( n, 3 ), &
-                            neighborSubCellIndexes( n, 1 ) )%FillSubCellFaceFlowsBuffer( &
-                                                  1, 1, neighborSubCellFaceFlows( n, : ) )
-                        print *, '   -- FILLING FROM CELLNUMBER',&
-                        neighborCellData(&
-                            neighborSubCellIndexes( n, 3 ), &
-                            neighborSubCellIndexes( n, 1 ) )%CellNumber
-
-                    else 
-                        print *, 'INCONSISTENCY'
-
-                    end if 
-
-
-                    do m = 1, 2
-                        if ( neighborCellData(m, neighborSubCellIndexes( n, 1 ) )%GetSubCellCount() .gt. 1 ) then 
-                          print *, '         -- IS REFINED  '
-                          print *, '           -- REQUEST DIRECTION ', &
-                            neighborCellData(m, neighborSubCellIndexes( n, 1 ) )%requestedFromDirection
-                        else 
-                          print *, '         -- NOT REFINED  '
-                          print *, '           -- REQUEST DIRECTION ', &
-                            neighborCellData(m, neighborSubCellIndexes( n, 1 ) )%requestedFromDirection
-
-                        end if  
-                    end do
-    
-                else if ( &
-                    ( neighborCellData( 1, neighborSubCellIndexes( n, 1 ) )%CellNumber .gt. 0 ) .or. & 
-                    ( neighborCellData( 1, neighborSubCellIndexes( n, 1 ) )%fromSubCell ) ) then 
-                    print *, '   -- This is a SINGLE BUFFER'
-
-                    if ( neighborCellData(1, neighborSubCellIndexes( n, 1 ) )%GetSubCellCount() .gt. 1 ) then 
-                      print *, '         -- IS REFINED  ', ' GET THE REQUESTED SUB CELL INDEXES'
-
-                      call neighborCellData( 1, neighborSubCellIndexes( n, 1 ) )%FillSubCellFaceFlowsBuffer( &
-                                             neighborSubCellIndexes( n, 2 ), neighborSubCellIndexes( n, 3 ), & 
-                                                                            neighborSubCellFaceFlows( n, : ) )
-                    else 
-                      print *, '         -- NOT REFINED  '
-                      if ( neighborCellData( 1, neighborSubCellIndexes( n, 1 ) )%fromSubCell )  then 
-                        print *, '              -- WAS FILLED FROM SUBCELL  '
-
-                        call neighborCellData( 1, neighborSubCellIndexes( n, 1 ) )%FillSubCellFaceFlowsBuffer( &
-                                                                        1, 1, neighborSubCellFaceFlows( n, : ) )
-
-                      else
-                        print *, '              -- WAS FILLED FROM NORMAL CELL  '
-
-                        call neighborCellData( 1, neighborSubCellIndexes( n, 1 ) )%FillSubCellFaceFlowsBuffer( &
-                                                                        1, 1, neighborSubCellFaceFlows( n, : ) )
-                      end if 
-                    end if  
-
-                else
-                    print *, '   -- This is a EMPTY BUFFER'
-                end if  
-
-            end if  
-        end do
-
-
-
-
-      end if 
+      ! Fill faceFlows from current subcell
+      call currentCellData%FillSubCellFaceFlowsBuffer( &
+          this%SubCellData%Row, this%SubCellData%Column, centerSubCellFaceFlows )
 
 
 
@@ -2932,102 +2799,182 @@ contains
   end subroutine pr_Trilinear
 
 
+
+  subroutine pr_FillNeighborSubCellsFaceFlows( this, centerCellData, neighborCellData, &
+                                      neighborSubCellIndexes, neighborSubCellFaceFlows )
+      !-----------------------------------------------------------
+      ! WHERE ?
+      !-----------------------------------------------------------
+      ! Specifications
+      !-----------------------------------------------------------
+      implicit none
+      class (TrackSubCellType) :: this
+      class (ModpathCellDataType), intent(in) :: centerCellData 
+      class (ModpathCellDataType), dimension(2,18), intent(in) :: neighborCellData 
+      integer, dimension(18,3), intent(in) ::  neighborSubCellIndexes ! nCellBuffer, subRow, subCol
+      doubleprecision, dimension(18,6), intent(inout) :: neighborSubCellFaceFlows ! faceFlows
+      integer :: subConnectionIndex, neighborSubRow, neighborSubColumn
+      integer :: n, m
+      !-----------------------------------------------------------
+
+      ! Reset flows
+      neighborSubCellFaceFlows = 0d0
+
+      ! If current cell is not refined
+      if ( centerCellData%GetSubCellCount() .eq. 1 ) then 
+        ! DEBUG/DEV
+        print *, 'CURRENT CELL IS NOT REFINED'
+        ! Cell is connected to non refined cells, 
+        ! it does not uses sub cells from itself.
+        ! Neighbors without subcells
+        ! Actually it does not need neighborSubCellIndexes
+        do n = 1,18
+            call neighborCellData( &
+                1, neighborSubCellIndexes( n, 1 ) )%FillSubCellFaceFlowsBuffer( 1, 1, &
+                                                     neighborSubCellFaceFlows( n, : ) )
+        end do
+
+        ! Done 
+        return
+
+      end if  
+
+
+      ! DEBUG/DEV
+      print *, 'CURRENT CELL IS REFINED'
+
+      ! DEBUG/DEV
+      ! Print a report
+      print *, 'TrackSubCell: will compute discharges'
+      print *, '********************************************************************************************'
+      print *, '** ComputeCornerDischarge:  neighbors information for TrackCell', centerCellData%CellNumber
+      print *, '** ComputeCornerDischarge: subcell indexes',  this%SubCellData%Row, this%SubCellData%Column
+      print *, '********************************************************************************************'
+
+      do n = 1, 18
+          print *, '-------------------------------------------------------------------'
+          print *, '   -- Should fill flows with indexes: ', neighborSubCellIndexes( n, : )
+          print *, '   -- NeighborCellBuffer ', neighborSubCellIndexes( n, 1 )
+
+          ! Fill face flows with one of its own subcells
+          if ( neighborSubCellIndexes( n, 1 ) .eq. 0 ) then
+              print *, '   -- Will fill with subcell data from itself '
+              call centerCellData%FillSubCellFaceFlowsBuffer( &
+                                neighborSubCellIndexes( n, 2 ), neighborSubCellIndexes( n, 3 ), & 
+                                                               neighborSubCellFaceFlows( n, : ) )
+              cycle
+          end if
+
+          ! Fill face flows with data obtained from neighbors
+          print *, '   -- Will fill with data from neighbor '
+          if ( neighborCellData( 2, neighborSubCellIndexes( n, 1 ) )%CellNumber .gt. 0 ) then 
+              print *, '   -- This is a DOUBLE BUFFER'
+              print *, '   -- Based on requested face direction should determine INDEX'
+
+              ! By design, when the buffer is double, cells are not refined.
+              ! Detect from which direction where requested.
+              if ( neighborCellData( 2, neighborSubCellIndexes( n, 1 ) )%requestedFromDirection .eq. 1 ) then 
+                  ! If x-direction, location in buffer is given by subcell row index 
+                  subConnectionIndex = neighborSubCellIndexes( n, 2 )
+                  neighborSubRow     = 1 
+                  neighborSubColumn  = 1
+
+                  print *, '   -- X DIRECTION THEN LOCATION IN BUFFER IS GIVEN BY SUBCELL ROW',&
+                  neighborCellData( 2, neighborSubCellIndexes( n, 1 ) )%requestedFromDirection
+                  call neighborCellData(&
+                      neighborSubCellIndexes( n, 2 ),&
+                      neighborSubCellIndexes( n, 1 ) )%FillSubCellFaceFlowsBuffer( &
+                                            1, 1, neighborSubCellFaceFlows( n, : ) )
+
+                  print *, '   -- FILLING FROM CELLNUMBER',&
+                  neighborCellData(&
+                      neighborSubCellIndexes( n, 2 ), &
+                      neighborSubCellIndexes( n, 1 ) )%CellNumber
+
+              else if ( neighborCellData( 2, neighborSubCellIndexes( n, 1 ) )%requestedFromDirection .eq. 2 ) then
+                  ! If y-direction, location in buffer is given by subcell column index 
+                  subConnectionIndex = neighborSubCellIndexes( n, 3 )
+                  neighborSubRow     = 1 
+                  neighborSubColumn  = 1
+
+                  print *, '   -- Y DIRECTION THEN LOCATION IN BUFFER IS GIVEN BY SUBCELL COLUMN',&
+                  neighborCellData( 2, neighborSubCellIndexes( n, 1 ) )%requestedFromDirection
+                  call neighborCellData(&
+                      neighborSubCellIndexes( n, 3 ), &
+                      neighborSubCellIndexes( n, 1 ) )%FillSubCellFaceFlowsBuffer( &
+                                            1, 1, neighborSubCellFaceFlows( n, : ) )
+                  print *, '   -- FILLING FROM CELLNUMBER',&
+                  neighborCellData(&
+                      neighborSubCellIndexes( n, 3 ), &
+                      neighborSubCellIndexes( n, 1 ) )%CellNumber
+
+              else 
+                  ! This should not happen
+                  print *, 'TrackSubCell: FillNeighborSubCellsFaceFlows: this is an inconsistency '
+              end if 
+
+          else if ( &
+              ( neighborCellData( 1, neighborSubCellIndexes( n, 1 ) )%CellNumber .gt. 0 ) .or. & 
+              ( neighborCellData( 1, neighborSubCellIndexes( n, 1 ) )%fromSubCell ) ) then 
+              print *, '   -- This is a SINGLE BUFFER'
+
+              if ( neighborCellData(1, neighborSubCellIndexes( n, 1 ) )%GetSubCellCount() .gt. 1 ) then 
+                  ! If its refined request the sub cell indexes
+                  subConnectionIndex = 1
+                  neighborSubRow     = neighborSubCellIndexes( n, 2 )
+                  neighborSubColumn  = neighborSubCellIndexes( n, 3 ) 
+
+                  print *, '         -- IS REFINED  ', ' GET THE REQUESTED SUB CELL INDEXES'
+
+                  call neighborCellData( 1, neighborSubCellIndexes( n, 1 ) )%FillSubCellFaceFlowsBuffer( &
+                                         neighborSubCellIndexes( n, 2 ), neighborSubCellIndexes( n, 3 ), & 
+                                                                        neighborSubCellFaceFlows( n, : ) )
+
+              else
+                  ! If its not refined, all ones
+                  subConnectionIndex = 1
+                  neighborSubRow     = 1
+                  neighborSubColumn  = 1
+
+                  print *, '         -- NOT REFINED  '
+                  if ( neighborCellData( 1, neighborSubCellIndexes( n, 1 ) )%fromSubCell )  then 
+                    print *, '              -- WAS FILLED FROM SUBCELL  '
+
+                    call neighborCellData( 1, neighborSubCellIndexes( n, 1 ) )%FillSubCellFaceFlowsBuffer( &
+                                                                    1, 1, neighborSubCellFaceFlows( n, : ) )
+
+                    subConnectionIndex = 1
+                    neighborSubRow     = 1
+                    neighborSubColumn  = 1
+
+                  else
+                    print *, '              -- WAS FILLED FROM NORMAL CELL  '
+
+                    call neighborCellData( 1, neighborSubCellIndexes( n, 1 ) )%FillSubCellFaceFlowsBuffer( &
+                                                                    1, 1, neighborSubCellFaceFlows( n, : ) )
+                  end if 
+              end if  
+
+          else
+              ! Buffer is empty, continue
+              print *, '   -- This is a EMPTY BUFFER'
+              cycle
+          end if  
+
+          !! Fill it 
+          !call neighborCellData( subConnectionIndex, neighborSubCellIndexes( n, 1 ) )%FillSubCellFaceFlowsBuffer( &
+          !                                 neighborSubRow, neighborSubColumn, neighborSubCellFaceFlows( n, : ) )
+
+
+      end do
+
+
+      ! Done
+      return
+
+
+  end subroutine pr_FillNeighborSubCellsFaceFlows
+
+
+
 end module TrackSubCellModule
-
-
-
-
-
-
-! -----------   TRASH ------------
-! 22-04-2021
-
-      ! Cell indexes for x-component
-      ! Complete connection id
-      ! 000: 7-8-13   : fn1 : dc3-ic35-dc5
-      ! 100: 7-8-13   : fn2 : dc3-ic35-dc5
-      ! 010: 10-11-13 : fn1 : 
-      ! 110: 10-11-13 : fn2 :  
-      ! 001: 7-9-16   : fn1 :
-      ! 101: 7-9-16   : fn2 :
-      ! 011: 10-12-16 : fn1 :
-      ! 111: 10-12-16 : fn2 :
-
-      ! x-components at each corner
-      !this%vCorner000(1) = nominalFactor*( this%SubCellData%VX1 + neighborSubCellData(7)%VX1  + &
-      !    neighborSubCellData(13)%VX1 + neighborSubCellData(8)%VX1 )
-      !this%vCorner100(1) = nominalFactor*( this%SubCellData%VX2 + neighborSubCellData(7)%VX2  + &
-      !    neighborSubCellData(13)%VX2 + neighborSubCellData(8)%VX2 )
-      !this%vCorner010(1) = nominalFactor*( this%SubCellData%VX1 + neighborSubCellData(10)%VX1 + &
-      !    neighborSubCellData(13)%VX1 + neighborSubCellData(11)%VX1 )
-      !this%vCorner110(1) = nominalFactor*( this%SubCellData%VX2 + neighborSubCellData(10)%VX2 + &
-      !    neighborSubCellData(13)%VX2 + neighborSubCellData(11)%VX2 )
-      !this%vCorner001(1) = nominalFactor*( this%SubCellData%VX1 + neighborSubCellData(7)%VX1  + &
-      !    neighborSubCellData(16)%VX1 + neighborSubCellData(9)%VX1 )
-      !this%vCorner101(1) = nominalFactor*( this%SubCellData%VX2 + neighborSubCellData(7)%VX2  + &
-      !    neighborSubCellData(16)%VX2 + neighborSubCellData(9)%VX2 )
-      !this%vCorner011(1) = nominalFactor*( this%SubCellData%VX1 + neighborSubCellData(10)%VX1 + &
-      !    neighborSubCellData(16)%VX1 + neighborSubCellData(12)%VX1 )
-      !this%vCorner111(1) = nominalFactor*( this%SubCellData%VX2 + neighborSubCellData(10)%VX2 + &
-      !    neighborSubCellData(16)%VX2 + neighborSubCellData(12)%VX2 )
-
-
-      ! Cell indexes for y-component
-      ! Complete connection id
-      !000: 1-13-14 : fn3 :
-      !010: 1-13-14 : fn4 :
-      !100: 4-13-15 : fn3 :
-      !110: 4-13-15 : fn4 :
-      !001: 1-16-17 : fn3 :
-      !011: 1-16-17 : fn4 :
-      !101: 4-16-18 : fn3 :
-      !111: 4-16-18 : fn4 :
-
-      ! y-components at each corner
-      !this%vCorner000(2) = nominalFactor*( this%SubCellData%VY1 + neighborSubCellData(1)%VY1  + &
-      !    neighborSubCellData(13)%VY1 + neighborSubCellData(14)%VY1 )
-      !this%vCorner010(2) = nominalFactor*( this%SubCellData%VY2 + neighborSubCellData(1)%VY2  + &
-      !    neighborSubCellData(13)%VY2 + neighborSubCellData(14)%VY2 )
-      !this%vCorner100(2) = nominalFactor*( this%SubCellData%VY1 + neighborSubCellData(4)%VY1  + &
-      !    neighborSubCellData(13)%VY1 + neighborSubCellData(15)%VY1 )
-      !this%vCorner110(2) = nominalFactor*( this%SubCellData%VY2 + neighborSubCellData(4)%VY2  + &
-      !    neighborSubCellData(13)%VY2 + neighborSubCellData(15)%VY2 )
-      !this%vCorner001(2) = nominalFactor*( this%SubCellData%VY1 + neighborSubCellData(1)%VY1  + &
-      !    neighborSubCellData(16)%VY1 + neighborSubCellData(17)%VY1 )
-      !this%vCorner011(2) = nominalFactor*( this%SubCellData%VY2 + neighborSubCellData(1)%VY2  + &
-      !    neighborSubCellData(16)%VY2 + neighborSubCellData(17)%VY2 )
-      !this%vCorner101(2) = nominalFactor*( this%SubCellData%VY1 + neighborSubCellData(4)%VY1  + &
-      !    neighborSubCellData(16)%VY1 + neighborSubCellData(18)%VY1 )
-      !this%vCorner111(2) = nominalFactor*( this%SubCellData%VY2 + neighborSubCellData(4)%VY2  + &
-      !    neighborSubCellData(16)%VY2 + neighborSubCellData(18)%VY2 )
-
-
-      ! Cell indexes for z-component
-      ! Complete connection id
-      !000: 1-2-7   : fn5 :
-      !001: 1-2-7   : fn6 :
-      !100: 4-5-7   : fn5 :
-      !101: 4-5-7   : fn6 :
-      !010: 1-3-10  : fn5 :
-      !011: 1-3-10  : fn6 :
-      !110: 4-6-10  : fn5 :
-      !111: 4-6-10  : fn6 :
-
-
-      ! z-components at each corner
-      !this%vCorner000(3) = nominalFactor*( this%SubCellData%VZ1 + neighborSubCellData(1)%VZ1  + &
-      !    neighborSubCellData(7)%VZ1 + neighborSubCellData(2)%VZ1 )
-      !this%vCorner001(3) = nominalFactor*( this%SubCellData%VZ2 + neighborSubCellData(1)%VZ2  + &
-      !    neighborSubCellData(7)%VZ2 + neighborSubCellData(2)%VZ2 )
-      !this%vCorner100(3) = nominalFactor*( this%SubCellData%VZ1 + neighborSubCellData(4)%VZ1  + &
-      !    neighborSubCellData(7)%VZ1 + neighborSubCellData(5)%VZ1 )
-      !this%vCorner101(3) = nominalFactor*( this%SubCellData%VZ2 + neighborSubCellData(4)%VZ2  + &
-      !    neighborSubCellData(7)%VZ2 + neighborSubCellData(5)%VZ2 )
-      !this%vCorner010(3) = nominalFactor*( this%SubCellData%VZ1 + neighborSubCellData(1)%VZ1  + &
-      !    neighborSubCellData(10)%VZ1 + neighborSubCellData(3)%VZ1 )
-      !this%vCorner011(3) = nominalFactor*( this%SubCellData%VZ2 + neighborSubCellData(1)%VZ2  + &
-      !    neighborSubCellData(10)%VZ2 + neighborSubCellData(3)%VZ2 )
-      !this%vCorner110(3) = nominalFactor*( this%SubCellData%VZ1 + neighborSubCellData(4)%VZ1  + &
-      !    neighborSubCellData(10)%VZ1 + neighborSubCellData(6)%VZ1 )
-      !this%vCorner111(3) = nominalFactor*( this%SubCellData%VZ2 + neighborSubCellData(4)%VZ2  + &
-      !    neighborSubCellData(10)%VZ2 + neighborSubCellData(6)%VZ2 )

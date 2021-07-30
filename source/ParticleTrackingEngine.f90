@@ -1743,23 +1743,24 @@ subroutine pr_FillNeighborCellData( this, neighborCellData )
     end do ! End loop through cell faces
 
     !! DEBUG/DEV
-    !! Print a report
-    !print *, '********************************************************************************************'
-    !print *, '** FillNeighborCellData: neighbors information for TrackCell', this%TrackCell%CellData%CellNumber
+    ! Print a report
+    print *, '********************************************************************************************'
+    print *, '** FillNeighborCellData: neighbors information for TrackCell', this%TrackCell%CellData%CellNumber
 
-    !do n = 1, 18
-    !    print *, '** FillNeighborCellData: neighbor cell buffer ', n
-    !    do m = 1, 2
-    !        if ( neighborCellData(m, n)%CellNumber .gt. 0 ) then 
-    !            print *, '     -- Face Connection  ', m, ' with cell ', neighborCellData(m, n)%CellNumber
-    !        else if ( neighborCellData(m, n)%fromSubCell ) then 
-    !            print *, '     -- Face Connection  ', m, ' with cell filled from subcell ', &
-    !                neighborCellData(m, n)%parentSubRow, neighborCellData(m, n)%parentSubColumn, & 
-    !                'from parentCellNumber ', neighborCellData(m, n)%parentCellNumber
-    !        end if 
-    !    end do 
-    !end do
+    do n = 1, 18
+        print *, '** FillNeighborCellData: neighbor cell buffer ', n
+        do m = 1, 2
+            if ( neighborCellData(m, n)%CellNumber .gt. 0 ) then 
+                print *, '     -- Face Connection  ', m, ' with cell ', neighborCellData(m, n)%CellNumber
+            else if ( neighborCellData(m, n)%fromSubCell ) then 
+                print *, '     -- Face Connection  ', m, ' with cell filled from subcell ', &
+                    neighborCellData(m, n)%parentSubRow, neighborCellData(m, n)%parentSubColumn, & 
+                    'from parentCellNumber ', neighborCellData(m, n)%parentCellNumber
+            end if 
+        end do 
+    end do
 
+    !call exit(0)
 
 end subroutine pr_FillNeighborCellData
 
@@ -1894,7 +1895,7 @@ subroutine pr_FillNeighborCellsSubBuffer( this, &
                         m, directConnectionBufferIndex &
                     )%GetFaceConnection( firstNeighborFaceNumber, 1 ), &
                     neighborCellsDataBuffer( m, directConnectionBufferIndex + 1 ), &
-                                                                forceCellRefinement )
+                                                               forceCellRefinement )
                 neighborCellsDataBuffer( m, directConnectionBufferIndex + 1 )%requestedFromDirection = 3
             end do 
 
@@ -1905,7 +1906,7 @@ subroutine pr_FillNeighborCellsSubBuffer( this, &
                         m, directConnectionBufferIndex &
                     )%GetFaceConnection( firstNeighborFaceNumber + 1, 1 ), &
                     neighborCellsDataBuffer( m, directConnectionBufferIndex + 2 ), &
-                                                                forceCellRefinement )
+                                                               forceCellRefinement )
                 neighborCellsDataBuffer( m, directConnectionBufferIndex + 2 )%requestedFromDirection = 3
             end do 
 
@@ -1979,38 +1980,43 @@ subroutine pr_FillNeighborCellsSubBuffer( this, &
                 call pr_FillCellFromRealData( this, &
                     this%Grid%GetFaceConnection( &
                         neighborCellsDataBuffer( 1, directConnectionBufferIndex )%parentCellNumber, &
-                    firstNeighborFaceNumber, 1 ), auxCellDataBuffer, .true. )
+                                            firstNeighborFaceNumber, 1 ), auxCellDataBuffer, .true. )
 
                 if ( auxCellDataBuffer%CellNumber .gt. 0 ) then
                     ! Fill connection from subcell
                     call pr_FillCellBufferFromSubCell( this, auxCellDataBuffer, &
                         neighborCellsDataBuffer( 1, directConnectionBufferIndex )%parentSubRow,    &
                         neighborCellsDataBuffer( 1, directConnectionBufferIndex )%parentSubColumn, & 
-                                      neighborCellsDataBuffer( 1, directConnectionBufferIndex + 1) )
+                                     neighborCellsDataBuffer( 1, directConnectionBufferIndex + 1), &
+                                                                               forceCellRefinement )
                     neighborCellsDataBuffer( 1, directConnectionBufferIndex + 1)%requestedFromDirection = 3
                 end if
 
                 call pr_FillCellFromRealData( this, &
                     this%Grid%GetFaceConnection( &
                         neighborCellsDataBuffer( 1, directConnectionBufferIndex )%parentCellNumber, &
-                    firstNeighborFaceNumber + 1, 1 ), auxCellDataBuffer, .true. )
+                                        firstNeighborFaceNumber + 1, 1 ), auxCellDataBuffer, .true. )
 
                 if ( auxCellDataBuffer%CellNumber .gt. 0 ) then
                     ! Fill connection from subcell
                     call pr_FillCellBufferFromSubCell( this, auxCellDataBuffer, &
                         neighborCellsDataBuffer( 1, directConnectionBufferIndex )%parentSubRow,    &
                         neighborCellsDataBuffer( 1, directConnectionBufferIndex )%parentSubColumn, & 
-                                      neighborCellsDataBuffer( 1, directConnectionBufferIndex + 2) )
+                                     neighborCellsDataBuffer( 1, directConnectionBufferIndex + 2), &
+                                                                               forceCellRefinement )
                     neighborCellsDataBuffer( 1, directConnectionBufferIndex + 2)%requestedFromDirection = 3
                 end if
 
             else 
                 print *, '*** FillNeighborCellsSubBuffer: will fill remaining from horizontal faces '
 
-                ! Requires parentCellDataBuffer
+                ! Requires  a parent cellDataBuffer
                 call pr_FillCellFromRealData( this, &
                     neighborCellsDataBuffer( 1, directConnectionBufferIndex )%parentCellNumber, &
-                    auxCellDataBuffer, .true. )
+                                                                      auxCellDataBuffer, .true. )
+                auxCellDataBuffer%isParentCell    = .true. 
+                auxCellDataBuffer%parentSubRow    = neighborCellsDataBuffer( 1, directConnectionBufferIndex )%parentSubRow
+                auxCellDataBuffer%parentSubColumn = neighborCellsDataBuffer( 1, directConnectionBufferIndex )%parentSubColumn
 
                 ! Verify direction of requested faces
                 if ( firstNeighborFaceNumber .ge. 3 ) then
@@ -2052,7 +2058,8 @@ subroutine pr_FillNeighborCellsSubBuffer( this, &
                 call pr_FillCellBufferFromSubCell( this, auxCellDataBuffer, &
                                                           sameParentSubRow, &
                                                        sameParentSubColumn, & 
-                    neighborCellsDataBuffer( 1, sameParentCellBufferIndex ) )
+                   neighborCellsDataBuffer( 1, sameParentCellBufferIndex ), &
+                                                        forceCellRefinement )
                 neighborCellsDataBuffer( 1, sameParentCellBufferIndex)%requestedFromDirection = directionId
 
             end if 
@@ -2084,7 +2091,7 @@ subroutine pr_FillNeighborCellsSubBuffer( this, &
                         1, directConnectionBufferIndex &
                     )%GetFaceConnection( firstNeighborFaceNumber, 1 ), &
                     neighborCellsDataBuffer( 1, directConnectionBufferIndex + 1 ), &
-                                                                forceCellRefinement )
+                                                               forceCellRefinement )
                 neighborCellsDataBuffer( 1, directConnectionBufferIndex + 1 )%requestedFromDirection = 3
                 call pr_FillCellFromRealData( this, &
                     neighborCellsDataBuffer(           &
@@ -2175,13 +2182,40 @@ subroutine pr_FillNeighborCellsConnectionFromHorizontalFace(this, centerCellData
     ! Verify horizontal connection state
     if ( centerCellDataBuffer%SubFaceCounts( faceNumber ) .gt. 1 ) then
 
-        ! Loop over face connections and extract 
-        ! their connected cell through same faceNumber
-        do m = 1, centerCellDataBuffer%SubFaceCounts( faceNumber )
+        if ( .not. centerCellDataBuffer%isParentCell ) then 
+
+            ! Loop over face connections and extract 
+            ! their connected cell through same faceNumber
+            do m = 1, centerCellDataBuffer%SubFaceCounts( faceNumber )
+                call this%FillCellBuffer(&
+                    centerCellDataBuffer%GetFaceConnection( faceNumber, m ), neighborCellsBuffer( m ) )
+                neighborCellsBuffer(m)%requestedFromDirection = directionId
+            end do
+
+        else 
+
+            ! Which face connection ?
+            if ( directionId .eq. 2 ) then 
+                m = centerCellDataBuffer%parentSubColumn  
+            else if ( directionId .eq. 1 ) then
+                ! It should not happen under the current neighborhood generation scheme
+                print *, 'IT HAPPENED'
+                m = centerCellDataBuffer%parentSubRow 
+            end if
+
             call this%FillCellBuffer(&
-                centerCellDataBuffer%GetFaceConnection( faceNumber, m ), neighborCellsBuffer( m ) )
-            neighborCellsBuffer(m)%requestedFromDirection = directionId
-        end do
+                centerCellDataBuffer%GetFaceConnection( faceNumber, m ), neighborCellsBuffer( 1 ) )
+            neighborCellsBuffer( 1 )%requestedFromDirection = directionId
+            
+            if ( forceCellRefinement ) then 
+                ! Forces refinement and sub cell flows computation
+                neighborCellsBuffer( 1 )%SubCellRowCount    = 2
+                neighborCellsBuffer( 1 )%SubCellColumnCount = 2
+                call neighborCellsBuffer( 1 )%ComputeSubCellFlows()
+            end if 
+
+        end if 
+
 
         ! Done
         return
@@ -2250,7 +2284,7 @@ subroutine pr_FillNeighborCellsConnectionFromHorizontalFace(this, centerCellData
             call pr_FillCellBufferFromSubCell( this, parentCellDataBuffer, &
                                    subCellIndexes( subCellIndexesRow, 1 ), & 
                                    subCellIndexes( subCellIndexesRow, 2 ), & 
-                                                    neighborCellsBuffer(1) )
+                               neighborCellsBuffer(1), forceCellRefinement )
             neighborCellsBuffer(1)%requestedFromDirection = directionId
         else
 
@@ -2280,13 +2314,15 @@ end subroutine pr_FillNeighborCellsConnectionFromHorizontalFace
 
 
 ! RWPT
-subroutine pr_FillCellBufferFromSubCell( this, parentCellBuffer, subRow, subColumn, cellBuffer )
+subroutine pr_FillCellBufferFromSubCell( this, parentCellBuffer, subRow, subColumn, &
+                                                    cellBuffer, forceCellRefinement )
     !----------------------------------------------------------------------------- 
     !----------------------------------------------------------------------------- 
     class(ParticleTrackingEngineType), target :: this
     ! input
     type(ModpathCellDataType), intent(in)  :: parentCellBuffer
-    integer :: subRow, subColumn 
+    integer, intent(in) :: subRow, subColumn 
+    logical, intent(in) :: forceCellRefinement
     ! output
     type(ModpathCellDataType), intent(out)  :: cellBuffer
     ! local
@@ -2307,10 +2343,18 @@ subroutine pr_FillCellBufferFromSubCell( this, parentCellBuffer, subRow, subColu
     cellBuffer%Q5(1) = faceFlows(5)
     cellBuffer%Q6(1) = faceFlows(6)
 
-    ! Force refinement (yes?) 
-    !cellBuffer%SubCellRowCount    = 2
-    !cellBuffer%SubCellColumnCount = 2
-    !call cellBuffer%ComputeSubCellFlows()
+    if ( forceCellRefinement ) then 
+        ! Fill sources and sinks with the same method 
+        ! employed when computing sub cell flows, using 
+        ! parent source/sink/storage flows
+        cellBuffer%SourceFlow  = parentCellBuffer%SourceFlow  / 4d0
+        cellBuffer%SinkFlow    = parentCellBuffer%SinkFlow    / 4d0
+        cellBuffer%StorageFlow = parentCellBuffer%StorageFlow / 4d0
+
+        cellBuffer%SubCellRowCount    = 2
+        cellBuffer%SubCellColumnCount = 2
+        call cellBuffer%ComputeSubCellFlows()
+    end if 
 
     ! "subCell" properties
     cellBuffer%fromSubCell      = .true. 
@@ -2318,7 +2362,8 @@ subroutine pr_FillCellBufferFromSubCell( this, parentCellBuffer, subRow, subColu
     cellBuffer%parentSubRow     = subRow
     cellBuffer%parentSubColumn  = subColumn 
 
-    ! Fill dimensions
+    ! Fill dimensions:
+    ! Half horizontal, same vertical
     cellBuffer%DX     = 0.5*parentCellBuffer%DX 
     cellBuffer%DY     = 0.5*parentCellBuffer%DY 
     cellBuffer%Bottom = parentCellBuffer%Bottom
