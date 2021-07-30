@@ -1359,8 +1359,6 @@ subroutine pr_TrackPath(this, trackPathResult, traceModeOn, traceModeUnit,      
       !call this%FillNeighborCellData( this%NeighborCellData )
       call this%FillNeighborCellData( neighborCellData )
 
-      call exit(0)
-
   end if
 
 
@@ -1405,8 +1403,11 @@ subroutine pr_TrackPath(this, trackPathResult, traceModeOn, traceModeUnit,      
       else
           !call this%TrackCell%ExecuteRandomWalkParticleTracking(loc, stopTime, this%TrackCellResult, this%NeighborSubCellData)
           ! DEV
-          !call this%TrackCell%ExecuteRandomWalkParticleTracking(loc, stopTime, this%TrackCellResult,&
-          !    this%NeighborSubCellData, neighborCellData)
+          call this%TrackCell%ExecuteRandomWalkParticleTracking(loc, stopTime, this%TrackCellResult,&
+              this%NeighborSubCellData, neighborCellData)
+
+          call exit(0)
+
           !call this%TrackCell%ExecuteRandomWalkParticleTracking(loc, stopTime, this%TrackCellResult, &
           !                                             this%NeighborSubCellData, this%NeighborCellData)
           !call this%TrackCell%ExecuteRandomWalkParticleTracking(loc, stopTime, this%TrackCellResult, &
@@ -1741,25 +1742,23 @@ subroutine pr_FillNeighborCellData( this, neighborCellData )
 
     end do ! End loop through cell faces
 
-    ! DEBUG/DEV
-    ! Print a report
-    print *, '********************************************************************************************'
-    print *, '** FillNeighborCellData: neighbors information for TrackCell', this%TrackCell%CellData%CellNumber
+    !! DEBUG/DEV
+    !! Print a report
+    !print *, '********************************************************************************************'
+    !print *, '** FillNeighborCellData: neighbors information for TrackCell', this%TrackCell%CellData%CellNumber
 
-    do n = 1, 18
-        print *, '** FillNeighborCellData: neighbor cell buffer ', n
-        do m = 1, 2
-            if ( neighborCellData(m, n)%CellNumber .gt. 0 ) then 
-                print *, '     -- Face Connection  ', m, ' with cell ', neighborCellData(m, n)%CellNumber
-            else if ( neighborCellData(m, n)%fromSubCell ) then 
-                print *, '     -- Face Connection  ', m, ' with cell filled from subcell ', &
-                    neighborCellData(m, n)%parentSubRow, neighborCellData(m, n)%parentSubColumn, & 
-                    'from parentCellNumber ', neighborCellData(m, n)%parentCellNumber
-            end if 
-        end do 
-    end do
-
-    call exit(0)
+    !do n = 1, 18
+    !    print *, '** FillNeighborCellData: neighbor cell buffer ', n
+    !    do m = 1, 2
+    !        if ( neighborCellData(m, n)%CellNumber .gt. 0 ) then 
+    !            print *, '     -- Face Connection  ', m, ' with cell ', neighborCellData(m, n)%CellNumber
+    !        else if ( neighborCellData(m, n)%fromSubCell ) then 
+    !            print *, '     -- Face Connection  ', m, ' with cell filled from subcell ', &
+    !                neighborCellData(m, n)%parentSubRow, neighborCellData(m, n)%parentSubColumn, & 
+    !                'from parentCellNumber ', neighborCellData(m, n)%parentCellNumber
+    !        end if 
+    !    end do 
+    !end do
 
 
 end subroutine pr_FillNeighborCellData
@@ -1824,7 +1823,7 @@ subroutine pr_FillNeighborCellsSubBuffer( this, &
     integer :: notSameParentCellBufferIndex
     integer :: notSameParentCellFaceConnection
     integer :: n, m 
-
+    integer :: directionId
     !---------------------------------------------------------------------
 
 
@@ -1842,7 +1841,7 @@ subroutine pr_FillNeighborCellsSubBuffer( this, &
         ! Fill direct connection buffer
         call pr_FillCellFromRealData( this, centerCellDataBuffer%GetFaceConnection( faceNumber, 1 ), &
                       neighborCellsDataBuffer( 1, directConnectionBufferIndex ), forceCellRefinement )
-
+        neighborCellsDataBuffer( 1, directConnectionBufferIndex )%requestedFromDirection = 3
 
         ! Fill indirect connection buffers
         call pr_FillNeighborCellsConnectionFromHorizontalFace( this,                          &
@@ -1896,6 +1895,7 @@ subroutine pr_FillNeighborCellsSubBuffer( this, &
                     )%GetFaceConnection( firstNeighborFaceNumber, 1 ), &
                     neighborCellsDataBuffer( m, directConnectionBufferIndex + 1 ), &
                                                                 forceCellRefinement )
+                neighborCellsDataBuffer( m, directConnectionBufferIndex + 1 )%requestedFromDirection = 3
             end do 
 
             ! Second indirect connection buffer
@@ -1906,6 +1906,7 @@ subroutine pr_FillNeighborCellsSubBuffer( this, &
                     )%GetFaceConnection( firstNeighborFaceNumber + 1, 1 ), &
                     neighborCellsDataBuffer( m, directConnectionBufferIndex + 2 ), &
                                                                 forceCellRefinement )
+                neighborCellsDataBuffer( m, directConnectionBufferIndex + 2 )%requestedFromDirection = 3
             end do 
 
             ! Done
@@ -1986,6 +1987,7 @@ subroutine pr_FillNeighborCellsSubBuffer( this, &
                         neighborCellsDataBuffer( 1, directConnectionBufferIndex )%parentSubRow,    &
                         neighborCellsDataBuffer( 1, directConnectionBufferIndex )%parentSubColumn, & 
                                       neighborCellsDataBuffer( 1, directConnectionBufferIndex + 1) )
+                    neighborCellsDataBuffer( 1, directConnectionBufferIndex + 1)%requestedFromDirection = 3
                 end if
 
                 call pr_FillCellFromRealData( this, &
@@ -1999,6 +2001,7 @@ subroutine pr_FillNeighborCellsSubBuffer( this, &
                         neighborCellsDataBuffer( 1, directConnectionBufferIndex )%parentSubRow,    &
                         neighborCellsDataBuffer( 1, directConnectionBufferIndex )%parentSubColumn, & 
                                       neighborCellsDataBuffer( 1, directConnectionBufferIndex + 2) )
+                    neighborCellsDataBuffer( 1, directConnectionBufferIndex + 2)%requestedFromDirection = 3
                 end if
 
             else 
@@ -2012,6 +2015,7 @@ subroutine pr_FillNeighborCellsSubBuffer( this, &
                 ! Verify direction of requested faces
                 if ( firstNeighborFaceNumber .ge. 3 ) then
                     print *, '*** FillNeighborCellsSubBuffer: Y AXIS FACES '
+                    directionId = 2
                     if ( neighborCellsDataBuffer( 1, directConnectionBufferIndex )%parentSubRow .eq. 1 ) then
                         sameParentCellBufferIndex       = directConnectionBufferIndex + 1
                         notSameParentCellBufferIndex    = directConnectionBufferIndex + 2
@@ -2027,6 +2031,7 @@ subroutine pr_FillNeighborCellsSubBuffer( this, &
                     end if 
                 else
                     print *, '*** FillNeighborCellsSubBuffer: X AXIS FACES '
+                    directionId = 1
                     ! This case does not happens under the current scheme. 
                     ! That is because x axis faces are requested after 
                     ! a vertical faceNumber. As the grid cell is assumed
@@ -2048,7 +2053,7 @@ subroutine pr_FillNeighborCellsSubBuffer( this, &
                                                           sameParentSubRow, &
                                                        sameParentSubColumn, & 
                     neighborCellsDataBuffer( 1, sameParentCellBufferIndex ) )
-
+                neighborCellsDataBuffer( 1, sameParentCellBufferIndex)%requestedFromDirection = directionId
 
             end if 
 
@@ -2080,12 +2085,14 @@ subroutine pr_FillNeighborCellsSubBuffer( this, &
                     )%GetFaceConnection( firstNeighborFaceNumber, 1 ), &
                     neighborCellsDataBuffer( 1, directConnectionBufferIndex + 1 ), &
                                                                 forceCellRefinement )
+                neighborCellsDataBuffer( 1, directConnectionBufferIndex + 1 )%requestedFromDirection = 3
                 call pr_FillCellFromRealData( this, &
                     neighborCellsDataBuffer(           &
                         1, directConnectionBufferIndex &
                     )%GetFaceConnection( firstNeighborFaceNumber + 1, 1 ), &
                     neighborCellsDataBuffer( 1, directConnectionBufferIndex + 2 ), &
                                                                forceCellRefinement )
+                neighborCellsDataBuffer( 1, directConnectionBufferIndex + 2 )%requestedFromDirection = 3
             else
 
                 ! DEBUG/DEV
@@ -2144,6 +2151,7 @@ subroutine pr_FillNeighborCellsConnectionFromHorizontalFace(this, centerCellData
     integer, dimension(2,2)                  :: subCellIndexes
     integer                                  :: directConnectionSubRow
     integer                                  :: subCellIndexesRow, m
+    integer                                  :: directionId
     !--------------------------------------------------------------------------------------
 
 
@@ -2152,6 +2160,16 @@ subroutine pr_FillNeighborCellsConnectionFromHorizontalFace(this, centerCellData
         ! Done
         return
     end if 
+
+    
+    ! Determine direction of faceNumber 
+    if ( faceNumber .le. 2 ) then 
+        directionId = 1 
+    else if ( faceNumber .le. 4 ) then 
+        directionId = 2 
+    else 
+        directionId = 3
+    end if
 
 
     ! Verify horizontal connection state
@@ -2162,6 +2180,7 @@ subroutine pr_FillNeighborCellsConnectionFromHorizontalFace(this, centerCellData
         do m = 1, centerCellDataBuffer%SubFaceCounts( faceNumber )
             call this%FillCellBuffer(&
                 centerCellDataBuffer%GetFaceConnection( faceNumber, m ), neighborCellsBuffer( m ) )
+            neighborCellsBuffer(m)%requestedFromDirection = directionId
         end do
 
         ! Done
@@ -2232,13 +2251,14 @@ subroutine pr_FillNeighborCellsConnectionFromHorizontalFace(this, centerCellData
                                    subCellIndexes( subCellIndexesRow, 1 ), & 
                                    subCellIndexes( subCellIndexesRow, 2 ), & 
                                                     neighborCellsBuffer(1) )
-
+            neighborCellsBuffer(1)%requestedFromDirection = directionId
         else
 
             ! If equal size cell, fill buffer and leave
             call pr_FillCellFromRealData( this,                          &
                 centerCellDataBuffer%GetFaceConnection( faceNumber, 1 ), &
                              neighborCellsBuffer(1), forceCellRefinement )
+            neighborCellsBuffer(1)%requestedFromDirection = directionId
 
         end if 
 
@@ -2288,9 +2308,9 @@ subroutine pr_FillCellBufferFromSubCell( this, parentCellBuffer, subRow, subColu
     cellBuffer%Q6(1) = faceFlows(6)
 
     ! Force refinement (yes?) 
-    cellBuffer%SubCellRowCount    = 2
-    cellBuffer%SubCellColumnCount = 2
-    call cellBuffer%ComputeSubCellFlows()
+    !cellBuffer%SubCellRowCount    = 2
+    !cellBuffer%SubCellColumnCount = 2
+    !call cellBuffer%ComputeSubCellFlows()
 
     ! "subCell" properties
     cellBuffer%fromSubCell      = .true. 
@@ -2356,1300 +2376,3 @@ end subroutine pr_FillCellFromRealData
 
 
 end module ParticleTrackingEngineModule
-
-
-
-
-
-
-
-
-
-
-!!!!! THRASH !!!!!!!
-
-
-
-
-
-
-        !!! REVIEW
-
-        !!! This section works, requires better semantics 
-        !!! or some improved mechanism for managing indexation
-
-        !!! If one connection, verify if is an equal size 
-        !!! or bigger cell
-        !!
-        !!! Information required for horizontal neighbor cell size 
-        !!! detection. This should be defined 
-        !!! in a different place. 
-        !!select case ( faceNumber )
-        !!    case (1)
-        !!        orthogonalFaceNumbers(1)   = 3 
-        !!        orthogonalFaceNumbers(2)   = 4
-        !!        subCellIndexes(1,:)        = (/1,2/) 
-        !!        subCellIndexes(2,:)        = (/2,2/) 
-        !!    case (2)
-        !!        orthogonalFaceNumbers(1)   = 3 
-        !!        orthogonalFaceNumbers(2)   = 4
-        !!        subCellIndexes(1,:)        = (/1,1/) 
-        !!        subCellIndexes(2,:)        = (/2,1/) 
-        !!    case (3)
-        !!        orthogonalFaceNumbers(1)   = 1 
-        !!        orthogonalFaceNumbers(2)   = 2
-        !!        subCellIndexes(1,:)        = (/1,2/) 
-        !!        subCellIndexes(2,:)        = (/1,1/) 
-        !!    case (4)
-        !!        orthogonalFaceNumbers(1)   = 1 
-        !!        orthogonalFaceNumbers(2)   = 2
-        !!        subCellIndexes(1,:)        = (/2,2/) 
-        !!        subCellIndexes(2,:)        = (/2,1/) 
-        !!end select 
-
-        !!
-        !!! Neighbor connection size detection 
-
-        !!! Analyze if current TrackCell is 
-        !!! connected to a bigger TrackCell. 
-        !!! Condition verifies if connections trough faceNumber
-        !!! of cells connected through orthogonal faces to current TrackCell, 
-        !!! are the same or different. If the same, then current TrackCell is 
-        !!! connected to a bigger cell.
-
-        !!! Verify response when no connection
-        !!! Verify face index 
-        !!if ( &
-        !!    ( centerCellDataBuffer%GetFaceConnection( faceNumber, 1 ) .eq.                                 &
-        !!      this%Grid%GetFaceConnection(                                                                 & 
-        !!          centerCellDataBuffer%GetFaceConnection( orthogonalFaceNumbers(1), 1 ), faceNumber, 1 ) ) &
-        !!    .or.                                                                                           &
-        !!    ( centerCellDataBuffer%GetFaceConnection( faceNumber, 1 ) .eq.                                 &
-        !!      this%Grid%GetFaceConnection(                                                                 & 
-        !!          centerCellDataBuffer%GetFaceConnection( orthogonalFaceNumbers(2), 1 ), faceNumber, 1 ) ) &
-        !!) then 
-        !!    ! If bigger cell
-        !!    print *, '*** FillNeighborCellsSubBuffer: connected to a bigger cell '
-        !!   
-        !!    ! Fill the parentCellDataBuffer and force refinement
-        !!    call pr_FillCellFromRealData( this, centerCellDataBuffer%GetFaceConnection( faceNumber, 1 ), &
-        !!                                                                    parentCellDataBuffer, .true. )
-        !!    ! Location of current TrackCell relative to bigger cell
-        !!    ! defines indexes employed for filling buffers. 
-        !!    if ( &
-        !!        ( centerCellDataBuffer%GetFaceConnection( faceNumber, 1 ) .eq.                               &
-        !!          this%Grid%GetFaceConnection(                                                               & 
-        !!            centerCellDataBuffer%GetFaceConnection( orthogonalFaceNumbers(1), 1 ), faceNumber, 1 ) ) &
-        !!    ) then 
-        !!        directConnectionSubRow        = 1
-        !!        indirectConnectionSubRow      = 2
-        !!        indirectConnectionBufferIndex = directConnectionBufferIndex + 1
-        !!        lastConnectionBufferIndex     = directConnectionBufferIndex + 2
-        !!        lastConnectionFaceNumber      = firstNeighborFaceNumber + 1 
-        !!    else
-        !!        directConnectionSubRow        = 2
-        !!        indirectConnectionSubRow      = 1
-        !!        indirectConnectionBufferIndex = directConnectionBufferIndex + 2
-        !!        lastConnectionBufferIndex     = directConnectionBufferIndex + 1
-        !!        lastConnectionFaceNumber      = firstNeighborFaceNumber 
-        !!    end if 
-
-
-        !!    ! Direct Connection
-        !!    call pr_FillCellBufferFromSubCell( this,                               &
-        !!        parentCellDataBuffer, subCellIndexes( directConnectionSubRow, 1 ), &
-        !!        subCellIndexes( directConnectionSubRow, 2 ),                       &
-        !!        neighborCellsDataBuffer( 1, directConnectionBufferIndex ) )
-
-
-        !!    ! THIS SHOULDN'T BE DONE IN 2D
-        !!    ! TEMP 
-        !!    ! Final filling process
-        !!    if ( firstNeighborFaceNumber .ge. 5 ) then 
-        !!        ! If remaining neighbor cells are vertical
-        !!        print *, '*** FillNeighborCellsSubBuffer: indirect connections requested through vertical faces '
-
-        !!        ! Note that the case in which vertical connections
-        !!        ! are requested as neighbor cells, can be solved
-        !!        ! by taking advantage of the same horizontal 
-        !!        ! refinement assumption.
-
-        !!        ! Basically, indexes determined in preliminary
-        !!        ! if branch remain valid for indexation of
-        !!        ! neighbor layers
-
-        !!        ! So, this stage requires:
-        !!        !   - Get vertical connection through firstNeighborFaceNumber
-        !!        !     and firstNeighborFaceNumber + 1, from parentCellDataBuffer.
-        !!        !   - Fill both buffers as parents buffers, maybe using aux buffer.
-        !!        !   - Initialize cells from indexation solved for previous subcell,
-        !!        !     using as source auxCellDataBuffer which acts as parent. 
-
-        !!        ! Get cell connected through firstNeighborFaceNumber
-        !!        call pr_FillCellFromRealData( this,                                       &
-        !!            parentCellDataBuffer%GetFaceConnection( firstNeighborFaceNumber, 1 ), &
-        !!                                                        auxCellDataBuffer, .true. )
-
-        !!        if ( auxCellDataBuffer%CellNumber .eq. 0 ) then
-        !!            ! Empty buffer
-        !!            call neighborCellsDataBuffer( 1, directConnectionBufferIndex + 1 )%Reset()
-        !!        else
-        !!            ! Fill from subcell
-        !!            call pr_FillCellBufferFromSubCell( this,                            &
-        !!                auxCellDataBuffer, subCellIndexes( directConnectionSubRow, 1 ), &
-        !!                subCellIndexes( directConnectionSubRow, 2 ),                    &
-        !!                neighborCellsDataBuffer( 1, directConnectionBufferIndex + 1 ) )
-        !!        end if
-
-        !!        ! And same for the last
-        !!        call pr_FillCellFromRealData( this, &
-        !!            parentCellDataBuffer%GetFaceConnection( firstNeighborFaceNumber + 1, 1 ), &
-        !!                                                            auxCellDataBuffer, .true. )
-        !!        if ( auxCellDataBuffer%CellNumber .eq. 0 ) then
-        !!            ! Empty buffer
-        !!            call neighborCellsDataBuffer( 1, directConnectionBufferIndex + 2 )%Reset()
-        !!        else
-        !!            ! Fill from subcell
-        !!            call pr_FillCellBufferFromSubCell( this,                            &
-        !!                auxCellDataBuffer, subCellIndexes( directConnectionSubRow, 1 ), &
-        !!                subCellIndexes( directConnectionSubRow, 2 ),                    &
-        !!                neighborCellsDataBuffer( 1, directConnectionBufferIndex + 2 ) )
-        !!        end if
-
-
-        !!    else
-
-        !!        ! If remaining neighbor cells are requested 
-        !!        ! through horizontal faces
-        !!        print *, '*** FillNeighborCellsSubBuffer: indirect connections requested through horizontal faces '
-        !!
-        !!        ! Indirect connection 
-        !!        call pr_FillCellBufferFromSubCell( this,                                 &
-        !!            parentCellDataBuffer, subCellIndexes( indirectConnectionSubRow, 1 ), &
-        !!            subCellIndexes( indirectConnectionSubRow, 2 ),                       &
-        !!            neighborCellsDataBuffer( 1, indirectConnectionBufferIndex ) )
-
-        !!        ! Populate last remaining neighbor by analyzing parent connections.
-        !!        if ( parentCellDataBuffer%SubFaceCounts( lastConnectionFaceNumber ) .eq. 1 ) then
-        !!            ! If parent connection through lastConnectionFaceNumber is single,
-        !!            ! then it means big cell connection should undergo
-        !!            ! double refinement.
-
-        !!            ! Fill aux buffer with trackcell connected through 
-        !!            ! lastConnectionFaceNumber to parentCellDataBuffer
-        !!            call pr_FillCellFromRealData( this, &
-        !!                parentCellDataBuffer%GetFaceConnection( lastConnectionFaceNumber, 1 ), &
-        !!                                                             auxCellDataBuffer, .true. )
-        !!            ! Populate cell from subcell
-        !!            call pr_FillCellBufferFromSubCell( this,                               &
-        !!                auxCellDataBuffer, subCellIndexes( indirectConnectionSubRow, 1 ) , &
-        !!                subCellIndexes( indirectConnectionSubRow, 2 ),                     &
-        !!                neighborCellsDataBuffer( 1, lastConnectionBufferIndex ) )
-
-
-        !!        else if ( parentCellDataBuffer%SubFaceCounts( lastConnectionFaceNumber ) .gt. 1 ) then  
-        !!            ! If the connection is multiple, then it should fill the 
-        !!            ! buffer with the cell connected through 
-        !!            ! lastConnectionFaceNumber, using column value obtained from 
-        !!            ! subCellIndexes and directConnectionSubRow.
-
-        !!            call pr_FillCellFromRealData( this, &
-        !!               parentCellDataBuffer%GetFaceConnection( lastConnectionFaceNumber, & 
-        !!                                  subCellIndexes( directConnectionSubRow, 2 ) ), &
-        !!            neighborCellsDataBuffer( 1, lastConnectionBufferIndex ), forceCellRefinement )
-
-        !!        else
-        !!            ! No connection through lastConnectionFaceNumber, empty buffer
-        !!            call neighborCellsDataBuffer( 1, lastConnectionBufferIndex )%Reset()
-        !!        end if 
-
-
-        !!    end if 
-
-        !!    ! Done 
-        !!    return
-
-        !!else
-        !!    ! DEBUG/DEV
-        !!    print *, '*** FillNeighborCellsSubBuffer: connected to an equal size cell '
-
-        !!    ! Fill direct connection buffer
-        !!    call pr_FillCellFromRealData( this, centerCellDataBuffer%GetFaceConnection( faceNumber, 1 ), &
-        !!                  neighborCellsDataBuffer( 1, directConnectionBufferIndex ), forceCellRefinement )
-
-
-        !!    ! Fill indirect connection buffers
-        !!    ! taking as center the already filled buffer 
-        !!    if ( firstNeighborFaceNumber .ge. 5 ) then 
-        !!        ! IT SHOULD NOT DO THIS FOR 2D (SINGLE LAYER)
-        !!        ! DEBUG/DEV 
-        !!        print *, '*** FillNeighborCellsSubBuffer: will fill remaining from vertical faces '
-        !!
-        !!        ! This is solved by filling cell from real cell data
-        !!        ! requesting directly vertical faces as they have the same 
-        !!        ! size that center cell, due to assumption of same refinement distribution
-        !!        ! for all layers.
-
-        !!        call pr_FillCellFromRealData( this,    &
-        !!            neighborCellsDataBuffer(           &
-        !!                1, directConnectionBufferIndex &
-        !!            )%GetFaceConnection( firstNeighborFaceNumber, 1 ), &
-        !!            neighborCellsDataBuffer( 1, directConnectionBufferIndex + 1 ), &
-        !!                                                        forceCellRefinement )
-        !!        call pr_FillCellFromRealData( this, &
-        !!            neighborCellsDataBuffer(           &
-        !!                1, directConnectionBufferIndex &
-        !!            )%GetFaceConnection( firstNeighborFaceNumber + 1, 1 ), &
-        !!            neighborCellsDataBuffer( 1, directConnectionBufferIndex + 2 ), &
-        !!                                                       forceCellRefinement )
-        !!    else
-
-        !!        ! DEBUG/DEV
-        !!        print *, '*** FillNeighborCellsSubBuffer: will fill remaining from horizontal faces '
-
-        !!        call pr_FillNeighborCellsConnectionFromHorizontalFace( this,                          &
-        !!                                   neighborCellsDataBuffer( 1, directConnectionBufferIndex ), &
-        !!                                                                     firstNeighborFaceNumber, &
-        !!                               neighborCellsDataBuffer( :, directConnectionBufferIndex + 1 ), &
-        !!                                                                          forceCellRefinement )
-
-        !!        call pr_FillNeighborCellsConnectionFromHorizontalFace( this,                              &
-        !!                                       neighborCellsDataBuffer( 1, directConnectionBufferIndex ), &
-        !!                                                                     firstNeighborFaceNumber + 1, &
-        !!                                   neighborCellsDataBuffer( :, directConnectionBufferIndex + 2 ), &
-        !!                                                                              forceCellRefinement )
-        !!    end if
-
-        !!    
-        !!    ! Done
-        !!    return
-
-
-        !!end if 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-!! DEPRECATION WARNING
-!subroutine pr_FillCellFromRefinedCells( this, currentCellData, faceNumber, cellDataSubBuffer )
-!    !
-!    ! TODO
-!    !
-!    ! 
-!
-!
-!    class(ParticleTrackingEngineType), target :: this
-!    ! input
-!    type(ModpathCellDataType), intent(in)  :: currentCellData
-!    integer, intent(in)                    :: faceNumber
-!    integer, dimension(2)                  :: subCellIndexes, newSubCellIndexes, connSubCellIndexes
-!    ! output
-!    type(ModpathCellDataType), dimension(2), intent(inout)  :: cellDataSubBuffer
-!    ! local 
-!    integer :: m, id , nid, cnid
-!    type(ModpathCellDataType) :: auxCellData
-!    !type(ModpathCellDataType), dimension(2) :: cellDataBuffer
-!    !type(ModpathCellDataType), dimension(:), pointer :: cellDataBuffer
-!
-!
-!    ! Assumptions
-!    !   - Smoothed unstructured grid
-!    !   - Horizontal faceNumber (?)
-!
-!
-!    ! Initialize filledCellData
-!    !call filledCellData%Reset()
-!
-!    !!! Allocate celldatabuffer and assign pointer
-!    !allocate( filledCellData%SubCellDataBuffer(4) )
-!    !cellDataBuffer => filledCellData%SubCellDataBuffer
-!    !! Deallocation at some point ?
-!
-!
-!    !! Resolution if the cell is composed of
-!    !! a subcelldatabuffer, id -999
-!    !if ( currentCellData%CellNumber .eq. -999 ) then
-!
-!    !    ! DEBUG/DEV
-!    !    !print *, '**FillCellFromRefinedCells: initializing from a custom cell -999, faceNumber', faceNumber 
-!    !    !do m = 1,4
-!    !    !    if( currentCellData%SubCellDataBuffer(m)%CellNumber .le. 0 ) then
-!    !    !        print *, '**FillCellFromRefinedCells: cell ', m, ' from buffer is not initialized, BEFORE'
-!    !    !    else
-!    !    !        print *, '**FillCellFromRefinedCells: cell ', m,&
-!    !    !            ' from buffer is initialized ENTER', currentCellData%SubCellDataBuffer(m)%CellNumber
-!    !    !    end if
-!    !    !end do
-!
-!
-!    !    ! subCellIndexes: location of subtrackcells in local buffer
-!    !    ! newSubCellIndexes: location of subtrackcells in buffer of cell to be created 
-!    !    ! connSubCellIndexes: location in new buffer of subtrackcell connected to direct connection
-!    !    select case (faceNumber)
-!    !        case (1)
-!    !            subCellIndexes(1)     = 1 
-!    !            subCellIndexes(2)     = 3
-!    !            newSubCellIndexes(1)  = 2 
-!    !            newSubCellIndexes(2)  = 4
-!    !            connSubCellIndexes(1) = 1 
-!    !            connSubCellIndexes(2) = 3
-!    !        case (2)
-!    !            subCellIndexes(1)     = 2 
-!    !            subCellIndexes(2)     = 4
-!    !            newSubCellIndexes(1)  = 1 
-!    !            newSubCellIndexes(2)  = 3
-!    !            connSubCellIndexes(1) = 2 
-!    !            connSubCellIndexes(2) = 4
-!    !        case (3)
-!    !            subCellIndexes(1)     = 3 
-!    !            subCellIndexes(2)     = 4
-!    !            newSubCellIndexes(1)  = 1 
-!    !            newSubCellIndexes(2)  = 2
-!    !            connSubCellIndexes(1) = 3 
-!    !            connSubCellIndexes(2) = 4
-!    !        case (4)
-!    !            subCellIndexes(1)     = 1 
-!    !            subCellIndexes(2)     = 2
-!    !            newSubCellIndexes(1)  = 3 
-!    !            newSubCellIndexes(2)  = 4
-!    !            connSubCellIndexes(1) = 1 
-!    !            connSubCellIndexes(2) = 2
-!    !    end select 
-!
-!
-!    !    ! It is possible for the custom cell
-!    !    ! to be connected to a bigger cell
-!    !    ! Verify if connections through faceNumber
-!    !    ! are equal, if cells are not custom
-!    !    if ( &
-!    !        ( currentCellData%SubCellDataBuffer( subCellIndexes(1) )%CellNumber .gt. 0 ) .and. &
-!    !        ( currentCellData%SubCellDataBuffer( subCellIndexes(2) )%CellNumber .gt. 0 )       &
-!    !    ) then
-!    !        ! In the context of a smoothed grid, if one of 
-!    !        ! the sub cells is custom, it means that 
-!    !        ! was built from smaller cells. In such case,
-!    !        ! the verification of being connected to a bigger cell
-!    !        ! makes no sense because it would
-!    !        ! imply the existence of a double jump in refinement
-!    !        ! between contiguous cells  
-!
-!    !        ! If both subcells connected to the same cell,
-!    !        ! then it is a bigger one
-!    !        if ( &
-!    !            ( currentCellData%SubCellDataBuffer( subCellIndexes(1) )%GetFaceConnection( faceNumber, 1 ) ) .eq. &
-!    !            ( currentCellData%SubCellDataBuffer( subCellIndexes(2) )%GetFaceConnection( faceNumber, 1 ) )      &
-!    !        ) then
-!    !            ! DEBUG/DEV
-!    !            print *, '**FillCellFromRefinedCells: sub cells related to faceNumber have the same connection, BIGGER'
-!    !            print *, '**FillCellFromRefinedCells: the connected cell number is cell: ', &
-!    !                currentCellData%SubCellDataBuffer( subCellIndexes(2) )%GetFaceConnection( faceNumber, 1 )
-!
-!
-!    !            ! In this case, return filledCellData, initialized from
-!    !            ! real cell data, and refined.
-!    !            ! In this case, although this cell passed through
-!    !            ! the function of refined cells, is not created with 
-!    !            ! the method of filling the subcelldatabuffer and a custom
-!    !            ! cellNumber. 
-!
-!    !            ! In any case this is a terminal case in building neighbors
-!
-!    !            ! It is possible that this section resolution 
-!    !            ! is better placed in another function/place
-!
-!    !            ! Fill the output buffer with the information of the bigger
-!    !            ! cell, refine it by computing subcell flows and leave
-!    !            !call pr_FillCellFromRealCellData( this, &
-!    !            !    currentCellData%SubCellDataBuffer( subCellIndexes(1) )%GetFaceConnection( faceNumber, 1 ), filledCellData )
-!    !            call pr_FillCellFromRealData( this, &
-!    !                currentCellData%SubCellDataBuffer( subCellIndexes(1) )%GetFaceConnection( faceNumber, 1 ), &
-!    !                                                                                    filledCellData, .true. )
-!    !            ! Done
-!    !            return
-!
-!    !        end if
-!
-!    !    end if
-!
-!
-!    !    ! Following section verify connections
-!    !    ! through subfaces and build buffer accordingly 
-!
-!    !    ! Loop over horizontal sub faces. 
-!    !    ! Each loop should fill two entries 
-!    !    ! of cellDataBuffer
-!    !    do m = 1, 2
-!
-!    !        ! Indexes
-!    !        id   = subCellIndexes( m )
-!    !        nid  = newSubCellIndexes( m ) 
-!    !        cnid = connSubCellIndexes( m )
-!
-!    !        ! SubCell in buffer could also be a -999.
-!    !        if ( currentCellData%SubCellDataBuffer( id )%CellNumber .eq. -999 ) then
-!
-!    !            ! DEBUG/DEV
-!    !            !print *, '**FillCellFromRefinedCells: one of the subcells is custom -999'
-!
-!
-!    !            ! Compare connections through faceNumber
-!    !            if ( &
-!    !                currentCellData%SubCellDataBuffer( id )%SubCellDataBuffer(      &
-!    !                    subCellIndexes(1) )%GetFaceConnection( faceNumber, 1 ) .eq. &
-!    !                currentCellData%SubCellDataBuffer( id )%SubCellDataBuffer(      &
-!    !                    subCellIndexes(2) )%GetFaceConnection( faceNumber, 1 ) ) then
-!
-!    !                ! Extract the cell and fill
-!    !                ! direct connection
-!    !                call this%FillCellBuffer( &
-!    !                    currentCellData%SubCellDataBuffer( id )%SubCellDataBuffer(  &
-!    !                        subCellIndexes(1) )%GetFaceConnection( faceNumber, 1 ), &
-!    !                                                          cellDataBuffer( nid ) )
-!
-!    !                ! Fill secondary connection
-!    !                if ( cellDataBuffer( nid )%SubFaceCounts( faceNumber ) .gt. 1 ) then
-!    !                    
-!    !                    ! DEBGU/DEV
-!    !                    !print *, '*FillCellFromRefinedCells: going to recursion' 
-!
-!    !                    ! recursion with direct assignment
-!    !                    cellDataBuffer( cnid ) = pr_FillCellFromRefinedCells( this, cellDataBuffer( nid ), faceNumber )
-!    !                else if ( cellDataBuffer( nid )%SubFaceCounts( faceNumber ) .eq. 1 ) then 
-!
-!    !                    ! DEBUG/DEV
-!    !                    !print *, '*FillCellFromRefinedCells: just one connection' 
-!
-!    !                    ! fill buffer and move on
-!    !                    ! Remember that filling of cellDataBuffer is not generalized yet.
-!    !                    ! It has to be independent from faceNumber orientation.
-!    !                    call this%FillCellBuffer( cellDataBuffer( nid )%GetFaceConnection( faceNumber, 1 ), cellDataBuffer( cnid ) )
-!    !                else
-!    !                    ! Is this possible ?
-!    !                    print *, '*FillCellFromRefinedCells: something else, n subfaces', &
-!    !                        cellDataBuffer( id )%SubFaceCounts( faceNumber )
-!    !                end if 
-!
-!    !            else
-!
-!    !                ! DEBUG/DEV
-!    !                !print *, '**FillCellFromRefinedCells: going to recursion'
-!
-!    !                ! Recursion with direct assignment
-!    !                cellDataBuffer( nid ) = pr_FillCellFromRefinedCells( this, currentCellData%SubCellDataBuffer( id ), faceNumber )
-!
-!    !                ! DEBUG/DEV
-!    !                !! Just a verification in the meantime
-!    !                !if ( cellDataBuffer(nid)%CellNumber .gt. 0 ) then
-!    !                !    print *, '**FillCellFromRefinedCells: the BUFFER is filled with REAL CELL DATA'
-!    !                !end if
-!
-!    !                ! Verify connection through faceNumber
-!    !                if ( & 
-!    !                  cellDataBuffer( nid )%SubCellDataBuffer( subCellIndexes(1) )%GetFaceConnection( faceNumber, 1 ) .eq. &
-!    !                  cellDataBuffer( nid )%SubCellDataBuffer( subCellIndexes(2) )%GetFaceConnection( faceNumber, 1 ) ) then
-!
-!    !                    ! Extract the cell and fill
-!    !                    call this%FillCellBuffer(                    &
-!    !                        cellDataBuffer( nid )%SubCellDataBuffer( &
-!    !                             subCellIndexes(1) )%GetFaceConnection( faceNumber, 1 ), &
-!    !                                                              cellDataBuffer( cnid ) )
-!    !                
-!    !                else
-!
-!    !                    cellDataBuffer( cnid ) = pr_FillCellFromRefinedCells( this, cellDataBuffer( nid ), faceNumber )
-!
-!    !                end if
-!
-!    !            end if
-!    !               
-!
-!    !        else if ( currentCellData%SubCellDataBuffer( id )%CellNumber .gt. 0 ) then
-!
-!    !            ! DEBUG/DEV
-!    !            !print *, '**FillCellFromRefinedCells: sub cell is from real data'
-!
-!    !            ! Initialize direct connection
-!    !            ! through faceNumber
-!    !            if ( currentCellData%SubCellDataBuffer( id )%SubFaceCounts( faceNumber ) .gt. 1 ) then
-!    !                
-!    !                ! DEBUG/DEV
-!    !                !print *, '*FillCellFromRefinedCells: going to recursion' 
-!
-!    !                ! Recursion with direct assignment
-!    !                cellDataBuffer( nid ) = pr_FillCellFromRefinedCells( this, currentCellData%SubCellDataBuffer( id ), faceNumber )
-!    !            else if ( currentCellData%SubCellDataBuffer( id )%SubFaceCounts( faceNumber ) .eq. 1 ) then
-!
-!    !                ! DEBUG/DEV 
-!    !                !print *, '*FillCellFromRefinedCells: just one connection'
-!    !                !print *, '*FillCellFromRefinedCellds: cell:', currentCellData%SubCellDataBuffer( id )%CellNumber, &
-!    !                !       ' connected to ', currentCellData%SubCellDataBuffer( id )%GetFaceConnection( faceNumber, 1 ) 
-!
-!    !                ! Fill buffer and move on
-!    !                call this%FillCellBuffer( currentCellData%SubCellDataBuffer( id )%GetFaceConnection( faceNumber, 1 ), &
-!    !                                                                                                cellDataBuffer( nid ) )
-!    !            else
-!    !                ! Is this possible ?
-!    !                print *, '*FillCellFromRefinedCells: something else, n subfaces BLEHEHE'
-!    !            end if 
-!
-!    !            ! Initialize secondary connection,
-!    !            ! cell connected to direct connection through
-!    !            ! faceNumber
-!    !            if ( cellDataBuffer( nid )%SubFaceCounts( faceNumber ) .gt. 1 ) then
-!
-!    !                ! DEBUG/DEV
-!    !                !print *, '*FillCellFromRefinedCells: going to recursion' 
-!
-!    !                ! Recursion with direct assignment
-!    !                cellDataBuffer( cnid ) = pr_FillCellFromRefinedCells( this, cellDataBuffer( nid ), faceNumber )
-!    !            else if ( cellDataBuffer( nid )%SubFaceCounts( faceNumber ) .eq. 1 ) then
-!
-!    !                ! DBEUG/DEV
-!    !                !print *, '*FillCellFromRefinedCells: just one connection' 
-!
-!    !                ! Fill buffer and move on
-!    !                call this%FillCellBuffer( cellDataBuffer( nid )%GetFaceConnection( faceNumber, 1 ), cellDataBuffer( cnid ) )
-!    !            else
-!    !                ! Is this possible ?
-!    !                print *, '*FillCellFromRefinedCells: something else, n subfaces', &
-!    !                    cellDataBuffer( id )%SubFaceCounts( faceNumber )
-!    !            end if 
-!
-!    !        else
-!
-!    !            print *, '**FillCellFromRefinedCells: sub cell is empty, WHY ?'
-!
-!    !        end if
-!    !       
-!    !        
-!    !    end do
-!
-!
-!    !else
-!
-!        ! If the center cell is a real one,
-!        ! request information of connected cells.
-!        ! This situation is the one ocurring in the very first 
-!        ! request process of neighbor cells, these are requested
-!        ! from a real center cell. Thus it is expected that
-!        ! that connections comply with smoothed grid.
-!
-!        ! DEBUG/DEV
-!        print *, '**** FillCellFromRefinedCells: will loop through connected cells' 
-!
-!        ! Loop over face connections and extract 
-!        ! their connected cell through same faceNumber
-!        do m = 1, currentCellData%SubFaceCounts( faceNumber )
-!
-!            call this%FillCellBuffer( currentCellData%GetFaceConnection( faceNumber, m ), cellDataSubBuffer( m ) )
-!
-!            
-!            print *, '**** FillCellFromRefinedCells: filled buffer m with cellid ', m, cellDataSubBuffer( m )%CellNumber 
-!
-!
-!
-!            !! Compute cell id in buffer 
-!            !id = (m-1)*currentCellData%SubFaceCounts( faceNumber ) + 1
-!
-!            !! Fill buffer for connected cell
-!            !! Implied smoothed unstructured grid
-!            !call this%FillCellBuffer( currentCellData%GetFaceConnection( faceNumber, m ), cellDataBuffer( id ) )
-!
-!            !! Ask if the filled buffer is connected to multiple
-!            !! or single cell
-!            !if ( cellDataBuffer( id )%SubFaceCounts( faceNumber ) .gt. 1 ) then
-!
-!            !    ! DBEUG/DEV
-!            !    !print *, '**FillCellFromRefinedCells: going to recursion' 
-!
-!            !    ! Recursion with direct assignment
-!            !    cellDataBuffer( id + 1 ) = pr_FillCellFromRefinedCells( this, cellDataBuffer( id ), faceNumber )
-!            !else if ( cellDataBuffer( id )%SubFaceCounts( faceNumber ) .eq. 1 ) then
-!            !    
-!            !    ! DBEUG/DEV
-!            !    !print *, '**FillCellFromRefinedCells: just one connection' 
-!
-!            !    ! Fill buffer and move on
-!            !    call this%FillCellBuffer( cellDataBuffer( id )%GetFaceConnection( faceNumber, 1 ), cellDataBuffer( id + 1 ) )
-!            !else
-!            !    ! Is this possible ?
-!            !    print *, '*FillCellFromRefinedCells: something else, n subfaces', cellDataBuffer( id )%SubFaceCounts( faceNumber )
-!            !end if 
-!
-!        end do
-!
-!    !end if    
-!
-!    
-!    !call exit(0)
-!
-!
-!
-!    !! Something to recognize its a custom/linked cell
-!    !filledCellData%CellNumber = -999
-!
-!    !! Fill face flows based on buffer information
-!    !! Intercell 
-!    !filledCellData%SubCellFlows(1) = cellDataBuffer(1)%GetAveragedFaceFlow(2)
-!    !filledCellData%SubCellFlows(2) = cellDataBuffer(3)%GetAveragedFaceFlow(2)
-!    !filledCellData%SubCellFlows(3) = cellDataBuffer(3)%GetAveragedFaceFlow(4)
-!    !filledCellData%SubCellFlows(4) = cellDataBuffer(4)%GetAveragedFaceFlow(4) 
-!
-!    !! Verify indexation
-!    !! Horizontal faces 
-!    !filledCellData%Q1(1) = cellDataBuffer(1)%GetAveragedFaceFlow(1)
-!    !filledCellData%Q1(2) = cellDataBuffer(3)%GetAveragedFaceFlow(1)
-!    !filledCellData%Q2(1) = cellDataBuffer(2)%GetAveragedFaceFlow(2)
-!    !filledCellData%Q2(2) = cellDataBuffer(4)%GetAveragedFaceFlow(2)
-!    !filledCellData%Q3(1) = cellDataBuffer(3)%GetAveragedFaceFlow(3)
-!    !filledCellData%Q3(2) = cellDataBuffer(4)%GetAveragedFaceFlow(3)
-!    !filledCellData%Q4(1) = cellDataBuffer(1)%GetAveragedFaceFlow(4)
-!    !filledCellData%Q4(2) = cellDataBuffer(2)%GetAveragedFaceFlow(4)
-!
-!    !! Vertical faces
-!    !filledCellData%Q5(1) = cellDataBuffer(1)%GetAveragedFaceFlow(5)
-!    !filledCellData%Q5(2) = cellDataBuffer(2)%GetAveragedFaceFlow(5)
-!    !filledCellData%Q5(3) = cellDataBuffer(3)%GetAveragedFaceFlow(5)
-!    !filledCellData%Q5(4) = cellDataBuffer(4)%GetAveragedFaceFlow(5)
-!    !filledCellData%Q6(1) = cellDataBuffer(1)%GetAveragedFaceFlow(6)
-!    !filledCellData%Q6(2) = cellDataBuffer(2)%GetAveragedFaceFlow(6)
-!    !filledCellData%Q6(3) = cellDataBuffer(3)%GetAveragedFaceFlow(6)
-!    !filledCellData%Q6(4) = cellDataBuffer(4)%GetAveragedFaceFlow(6)
-!
-!    !! Fill sources and sinks ?
-!
-!
-!    !! Fill additional information
-!    !filledCellData%Layer     = currentCellData%Layer
-!    !filledCellData%LayerType = currentCellData%LayerType
-!    !!filledCellData%Zone      = currentCellData%Zone
-!    !!filledCellData%Ibound    = currentCellData%Ibound
-!    !!filledCellData%IboundTS  = currentCellData%IboundTS
-!    !!filledCellData%Porosity  = currentCellData%Porosity
-!
-!
-!    return 
-!
-!
-!end subroutine pr_FillCellFromRefinedCells
-
-
-
-
-
-
-
-
-
-!! DEPRECATION WARNING, ONLY USED IN CONNECTIONS 
-!! OF VERTICAL FACENUMBERS
-!subroutine pr_FillDirectBufferFromHorizontalFace( this, centerCellDataBuffer, faceNumber, & 
-!                                                    outputCellBuffer, forceCellRefinement )
-!!subroutine pr_FillDirectBufferFromHorizontalFace( this, centerCellDataBuffer, faceNumber, outputCellBuffer )
-!    !--------------------------------------------------------------------------------------
-!    ! TODO
-!    !--------------------------------------------------------------------------------------
-!    class(ParticleTrackingEngineType) :: this
-!    ! input
-!    type(ModpathCellDataType), intent(in)    :: centerCellDataBuffer
-!    type(ModpathCellDataType), intent(inout) :: outputCellBuffer
-!    integer, intent(in) :: faceNumber
-!    type(ModpathCellDataType), target        :: auxCellDataBuffer
-!    type(ModpathCellDataType), target        :: parentCellDataBuffer
-!    integer, dimension(2)                    :: orthogonalFaceNumbers, connectedSubCellIndexes
-!    integer, dimension(2,2)                  :: subCellIndexes
-!    integer                                  :: directConnectionSubRow
-!    logical :: forceCellRefinement
-!    !--------------------------------------------------------------------------------------
-!
-!
-!    ! If invalid center cell, reset buffer and leave 
-!    if ( centerCellDataBuffer%CellNumber .le. 0 ) then
-!        ! DEBUG/DEV
-!        !print *, '*** FillDirectBufferFromHorizontalFace: center cell is empty, return empty cell'
-!        call outputCellBuffer%Reset()
-!        return
-!    end if 
-!
-!
-!    ! Verify horizontal connection state
-!    if ( centerCellDataBuffer%SubFaceCounts( faceNumber ) .gt. 1 ) then
-!        print *, 'IT SHOULD FILL THIS BUFFER FROM REFINED CELLS' 
-!        !! More than one connection
-!        !! Fill from refined cells
-!        !outputCellBuffer = pr_FillCellFromRefinedCells( this, centerCellDataBuffer, faceNumber )
-!
-!    else if ( centerCellDataBuffer%GetFaceConnection( faceNumber, 1 ) .gt. 0 ) then
-!        ! Only one connection, verify if 
-!        ! same size or bigger size cell 
-!
-!        ! MOVE THIS CODE TO A PROPER LOCATION
-!        select case ( faceNumber )
-!            case (1)
-!                orthogonalFaceNumbers(1)   = 3 
-!                orthogonalFaceNumbers(2)   = 4
-!                connectedSubCellIndexes(1) = 2
-!                connectedSubCellIndexes(2) = 4
-!                subCellIndexes(1,:)        = (1,2) 
-!                subCellIndexes(2,:)        = (2,2) 
-!            case (2)
-!                orthogonalFaceNumbers(1)   = 3 
-!                orthogonalFaceNumbers(2)   = 4
-!                connectedSubCellIndexes(1) = 1
-!                connectedSubCellIndexes(2) = 3
-!                subCellIndexes(1,:)        = (1,1) 
-!                subCellIndexes(2,:)        = (2,1) 
-!            case (3)
-!                orthogonalFaceNumbers(1)   = 1 
-!                orthogonalFaceNumbers(2)   = 2
-!                connectedSubCellIndexes(1) = 2
-!                connectedSubCellIndexes(2) = 1
-!                subCellIndexes(1,:)        = (1,2) 
-!                subCellIndexes(2,:)        = (1,1) 
-!            case (4)
-!                orthogonalFaceNumbers(1)   = 1 
-!                orthogonalFaceNumbers(2)   = 2
-!                connectedSubCellIndexes(1) = 4
-!                connectedSubCellIndexes(2) = 3
-!                subCellIndexes(1,:)        = (2,2) 
-!                subCellIndexes(2,:)        = (2,1) 
-!        end select
-!
-!        ! Detect connection state
-!        ! Verify response when no connection 
-!        if ( &
-!            ( centerCellDataBuffer%GetFaceConnection( faceNumber, 1 ) .eq.                                 &
-!              this%Grid%GetFaceConnection(                                                                 & 
-!                  centerCellDataBuffer%GetFaceConnection( orthogonalFaceNumbers(1), 1 ), faceNumber, 1 ) ) &
-!            .or.                                                                                           &
-!            ( centerCellDataBuffer%GetFaceConnection( faceNumber, 1 ) .eq.                                 &
-!              this%Grid%GetFaceConnection(                                                                 & 
-!                  centerCellDataBuffer%GetFaceConnection( orthogonalFaceNumbers(2), 1 ), faceNumber, 1 ) ) &
-!        ) then 
-!            ! If bigger cell
-!            ! Fill the parentCellDataBuffer and force 
-!            ! refinement
-!            !call pr_FillCellFromRealCellData( this, centerCellDataBuffer%GetFaceConnection( faceNumber, 1 ), &
-!            !                                                                            parentCellDataBuffer )
-!
-!            call pr_FillCellFromRealData( this, centerCellDataBuffer%GetFaceConnection( faceNumber, 1 ), &
-!                                                                            parentCellDataBuffer, .true. )
-!
-!            ! Location of current TrackCell relative to bigger cell
-!            ! defines indexes employed for filling buffers. 
-!            if ( &
-!                ( centerCellDataBuffer%GetFaceConnection( faceNumber, 1 ) .eq.                               &
-!                  this%Grid%GetFaceConnection(                                                               & 
-!                    centerCellDataBuffer%GetFaceConnection( orthogonalFaceNumbers(1), 1 ), faceNumber, 1 ) ) &
-!            ) then 
-!                directConnectionSubRow        = 1
-!            else
-!                directConnectionSubRow        = 2
-!            end if 
-!            
-!            ! Fill Direct Connection
-!            call pr_FillCellBufferFromSubCell( this,                               &
-!                parentCellDataBuffer, subCellIndexes( directConnectionSubRow, 1 ), &
-!                subCellIndexes( directConnectionSubRow, 2 ), outputCellBuffer )
-!
-!        else
-!            ! If equal size cell, fill buffer and leave
-!            !call pr_FillCellFromRealCellData( this,                      &
-!            !    centerCellDataBuffer%GetFaceConnection( faceNumber, 1 ), &
-!            !    outputCellBuffer )
-!            call pr_FillCellFromRealData( this,                          &
-!                centerCellDataBuffer%GetFaceConnection( faceNumber, 1 ), &
-!                                   outputCellBuffer, forceCellRefinement )
-!
-!        end if 
-!
-!    else
-!        ! No connection, empty buffer
-!        call outputCellBuffer%Reset()
-!
-!    end if 
-!
-!    ! Done
-!    return
-!
-!
-!end subroutine pr_FillDirectBufferFromHorizontalFace
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-!recursive function pr_FillCellFromRefinedCells( this, currentCellData, faceNumber ) result(filledCellData)
-!    !
-!    ! TODO
-!    !
-!    ! 
-!
-!
-!    class(ParticleTrackingEngineType), target :: this
-!    ! input
-!    type(ModpathCellDataType), intent(in)  :: currentCellData
-!    integer, intent(in)                    :: faceNumber
-!    integer, dimension(2)                  :: subCellIndexes, newSubCellIndexes, connSubCellIndexes
-!    ! output
-!    type(ModpathCellDataType) :: filledCellData
-!    ! local 
-!    integer :: m, id , nid, cnid
-!    type(ModpathCellDataType) :: auxCellData
-!    type(ModpathCellDataType), dimension(:), pointer :: cellDataBuffer
-!
-!
-!    ! Assumptions
-!    !   - Smoothed unstructured grid
-!    !   - Horizontal faceNumber (?)
-!
-!
-!    ! Initialize filledCellData
-!    call filledCellData%Reset()
-!
-!    ! Allocate celldatabuffer and assign pointer
-!    allocate( filledCellData%SubCellDataBuffer(4) )
-!    cellDataBuffer => filledCellData%SubCellDataBuffer
-!    ! Deallocation at some point ?
-!
-!
-!    ! Resolution if the cell is composed of
-!    ! a subcelldatabuffer, id -999
-!    if ( currentCellData%CellNumber .eq. -999 ) then
-!
-!        ! DEBUG/DEV
-!        !print *, '**FillCellFromRefinedCells: initializing from a custom cell -999, faceNumber', faceNumber 
-!        !do m = 1,4
-!        !    if( currentCellData%SubCellDataBuffer(m)%CellNumber .le. 0 ) then
-!        !        print *, '**FillCellFromRefinedCells: cell ', m, ' from buffer is not initialized, BEFORE'
-!        !    else
-!        !        print *, '**FillCellFromRefinedCells: cell ', m,&
-!        !            ' from buffer is initialized ENTER', currentCellData%SubCellDataBuffer(m)%CellNumber
-!        !    end if
-!        !end do
-!
-!
-!        ! subCellIndexes: location of subtrackcells in local buffer
-!        ! newSubCellIndexes: location of subtrackcells in buffer of cell to be created 
-!        ! connSubCellIndexes: location in new buffer of subtrackcell connected to direct connection
-!        select case (faceNumber)
-!            case (1)
-!                subCellIndexes(1)     = 1 
-!                subCellIndexes(2)     = 3
-!                newSubCellIndexes(1)  = 2 
-!                newSubCellIndexes(2)  = 4
-!                connSubCellIndexes(1) = 1 
-!                connSubCellIndexes(2) = 3
-!            case (2)
-!                subCellIndexes(1)     = 2 
-!                subCellIndexes(2)     = 4
-!                newSubCellIndexes(1)  = 1 
-!                newSubCellIndexes(2)  = 3
-!                connSubCellIndexes(1) = 2 
-!                connSubCellIndexes(2) = 4
-!            case (3)
-!                subCellIndexes(1)     = 3 
-!                subCellIndexes(2)     = 4
-!                newSubCellIndexes(1)  = 1 
-!                newSubCellIndexes(2)  = 2
-!                connSubCellIndexes(1) = 3 
-!                connSubCellIndexes(2) = 4
-!            case (4)
-!                subCellIndexes(1)     = 1 
-!                subCellIndexes(2)     = 2
-!                newSubCellIndexes(1)  = 3 
-!                newSubCellIndexes(2)  = 4
-!                connSubCellIndexes(1) = 1 
-!                connSubCellIndexes(2) = 2
-!        end select 
-!
-!
-!        ! It is possible for the custom cell
-!        ! to be connected to a bigger cell
-!        ! Verify if connections through faceNumber
-!        ! are equal, if cells are not custom
-!        if ( &
-!            ( currentCellData%SubCellDataBuffer( subCellIndexes(1) )%CellNumber .gt. 0 ) .and. &
-!            ( currentCellData%SubCellDataBuffer( subCellIndexes(2) )%CellNumber .gt. 0 )       &
-!        ) then
-!            ! In the context of a smoothed grid, if one of 
-!            ! the sub cells is custom, it means that 
-!            ! was built from smaller cells. In such case,
-!            ! the verification of being connected to a bigger cell
-!            ! makes no sense because it would
-!            ! imply the existence of a double jump in refinement
-!            ! between contiguous cells  
-!
-!            ! If both subcells connected to the same cell,
-!            ! then it is a bigger one
-!            if ( &
-!                ( currentCellData%SubCellDataBuffer( subCellIndexes(1) )%GetFaceConnection( faceNumber, 1 ) ) .eq. &
-!                ( currentCellData%SubCellDataBuffer( subCellIndexes(2) )%GetFaceConnection( faceNumber, 1 ) )      &
-!            ) then
-!                ! DEBUG/DEV
-!                print *, '**FillCellFromRefinedCells: sub cells related to faceNumber have the same connection, BIGGER'
-!                print *, '**FillCellFromRefinedCells: the connected cell number is cell: ', &
-!                    currentCellData%SubCellDataBuffer( subCellIndexes(2) )%GetFaceConnection( faceNumber, 1 )
-!
-!
-!                ! In this case, return filledCellData, initialized from
-!                ! real cell data, and refined.
-!                ! In this case, although this cell passed through
-!                ! the function of refined cells, is not created with 
-!                ! the method of filling the subcelldatabuffer and a custom
-!                ! cellNumber. 
-!
-!                ! In any case this is a terminal case in building neighbors
-!
-!                ! It is possible that this section resolution 
-!                ! is better placed in another function/place
-!
-!                ! Fill the output buffer with the information of the bigger
-!                ! cell, refine it by computing subcell flows and leave
-!                !call pr_FillCellFromRealCellData( this, &
-!                !    currentCellData%SubCellDataBuffer( subCellIndexes(1) )%GetFaceConnection( faceNumber, 1 ), filledCellData )
-!                call pr_FillCellFromRealData( this, &
-!                    currentCellData%SubCellDataBuffer( subCellIndexes(1) )%GetFaceConnection( faceNumber, 1 ), &
-!                                                                                        filledCellData, .true. )
-!                ! Done
-!                return
-!
-!            end if
-!
-!        end if
-!
-!
-!        ! Following section verify connections
-!        ! through subfaces and build buffer accordingly 
-!
-!        ! Loop over horizontal sub faces. 
-!        ! Each loop should fill two entries 
-!        ! of cellDataBuffer
-!        do m = 1, 2
-!
-!            ! Indexes
-!            id   = subCellIndexes( m )
-!            nid  = newSubCellIndexes( m ) 
-!            cnid = connSubCellIndexes( m )
-!
-!            ! SubCell in buffer could also be a -999.
-!            if ( currentCellData%SubCellDataBuffer( id )%CellNumber .eq. -999 ) then
-!
-!                ! DEBUG/DEV
-!                !print *, '**FillCellFromRefinedCells: one of the subcells is custom -999'
-!
-!
-!                ! Compare connections through faceNumber
-!                if ( &
-!                    currentCellData%SubCellDataBuffer( id )%SubCellDataBuffer(      &
-!                        subCellIndexes(1) )%GetFaceConnection( faceNumber, 1 ) .eq. &
-!                    currentCellData%SubCellDataBuffer( id )%SubCellDataBuffer(      &
-!                        subCellIndexes(2) )%GetFaceConnection( faceNumber, 1 ) ) then
-!
-!                    ! Extract the cell and fill
-!                    ! direct connection
-!                    call this%FillCellBuffer( &
-!                        currentCellData%SubCellDataBuffer( id )%SubCellDataBuffer(  &
-!                            subCellIndexes(1) )%GetFaceConnection( faceNumber, 1 ), &
-!                                                              cellDataBuffer( nid ) )
-!
-!                    ! Fill secondary connection
-!                    if ( cellDataBuffer( nid )%SubFaceCounts( faceNumber ) .gt. 1 ) then
-!                        
-!                        ! DEBGU/DEV
-!                        !print *, '*FillCellFromRefinedCells: going to recursion' 
-!
-!                        ! recursion with direct assignment
-!                        cellDataBuffer( cnid ) = pr_FillCellFromRefinedCells( this, cellDataBuffer( nid ), faceNumber )
-!                    else if ( cellDataBuffer( nid )%SubFaceCounts( faceNumber ) .eq. 1 ) then 
-!
-!                        ! DEBUG/DEV
-!                        !print *, '*FillCellFromRefinedCells: just one connection' 
-!
-!                        ! fill buffer and move on
-!                        ! Remember that filling of cellDataBuffer is not generalized yet.
-!                        ! It has to be independent from faceNumber orientation.
-!                        call this%FillCellBuffer( cellDataBuffer( nid )%GetFaceConnection( faceNumber, 1 ), cellDataBuffer( cnid ) )
-!                    else
-!                        ! Is this possible ?
-!                        print *, '*FillCellFromRefinedCells: something else, n subfaces', &
-!                            cellDataBuffer( id )%SubFaceCounts( faceNumber )
-!                    end if 
-!
-!                else
-!
-!                    ! DEBUG/DEV
-!                    !print *, '**FillCellFromRefinedCells: going to recursion'
-!
-!                    ! Recursion with direct assignment
-!                    cellDataBuffer( nid ) = pr_FillCellFromRefinedCells( this, currentCellData%SubCellDataBuffer( id ), faceNumber )
-!
-!                    ! DEBUG/DEV
-!                    !! Just a verification in the meantime
-!                    !if ( cellDataBuffer(nid)%CellNumber .gt. 0 ) then
-!                    !    print *, '**FillCellFromRefinedCells: the BUFFER is filled with REAL CELL DATA'
-!                    !end if
-!
-!                    ! Verify connection through faceNumber
-!                    if ( & 
-!                      cellDataBuffer( nid )%SubCellDataBuffer( subCellIndexes(1) )%GetFaceConnection( faceNumber, 1 ) .eq. &
-!                      cellDataBuffer( nid )%SubCellDataBuffer( subCellIndexes(2) )%GetFaceConnection( faceNumber, 1 ) ) then
-!
-!                        ! Extract the cell and fill
-!                        call this%FillCellBuffer(                    &
-!                            cellDataBuffer( nid )%SubCellDataBuffer( &
-!                                 subCellIndexes(1) )%GetFaceConnection( faceNumber, 1 ), &
-!                                                                  cellDataBuffer( cnid ) )
-!                    
-!                    else
-!
-!                        cellDataBuffer( cnid ) = pr_FillCellFromRefinedCells( this, cellDataBuffer( nid ), faceNumber )
-!
-!                    end if
-!
-!                end if
-!                   
-!
-!            else if ( currentCellData%SubCellDataBuffer( id )%CellNumber .gt. 0 ) then
-!
-!                ! DEBUG/DEV
-!                !print *, '**FillCellFromRefinedCells: sub cell is from real data'
-!
-!                ! Initialize direct connection
-!                ! through faceNumber
-!                if ( currentCellData%SubCellDataBuffer( id )%SubFaceCounts( faceNumber ) .gt. 1 ) then
-!                    
-!                    ! DEBUG/DEV
-!                    !print *, '*FillCellFromRefinedCells: going to recursion' 
-!
-!                    ! Recursion with direct assignment
-!                    cellDataBuffer( nid ) = pr_FillCellFromRefinedCells( this, currentCellData%SubCellDataBuffer( id ), faceNumber )
-!                else if ( currentCellData%SubCellDataBuffer( id )%SubFaceCounts( faceNumber ) .eq. 1 ) then
-!
-!                    ! DEBUG/DEV 
-!                    !print *, '*FillCellFromRefinedCells: just one connection'
-!                    !print *, '*FillCellFromRefinedCellds: cell:', currentCellData%SubCellDataBuffer( id )%CellNumber, &
-!                    !       ' connected to ', currentCellData%SubCellDataBuffer( id )%GetFaceConnection( faceNumber, 1 ) 
-!
-!                    ! Fill buffer and move on
-!                    call this%FillCellBuffer( currentCellData%SubCellDataBuffer( id )%GetFaceConnection( faceNumber, 1 ), &
-!                                                                                                    cellDataBuffer( nid ) )
-!                else
-!                    ! Is this possible ?
-!                    print *, '*FillCellFromRefinedCells: something else, n subfaces BLEHEHE'
-!                end if 
-!
-!                ! Initialize secondary connection,
-!                ! cell connected to direct connection through
-!                ! faceNumber
-!                if ( cellDataBuffer( nid )%SubFaceCounts( faceNumber ) .gt. 1 ) then
-!
-!                    ! DEBUG/DEV
-!                    !print *, '*FillCellFromRefinedCells: going to recursion' 
-!
-!                    ! Recursion with direct assignment
-!                    cellDataBuffer( cnid ) = pr_FillCellFromRefinedCells( this, cellDataBuffer( nid ), faceNumber )
-!                else if ( cellDataBuffer( nid )%SubFaceCounts( faceNumber ) .eq. 1 ) then
-!
-!                    ! DBEUG/DEV
-!                    !print *, '*FillCellFromRefinedCells: just one connection' 
-!
-!                    ! Fill buffer and move on
-!                    call this%FillCellBuffer( cellDataBuffer( nid )%GetFaceConnection( faceNumber, 1 ), cellDataBuffer( cnid ) )
-!                else
-!                    ! Is this possible ?
-!                    print *, '*FillCellFromRefinedCells: something else, n subfaces', &
-!                        cellDataBuffer( id )%SubFaceCounts( faceNumber )
-!                end if 
-!
-!            else
-!
-!                print *, '**FillCellFromRefinedCells: sub cell is empty, WHY ?'
-!
-!            end if
-!           
-!            
-!        end do
-!
-!
-!    else
-!
-!        ! If the center cell is a real one,
-!        ! request information of connected cells.
-!        ! This situation is the one ocurring in the very first 
-!        ! request process of neighbor cells, these are requested
-!        ! from a real center cell. Thus it is expected that
-!        ! that connections comply with smoothed grid.
-!
-!        ! DEBUG/DEV
-!        !print *, '**FillCellFromRefinedCells: in the smooth unstructured case' 
-!
-!
-!        ! Loop over face connections and extract 
-!        ! their connected cell through same faceNumber
-!        do m = 1, currentCellData%SubFaceCounts( faceNumber )
-!
-!            ! Compute cell id in buffer 
-!            id = (m-1)*currentCellData%SubFaceCounts( faceNumber ) + 1
-!
-!            ! Fill buffer for connected cell
-!            ! Implied smoothed unstructured grid
-!            call this%FillCellBuffer( currentCellData%GetFaceConnection( faceNumber, m ), cellDataBuffer( id ) )
-!
-!            ! Ask if the filled buffer is connected to multiple
-!            ! or single cell
-!            if ( cellDataBuffer( id )%SubFaceCounts( faceNumber ) .gt. 1 ) then
-!
-!                ! DBEUG/DEV
-!                !print *, '**FillCellFromRefinedCells: going to recursion' 
-!
-!                ! Recursion with direct assignment
-!                cellDataBuffer( id + 1 ) = pr_FillCellFromRefinedCells( this, cellDataBuffer( id ), faceNumber )
-!            else if ( cellDataBuffer( id )%SubFaceCounts( faceNumber ) .eq. 1 ) then
-!                
-!                ! DBEUG/DEV
-!                !print *, '**FillCellFromRefinedCells: just one connection' 
-!
-!                ! Fill buffer and move on
-!                call this%FillCellBuffer( cellDataBuffer( id )%GetFaceConnection( faceNumber, 1 ), cellDataBuffer( id + 1 ) )
-!            else
-!                ! Is this possible ?
-!                print *, '*FillCellFromRefinedCells: something else, n subfaces', cellDataBuffer( id )%SubFaceCounts( faceNumber )
-!            end if 
-!
-!        end do
-!
-!
-!    end if    
-!
-!
-!    ! Something to recognize its a custom/linked cell
-!    filledCellData%CellNumber = -999
-!
-!    ! Fill face flows based on buffer information
-!    ! Intercell 
-!    filledCellData%SubCellFlows(1) = cellDataBuffer(1)%GetAveragedFaceFlow(2)
-!    filledCellData%SubCellFlows(2) = cellDataBuffer(3)%GetAveragedFaceFlow(2)
-!    filledCellData%SubCellFlows(3) = cellDataBuffer(3)%GetAveragedFaceFlow(4)
-!    filledCellData%SubCellFlows(4) = cellDataBuffer(4)%GetAveragedFaceFlow(4) 
-!
-!    ! Verify indexation
-!    ! Horizontal faces 
-!    filledCellData%Q1(1) = cellDataBuffer(1)%GetAveragedFaceFlow(1)
-!    filledCellData%Q1(2) = cellDataBuffer(3)%GetAveragedFaceFlow(1)
-!    filledCellData%Q2(1) = cellDataBuffer(2)%GetAveragedFaceFlow(2)
-!    filledCellData%Q2(2) = cellDataBuffer(4)%GetAveragedFaceFlow(2)
-!    filledCellData%Q3(1) = cellDataBuffer(3)%GetAveragedFaceFlow(3)
-!    filledCellData%Q3(2) = cellDataBuffer(4)%GetAveragedFaceFlow(3)
-!    filledCellData%Q4(1) = cellDataBuffer(1)%GetAveragedFaceFlow(4)
-!    filledCellData%Q4(2) = cellDataBuffer(2)%GetAveragedFaceFlow(4)
-!
-!    ! Vertical faces
-!    filledCellData%Q5(1) = cellDataBuffer(1)%GetAveragedFaceFlow(5)
-!    filledCellData%Q5(2) = cellDataBuffer(2)%GetAveragedFaceFlow(5)
-!    filledCellData%Q5(3) = cellDataBuffer(3)%GetAveragedFaceFlow(5)
-!    filledCellData%Q5(4) = cellDataBuffer(4)%GetAveragedFaceFlow(5)
-!    filledCellData%Q6(1) = cellDataBuffer(1)%GetAveragedFaceFlow(6)
-!    filledCellData%Q6(2) = cellDataBuffer(2)%GetAveragedFaceFlow(6)
-!    filledCellData%Q6(3) = cellDataBuffer(3)%GetAveragedFaceFlow(6)
-!    filledCellData%Q6(4) = cellDataBuffer(4)%GetAveragedFaceFlow(6)
-!
-!    ! Fill sources and sinks ?
-!
-!
-!    ! Fill additional information
-!    filledCellData%Layer     = currentCellData%Layer
-!    filledCellData%LayerType = currentCellData%LayerType
-!    !filledCellData%Zone      = currentCellData%Zone
-!    !filledCellData%Ibound    = currentCellData%Ibound
-!    !filledCellData%IboundTS  = currentCellData%IboundTS
-!    !filledCellData%Porosity  = currentCellData%Porosity
-!
-!
-!    return 
-!
-!
-!end function pr_FillCellFromRefinedCells
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-!! DEPRECATED 
-!subroutine pr_FillCellFromRealCellData( this, cellNumber, cellDataBuffer )
-!    !----------------------------------------------------------
-!    ! Forces computation of internal flows by redefining 
-!    ! the number of subcells.
-!    ! TODO
-!    !----------------------------------------------------------
-!    class(ParticleTrackingEngineType) :: this
-!    ! input
-!    integer, intent(in)                    :: cellNumber
-!    ! output
-!    type(ModpathCellDataType), intent(inout)  :: cellDataBuffer
-!    !----------------------------------------------------------
-!
-!    ! If no connection, reset buffer and leave
-!    if ( cellNumber .le. 0 ) then
-!        ! DEBUG/DEV
-!        !print *, 'FillCellFromRealCellData: reset cell to zeroes' 
-!
-!        call cellDataBuffer%Reset()
-!        return
-!    end if  
-!
-!    ! Fill buffer from real (grid) cellNumber
-!    call this%FillCellBuffer( cellNumber, cellDataBuffer )
-!
-!    ! Forces refinement and sub cell flows computation
-!    cellDataBuffer%SubCellRowCount    = 2
-!    cellDataBuffer%SubCellColumnCount = 2
-!    call cellDataBuffer%ComputeSubCellFlows()
-!
-!    return
-!
-!end subroutine pr_FillCellFromRealCellData
-
-

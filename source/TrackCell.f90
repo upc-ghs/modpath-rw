@@ -354,7 +354,7 @@ contains
       ! RWPT
       integer :: n
       type(ModpathSubCellDataType), dimension(18) :: neighborSubCellData
-      type(ModpathCellDataType), dimension(18) :: neighborCellData
+      type(ModpathCellDataType), dimension(2, 18) :: neighborCellData
       !------------------------------------------------------------------
 
       stopIfNoSubCellExit = .true.
@@ -458,7 +458,7 @@ contains
 
       ! RWPT
       ! Initialize corner velocities
-      call this%TrackSubCell%ComputeCornerVelocities( neighborSubCellData )
+      !call this%TrackSubCell%ComputeCornerVelocities( neighborSubCellData )
       call this%TrackSubCell%ComputeCornerDischarge( this%CellData, neighborCellData )  
       call this%TrackSubCell%ComputeCornerPorosity( this%CellData, neighborCellData )  
       !call this%TrackSubCell%ComputeCornerDischarge( neighborCellData )  

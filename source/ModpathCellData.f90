@@ -29,18 +29,11 @@ module ModpathCellDataModule
     doubleprecision,dimension(4) :: SubCellFlows,Q5,Q6
     doubleprecision,dimension(2) :: Q1,Q2,Q3,Q4
     integer :: ArraySizeMode = 1
-    !integer,private :: SubCellRowCount,SubCellColumnCount,ReducedConnectionCount
-    !integer,private,dimension(6) :: SubFaceCounts,PotentialConnectionsCount,SubFaceBoundaryCounts
-    !integer,private,dimension(2) :: SubFaceConn1,SubFaceConn2,SubFaceConn3,SubFaceConn4
-    !integer,private,dimension(4) :: SubFaceConn5,SubFaceConn6
-    !doubleprecision,private,dimension(4) :: SubCellFlows,Q5,Q6
-    !doubleprecision,private,dimension(2) :: Q1,Q2,Q3,Q4
-    !integer,private :: ArraySizeMode = 1
     ! RWPT NEW PROPERTY
     logical :: fromSubCell = .false.
     integer :: parentCellNumber
     integer :: parentSubRow, parentSubColumn
-
+    integer :: requestedFromDirection
   contains
     procedure :: GetDZ=>pr_GetDZ
     procedure :: GetArraySizeMode=>pr_GetArraySizeMode
@@ -72,6 +65,8 @@ module ModpathCellDataModule
     procedure :: SetDataUnstructured=>pr_SetDataUnstructured
     procedure :: SetDataStructured=>pr_SetDataStructured
     generic :: SetData=>pr_SetDataUnstructured
+    ! RWPT
+    procedure :: GetNeighborSubCellIndexes => pr_GetNeighborSubCellIndexes
   end type
 
 contains
@@ -407,7 +402,7 @@ contains
   this%parentCellNumber = 0
   this%parentSubRow    = 0
   this%parentSubColumn = 0
-
+  this%requestedFromDirection = 0
 
   end subroutine pr_Reset
 
@@ -1817,5 +1812,166 @@ contains
   
   end subroutine pr_FillSubCellFaceFlowsBuffer
 
-  
+
+
+  function pr_GetNeighborSubCellIndexes( this, subRow, subColumn ) result( neighborSubCellIndexes )
+      !-----------------------------------------------------------
+      ! Indexation of subcells follow the same convention
+      ! employed for track cells.
+      ! Index 0 refers to self track cell
+
+      ! Reference cell locations in neighbor cell buffer array
+      ! 1 : dc1
+      ! 2 : ic13
+      ! 3 : ic14
+      ! 4 : dc2
+      ! 5 : ic23
+      ! 6 : ic24
+      ! 7 : dc3
+      ! 8 : ic35
+      ! 9 : ic36
+      ! 10: dc4
+      ! 11: ic45
+      ! 12: ic46
+      ! 13: dc5
+      ! 14: ic51
+      ! 15: ic52
+      ! 16: dc6
+      ! 17: ic61
+      ! 18: ic62
+      !---------------------------------------------------------
+      class( ModpathCellDataType ) :: this
+      integer, intent(in) :: subRow, subColumn
+      integer, dimension(18,3) :: neighborSubCellIndexes
+      !---------------------------------------------------------
+
+
+      ! If current cell is not refined
+      if( this%GetSubCellCount() .eq. 1 ) then 
+
+          neighborSubCellIndexes(1,:)  = [ 1,1,1]
+          neighborSubCellIndexes(2,:)  = [ 2,1,1]
+          neighborSubCellIndexes(3,:)  = [ 3,1,1]
+          neighborSubCellIndexes(4,:)  = [ 4,1,1]
+          neighborSubCellIndexes(5,:)  = [ 5,1,1]
+          neighborSubCellIndexes(6,:)  = [ 6,1,1]
+          neighborSubCellIndexes(7,:)  = [ 7,1,1]
+          neighborSubCellIndexes(8,:)  = [ 8,1,1]
+          neighborSubCellIndexes(9,:)  = [ 9,1,1]
+          neighborSubCellIndexes(10,:) = [10,1,1]
+          neighborSubCellIndexes(11,:) = [11,1,1]
+          neighborSubCellIndexes(12,:) = [12,1,1]
+          neighborSubCellIndexes(13,:) = [13,1,1]
+          neighborSubCellIndexes(14,:) = [14,1,1]
+          neighborSubCellIndexes(15,:) = [15,1,1]
+          neighborSubCellIndexes(16,:) = [16,1,1]
+          neighborSubCellIndexes(17,:) = [17,1,1]
+          neighborSubCellIndexes(18,:) = [18,1,1]
+
+          ! Done
+          return
+
+      end if
+
+      ! If current cell is refined then 
+      ! subRow and subColumn determine indexes from neighbor cells/subcells 
+      ! to be used in corner interpolation process 
+
+      if ( subRow .eq. 1 ) then
+          ! If subcell from first subRow 
+          if ( subColumn .eq. 1 ) then
+              ! If subcell from first subColumn
+              neighborSubCellIndexes(1,:)  = [ 1,1,2]
+              neighborSubCellIndexes(2,:)  = [ 1,2,2]
+              neighborSubCellIndexes(3,:)  = [ 3,2,2]
+              neighborSubCellIndexes(4,:)  = [ 0,1,2]
+              neighborSubCellIndexes(5,:)  = [ 0,2,2]
+              neighborSubCellIndexes(6,:)  = [10,2,2]
+              neighborSubCellIndexes(7,:)  = [ 0,2,1]
+              neighborSubCellIndexes(8,:)  = [13,2,1]
+              neighborSubCellIndexes(9,:)  = [16,2,1]
+              neighborSubCellIndexes(10,:) = [10,2,1]
+              neighborSubCellIndexes(11,:) = [11,2,1]
+              neighborSubCellIndexes(12,:) = [12,2,1]
+              neighborSubCellIndexes(13,:) = [13,1,1]
+              neighborSubCellIndexes(14,:) = [14,1,2]
+              neighborSubCellIndexes(15,:) = [13,1,2]
+              neighborSubCellIndexes(16,:) = [16,1,1]
+              neighborSubCellIndexes(17,:) = [17,1,2]
+              neighborSubCellIndexes(18,:) = [16,1,2]
+          else
+              ! If subcell from second subColumn
+              neighborSubCellIndexes(1,:)  = [ 0,1,1]
+              neighborSubCellIndexes(2,:)  = [ 0,2,1]
+              neighborSubCellIndexes(3,:)  = [10,2,1]
+              neighborSubCellIndexes(4,:)  = [ 4,1,1]
+              neighborSubCellIndexes(5,:)  = [ 4,2,1]
+              neighborSubCellIndexes(6,:)  = [ 6,2,1]
+              neighborSubCellIndexes(7,:)  = [ 0,2,2]
+              neighborSubCellIndexes(8,:)  = [13,2,2]
+              neighborSubCellIndexes(9,:)  = [16,2,2]
+              neighborSubCellIndexes(10,:) = [10,2,2]
+              neighborSubCellIndexes(11,:) = [11,2,2]
+              neighborSubCellIndexes(12,:) = [12,2,2]
+              neighborSubCellIndexes(13,:) = [13,1,2]
+              neighborSubCellIndexes(14,:) = [13,1,1]
+              neighborSubCellIndexes(15,:) = [15,1,1]
+              neighborSubCellIndexes(16,:) = [16,1,2]
+              neighborSubCellIndexes(17,:) = [16,1,1]
+              neighborSubCellIndexes(18,:) = [18,1,1]
+          end if        
+      else
+          ! If subcell from second subRow 
+          if ( subColumn .eq. 1 ) then 
+              ! If subcell from first subColumn
+              neighborSubCellIndexes(1,:)  = [ 1,2,2]
+              neighborSubCellIndexes(2,:)  = [ 2,1,2]
+              neighborSubCellIndexes(3,:)  = [ 1,1,2]
+              neighborSubCellIndexes(4,:)  = [ 0,2,2]
+              neighborSubCellIndexes(5,:)  = [ 7,1,2]
+              neighborSubCellIndexes(6,:)  = [ 0,1,2]
+              neighborSubCellIndexes(7,:)  = [ 7,1,1]
+              neighborSubCellIndexes(8,:)  = [ 8,1,1]
+              neighborSubCellIndexes(9,:)  = [ 9,1,1]
+              neighborSubCellIndexes(10,:) = [ 0,1,1]
+              neighborSubCellIndexes(11,:) = [13,1,1]
+              neighborSubCellIndexes(12,:) = [16,1,1]
+              neighborSubCellIndexes(13,:) = [13,2,1]
+              neighborSubCellIndexes(14,:) = [14,2,2]
+              neighborSubCellIndexes(15,:) = [13,2,2]
+              neighborSubCellIndexes(16,:) = [16,2,1]
+              neighborSubCellIndexes(17,:) = [17,2,2]
+              neighborSubCellIndexes(18,:) = [16,2,2]
+          else
+              ! If subcell from second subColumn
+              neighborSubCellIndexes(1,:)  = [ 0,2,1]
+              neighborSubCellIndexes(2,:)  = [ 7,1,1]
+              neighborSubCellIndexes(3,:)  = [ 0,1,1]
+              neighborSubCellIndexes(4,:)  = [ 4,2,1]
+              neighborSubCellIndexes(5,:)  = [ 5,1,1]
+              neighborSubCellIndexes(6,:)  = [ 4,1,1]
+              neighborSubCellIndexes(7,:)  = [ 7,1,2]
+              neighborSubCellIndexes(8,:)  = [ 8,1,2]
+              neighborSubCellIndexes(9,:)  = [ 9,1,2]
+              neighborSubCellIndexes(10,:) = [ 0,1,2]
+              neighborSubCellIndexes(11,:) = [13,1,2]
+              neighborSubCellIndexes(12,:) = [16,1,2]
+              neighborSubCellIndexes(13,:) = [13,2,2]
+              neighborSubCellIndexes(14,:) = [13,2,1]
+              neighborSubCellIndexes(15,:) = [15,2,1]
+              neighborSubCellIndexes(16,:) = [16,2,2]
+              neighborSubCellIndexes(17,:) = [16,2,1]
+              neighborSubCellIndexes(18,:) = [18,2,1]
+          end if        
+      end if 
+
+
+      ! Done
+      return
+
+
+  end function pr_GetNeighborSubCellIndexes 
+
+
+
 end module ModpathCellDataModule

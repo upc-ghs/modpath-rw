@@ -1985,6 +1985,7 @@ contains
 
 
   ! RWPT
+  ! DEPRECATION WARNING
   subroutine pr_ComputeCornerVelocities( this, neighborSubCellData )
       !----------------------------------------------------------------
       ! From its subCellData and neighborSubCellData array, 
@@ -2092,7 +2093,7 @@ contains
   end subroutine pr_ComputeCornerVelocities
 
 
-
+  ! RWPT
   subroutine pr_ComputeCornerDischarge( this, currentCellData, neighborCellData )
       !----------------------------------------------------------------
       ! From its subCellData and neighborSubCellData array, 
@@ -2105,7 +2106,8 @@ contains
       class (TrackSubCellType) :: this
       !type(ModpathSubCellDataType), dimension(18) :: neighborSubCellData
       type(ModpathCellDataType) :: currentCellData
-      type(ModpathCellDataType), dimension(18) :: neighborCellData
+      !type(ModpathCellDataType), dimension(18) :: neighborCellData
+      type(ModpathCellDataType), dimension(2,18) :: neighborCellData
       integer, dimension(18,3) :: neighborSubCellIndexes ! nbcell, subRow, subColumn
       doubleprecision, dimension(18,6) :: neighborSubCellFaceFlows ! nbcell, flowFaceNumber
       doubleprecision, dimension(6)    :: centerSubCellFaceFlows
@@ -2118,170 +2120,173 @@ contains
       doubleprecision :: areaFlowX0, areaFlowX1
       doubleprecision :: areaFlowY0, areaFlowY1
       doubleprecision :: areaFlowZ
+      integer :: n,m
       !----------------------------------------------------------------
 
     
-      !print *, '** TrackSubCell:ComputeCornerDischarge: Computing corner specific discharge, maybe also porosities'
-      !print *, '** TrackSubCell:ComputeCornerDischarge: subcell indexes', this%SubCellData%Row, this%SubCellData%Column  
+      ! Get sub cell indexes for current sub cell location
+      neighborSubCellIndexes = currentCellData%GetNeighborSubCellIndexes( &
+                             this%SubCellData%Row, this%SubCellData%Column )
 
 
-      ! If current cell is not refined
-      if( currentCellData%GetSubCellCount() .eq. 1 ) then 
+      ! If current cell is not refined, easy peazy
+      if ( currentCellData%GetSubCellCount() .eq. 1 ) then 
 
-          !print *, '** TrackSubCell:ComputeCornerDischarge: cell NOT REFINED'
+        print *, 'CURRENT CELL IS NOT REFINED'
 
-          neighborSubCellIndexes(1,:)  = [ 1,1,1]
-          neighborSubCellIndexes(2,:)  = [ 2,1,1]
-          neighborSubCellIndexes(3,:)  = [ 3,1,1]
-          neighborSubCellIndexes(4,:)  = [ 4,1,1]
-          neighborSubCellIndexes(5,:)  = [ 5,1,1]
-          neighborSubCellIndexes(6,:)  = [ 6,1,1]
-          neighborSubCellIndexes(7,:)  = [ 7,1,1]
-          neighborSubCellIndexes(8,:)  = [ 8,1,1]
-          neighborSubCellIndexes(9,:)  = [ 9,1,1]
-          neighborSubCellIndexes(10,:) = [10,1,1]
-          neighborSubCellIndexes(11,:) = [11,1,1]
-          neighborSubCellIndexes(12,:) = [12,1,1]
-          neighborSubCellIndexes(13,:) = [13,1,1]
-          neighborSubCellIndexes(14,:) = [14,1,1]
-          neighborSubCellIndexes(15,:) = [15,1,1]
-          neighborSubCellIndexes(16,:) = [16,1,1]
-          neighborSubCellIndexes(17,:) = [17,1,1]
-          neighborSubCellIndexes(18,:) = [18,1,1]
-
-      else
-
-          print *, '** TrackSubCell:ComputeCornerDischarge: cell REFINED'
-
-          ! Indexation of subcells follow the same convention
-          ! employed for track cells.
-          ! Index 0 refers to self track cell
-
-          ! Reference cell locations in neighbor cell buffer array
-          ! 1 : dc1
-          ! 2 : ic13
-          ! 3 : ic14
-          ! 4 : dc2
-          ! 5 : ic23
-          ! 6 : ic24
-          ! 7 : dc3
-          ! 8 : ic35
-          ! 9 : ic36
-          ! 10: dc4
-          ! 11: ic45
-          ! 12: ic46
-          ! 13: dc5
-          ! 14: ic51
-          ! 15: ic52
-          ! 16: dc6
-          ! 17: ic61
-          ! 18: ic62
+        ! Fill array with face flow values for 
+        ! the corresponding set of subcells from 
+        ! the neighbor cells buffer
+        do cid = 1,18
+            if ( neighborSubCellIndexes( cid, 1 ) .ne. 0 ) then
+                call neighborCellData( 1, neighborSubCellIndexes( cid, 1 ) )%FillSubCellFaceFlowsBuffer( &
+                                     neighborSubCellIndexes( cid, 2 ), neighborSubCellIndexes( cid, 3 ), & 
+                                                                      neighborSubCellFaceFlows( cid, : ) )
+            else
+                call currentCellData%FillSubCellFaceFlowsBuffer( &
+                                  neighborSubCellIndexes( cid, 2 ), neighborSubCellIndexes( cid, 3 ), & 
+                                                                   neighborSubCellFaceFlows( cid, : ) )
+            end if
+        end do
 
 
-          ! Following indexes should be computed only once 
-          ! subRow and subColumn changes. If kept at this point, 
-          ! then computation is performed several times for the same 
-          ! subCell
+        ! Fill faceFlows from current subcell
+        call currentCellData%FillSubCellFaceFlowsBuffer( &
+            this%SubCellData%Row, this%SubCellData%Column, centerSubCellFaceFlows )
 
-          ! subRow and subColumn determine indexes from NeighborCellData to be used 
-          ! in interpolation process
-          if ( this%SubCellData%Row .eq. 1 ) then
-              ! If subcell from first subRow 
-              if ( this%SubCellData%Column .eq. 1 ) then
-                  ! If subcell from first subColumn
-                  ! Review
-                  neighborSubCellIndexes(1,:)  = [ 1,1,2]
-                  neighborSubCellIndexes(2,:)  = [ 1,2,2]
-                  neighborSubCellIndexes(3,:)  = [ 3,2,2]
-                  neighborSubCellIndexes(4,:)  = [ 0,1,2]
-                  neighborSubCellIndexes(5,:)  = [ 0,2,2]
-                  neighborSubCellIndexes(6,:)  = [10,2,2]
-                  neighborSubCellIndexes(7,:)  = [ 0,2,1]
-                  neighborSubCellIndexes(8,:)  = [13,2,1]
-                  neighborSubCellIndexes(9,:)  = [16,2,1]
-                  neighborSubCellIndexes(10,:) = [10,2,1]
-                  neighborSubCellIndexes(11,:) = [11,2,1]
-                  neighborSubCellIndexes(12,:) = [12,2,1]
-                  neighborSubCellIndexes(13,:) = [13,1,1]
-                  neighborSubCellIndexes(14,:) = [14,1,2]
-                  neighborSubCellIndexes(15,:) = [13,1,2]
-                  neighborSubCellIndexes(16,:) = [16,1,1]
-                  neighborSubCellIndexes(17,:) = [17,1,2]
-                  neighborSubCellIndexes(18,:) = [16,1,2]
-              else
-                  ! If subcell from second subColumn
-                  ! Review
-                  neighborSubCellIndexes(1,:)  = [ 0,1,1]
-                  neighborSubCellIndexes(2,:)  = [ 0,2,1]
-                  neighborSubCellIndexes(3,:)  = [10,2,1]
-                  neighborSubCellIndexes(4,:)  = [ 4,1,1]
-                  neighborSubCellIndexes(5,:)  = [ 4,2,1]
-                  neighborSubCellIndexes(6,:)  = [ 6,2,1]
-                  neighborSubCellIndexes(7,:)  = [ 0,2,2]
-                  neighborSubCellIndexes(8,:)  = [13,2,2]
-                  neighborSubCellIndexes(9,:)  = [16,2,2]
-                  neighborSubCellIndexes(10,:) = [10,2,2]
-                  neighborSubCellIndexes(11,:) = [11,2,2]
-                  neighborSubCellIndexes(12,:) = [12,2,2]
-                  neighborSubCellIndexes(13,:) = [13,1,2]
-                  neighborSubCellIndexes(14,:) = [13,1,1]
-                  neighborSubCellIndexes(15,:) = [15,1,1]
-                  neighborSubCellIndexes(16,:) = [16,1,2]
-                  neighborSubCellIndexes(17,:) = [16,1,1]
-                  neighborSubCellIndexes(18,:) = [18,1,1]
-              end if        
-          else
-              ! If subcell from second subRow 
-              if ( this%SubCellData%Column .eq. 1 ) then 
-                  ! If subcell from first subColumn
-                  ! Review
-                  neighborSubCellIndexes(1,:)  = [ 1,2,2]
-                  neighborSubCellIndexes(2,:)  = [ 2,1,2]
-                  neighborSubCellIndexes(3,:)  = [ 1,1,2]
-                  neighborSubCellIndexes(4,:)  = [ 0,2,2]
-                  neighborSubCellIndexes(5,:)  = [ 7,1,2]
-                  neighborSubCellIndexes(6,:)  = [ 0,1,2]
-                  neighborSubCellIndexes(7,:)  = [ 7,1,1]
-                  neighborSubCellIndexes(8,:)  = [ 8,1,1]
-                  neighborSubCellIndexes(9,:)  = [ 9,1,1]
-                  neighborSubCellIndexes(10,:) = [ 0,1,1]
-                  neighborSubCellIndexes(11,:) = [13,1,1]
-                  neighborSubCellIndexes(12,:) = [16,1,1]
-                  neighborSubCellIndexes(13,:) = [13,2,1]
-                  neighborSubCellIndexes(14,:) = [14,2,2]
-                  neighborSubCellIndexes(15,:) = [13,2,2]
-                  neighborSubCellIndexes(16,:) = [16,2,1]
-                  neighborSubCellIndexes(17,:) = [17,2,2]
-                  neighborSubCellIndexes(18,:) = [16,2,2]
-              else
-                  ! If subcell from second subColumn
-                  ! Review
-                  neighborSubCellIndexes(1,:)  = [ 0,2,1]
-                  neighborSubCellIndexes(2,:)  = [ 7,1,1]
-                  neighborSubCellIndexes(3,:)  = [ 0,1,1]
-                  neighborSubCellIndexes(4,:)  = [ 4,2,1]
-                  neighborSubCellIndexes(5,:)  = [ 5,1,1]
-                  neighborSubCellIndexes(6,:)  = [ 4,1,1]
-                  neighborSubCellIndexes(7,:)  = [ 7,1,2]
-                  neighborSubCellIndexes(8,:)  = [ 8,1,2]
-                  neighborSubCellIndexes(9,:)  = [ 9,1,2]
-                  neighborSubCellIndexes(10,:) = [ 0,1,2]
-                  neighborSubCellIndexes(11,:) = [13,1,2]
-                  neighborSubCellIndexes(12,:) = [16,1,2]
-                  neighborSubCellIndexes(13,:) = [13,2,2]
-                  neighborSubCellIndexes(14,:) = [13,2,1]
-                  neighborSubCellIndexes(15,:) = [15,2,1]
-                  neighborSubCellIndexes(16,:) = [16,2,2]
-                  neighborSubCellIndexes(17,:) = [16,2,1]
-                  neighborSubCellIndexes(18,:) = [18,2,1]
-              end if        
-          end if 
+
+      else 
+
+        print *, 'CURRENT CELL IS REFINED'
+
+
+        ! DEBUG/DEV
+        ! Print a report
+        print *, 'TrackSubCell: will compute discharges'
+        print *, '********************************************************************************************'
+        print *, '** ComputeCornerDischarge:  neighbors information for TrackCell', currentCellData%CellNumber
+        print *, '** ComputeCornerDischarge: subcell indexes',  this%SubCellData%Row, this%SubCellData%Column
+        print *, '********************************************************************************************'
+
+        do n = 1, 18
+            print *, '-------------------------------------------------------------------'
+            print *, '   -- Should fill flows with indexes: ', neighborSubCellIndexes( n, : )
+            print *, '   -- NeighborCellBuffer ', neighborSubCellIndexes( n, 1 )
+
+            if ( neighborSubCellIndexes( n, 1 ) .eq. 0 ) then
+                print *, '   -- Will fill with subcell data from itself '
+                call currentCellData%FillSubCellFaceFlowsBuffer( &
+                                  neighborSubCellIndexes( n, 2 ), neighborSubCellIndexes( n, 3 ), & 
+                                                                   neighborSubCellFaceFlows( n, : ) )
+            else
+                print *, '   -- Will fill with data from neighbor '
+
+                if ( neighborCellData( 2, neighborSubCellIndexes( n, 1 ) )%CellNumber .gt. 0 ) then 
+                    print *, '   -- This is a DOUBLE BUFFER'
+                    print *, '   -- Based on requested face direction should determine INDEX'
+
+                    ! By design are not refined
+                    if ( neighborCellData( 2, neighborSubCellIndexes( n, 1 ) )%requestedFromDirection .eq. 1 ) then 
+                        print *, '   -- X DIRECTION THEN LOCATION IN BUFFER IS GIVEN BY SUBCELL ROW'
+                        call neighborCellData(&
+                            neighborSubCellIndexes( n, 2 ),&
+                            neighborSubCellIndexes( n, 1 ) )%FillSubCellFaceFlowsBuffer( &
+                                                  1, 1, neighborSubCellFaceFlows( n, : ) )
+
+                        print *, '   -- FILLING FROM CELLNUMBER',&
+                        neighborCellData(&
+                            neighborSubCellIndexes( n, 2 ), &
+                            neighborSubCellIndexes( n, 1 ) )%CellNumber
+
+                    else if ( neighborCellData( 2, neighborSubCellIndexes( n, 1 ) )%requestedFromDirection .eq. 2 ) then 
+                        print *, '   -- Y DIRECTION THEN LOCATION IN BUFFER IS GIVEN BY SUBCELL COLUMN'
+                        call neighborCellData(&
+                            neighborSubCellIndexes( n, 3 ), &
+                            neighborSubCellIndexes( n, 1 ) )%FillSubCellFaceFlowsBuffer( &
+                                                  1, 1, neighborSubCellFaceFlows( n, : ) )
+                        print *, '   -- FILLING FROM CELLNUMBER',&
+                        neighborCellData(&
+                            neighborSubCellIndexes( n, 3 ), &
+                            neighborSubCellIndexes( n, 1 ) )%CellNumber
+
+                    else 
+                        print *, 'INCONSISTENCY'
+
+                    end if 
+
+
+                    do m = 1, 2
+                        if ( neighborCellData(m, neighborSubCellIndexes( n, 1 ) )%GetSubCellCount() .gt. 1 ) then 
+                          print *, '         -- IS REFINED  '
+                          print *, '           -- REQUEST DIRECTION ', &
+                            neighborCellData(m, neighborSubCellIndexes( n, 1 ) )%requestedFromDirection
+                        else 
+                          print *, '         -- NOT REFINED  '
+                          print *, '           -- REQUEST DIRECTION ', &
+                            neighborCellData(m, neighborSubCellIndexes( n, 1 ) )%requestedFromDirection
+
+                        end if  
+                    end do
+    
+                else if ( &
+                    ( neighborCellData( 1, neighborSubCellIndexes( n, 1 ) )%CellNumber .gt. 0 ) .or. & 
+                    ( neighborCellData( 1, neighborSubCellIndexes( n, 1 ) )%fromSubCell ) ) then 
+                    print *, '   -- This is a SINGLE BUFFER'
+
+                    if ( neighborCellData(1, neighborSubCellIndexes( n, 1 ) )%GetSubCellCount() .gt. 1 ) then 
+                      print *, '         -- IS REFINED  ', ' GET THE REQUESTED SUB CELL INDEXES'
+
+                      call neighborCellData( 1, neighborSubCellIndexes( n, 1 ) )%FillSubCellFaceFlowsBuffer( &
+                                             neighborSubCellIndexes( n, 2 ), neighborSubCellIndexes( n, 3 ), & 
+                                                                            neighborSubCellFaceFlows( n, : ) )
+                    else 
+                      print *, '         -- NOT REFINED  '
+                      if ( neighborCellData( 1, neighborSubCellIndexes( n, 1 ) )%fromSubCell )  then 
+                        print *, '              -- WAS FILLED FROM SUBCELL  '
+
+                        call neighborCellData( 1, neighborSubCellIndexes( n, 1 ) )%FillSubCellFaceFlowsBuffer( &
+                                                                        1, 1, neighborSubCellFaceFlows( n, : ) )
+
+                      else
+                        print *, '              -- WAS FILLED FROM NORMAL CELL  '
+
+                        call neighborCellData( 1, neighborSubCellIndexes( n, 1 ) )%FillSubCellFaceFlowsBuffer( &
+                                                                        1, 1, neighborSubCellFaceFlows( n, : ) )
+                      end if 
+                    end if  
+
+                else
+                    print *, '   -- This is a EMPTY BUFFER'
+                end if  
+
+            end if  
+        end do
+
+
+
 
       end if 
 
 
-        
 
+
+      call exit(0)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+      ! Following indexes are fixed,
+      ! do not depend on subRow, subColumn
 
       ! Convention for cell indexes of 
       ! coordinate components
@@ -2296,8 +2301,8 @@ contains
 
       ! Cell indexes for x-component
       ! Complete connection id
-      ! 000: 7-8-13   : fn1 : dc3-ic35-dc5
-      ! 100: 7-8-13   : fn2 : dc3-ic35-dc5
+      ! 000: 7-8-13   : fn1 : 
+      ! 100: 7-8-13   : fn2 : 
       ! 010: 10-11-13 : fn1 : 
       ! 110: 10-11-13 : fn2 :  
       ! 001: 7-9-16   : fn1 :
@@ -2352,224 +2357,192 @@ contains
       cornerZComponentIndexes(8,:) = [ 4, 6,10,6]
 
 
-      ! Given neighborSubCellIndexes, it is required to extract flows
-      ! for the given index, and after that, query such flow for 
-      ! ion of values at the corner
-
-      ! Fill array with face flow values for 
-      ! the corresponding set of subcells from 
-      ! the neighbor cells buffer
-      do cid = 1,18
-          if ( neighborSubCellIndexes( cid, 1 ) .ne. 0 ) then
-              call neighborCellData( neighborSubCellIndexes( cid, 1 ) )%FillSubCellFaceFlowsBuffer( &
-                                neighborSubCellIndexes( cid, 2 ), neighborSubCellIndexes( cid, 3 ), & 
-                                                                 neighborSubCellFaceFlows( cid, : ) )
-          else
-              call currentCellData%FillSubCellFaceFlowsBuffer( &
-                                neighborSubCellIndexes( cid, 2 ), neighborSubCellIndexes( cid, 3 ), & 
-                                                                 neighborSubCellFaceFlows( cid, : ) )
-          end if
-      end do
-
-
-      ! Fill faceFlows from current subcell
-      call currentCellData%FillSubCellFaceFlowsBuffer( &
-          this%SubCellData%Row, this%SubCellData%Column, centerSubCellFaceFlows )
 
     
-      ! subcell faceflows buffer is filled, now use it for interpolation
-      ! to corner values
+      !!! subcell faceflows buffer is filled, now use it for interpolation
+      !!! to corner values
 
-      ! Compute cell sizes for areas computation
-      dx  = this%SubCellData%DX
-      dy  = this%SubCellData%DY
-      dz  = this%SubCellData%DZ
-      dz0 = neighborCellData(13)%GetDZ() ! query a lower layer cell and getdz 
-      dz1 = neighborCellData(16)%GetDZ() ! query an upper layer cell and getdz 
-
-
-      ! Missing areas, should divide sum of face flows
-      flowContributionFactor = 0.25 ! fraction of total face flow contributed to corner values
-      areaFlowX0             = flowContributionFactor*( dy*dz + dy*dz + dy*dz0 + dy*dz0 ) 
-      areaFlowX1             = flowContributionFactor*( dy*dz + dy*dz + dy*dz1 + dy*dz1 ) 
-      areaFlowY0             = flowContributionFactor*( dx*dz + dx*dz + dx*dz0 + dx*dz0 ) 
-      areaFlowY1             = flowContributionFactor*( dx*dz + dx*dz + dx*dz1 + dx*dz1 ) 
-      areaFlowZ              = dy*dx
+      !!! Compute cell sizes for areas computation
+      !!dx  = this%SubCellData%DX
+      !!dy  = this%SubCellData%DY
+      !!dz  = this%SubCellData%DZ
+      !!dz0 = neighborCellData(13)%GetDZ() ! query a lower layer cell and getdz 
+      !!dz1 = neighborCellData(16)%GetDZ() ! query an upper layer cell and getdz 
 
 
-      ! Compute x-components
-      this%qCorner000(1) = flowContributionFactor*(&
-              centerSubCellFaceFlows(   cornerXComponentIndexes(1,4) ) + &
-              neighborSubCellFaceFlows( cornerXComponentIndexes(1,1), cornerXComponentIndexes(1,4) ) + & 
-              neighborSubCellFaceFlows( cornerXComponentIndexes(1,2), cornerXComponentIndexes(1,4) ) + &
-              neighborSubCellFaceFlows( cornerXComponentIndexes(1,3), cornerXComponentIndexes(1,4) )   &
-          )/areaFlowX0
-      this%qCorner100(1) = flowContributionFactor*(&
-              centerSubCellFaceFlows(   cornerXComponentIndexes(2,4) ) + &
-              neighborSubCellFaceFlows( cornerXComponentIndexes(2,1), cornerXComponentIndexes(2,4) ) + & 
-              neighborSubCellFaceFlows( cornerXComponentIndexes(2,2), cornerXComponentIndexes(2,4) ) + &
-              neighborSubCellFaceFlows( cornerXComponentIndexes(2,3), cornerXComponentIndexes(2,4) )   &
-          )/areaFlowX0
-      this%qCorner010(1) = flowContributionFactor*(&
-              centerSubCellFaceFlows(   cornerXComponentIndexes(3,4) ) + &
-              neighborSubCellFaceFlows( cornerXComponentIndexes(3,1), cornerXComponentIndexes(3,4) ) + & 
-              neighborSubCellFaceFlows( cornerXComponentIndexes(3,2), cornerXComponentIndexes(3,4) ) + &
-              neighborSubCellFaceFlows( cornerXComponentIndexes(3,3), cornerXComponentIndexes(3,4) )   &
-          )/areaFlowX0
-      this%qCorner110(1) = flowContributionFactor*(&
-              centerSubCellFaceFlows(   cornerXComponentIndexes(4,4) ) + &
-              neighborSubCellFaceFlows( cornerXComponentIndexes(4,1), cornerXComponentIndexes(4,4) ) + & 
-              neighborSubCellFaceFlows( cornerXComponentIndexes(4,2), cornerXComponentIndexes(4,4) ) + &
-              neighborSubCellFaceFlows( cornerXComponentIndexes(4,3), cornerXComponentIndexes(4,4) )   &
-          )/areaFlowX0
-      this%qCorner001(1) = flowContributionFactor*(&
-              centerSubCellFaceFlows(   cornerXComponentIndexes(5,4) ) + &
-              neighborSubCellFaceFlows( cornerXComponentIndexes(5,1), cornerXComponentIndexes(5,4) ) + & 
-              neighborSubCellFaceFlows( cornerXComponentIndexes(5,2), cornerXComponentIndexes(5,4) ) + &
-              neighborSubCellFaceFlows( cornerXComponentIndexes(5,3), cornerXComponentIndexes(5,4) )   &
-          )/areaFlowX1
-      this%qCorner101(1) = flowContributionFactor*(&
-              centerSubCellFaceFlows(   cornerXComponentIndexes(6,4) ) + &
-              neighborSubCellFaceFlows( cornerXComponentIndexes(6,1), cornerXComponentIndexes(6,4) ) + & 
-              neighborSubCellFaceFlows( cornerXComponentIndexes(6,2), cornerXComponentIndexes(6,4) ) + &
-              neighborSubCellFaceFlows( cornerXComponentIndexes(6,3), cornerXComponentIndexes(6,4) )   &
-          )/areaFlowX1
-      this%qCorner011(1) = flowContributionFactor*(&
-              centerSubCellFaceFlows(   cornerXComponentIndexes(7,4) ) + &
-              neighborSubCellFaceFlows( cornerXComponentIndexes(7,1), cornerXComponentIndexes(7,4) ) + & 
-              neighborSubCellFaceFlows( cornerXComponentIndexes(7,2), cornerXComponentIndexes(7,4) ) + &
-              neighborSubCellFaceFlows( cornerXComponentIndexes(7,3), cornerXComponentIndexes(7,4) )   &
-          )/areaFlowX1
-      this%qCorner111(1) = flowContributionFactor*(&
-              centerSubCellFaceFlows(   cornerXComponentIndexes(8,4) ) + &
-              neighborSubCellFaceFlows( cornerXComponentIndexes(8,1), cornerXComponentIndexes(8,4) ) + & 
-              neighborSubCellFaceFlows( cornerXComponentIndexes(8,2), cornerXComponentIndexes(8,4) ) + &
-              neighborSubCellFaceFlows( cornerXComponentIndexes(8,3), cornerXComponentIndexes(8,4) )   & 
-          )/areaFlowX1
+      !!! Missing areas, should divide sum of face flows
+      !!flowContributionFactor = 0.25 ! fraction of total face flow contributed to corner values
+      !!areaFlowX0             = flowContributionFactor*( dy*dz + dy*dz + dy*dz0 + dy*dz0 ) 
+      !!areaFlowX1             = flowContributionFactor*( dy*dz + dy*dz + dy*dz1 + dy*dz1 ) 
+      !!areaFlowY0             = flowContributionFactor*( dx*dz + dx*dz + dx*dz0 + dx*dz0 ) 
+      !!areaFlowY1             = flowContributionFactor*( dx*dz + dx*dz + dx*dz1 + dx*dz1 ) 
+      !!areaFlowZ              = dy*dx
 
 
-      ! Compute y-components
-      this%qCorner000(2) = flowContributionFactor*(&
-              centerSubCellFaceFlows(   cornerYComponentIndexes(1,4) ) + &
-              neighborSubCellFaceFlows( cornerYComponentIndexes(1,1), cornerYComponentIndexes(1,4) ) + & 
-              neighborSubCellFaceFlows( cornerYComponentIndexes(1,2), cornerYComponentIndexes(1,4) ) + &
-              neighborSubCellFaceFlows( cornerYComponentIndexes(1,3), cornerYComponentIndexes(1,4) )   &
-          )/areaFlowY0
-      this%qCorner100(2) = flowContributionFactor*(&
-              centerSubCellFaceFlows(   cornerYComponentIndexes(2,4) ) + &
-              neighborSubCellFaceFlows( cornerYComponentIndexes(2,1), cornerYComponentIndexes(2,4) ) + & 
-              neighborSubCellFaceFlows( cornerYComponentIndexes(2,2), cornerYComponentIndexes(2,4) ) + &
-              neighborSubCellFaceFlows( cornerYComponentIndexes(2,3), cornerYComponentIndexes(2,4) )   &
-          )/areaFlowY0
-      this%qCorner010(2) = flowContributionFactor*(&
-              centerSubCellFaceFlows(   cornerYComponentIndexes(3,4) ) + &
-              neighborSubCellFaceFlows( cornerYComponentIndexes(3,1), cornerYComponentIndexes(3,4) ) + & 
-              neighborSubCellFaceFlows( cornerYComponentIndexes(3,2), cornerYComponentIndexes(3,4) ) + &
-              neighborSubCellFaceFlows( cornerYComponentIndexes(3,3), cornerYComponentIndexes(3,4) )   &
-          )/areaFlowY0
-      this%qCorner110(2) = flowContributionFactor*(&
-              centerSubCellFaceFlows(   cornerYComponentIndexes(4,4) ) + &
-              neighborSubCellFaceFlows( cornerYComponentIndexes(4,1), cornerYComponentIndexes(4,4) ) + & 
-              neighborSubCellFaceFlows( cornerYComponentIndexes(4,2), cornerYComponentIndexes(4,4) ) + &
-              neighborSubCellFaceFlows( cornerYComponentIndexes(4,3), cornerYComponentIndexes(4,4) )   &
-          )/areaFlowY0
-      this%qCorner001(2) = flowContributionFactor*(&
-              centerSubCellFaceFlows(   cornerYComponentIndexes(5,4) ) + &
-              neighborSubCellFaceFlows( cornerYComponentIndexes(5,1), cornerYComponentIndexes(5,4) ) + & 
-              neighborSubCellFaceFlows( cornerYComponentIndexes(5,2), cornerYComponentIndexes(5,4) ) + &
-              neighborSubCellFaceFlows( cornerYComponentIndexes(5,3), cornerYComponentIndexes(5,4) )   &
-          )/areaFlowY1
-      this%qCorner101(2) = flowContributionFactor*(&
-              centerSubCellFaceFlows(   cornerYComponentIndexes(6,4) ) + &
-              neighborSubCellFaceFlows( cornerYComponentIndexes(6,1), cornerYComponentIndexes(6,4) ) + & 
-              neighborSubCellFaceFlows( cornerYComponentIndexes(6,2), cornerYComponentIndexes(6,4) ) + &
-              neighborSubCellFaceFlows( cornerYComponentIndexes(6,3), cornerYComponentIndexes(6,4) )   &
-          )/areaFlowY1
-      this%qCorner011(2) = flowContributionFactor*(&
-              centerSubCellFaceFlows(   cornerYComponentIndexes(7,4) ) + &
-              neighborSubCellFaceFlows( cornerYComponentIndexes(7,1), cornerYComponentIndexes(7,4) ) + & 
-              neighborSubCellFaceFlows( cornerYComponentIndexes(7,2), cornerYComponentIndexes(7,4) ) + &
-              neighborSubCellFaceFlows( cornerYComponentIndexes(7,3), cornerYComponentIndexes(7,4) )   &
-          )/areaFlowY1
-      this%qCorner111(2) = flowContributionFactor*(&
-              centerSubCellFaceFlows(   cornerYComponentIndexes(8,4) ) + &
-              neighborSubCellFaceFlows( cornerYComponentIndexes(8,1), cornerYComponentIndexes(8,4) ) + & 
-              neighborSubCellFaceFlows( cornerYComponentIndexes(8,2), cornerYComponentIndexes(8,4) ) + &
-              neighborSubCellFaceFlows( cornerYComponentIndexes(8,3), cornerYComponentIndexes(8,4) )   &
-          )/areaFlowY1
+      !!! Compute x-components
+      !!this%qCorner000(1) = flowContributionFactor*(&
+      !!        centerSubCellFaceFlows(   cornerXComponentIndexes(1,4) ) + &
+      !!        neighborSubCellFaceFlows( cornerXComponentIndexes(1,1), cornerXComponentIndexes(1,4) ) + & 
+      !!        neighborSubCellFaceFlows( cornerXComponentIndexes(1,2), cornerXComponentIndexes(1,4) ) + &
+      !!        neighborSubCellFaceFlows( cornerXComponentIndexes(1,3), cornerXComponentIndexes(1,4) )   &
+      !!    )/areaFlowX0
+      !!this%qCorner100(1) = flowContributionFactor*(&
+      !!        centerSubCellFaceFlows(   cornerXComponentIndexes(2,4) ) + &
+      !!        neighborSubCellFaceFlows( cornerXComponentIndexes(2,1), cornerXComponentIndexes(2,4) ) + & 
+      !!        neighborSubCellFaceFlows( cornerXComponentIndexes(2,2), cornerXComponentIndexes(2,4) ) + &
+      !!        neighborSubCellFaceFlows( cornerXComponentIndexes(2,3), cornerXComponentIndexes(2,4) )   &
+      !!    )/areaFlowX0
+      !!this%qCorner010(1) = flowContributionFactor*(&
+      !!        centerSubCellFaceFlows(   cornerXComponentIndexes(3,4) ) + &
+      !!        neighborSubCellFaceFlows( cornerXComponentIndexes(3,1), cornerXComponentIndexes(3,4) ) + & 
+      !!        neighborSubCellFaceFlows( cornerXComponentIndexes(3,2), cornerXComponentIndexes(3,4) ) + &
+      !!        neighborSubCellFaceFlows( cornerXComponentIndexes(3,3), cornerXComponentIndexes(3,4) )   &
+      !!    )/areaFlowX0
+      !!this%qCorner110(1) = flowContributionFactor*(&
+      !!        centerSubCellFaceFlows(   cornerXComponentIndexes(4,4) ) + &
+      !!        neighborSubCellFaceFlows( cornerXComponentIndexes(4,1), cornerXComponentIndexes(4,4) ) + & 
+      !!        neighborSubCellFaceFlows( cornerXComponentIndexes(4,2), cornerXComponentIndexes(4,4) ) + &
+      !!        neighborSubCellFaceFlows( cornerXComponentIndexes(4,3), cornerXComponentIndexes(4,4) )   &
+      !!    )/areaFlowX0
+      !!this%qCorner001(1) = flowContributionFactor*(&
+      !!        centerSubCellFaceFlows(   cornerXComponentIndexes(5,4) ) + &
+      !!        neighborSubCellFaceFlows( cornerXComponentIndexes(5,1), cornerXComponentIndexes(5,4) ) + & 
+      !!        neighborSubCellFaceFlows( cornerXComponentIndexes(5,2), cornerXComponentIndexes(5,4) ) + &
+      !!        neighborSubCellFaceFlows( cornerXComponentIndexes(5,3), cornerXComponentIndexes(5,4) )   &
+      !!    )/areaFlowX1
+      !!this%qCorner101(1) = flowContributionFactor*(&
+      !!        centerSubCellFaceFlows(   cornerXComponentIndexes(6,4) ) + &
+      !!        neighborSubCellFaceFlows( cornerXComponentIndexes(6,1), cornerXComponentIndexes(6,4) ) + & 
+      !!        neighborSubCellFaceFlows( cornerXComponentIndexes(6,2), cornerXComponentIndexes(6,4) ) + &
+      !!        neighborSubCellFaceFlows( cornerXComponentIndexes(6,3), cornerXComponentIndexes(6,4) )   &
+      !!    )/areaFlowX1
+      !!this%qCorner011(1) = flowContributionFactor*(&
+      !!        centerSubCellFaceFlows(   cornerXComponentIndexes(7,4) ) + &
+      !!        neighborSubCellFaceFlows( cornerXComponentIndexes(7,1), cornerXComponentIndexes(7,4) ) + & 
+      !!        neighborSubCellFaceFlows( cornerXComponentIndexes(7,2), cornerXComponentIndexes(7,4) ) + &
+      !!        neighborSubCellFaceFlows( cornerXComponentIndexes(7,3), cornerXComponentIndexes(7,4) )   &
+      !!    )/areaFlowX1
+      !!this%qCorner111(1) = flowContributionFactor*(&
+      !!        centerSubCellFaceFlows(   cornerXComponentIndexes(8,4) ) + &
+      !!        neighborSubCellFaceFlows( cornerXComponentIndexes(8,1), cornerXComponentIndexes(8,4) ) + & 
+      !!        neighborSubCellFaceFlows( cornerXComponentIndexes(8,2), cornerXComponentIndexes(8,4) ) + &
+      !!        neighborSubCellFaceFlows( cornerXComponentIndexes(8,3), cornerXComponentIndexes(8,4) )   & 
+      !!    )/areaFlowX1
 
 
-      ! Compute z-components
-      this%qCorner000(3) = flowContributionFactor*(&
-              centerSubCellFaceFlows(   cornerZComponentIndexes(1,4) ) + &
-              neighborSubCellFaceFlows( cornerZComponentIndexes(1,1), cornerZComponentIndexes(1,4) ) + & 
-              neighborSubCellFaceFlows( cornerZComponentIndexes(1,2), cornerZComponentIndexes(1,4) ) + &
-              neighborSubCellFaceFlows( cornerZComponentIndexes(1,3), cornerZComponentIndexes(1,4) )   &
-          )/areaFlowZ
-      this%qCorner100(3) = flowContributionFactor*(&
-              centerSubCellFaceFlows(   cornerZComponentIndexes(2,4) ) + &
-              neighborSubCellFaceFlows( cornerZComponentIndexes(2,1), cornerZComponentIndexes(2,4) ) + & 
-              neighborSubCellFaceFlows( cornerZComponentIndexes(2,2), cornerZComponentIndexes(2,4) ) + &
-              neighborSubCellFaceFlows( cornerZComponentIndexes(2,3), cornerZComponentIndexes(2,4) )   &
-          )/areaFlowZ
-      this%qCorner010(3) = flowContributionFactor*(&
-              centerSubCellFaceFlows(   cornerZComponentIndexes(3,4) ) + &
-              neighborSubCellFaceFlows( cornerZComponentIndexes(3,1), cornerZComponentIndexes(3,4) ) + & 
-              neighborSubCellFaceFlows( cornerZComponentIndexes(3,2), cornerZComponentIndexes(3,4) ) + &
-              neighborSubCellFaceFlows( cornerZComponentIndexes(3,3), cornerZComponentIndexes(3,4) )   &
-          )/areaFlowZ
-      this%qCorner110(3) = flowContributionFactor*(&
-              centerSubCellFaceFlows(   cornerZComponentIndexes(4,4) ) + &
-              neighborSubCellFaceFlows( cornerZComponentIndexes(4,1), cornerZComponentIndexes(4,4) ) + & 
-              neighborSubCellFaceFlows( cornerZComponentIndexes(4,2), cornerZComponentIndexes(4,4) ) + &
-              neighborSubCellFaceFlows( cornerZComponentIndexes(4,3), cornerZComponentIndexes(4,4) )   &
-          )/areaFlowZ
-      this%qCorner001(3) = flowContributionFactor*(&
-              centerSubCellFaceFlows(   cornerZComponentIndexes(5,4) ) + &
-              neighborSubCellFaceFlows( cornerZComponentIndexes(5,1), cornerZComponentIndexes(5,4) ) + & 
-              neighborSubCellFaceFlows( cornerZComponentIndexes(5,2), cornerZComponentIndexes(5,4) ) + &
-              neighborSubCellFaceFlows( cornerZComponentIndexes(5,3), cornerZComponentIndexes(5,4) )   &
-          )/areaFlowZ
-      this%qCorner101(3) = flowContributionFactor*(&
-              centerSubCellFaceFlows(   cornerZComponentIndexes(6,4) ) + &
-              neighborSubCellFaceFlows( cornerZComponentIndexes(6,1), cornerZComponentIndexes(6,4) ) + & 
-              neighborSubCellFaceFlows( cornerZComponentIndexes(6,2), cornerZComponentIndexes(6,4) ) + &
-              neighborSubCellFaceFlows( cornerZComponentIndexes(6,3), cornerZComponentIndexes(6,4) )   &
-          )/areaFlowZ
-      this%qCorner011(3) = flowContributionFactor*(&
-              centerSubCellFaceFlows(   cornerZComponentIndexes(7,4) ) + &
-              neighborSubCellFaceFlows( cornerZComponentIndexes(7,1), cornerZComponentIndexes(7,4) ) + & 
-              neighborSubCellFaceFlows( cornerZComponentIndexes(7,2), cornerZComponentIndexes(7,4) ) + &
-              neighborSubCellFaceFlows( cornerZComponentIndexes(7,3), cornerZComponentIndexes(7,4) )   &
-          )/areaFlowZ
-      this%qCorner111(3) = flowContributionFactor*(&
-              centerSubCellFaceFlows(   cornerZComponentIndexes(8,4) ) + &
-              neighborSubCellFaceFlows( cornerZComponentIndexes(8,1), cornerZComponentIndexes(8,4) ) + & 
-              neighborSubCellFaceFlows( cornerZComponentIndexes(8,2), cornerZComponentIndexes(8,4) ) + &
-              neighborSubCellFaceFlows( cornerZComponentIndexes(8,3), cornerZComponentIndexes(8,4) )   &
-          )/areaFlowZ
+      !!! Compute y-components
+      !!this%qCorner000(2) = flowContributionFactor*(&
+      !!        centerSubCellFaceFlows(   cornerYComponentIndexes(1,4) ) + &
+      !!        neighborSubCellFaceFlows( cornerYComponentIndexes(1,1), cornerYComponentIndexes(1,4) ) + & 
+      !!        neighborSubCellFaceFlows( cornerYComponentIndexes(1,2), cornerYComponentIndexes(1,4) ) + &
+      !!        neighborSubCellFaceFlows( cornerYComponentIndexes(1,3), cornerYComponentIndexes(1,4) )   &
+      !!    )/areaFlowY0
+      !!this%qCorner100(2) = flowContributionFactor*(&
+      !!        centerSubCellFaceFlows(   cornerYComponentIndexes(2,4) ) + &
+      !!        neighborSubCellFaceFlows( cornerYComponentIndexes(2,1), cornerYComponentIndexes(2,4) ) + & 
+      !!        neighborSubCellFaceFlows( cornerYComponentIndexes(2,2), cornerYComponentIndexes(2,4) ) + &
+      !!        neighborSubCellFaceFlows( cornerYComponentIndexes(2,3), cornerYComponentIndexes(2,4) )   &
+      !!    )/areaFlowY0
+      !!this%qCorner010(2) = flowContributionFactor*(&
+      !!        centerSubCellFaceFlows(   cornerYComponentIndexes(3,4) ) + &
+      !!        neighborSubCellFaceFlows( cornerYComponentIndexes(3,1), cornerYComponentIndexes(3,4) ) + & 
+      !!        neighborSubCellFaceFlows( cornerYComponentIndexes(3,2), cornerYComponentIndexes(3,4) ) + &
+      !!        neighborSubCellFaceFlows( cornerYComponentIndexes(3,3), cornerYComponentIndexes(3,4) )   &
+      !!    )/areaFlowY0
+      !!this%qCorner110(2) = flowContributionFactor*(&
+      !!        centerSubCellFaceFlows(   cornerYComponentIndexes(4,4) ) + &
+      !!        neighborSubCellFaceFlows( cornerYComponentIndexes(4,1), cornerYComponentIndexes(4,4) ) + & 
+      !!        neighborSubCellFaceFlows( cornerYComponentIndexes(4,2), cornerYComponentIndexes(4,4) ) + &
+      !!        neighborSubCellFaceFlows( cornerYComponentIndexes(4,3), cornerYComponentIndexes(4,4) )   &
+      !!    )/areaFlowY0
+      !!this%qCorner001(2) = flowContributionFactor*(&
+      !!        centerSubCellFaceFlows(   cornerYComponentIndexes(5,4) ) + &
+      !!        neighborSubCellFaceFlows( cornerYComponentIndexes(5,1), cornerYComponentIndexes(5,4) ) + & 
+      !!        neighborSubCellFaceFlows( cornerYComponentIndexes(5,2), cornerYComponentIndexes(5,4) ) + &
+      !!        neighborSubCellFaceFlows( cornerYComponentIndexes(5,3), cornerYComponentIndexes(5,4) )   &
+      !!    )/areaFlowY1
+      !!this%qCorner101(2) = flowContributionFactor*(&
+      !!        centerSubCellFaceFlows(   cornerYComponentIndexes(6,4) ) + &
+      !!        neighborSubCellFaceFlows( cornerYComponentIndexes(6,1), cornerYComponentIndexes(6,4) ) + & 
+      !!        neighborSubCellFaceFlows( cornerYComponentIndexes(6,2), cornerYComponentIndexes(6,4) ) + &
+      !!        neighborSubCellFaceFlows( cornerYComponentIndexes(6,3), cornerYComponentIndexes(6,4) )   &
+      !!    )/areaFlowY1
+      !!this%qCorner011(2) = flowContributionFactor*(&
+      !!        centerSubCellFaceFlows(   cornerYComponentIndexes(7,4) ) + &
+      !!        neighborSubCellFaceFlows( cornerYComponentIndexes(7,1), cornerYComponentIndexes(7,4) ) + & 
+      !!        neighborSubCellFaceFlows( cornerYComponentIndexes(7,2), cornerYComponentIndexes(7,4) ) + &
+      !!        neighborSubCellFaceFlows( cornerYComponentIndexes(7,3), cornerYComponentIndexes(7,4) )   &
+      !!    )/areaFlowY1
+      !!this%qCorner111(2) = flowContributionFactor*(&
+      !!        centerSubCellFaceFlows(   cornerYComponentIndexes(8,4) ) + &
+      !!        neighborSubCellFaceFlows( cornerYComponentIndexes(8,1), cornerYComponentIndexes(8,4) ) + & 
+      !!        neighborSubCellFaceFlows( cornerYComponentIndexes(8,2), cornerYComponentIndexes(8,4) ) + &
+      !!        neighborSubCellFaceFlows( cornerYComponentIndexes(8,3), cornerYComponentIndexes(8,4) )   &
+      !!    )/areaFlowY1
 
 
-      ! norm
-      this%qCorner000(4) = sqrt( this%qCorner000(1)**2 + this%qCorner000(2)**2 + this%qCorner000(3)**2 )
-      this%qCorner100(4) = sqrt( this%qCorner100(1)**2 + this%qCorner100(2)**2 + this%qCorner100(3)**2 )
-      this%qCorner010(4) = sqrt( this%qCorner010(1)**2 + this%qCorner010(2)**2 + this%qCorner010(3)**2 )
-      this%qCorner110(4) = sqrt( this%qCorner110(1)**2 + this%qCorner110(2)**2 + this%qCorner110(3)**2 )
-      this%qCorner001(4) = sqrt( this%qCorner001(1)**2 + this%qCorner001(2)**2 + this%qCorner001(3)**2 )
-      this%qCorner101(4) = sqrt( this%qCorner101(1)**2 + this%qCorner101(2)**2 + this%qCorner101(3)**2 )
-      this%qCorner011(4) = sqrt( this%qCorner011(1)**2 + this%qCorner011(2)**2 + this%qCorner011(3)**2 )
-      this%qCorner111(4) = sqrt( this%qCorner111(1)**2 + this%qCorner111(2)**2 + this%qCorner111(3)**2 )
+      !!! Compute z-components
+      !!this%qCorner000(3) = flowContributionFactor*(&
+      !!        centerSubCellFaceFlows(   cornerZComponentIndexes(1,4) ) + &
+      !!        neighborSubCellFaceFlows( cornerZComponentIndexes(1,1), cornerZComponentIndexes(1,4) ) + & 
+      !!        neighborSubCellFaceFlows( cornerZComponentIndexes(1,2), cornerZComponentIndexes(1,4) ) + &
+      !!        neighborSubCellFaceFlows( cornerZComponentIndexes(1,3), cornerZComponentIndexes(1,4) )   &
+      !!    )/areaFlowZ
+      !!this%qCorner100(3) = flowContributionFactor*(&
+      !!        centerSubCellFaceFlows(   cornerZComponentIndexes(2,4) ) + &
+      !!        neighborSubCellFaceFlows( cornerZComponentIndexes(2,1), cornerZComponentIndexes(2,4) ) + & 
+      !!        neighborSubCellFaceFlows( cornerZComponentIndexes(2,2), cornerZComponentIndexes(2,4) ) + &
+      !!        neighborSubCellFaceFlows( cornerZComponentIndexes(2,3), cornerZComponentIndexes(2,4) )   &
+      !!    )/areaFlowZ
+      !!this%qCorner010(3) = flowContributionFactor*(&
+      !!        centerSubCellFaceFlows(   cornerZComponentIndexes(3,4) ) + &
+      !!        neighborSubCellFaceFlows( cornerZComponentIndexes(3,1), cornerZComponentIndexes(3,4) ) + & 
+      !!        neighborSubCellFaceFlows( cornerZComponentIndexes(3,2), cornerZComponentIndexes(3,4) ) + &
+      !!        neighborSubCellFaceFlows( cornerZComponentIndexes(3,3), cornerZComponentIndexes(3,4) )   &
+      !!    )/areaFlowZ
+      !!this%qCorner110(3) = flowContributionFactor*(&
+      !!        centerSubCellFaceFlows(   cornerZComponentIndexes(4,4) ) + &
+      !!        neighborSubCellFaceFlows( cornerZComponentIndexes(4,1), cornerZComponentIndexes(4,4) ) + & 
+      !!        neighborSubCellFaceFlows( cornerZComponentIndexes(4,2), cornerZComponentIndexes(4,4) ) + &
+      !!        neighborSubCellFaceFlows( cornerZComponentIndexes(4,3), cornerZComponentIndexes(4,4) )   &
+      !!    )/areaFlowZ
+      !!this%qCorner001(3) = flowContributionFactor*(&
+      !!        centerSubCellFaceFlows(   cornerZComponentIndexes(5,4) ) + &
+      !!        neighborSubCellFaceFlows( cornerZComponentIndexes(5,1), cornerZComponentIndexes(5,4) ) + & 
+      !!        neighborSubCellFaceFlows( cornerZComponentIndexes(5,2), cornerZComponentIndexes(5,4) ) + &
+      !!        neighborSubCellFaceFlows( cornerZComponentIndexes(5,3), cornerZComponentIndexes(5,4) )   &
+      !!    )/areaFlowZ
+      !!this%qCorner101(3) = flowContributionFactor*(&
+      !!        centerSubCellFaceFlows(   cornerZComponentIndexes(6,4) ) + &
+      !!        neighborSubCellFaceFlows( cornerZComponentIndexes(6,1), cornerZComponentIndexes(6,4) ) + & 
+      !!        neighborSubCellFaceFlows( cornerZComponentIndexes(6,2), cornerZComponentIndexes(6,4) ) + &
+      !!        neighborSubCellFaceFlows( cornerZComponentIndexes(6,3), cornerZComponentIndexes(6,4) )   &
+      !!    )/areaFlowZ
+      !!this%qCorner011(3) = flowContributionFactor*(&
+      !!        centerSubCellFaceFlows(   cornerZComponentIndexes(7,4) ) + &
+      !!        neighborSubCellFaceFlows( cornerZComponentIndexes(7,1), cornerZComponentIndexes(7,4) ) + & 
+      !!        neighborSubCellFaceFlows( cornerZComponentIndexes(7,2), cornerZComponentIndexes(7,4) ) + &
+      !!        neighborSubCellFaceFlows( cornerZComponentIndexes(7,3), cornerZComponentIndexes(7,4) )   &
+      !!    )/areaFlowZ
+      !!this%qCorner111(3) = flowContributionFactor*(&
+      !!        centerSubCellFaceFlows(   cornerZComponentIndexes(8,4) ) + &
+      !!        neighborSubCellFaceFlows( cornerZComponentIndexes(8,1), cornerZComponentIndexes(8,4) ) + & 
+      !!        neighborSubCellFaceFlows( cornerZComponentIndexes(8,2), cornerZComponentIndexes(8,4) ) + &
+      !!        neighborSubCellFaceFlows( cornerZComponentIndexes(8,3), cornerZComponentIndexes(8,4) )   &
+      !!    )/areaFlowZ
 
-      !print *, '** TrackSubCell:ComputeCornerDischarge: leaving the function' 
 
+      !!! norm
+      !!this%qCorner000(4) = sqrt( this%qCorner000(1)**2 + this%qCorner000(2)**2 + this%qCorner000(3)**2 )
+      !!this%qCorner100(4) = sqrt( this%qCorner100(1)**2 + this%qCorner100(2)**2 + this%qCorner100(3)**2 )
+      !!this%qCorner010(4) = sqrt( this%qCorner010(1)**2 + this%qCorner010(2)**2 + this%qCorner010(3)**2 )
+      !!this%qCorner110(4) = sqrt( this%qCorner110(1)**2 + this%qCorner110(2)**2 + this%qCorner110(3)**2 )
+      !!this%qCorner001(4) = sqrt( this%qCorner001(1)**2 + this%qCorner001(2)**2 + this%qCorner001(3)**2 )
+      !!this%qCorner101(4) = sqrt( this%qCorner101(1)**2 + this%qCorner101(2)**2 + this%qCorner101(3)**2 )
+      !!this%qCorner011(4) = sqrt( this%qCorner011(1)**2 + this%qCorner011(2)**2 + this%qCorner011(3)**2 )
+      !!this%qCorner111(4) = sqrt( this%qCorner111(1)**2 + this%qCorner111(2)**2 + this%qCorner111(3)**2 )
 
-
-
-
-
-
-
-
+      !!!print *, '** TrackSubCell:ComputeCornerDischarge: leaving the function' 
 
 
   end subroutine pr_ComputeCornerDischarge
