@@ -1752,6 +1752,10 @@ subroutine pr_FillNeighborCellData( this, neighborCellData )
         do m = 1, 2
             if ( neighborCellData(m, n)%CellNumber .gt. 0 ) then 
                 print *, '     -- Face Connection  ', m, ' with cell ', neighborCellData(m, n)%CellNumber
+            else if ( neighborCellData(m, n)%fromSubSubCell ) then 
+                print *, '     -- Face Connection  ', m, ' with cell filled from subcell ', &
+                    neighborCellData(m, n)%parentSubRow, neighborCellData(m, n)%parentSubColumn, & 
+                    'from grandParentCellNumber ', neighborCellData(m, n)%parentCellNumber
             else if ( neighborCellData(m, n)%fromSubCell ) then 
                 print *, '     -- Face Connection  ', m, ' with cell filled from subcell ', &
                     neighborCellData(m, n)%parentSubRow, neighborCellData(m, n)%parentSubColumn, & 
@@ -2153,12 +2157,15 @@ subroutine pr_FillNeighborCellsConnectionFromHorizontalFace(this, centerCellData
     ! output
     type(ModpathCellDataType), dimension(2), intent(inout) :: neighborCellsBuffer
     ! local 
-    type(ModpathCellDataType), target        :: parentCellDataBuffer
+    type(ModpathCellDataType)                :: parentCellDataBuffer
+    type(ModpathCellDataType)                :: auxCellDataBuffer
     integer, dimension(2)                    :: orthogonalFaceNumbers
     integer, dimension(2,2)                  :: subCellIndexes
     integer                                  :: directConnectionSubRow
-    integer                                  :: subCellIndexesRow, m
+    integer                                  :: subCellIndexesRow
     integer                                  :: directionId
+    integer                                  :: subRow, subColumn
+    integer                                  :: m
     !--------------------------------------------------------------------------------------
 
 
@@ -2263,8 +2270,8 @@ subroutine pr_FillNeighborCellsConnectionFromHorizontalFace(this, centerCellData
         ) then 
 
             ! If bigger cell
-            ! Fill the parentCellDataBuffer and force 
-            ! refinement
+            ! Fill the parentCellDataBuffer
+            ! and force refinement
             call pr_FillCellFromRealData( this, centerCellDataBuffer%GetFaceConnection( faceNumber, 1 ), &
                                                                             parentCellDataBuffer, .true. )
 
@@ -2279,21 +2286,79 @@ subroutine pr_FillNeighborCellsConnectionFromHorizontalFace(this, centerCellData
             else
                 subCellIndexesRow = 2
             end if 
-            
-            ! Fill Connection
-            call pr_FillCellBufferFromSubCell( this, parentCellDataBuffer, &
-                                   subCellIndexes( subCellIndexesRow, 1 ), & 
-                                   subCellIndexes( subCellIndexesRow, 2 ), & 
-                               neighborCellsBuffer(1), forceCellRefinement )
-            neighborCellsBuffer(1)%requestedFromDirection = directionId
+           
+
+            if ( .not. centerCellDataBuffer%isParentCell ) then
+                ! Fill Connection
+                call pr_FillCellBufferFromSubCell( this, parentCellDataBuffer, &
+                                       subCellIndexes( subCellIndexesRow, 1 ), & 
+                                       subCellIndexes( subCellIndexesRow, 2 ), & 
+                                   neighborCellsBuffer(1), forceCellRefinement )
+                neighborCellsBuffer(1)%requestedFromDirection = directionId
+            else
+                ! If center cell is also parent, then 
+                ! it detected a grand parent, so it should
+                ! fill the final buffer with a double refinement
+
+                ! Fill aux data buffer, with the same sub cell indexes
+                call pr_FillCellBufferFromSubCell( this, parentCellDataBuffer, &
+                                       subCellIndexes( subCellIndexesRow, 1 ), & 
+                                       subCellIndexes( subCellIndexesRow, 2 ), & 
+                                                     auxCellDataBuffer, .true. )
+                auxCellDataBuffer%isParentCell = .true.
+                auxCellDataBuffer%CellNumber   = parentCellDataBuffer%CellNumber
+
+                ! Fill definitive buffer
+                call pr_FillCellBufferFromSubCell( this, auxCellDataBuffer, &
+                                       subCellIndexes( subCellIndexesRow, 1 ), & 
+                                       subCellIndexes( subCellIndexesRow, 2 ), & 
+                                   neighborCellsBuffer(1), forceCellRefinement )
+                neighborCellsBuffer(1)%requestedFromDirection = directionId
+
+
+            end if
+
         else
 
-            ! If equal size cell, fill buffer and leave
-            call pr_FillCellFromRealData( this,                          &
-                centerCellDataBuffer%GetFaceConnection( faceNumber, 1 ), &
-                             neighborCellsBuffer(1), forceCellRefinement )
-            neighborCellsBuffer(1)%requestedFromDirection = directionId
+            if ( .not. centerCellDataBuffer%isParentCell ) then
 
+                ! If equal size cell, fill buffer and leave
+                call pr_FillCellFromRealData( this,                          &
+                    centerCellDataBuffer%GetFaceConnection( faceNumber, 1 ), &
+                                 neighborCellsBuffer(1), forceCellRefinement )
+                neighborCellsBuffer(1)%requestedFromDirection = directionId
+
+            else
+
+                ! Which face connection ?
+                if ( directionId .eq. 2 ) then 
+                    subColumn = centerCellDataBuffer%parentSubColumn
+                    select case ( faceNumber )
+                        case(3)
+                            subRow = 1
+                        case(4)
+                            subRow = 2
+                    end select
+                else if ( directionId .eq. 1 ) then
+                    subRow = centerCellDataBuffer%parentSubRow
+                    select case ( faceNumber )
+                        case(1)
+                            subColumn = 2
+                        case(2)
+                            subColumn = 1
+                    end select
+                end if
+
+                call pr_FillCellFromRealData( this,                          &
+                    centerCellDataBuffer%GetFaceConnection( faceNumber, 1 ), &
+                                                parentCellDataBuffer, .true. )
+
+                call pr_FillCellBufferFromSubCell( this, parentCellDataBuffer, &
+                                                           subRow,  subColumn, & 
+                                   neighborCellsBuffer(1), forceCellRefinement )
+                neighborCellsBuffer(1)%requestedFromDirection = directionId
+
+            end if
         end if 
 
 
@@ -2357,7 +2422,10 @@ subroutine pr_FillCellBufferFromSubCell( this, parentCellBuffer, subRow, subColu
     end if 
 
     ! "subCell" properties
-    cellBuffer%fromSubCell      = .true. 
+    cellBuffer%fromSubCell = .true.
+    if ( parentCellBuffer%fromSubCell .and. parentCellBuffer%isParentCell ) then 
+        cellBuffer%fromSubSubCell = .true.
+    end if 
     cellBuffer%parentCellNumber = parentCellBuffer%CellNumber
     cellBuffer%parentSubRow     = subRow
     cellBuffer%parentSubColumn  = subColumn 

@@ -30,8 +30,9 @@ module ModpathCellDataModule
     doubleprecision,dimension(2) :: Q1,Q2,Q3,Q4
     integer :: ArraySizeMode = 1
     ! RWPT NEW PROPERTY
-    logical :: fromSubCell  = .false.
-    logical :: isParentCell = .false.
+    logical :: fromSubCell    = .false.
+    logical :: fromSubSubCell = .false.
+    logical :: isParentCell   = .false.
     integer :: parentCellNumber
     integer :: parentSubRow, parentSubColumn
     integer :: requestedFromDirection
@@ -399,8 +400,9 @@ contains
 
 
   ! RWPT-USG 
-  this%fromSubCell  = .false.
-  this%isParentCell = .false.
+  this%fromSubCell     = .false.
+  this%fromSubSubCell  = .false.
+  this%isParentCell    = .false.
   this%parentCellNumber = 0
   this%parentSubRow     = 0
   this%parentSubColumn  = 0
