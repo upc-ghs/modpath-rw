@@ -69,6 +69,8 @@ module ModpathCellDataModule
     generic :: SetData=>pr_SetDataUnstructured
     ! RWPT
     procedure :: GetNeighborSubCellIndexes => pr_GetNeighborSubCellIndexes
+    procedure :: FillSubCellFaceAreas      => pr_FillSubCellFaceAreas
+    procedure :: FillSubCellFaceFlows      => pr_FillSubCellFaceFlows
   end type
 
 contains
@@ -1745,6 +1747,7 @@ contains
 
   ! RWPT
   ! Assign additional properties to sub cell buffer
+  ! need it ?
   subCellData%Porosity    = this%Porosity 
   subCellData%Retardation = this%Retardation 
 
@@ -1844,6 +1847,7 @@ contains
       ! 17: ic61
       ! 18: ic62
       !---------------------------------------------------------
+      implicit none
       class( ModpathCellDataType ) :: this
       integer, intent(in) :: subRow, subColumn
       integer, dimension(18,3) :: neighborSubCellIndexes
@@ -1975,6 +1979,77 @@ contains
 
 
   end function pr_GetNeighborSubCellIndexes 
+
+
+
+  subroutine pr_FillSubCellFaceAreas(this, areas, skipSubCells)
+  !---------------------------------------------------------
+  !
+  !---------------------------------------------------------
+  implicit none
+  class( ModpathCellDataType ) :: this
+  doubleprecision, dimension(3), intent(inout) :: areas
+  doubleprecision :: dx, dy, dz
+  logical, intent(in) :: skipSubCells
+  !---------------------------------------------------------
+
+      if ( .not. skipSubCells ) then
+          dx = this%DX / dble(this%SubCellColumnCount)
+          dy = this%DY / dble(this%SubCellRowCount)
+      else
+          dx = this%DX
+          dy = this%DY
+      end if
+      dz = this%GetDZ()
+
+      if ( this%CellNumber .eq. 35 ) then 
+          print *, 'THE CELL ' 
+          print *,  this%DX ,dble(this%SubCellColumnCount)
+          print *,  this%DY ,dble(this%SubCellRowCount)
+          print *,  this%GetSubCellCount() 
+      end if 
+
+
+      areas(1) = dy*dz
+      areas(2) = dx*dz
+      areas(3) = dx*dy
+        
+      return
+
+
+  end subroutine pr_FillSubCellFaceAreas 
+
+
+  ! RWPT-USG
+  subroutine pr_FillSubCellFaceFlows(this, subRow, subColumn, faceFlows, skipSubCells)
+  !---------------------------------------------------------
+  !
+  !---------------------------------------------------------
+  implicit none 
+  class(ModpathCellDataType) :: this
+  integer,intent(in) :: subRow,subColumn
+  doubleprecision,dimension(6) :: faceFlows
+  integer :: subCellNumber
+  logical, intent(in) :: skipSubCells
+  !---------------------------------------------------------
+ 
+    
+      if ( .not. skipSubCells ) then
+          ! Get face flows as usual   
+          call this%FillSubCellFaceFlowsBuffer( subRow, subColumn, faceFlows )
+      else
+          print *, 'SKIP'
+          ! Skip subcell indexation and bring cell face flows
+          faceFlows(1) = this%GetAveragedFaceFlow(1)
+          faceFlows(2) = this%GetAveragedFaceFlow(2)
+          faceFlows(3) = this%GetAveragedFaceFlow(3)
+          faceFlows(4) = this%GetAveragedFaceFlow(4)
+          faceFlows(5) = this%GetAveragedFaceFlow(5)
+          faceFlows(6) = this%GetAveragedFaceFlow(6)
+      end if
+
+  
+  end subroutine pr_FillSubCellFaceFlows
 
 
 
