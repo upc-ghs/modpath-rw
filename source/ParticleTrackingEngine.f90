@@ -1406,7 +1406,7 @@ subroutine pr_TrackPath(this, trackPathResult, traceModeOn, traceModeUnit,      
           call this%TrackCell%ExecuteRandomWalkParticleTracking(loc, stopTime, this%TrackCellResult,&
               this%NeighborSubCellData, neighborCellData)
 
-          call exit(0)
+          !call exit(0)
 
           !call this%TrackCell%ExecuteRandomWalkParticleTracking(loc, stopTime, this%TrackCellResult, &
           !                                             this%NeighborSubCellData, this%NeighborCellData)
@@ -1688,7 +1688,7 @@ subroutine pr_FillNeighborCellData( this, neighborCellData )
     integer :: n, m, id, cellCounter, firstNeighborFaceNumber
     integer, dimension(2)   :: orthogonalFaceNumbers, connectedSubCellIndexes
     integer, dimension(2,2) :: subCellIndexes
-    logical :: forceCellRefinement = .false.
+    logical :: forceCellRefinement
     !------------------------------------------------------------------
 
     ! Reset all buffers
@@ -1709,8 +1709,10 @@ subroutine pr_FillNeighborCellData( this, neighborCellData )
     else
         print *, '** ParticleTrackingEngine.FillNeighborCellData: TrackCell NOT REFINED ', &
         this%TrackCell%CellData%CellNumber, this%TrackCell%CellData%GetSubCellCount(), ' subcells.'
+        forceCellRefinement = .false.
     end if 
 
+    print *, 'FORCE CELL REFINEMENT ', forceCellRefinement
 
     ! Loop through cell faces and fill the neighborhood
     cellCounter = 0
@@ -1941,13 +1943,14 @@ subroutine pr_FillNeighborCellsSubBuffer( this, &
                 neighborCellsDataBuffer( faceConnectionIndexes(1), directConnectionBufferIndex ), &
                                                                          firstNeighborFaceNumber, &
                                    neighborCellsDataBuffer( :, directConnectionBufferIndex + 1 ), &
-                                                                              forceCellRefinement )
+                                                                                          .false. )
 
             call pr_FillNeighborCellsConnectionFromHorizontalFace( this,                              &
                     neighborCellsDataBuffer( faceConnectionIndexes(2), directConnectionBufferIndex ), &
                                                                          firstNeighborFaceNumber + 1, &
                                        neighborCellsDataBuffer( :, directConnectionBufferIndex + 2 ), &
-                                                                                  forceCellRefinement )
+                                                                                              .false. )
+                                                                                  !forceCellRefinement )
 
             ! Done 
             return
@@ -2186,7 +2189,7 @@ subroutine pr_FillNeighborCellsConnectionFromHorizontalFace(this, centerCellData
     end if
 
 
-    ! Verify horizontal connection state
+    ! Verify how many horizontal connections
     if ( centerCellDataBuffer%SubFaceCounts( faceNumber ) .gt. 1 ) then
 
         if ( .not. centerCellDataBuffer%isParentCell ) then 

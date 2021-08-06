@@ -2002,14 +2002,6 @@ contains
       end if
       dz = this%GetDZ()
 
-      if ( this%CellNumber .eq. 35 ) then 
-          print *, 'THE CELL ' 
-          print *,  this%DX ,dble(this%SubCellColumnCount)
-          print *,  this%DY ,dble(this%SubCellRowCount)
-          print *,  this%GetSubCellCount() 
-      end if 
-
-
       areas(1) = dy*dz
       areas(2) = dx*dz
       areas(3) = dx*dy

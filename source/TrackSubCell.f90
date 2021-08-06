@@ -46,12 +46,14 @@ module TrackSubCellModule
     doubleprecision :: porosity011
     doubleprecision :: porosity111
 
-    ! Corner components indexes
+    ! Corner discharge components indexes
     ! 8 corners, 3 subcell indexes, 1 face id
     integer, dimension(8,4) :: cornerXComponentIndexes, &
                                cornerYComponentIndexes, & 
                                cornerZComponentIndexes
     
+    ! Corner porosity sub cell indexes
+    integer, dimension(8,6)  :: cornerPorosityIndexes ! 8 corners, 6 neighbor subcells
 
     ! Prototype that might be used in production 
     !doubleprecision, dimension(0:1,0:1,0:1) :: cornerPorosity
@@ -2105,31 +2107,31 @@ contains
 
   ! RWPT
   subroutine pr_ComputeCornerDischarge( this, currentCellData, neighborCellData )
-      !----------------------------------------------------------------
-      ! From its subCellData and neighborSubCellData array, 
-      ! computes velocities at cell corners
-      !
-      !----------------------------------------------------------------
-      ! Specifications
-      !----------------------------------------------------------------
-      implicit none
-      class(TrackSubCellType) :: this
-      type(ModpathCellDataType) :: currentCellData
-      type(ModpathCellDataType), dimension(2,18) :: neighborCellData
-      integer, dimension(18,3)         :: neighborSubCellIndexes   ! nbcell, subRow, subColumn
-      doubleprecision, dimension(18,6) :: neighborSubCellFaceFlows ! nbcell, flowFaceNumber
-      doubleprecision, dimension(18,3) :: neighborSubCellFaceAreas ! nbcell, faceDirection
-      doubleprecision, dimension(6)    :: centerSubCellFaceFlows
-      integer :: n, m
-      ! deprecated
-      logical :: twoDimensionsDomain
-      real    :: flowContributionFactor
-      integer :: cid
-      doubleprecision :: dx, dy, dz, dz0, dz1
-      doubleprecision :: areaFlowX0, areaFlowX1
-      doubleprecision :: areaFlowY0, areaFlowY1
-      doubleprecision :: areaFlowZ
-      !----------------------------------------------------------------
+  !----------------------------------------------------------------
+  ! From its subCellData and neighborSubCellData array, 
+  ! computes velocities at cell corners
+  !
+  !----------------------------------------------------------------
+  ! Specifications
+  !----------------------------------------------------------------
+  implicit none
+  class(TrackSubCellType) :: this
+  type(ModpathCellDataType) :: currentCellData
+  type(ModpathCellDataType), dimension(2,18) :: neighborCellData
+  integer, dimension(18,3)         :: neighborSubCellIndexes   ! nbcell, subRow, subColumn
+  doubleprecision, dimension(18,6) :: neighborSubCellFaceFlows ! nbcell, flowFaceNumber
+  doubleprecision, dimension(18,3) :: neighborSubCellFaceAreas ! nbcell, faceDirection
+  doubleprecision, dimension(6)    :: centerSubCellFaceFlows
+  integer :: n, m
+  ! deprecated
+  logical :: twoDimensionsDomain
+  real    :: flowContributionFactor
+  integer :: cid
+  doubleprecision :: dx, dy, dz, dz0, dz1
+  doubleprecision :: areaFlowX0, areaFlowX1
+  doubleprecision :: areaFlowY0, areaFlowY1
+  doubleprecision :: areaFlowZ
+  !----------------------------------------------------------------
 
     
       ! Get sub cell indexes for current sub cell location
@@ -2178,6 +2180,7 @@ contains
       this%qCorner111(4) = sqrt( this%qCorner111(1)**2 + this%qCorner111(2)**2 + this%qCorner111(3)**2 )
 
 
+      ! DEBUG/DEV
       print *, '**** TrackSubCell:currentCell number', currentCellData%CellNumber
       print *, '**** TrackSubCell:currentCell dx, dy, dz', currentCellData%dx, currentCellData%dy, &
           currentCellData%GetDZ()
@@ -2188,9 +2191,6 @@ contains
       do n=1, 18
           print *, n, neighborSubCellFaceAreas( n, : ) 
       end do
-
-
-      call exit(0)
 
 
   end subroutine pr_ComputeCornerDischarge
@@ -2214,6 +2214,7 @@ contains
       !
       ! dev: find a proper place for doing this only once
       !-----------------------------------------------------------------
+      implicit none
       class( TrackSubCellType ) :: this
       !-----------------------------------------------------------------
 
@@ -2288,11 +2289,12 @@ contains
                                                 cornerIndex, faceDirection  ) result( qCorner )
   !---------------------------------------------------------------------
   ! Compute interpolated corner discharge as the sum of flow rates
-  ! of contributing faces dividing by the sum of face areas
+  ! of contributing faces divided by the sum of face areas
   !
   ! Initializes sums with contribution of center cell and 
   ! loop over remaining involved cells
   !---------------------------------------------------------------------
+  implicit none
   class( TrackSubCellType ) :: this
   ! input
   doubleprecision, dimension(6)   , intent(in) :: centerSubCellFaceFlows 
@@ -2340,7 +2342,7 @@ contains
              end do
      end select 
   
-     ! flowContributionFactor is cancelled implicitly    
+     ! flowContributionFactor=0.25 is cancelled implicitly    
      qCorner = sumFlowRate/sumArea
   
   
@@ -2367,8 +2369,8 @@ contains
       doubleprecision, dimension(18) :: neighborSubCellPorosity 
       doubleprecision, dimension(18) :: neighborSubCellVolume   
       doubleprecision, dimension(6)    :: centerSubCellFaceFlows
-      ! 8 corners with information of nc1, nc2, nc3, fN
-      integer, dimension(8,6)  :: cornerPorosityIndexes ! 6 Initialized subcells + self + missing = 8
+      integer :: n, m
+      ! deprecated
       logical :: twoDimensionsDomain
       real    :: flowContributionFactor
       integer :: cid, scid
@@ -2384,8 +2386,6 @@ contains
 
       !print *, '** TrackSubCell:ComputeCornerPorosity: entered, constant value of', this%SubCellData%Porosity
 
-
-
       ! This is the fallback for spatially 
       ! constant porosity
       this%porosity000 = this%SubCellData%Porosity   
@@ -2397,238 +2397,120 @@ contains
       this%porosity011 = this%SubCellData%Porosity
       this%porosity111 = this%SubCellData%Porosity
 
-
       return 
 
+      !! If spatially variable porosity
 
+      !! Set required indexes
+      !call this%SetCornerPorosityIndexes()
 
+      !! Requires initializing volume and porosity 
+      !! of neighbor sub cells
 
-      !!-------------------! THIS CODE IS FOR VARIABLE POROSITY CASE ! --------------------
+      !! Assign interpolated values
+      !this%porosity000 = this%GetInterpolatedCornerPorosity( neighborSubCellVolume, neighborSubCellPorosity, 1 )
+      !this%porosity100 = this%GetInterpolatedCornerPorosity( neighborSubCellVolume, neighborSubCellPorosity, 2 )
+      !this%porosity010 = this%GetInterpolatedCornerPorosity( neighborSubCellVolume, neighborSubCellPorosity, 3 )
+      !this%porosity110 = this%GetInterpolatedCornerPorosity( neighborSubCellVolume, neighborSubCellPorosity, 4 )
+      !this%porosity001 = this%GetInterpolatedCornerPorosity( neighborSubCellVolume, neighborSubCellPorosity, 5 )
+      !this%porosity101 = this%GetInterpolatedCornerPorosity( neighborSubCellVolume, neighborSubCellPorosity, 6 )
+      !this%porosity011 = this%GetInterpolatedCornerPorosity( neighborSubCellVolume, neighborSubCellPorosity, 7 )
+      !this%porosity111 = this%GetInterpolatedCornerPorosity( neighborSubCellVolume, neighborSubCellPorosity, 8 )
 
-      !! Following indexes should be computed only once 
-      !! subRow and subColumn changes. If kept at this point, 
-      !! then computation is performed several times for the same 
-      !! subCell
+      !  
+      !return
 
-      !! subRow and subColumn determine indexes from NeighborCellData to be used 
-      !! in interpolation process
-      !if ( this%SubCellData%Row .eq. 1 ) then
-      !    ! If subcell from first subRow 
-      !    if ( this%SubCellData%Column .eq. 1 ) then
-      !        ! If subcell from first subColumn
-      !        ! Review
-      !        neighborSubCellIndexes(1,:)  = [ 1,1,2]
-      !        neighborSubCellIndexes(2,:)  = [ 1,2,2]
-      !        neighborSubCellIndexes(3,:)  = [ 3,2,2]
-      !        neighborSubCellIndexes(4,:)  = [ 0,1,2]
-      !        neighborSubCellIndexes(5,:)  = [ 0,2,2]
-      !        neighborSubCellIndexes(6,:)  = [10,2,2]
-      !        neighborSubCellIndexes(7,:)  = [ 0,2,1]
-      !        neighborSubCellIndexes(8,:)  = [13,2,1]
-      !        neighborSubCellIndexes(9,:)  = [16,2,1]
-      !        neighborSubCellIndexes(10,:) = [10,2,1]
-      !        neighborSubCellIndexes(11,:) = [11,2,1]
-      !        neighborSubCellIndexes(12,:) = [12,2,1]
-      !        neighborSubCellIndexes(13,:) = [13,1,1]
-      !        neighborSubCellIndexes(14,:) = [14,1,2]
-      !        neighborSubCellIndexes(15,:) = [13,1,2]
-      !        neighborSubCellIndexes(16,:) = [16,1,1]
-      !        neighborSubCellIndexes(17,:) = [17,1,2]
-      !        neighborSubCellIndexes(18,:) = [16,1,2]
-      !    else
-      !        ! If subcell from second subColumn
-      !        ! Review
-      !        neighborSubCellIndexes(1,:)  = [ 0,1,1]
-      !        neighborSubCellIndexes(2,:)  = [ 0,2,1]
-      !        neighborSubCellIndexes(3,:)  = [10,2,1]
-      !        neighborSubCellIndexes(4,:)  = [ 4,1,1]
-      !        neighborSubCellIndexes(5,:)  = [ 4,2,1]
-      !        neighborSubCellIndexes(6,:)  = [ 6,2,1]
-      !        neighborSubCellIndexes(7,:)  = [ 0,2,2]
-      !        neighborSubCellIndexes(8,:)  = [13,2,2]
-      !        neighborSubCellIndexes(9,:)  = [16,2,2]
-      !        neighborSubCellIndexes(10,:) = [10,2,2]
-      !        neighborSubCellIndexes(11,:) = [11,2,2]
-      !        neighborSubCellIndexes(12,:) = [12,2,2]
-      !        neighborSubCellIndexes(13,:) = [13,1,2]
-      !        neighborSubCellIndexes(14,:) = [13,1,1]
-      !        neighborSubCellIndexes(15,:) = [15,1,1]
-      !        neighborSubCellIndexes(16,:) = [16,1,2]
-      !        neighborSubCellIndexes(17,:) = [16,1,1]
-      !        neighborSubCellIndexes(18,:) = [18,1,1]
-      !    end if        
-      !else
-      !    ! If subcell from second subRow 
-      !    if ( this%SubCellData%Column .eq. 1 ) then 
-      !        ! If subcell from first subColumn
-      !        ! Review
-      !        neighborSubCellIndexes(1,:)  = [ 1,2,2]
-      !        neighborSubCellIndexes(2,:)  = [ 2,1,2]
-      !        neighborSubCellIndexes(3,:)  = [ 1,1,2]
-      !        neighborSubCellIndexes(4,:)  = [ 0,2,2]
-      !        neighborSubCellIndexes(5,:)  = [ 7,1,2]
-      !        neighborSubCellIndexes(6,:)  = [ 0,1,2]
-      !        neighborSubCellIndexes(7,:)  = [ 7,1,1]
-      !        neighborSubCellIndexes(8,:)  = [ 8,1,1]
-      !        neighborSubCellIndexes(9,:)  = [ 9,1,1]
-      !        neighborSubCellIndexes(10,:) = [ 0,1,1]
-      !        neighborSubCellIndexes(11,:) = [13,1,1]
-      !        neighborSubCellIndexes(12,:) = [16,1,1]
-      !        neighborSubCellIndexes(13,:) = [13,2,1]
-      !        neighborSubCellIndexes(14,:) = [14,2,2]
-      !        neighborSubCellIndexes(15,:) = [13,2,2]
-      !        neighborSubCellIndexes(16,:) = [16,2,1]
-      !        neighborSubCellIndexes(17,:) = [17,2,2]
-      !        neighborSubCellIndexes(18,:) = [16,2,2]
-      !    else
-      !        ! If subcell from second subColumn
-      !        ! Review
-      !        neighborSubCellIndexes(1,:)  = [ 0,2,1]
-      !        neighborSubCellIndexes(2,:)  = [ 7,1,1]
-      !        neighborSubCellIndexes(3,:)  = [ 0,1,1]
-      !        neighborSubCellIndexes(4,:)  = [ 4,2,1]
-      !        neighborSubCellIndexes(5,:)  = [ 5,1,1]
-      !        neighborSubCellIndexes(6,:)  = [ 4,1,1]
-      !        neighborSubCellIndexes(7,:)  = [ 7,1,2]
-      !        neighborSubCellIndexes(8,:)  = [ 8,1,2]
-      !        neighborSubCellIndexes(9,:)  = [ 9,1,2]
-      !        neighborSubCellIndexes(10,:) = [ 0,1,2]
-      !        neighborSubCellIndexes(11,:) = [13,1,2]
-      !        neighborSubCellIndexes(12,:) = [16,1,2]
-      !        neighborSubCellIndexes(13,:) = [13,2,2]
-      !        neighborSubCellIndexes(14,:) = [13,2,1]
-      !        neighborSubCellIndexes(15,:) = [15,2,1]
-      !        neighborSubCellIndexes(16,:) = [16,2,2]
-      !        neighborSubCellIndexes(17,:) = [16,2,1]
-      !        neighborSubCellIndexes(18,:) = [18,2,1]
-      !    end if        
-      !end if 
-
-
-
-      !! Compute cell sizes for areas computation
-      !dx  = this%SubCellData%DX
-      !dy  = this%SubCellData%DY
-      !dz  = this%SubCellData%DZ
-      !dz0 = neighborCellData(13)%GetDZ() ! query a lower layer cell and getdz 
-      !dz1 = neighborCellData(16)%GetDZ() ! query an upper layer cell and getdz 
-
-
-      !volumeCenter = dx*dy*dz
-      !volumeLower  = dx*dy*dz0
-      !volumeUpper  = dx*dy*dz1
-
-
-      !do cid = 1,18
-
-      !    ! Fill porosities 
-      !    if ( neighborSubCellIndexes( cid, 1 ) .gt. 0 ) then
-      !        ! A no center cell
-
-      !        if ( neighborCellData( neighborSubCellIndexes( cid, 1 ) )%CellNumber .ne. -999 ) then
-      !            ! the buffer is a normal cell
-      !            neighborSubCellPorosity( cid ) = neighborCellData( neighborSubCellIndexes( cid,  1 ) )%Porosity
-      !        else
-      !            ! if the buffer is a custom cell
-      !            ! Compute subcell index
-      !            ! HERE WE HAD A COLUMNCOUNT
-      ! 
-      !     scid = ( neighborSubCellIndexes( cid, 2 ) - 1 )*2  + neighborSubCellIndexes( cid, 3 )
-
-      !            ! Get porosity from subcell index. This
-      !            ! should work fine in cases that 
-      !            ! interpolation grid has nested subcells
-      !            ! as required subcells for porosity are direct connections
-      !            ! and for a smoothed usg, direct connections
-      !            ! will be regular/real cells with defined porosity and not
-      !            ! custom/linked cells. 
-      !            neighborSubCellPorosity( cid ) = &
-      !                neighborCellData( neighborSubCellIndexes( cid,  1 ) )%SubCellDataBuffer( scid )%Porosity
-      !        end if
-      !    else
-      !        ! The center cell
-      !        neighborSubCellPorosity( cid ) = currentCellData%Porosity
-      !    end if
-
-      !    
-      !    ! Fill cell volumes 
-      !    if ( neighborCellData( neighborSubCellIndexes( cid, 1 ))%Layer .eq. currentCellData%Layer ) then
-      !        neighborSubCellVolume( cid ) = volumeCenter
-      !    else if ( neighborCellData( neighborSubCellIndexes( cid, 1 ))%Layer .gt. currentCellData%Layer ) then
-      !        ! Remember that deeper layers have higher index
-      !        neighborSubCellVolume( cid ) = volumeLower
-      !    else
-      !        ! Is an upper layer
-      !        neighborSubCellVolume( cid ) = volumeUpper
-      !    end if
-
-      !end do
-
-
-      !! Convention for cell indexes of 
-      !! coordinate components
-      !! 1: 000
-      !! 2: 100
-      !! 3: 010
-      !! 4: 110
-      !! 5: 001
-      !! 6: 101
-      !! 7: 011
-      !! 8: 111
-      !cornerPorosityIndexes(1,:) = [ 1, 2,  7,  8, 13, 14 ] 
-      !cornerPorosityIndexes(2,:) = [ 4, 5,  7,  8, 13, 15 ] 
-      !cornerPorosityIndexes(3,:) = [ 1, 3, 10, 11, 13, 14 ] 
-      !cornerPorosityIndexes(4,:) = [ 4, 6, 10, 12, 16, 18 ] 
-      !cornerPorosityIndexes(5,:) = [ 1, 2,  7,  9, 16, 17 ] 
-      !cornerPorosityIndexes(6,:) = [ 4, 5,  7,  9, 16, 18 ] 
-      !cornerPorosityIndexes(7,:) = [ 1, 3, 10, 12, 16, 17 ] 
-      !cornerPorosityIndexes(8,:) = [ 4, 6, 10, 11, 13, 15 ] 
-
-
-      !! Now access required indexes for each corner
-      !! In this step it is required initialization
-      !! of porosity and volume of corner cells 
-      !! not initialized in buffer because are 
-      !! not required for flow purposes
-      !! (related to volumeUpper or volumeLower according to corner).
-      !! Remember that it is also required to consider 
-      !! contribution of the center cell
-
-
-      !! So the missing parameter it is only the porosity
-      !! of the surrounding cube corners
-
-
-      !! Functions for building cells 
-      !! are defined at ParticleTrackingEngine.f90
-      !! Thus building corner cells makes sense when 
-      !! working at that file. 
-      !! Rather than define the missing things at this file.
-
-
-
-
-
-
-
-      !! Missing areas, should divide sum of face flows
-      !!! Corner porosities follow similar indexation 
-      !!! as corner discharge
-      !!! Compute equivalent corner volume
-      !!cornerVolumeZ0 = 1/8*( 4*dx*dy*dz + 4*dx*dy*dz0 )
-      !!cornerVolumeZ1 = 1/8*( 4*dx*dy*dz + 4*dx*dy*dz1 )
-
-      !!! Corner porosities follow similar indexation 
-      !!! as corner discharge
-      !!! Compute equivalent corner volume
-      !!cornerVolumeZ0 = 1/8*( 4*dx*dy*dz + 4*dx*dy*dz0 )
-      !!cornerVolumeZ1 = 1/8*( 4*dx*dy*dz + 4*dx*dy*dz1 )
-
-
-      !!! Porosity is used as prototype of new variable structure
-      !!this%cornerPorosity(0,0,0) = 
 
   end subroutine pr_ComputeCornerPorosity
+
+
+  ! RWPT-USG
+  function pr_GetInterpolatedCornerPorosity( this, neighborSubCellVolume, &
+                                     neighborSubCellPorosity, cornerIndex ) result( cornerPorosity ) 
+  !-------------------------------------------------------------------------
+  ! Compute equivalent corner porosity for a given cornerIndex, 
+  ! using source information in neighborSubCellVolume and 
+  ! neighborSubCellPorosity
+  !
+  ! Equivalent corner porosity is a volume weighted average
+  ! between 7 cells: 6 neighbors and center cell
+  !-------------------------------------------------------------------------
+  implicit none
+  class( TrackSubCellType ) :: this
+  ! input
+  doubleprecision, dimension(18), intent(in) :: neighborSubCellVolume
+  doubleprecision, dimension(18), intent(in) :: neighborSubCellPorosity
+  integer, intent(in) :: cornerIndex
+  ! output
+  doubleprecision     :: cornerPorosity
+  ! local 
+  doubleprecision :: sumVolume, sumWeightedPorosity
+  integer :: m
+  !------------------------------------------------------------------------
+
+
+      sumVolume           = this%SubCellData%DX*this%SubCellData%DY*this%SubCellData%DZ
+      sumWeightedPorosity = this%SubCellData%Porosity*sumVolume
+      do m = 1, 6
+          sumVolume = sumVolume + &
+              neighborSubCellVolume( this%cornerPorosityIndexes( cornerIndex, m ) )
+          sumWeightedPorosity = sumWeightedPorosity + & 
+              neighborSubCellVolume( this%cornerPorosityIndexes( cornerIndex, m ) )*&
+              neighborSubCellPorosity( this%cornerPorosityIndexes( cornerIndex, m ) ) 
+      end do
+
+      ! Each cell contribution factor (1/8)
+      ! simplified implicitly 
+      cornerPorosity = sumWeightedPorosity/sumVolume
+
+
+      return
+
+
+  end function pr_GetInterpolatedCornerPorosity
+
+
+
+  subroutine pr_SetCornerPorosityIndexes( this ) 
+      !-----------------------------------------------------------------
+      ! Set neighbor sub cells indexes for computation of 
+      ! equivalent corner porosities
+      ! 
+      ! Convention for sub cell corners
+      !     1: 000
+      !     2: 100
+      !     3: 010
+      !     4: 110
+      !     5: 001
+      !     6: 101
+      !     7: 011
+      !     8: 111
+      !
+      ! dev: find a proper place for doing this only once
+      !-----------------------------------------------------------------
+      implicit none
+      class( TrackSubCellType ) :: this
+      !-----------------------------------------------------------------
+
+
+      ! Cell indexes for corner porosity
+      this%cornerPorosityIndexes(1,:) = [ 1, 2,  7,  8, 13, 14 ]
+      this%cornerPorosityIndexes(2,:) = [ 4, 5,  7,  8, 13, 15 ]
+      this%cornerPorosityIndexes(3,:) = [ 1, 3, 10, 11, 13, 14 ]
+      this%cornerPorosityIndexes(4,:) = [ 4, 6, 10, 12, 16, 18 ]
+      this%cornerPorosityIndexes(5,:) = [ 1, 2,  7,  9, 16, 17 ]
+      this%cornerPorosityIndexes(6,:) = [ 4, 5,  7,  9, 16, 18 ]
+      this%cornerPorosityIndexes(7,:) = [ 1, 3, 10, 12, 16, 17 ]
+      this%cornerPorosityIndexes(8,:) = [ 4, 6, 10, 11, 13, 15 ]
+
+
+      return
+
+
+  end subroutine pr_SetCornerComponentsIndexes
+
+
+
 
 
   ! RWPT
@@ -2763,20 +2645,22 @@ contains
       if ( centerCellData%GetSubCellCount() .eq. 1 ) then 
         ! DEBUG/DEV
         print *, 'CURRENT CELL IS NOT REFINED'
-        ! Cell is connected to non refined cells, 
-        ! it does not uses sub cells from itself.
-        ! Neighbors without subcells
-        ! Actually it does not need neighborSubCellIndexes
+        ! Cell is not refined then neighbors
+        ! have the same size, some maybe refined
+        ! due to connections with smaller cells.
+        ! Skip sub cell indexation in such case. 
         do n = 1,18
-            call neighborCellData( &
-                1, neighborSubCellIndexes( n, 1 ) )%FillSubCellFaceFlowsBuffer( 1, 1, &
-                                                     neighborSubCellFaceFlows( n, : ) )
-            call neighborCellData( & 
-                1, neighborSubCellIndexes( n, 1 ) )%FillSubCellFaceAreas( neighborSubCellFaceAreas( n, : ), skipSubCells ) 
-
+            skipSubCells = .false.
             if ( neighborCellData( 1, neighborSubCellIndexes( n, 1 ) )%GetSubCellCount() .gt. 1 ) then 
-                print *, n , '!!!!!!!!!! NEIGHBOR is REFINED !!!!!!!!!!!'
-            else
+                skipSubCells = .true.
+                print *, n , '!!!!!!!!!! NEIGHBOR is REFINED !!!!!!!!!!!', &
+                    neighborCellData( 1, neighborSubCellIndexes( n, 1 ) )%GetSubCellCount(), &
+                    neighborCellData( 1, neighborSubCellIndexes( n, 1 ) )%CellNumber,        & 
+                    neighborCellData( 1, neighborSubCellIndexes( n, 1 ) )%parentCellNumber,  &
+                    neighborCellData( 1, neighborSubCellIndexes( n, 1 ) )%parentSubRow,      &
+                    neighborCellData( 1, neighborSubCellIndexes( n, 1 ) )%parentSubColumn,   &
+                    skipSubCells
+            else 
                 if ( neighborCellData( 1, neighborSubCellIndexes( n, 1 ) )%fromSubSubCell ) then 
                     print *, n, 'NEIGHBOR is GRANDCHILDREN OF  ', &
                         neighborCellData( 1, neighborSubCellIndexes( n, 1 ) )%parentCellNumber
@@ -2786,11 +2670,17 @@ contains
                 else 
                     print *, n, 'NEIGHBOR is CELL NUMBER  ', &
                         neighborCellData( 1, neighborSubCellIndexes( n, 1 ) )%CellNumber
-
                 end if
-
-
             end if
+
+
+            call neighborCellData( &
+                1, neighborSubCellIndexes( n, 1 ) )%FillSubCellFaceFlows( 1, 1, &
+                                  neighborSubCellFaceFlows( n, : ), skipSubCells )
+            call neighborCellData( & 
+                1, neighborSubCellIndexes( n, 1 ) )%FillSubCellFaceAreas( neighborSubCellFaceAreas( n, : ), skipSubCells ) 
+
+
         end do
 
         ! Done 
@@ -2824,25 +2714,29 @@ contains
                                                                neighborSubCellFaceFlows( n, : ) )
 
               call centerCellData%FillSubCellFaceAreas( neighborSubCellFaceAreas( n, : ), skipSubCells )
+              print *, '   -- sub cell ', neighborSubCellIndexes( n, 2 ), neighborSubCellIndexes( n, 3 )
+
 
               cycle
           end if
 
           ! Fill face flows with data obtained from neighbors
           print *, '   -- Will fill with data from neighbor '
-          if ( neighborCellData( 2, neighborSubCellIndexes( n, 1 ) )%CellNumber .gt. 0 ) then 
+          if ( neighborCellData( 2, neighborSubCellIndexes( n, 1 ) )%CellNumber .gt. 0 ) then
+              ! If double buffer 
               print *, '   -- This is a DOUBLE BUFFER'
               print *, '   -- Based on requested face direction should determine INDEX'
 
-        
+              ! When the buffer is double, 
+              ! these cells are smaller, then skip 
+              ! sub cell indexation if they are refined
               if ( & 
                   ( neighborCellData(1, neighborSubCellIndexes( n, 1 ) )%GetSubCellCount() .gt. 1 ) .or. &
                   ( neighborCellData(2, neighborSubCellIndexes( n, 1 ) )%GetSubCellCount() .gt. 1 ) ) then 
-                  print *, 'IS REFINED HOW WHAT'
+                  print *, 'AT LEAST ONE BUFFER REFINED '
                   skipSubCells = .true.
               end if 
 
-              ! By design, when the buffer is double, cells are not refined.
               ! Detect from which direction where requested.
               if ( neighborCellData( 2, neighborSubCellIndexes( n, 1 ) )%requestedFromDirection .eq. 1 ) then 
                   ! If x-direction, location in buffer is given by subcell row index 
@@ -2909,7 +2803,8 @@ contains
 
           else if ( &
               ( neighborCellData( 1, neighborSubCellIndexes( n, 1 ) )%CellNumber .gt. 0 ) .or. & 
-              ( neighborCellData( 1, neighborSubCellIndexes( n, 1 ) )%fromSubCell ) ) then 
+              ( neighborCellData( 1, neighborSubCellIndexes( n, 1 ) )%fromSubCell ) ) then
+              ! If single buffer 
               print *, '   -- This is a SINGLE BUFFER'
 
               if ( neighborCellData(1, neighborSubCellIndexes( n, 1 ) )%GetSubCellCount() .gt. 1 ) then 
@@ -2965,6 +2860,20 @@ contains
                                                              neighborSubCellFaceAreas( n, : ), skipSubCells )  
 
 
+          print *, '   -- Filled with cell ',&
+              neighborCellData( subConnectionIndex, neighborSubCellIndexes( n, 1 ) )%CellNumber, &
+              neighborCellData( subConnectionIndex, neighborSubCellIndexes( n, 1 ) )%parentCellNumber, &
+              neighborCellData( subConnectionIndex, neighborSubCellIndexes( n, 1 ) )%parentSubRow, &
+              neighborCellData( subConnectionIndex, neighborSubCellIndexes( n, 1 ) )%parentSubColumn, &
+              neighborCellData( subConnectionIndex, neighborSubCellIndexes( n, 1 ) )%fromSubSubCell
+
+          print *, '   -- sub cell ', neighborSubRow, neighborSubColumn
+          if ( skipSubCells ) print *, '   -- skipped sub cells '
+
+
+
+
+
       end do
 
 
@@ -2980,7 +2889,38 @@ end module TrackSubCellModule
 
 
 
+
+
+
+
+
+
+
 !!! THRASH 
+
+
+
+      !! Convention for cell indexes of 
+      !! coordinate components
+      !! 1: 000
+      !! 2: 100
+      !! 3: 010
+      !! 4: 110
+      !! 5: 001
+      !! 6: 101
+      !! 7: 011
+      !! 8: 111
+      !cornerPorosityIndexes(1,:) = [ 1, 2,  7,  8, 13, 14 ] 
+      !cornerPorosityIndexes(2,:) = [ 4, 5,  7,  8, 13, 15 ] 
+      !cornerPorosityIndexes(3,:) = [ 1, 3, 10, 11, 13, 14 ] 
+      !cornerPorosityIndexes(4,:) = [ 4, 6, 10, 12, 16, 18 ] 
+      !cornerPorosityIndexes(5,:) = [ 1, 2,  7,  9, 16, 17 ] 
+      !cornerPorosityIndexes(6,:) = [ 4, 5,  7,  9, 16, 18 ] 
+      !cornerPorosityIndexes(7,:) = [ 1, 3, 10, 12, 16, 17 ] 
+      !cornerPorosityIndexes(8,:) = [ 4, 6, 10, 11, 13, 15 ] 
+      
+
+
 
 !      call exit(0)
 !
@@ -3272,3 +3212,162 @@ end module TrackSubCellModule
       !!        neighborSubCellFaceFlows( cornerZComponentIndexes(8,3), cornerZComponentIndexes(8,4) )   &
       !!    )/areaFlowZ
 
+
+
+
+
+      !!-------------------! THIS CODE IS FOR VARIABLE POROSITY CASE ! --------------------
+
+      !! Following indexes should be computed only once 
+      !! subRow and subColumn changes. If kept at this point, 
+      !! then computation is performed several times for the same 
+      !! subCell
+
+      !! subRow and subColumn determine indexes from NeighborCellData to be used 
+      !! in interpolation process
+      !if ( this%SubCellData%Row .eq. 1 ) then
+      !    ! If subcell from first subRow 
+      !    if ( this%SubCellData%Column .eq. 1 ) then
+      !        ! If subcell from first subColumn
+      !        ! Review
+      !        neighborSubCellIndexes(1,:)  = [ 1,1,2]
+      !        neighborSubCellIndexes(2,:)  = [ 1,2,2]
+      !        neighborSubCellIndexes(3,:)  = [ 3,2,2]
+      !        neighborSubCellIndexes(4,:)  = [ 0,1,2]
+      !        neighborSubCellIndexes(5,:)  = [ 0,2,2]
+      !        neighborSubCellIndexes(6,:)  = [10,2,2]
+      !        neighborSubCellIndexes(7,:)  = [ 0,2,1]
+      !        neighborSubCellIndexes(8,:)  = [13,2,1]
+      !        neighborSubCellIndexes(9,:)  = [16,2,1]
+      !        neighborSubCellIndexes(10,:) = [10,2,1]
+      !        neighborSubCellIndexes(11,:) = [11,2,1]
+      !        neighborSubCellIndexes(12,:) = [12,2,1]
+      !        neighborSubCellIndexes(13,:) = [13,1,1]
+      !        neighborSubCellIndexes(14,:) = [14,1,2]
+      !        neighborSubCellIndexes(15,:) = [13,1,2]
+      !        neighborSubCellIndexes(16,:) = [16,1,1]
+      !        neighborSubCellIndexes(17,:) = [17,1,2]
+      !        neighborSubCellIndexes(18,:) = [16,1,2]
+      !    else
+      !        ! If subcell from second subColumn
+      !        ! Review
+      !        neighborSubCellIndexes(1,:)  = [ 0,1,1]
+      !        neighborSubCellIndexes(2,:)  = [ 0,2,1]
+      !        neighborSubCellIndexes(3,:)  = [10,2,1]
+      !        neighborSubCellIndexes(4,:)  = [ 4,1,1]
+      !        neighborSubCellIndexes(5,:)  = [ 4,2,1]
+      !        neighborSubCellIndexes(6,:)  = [ 6,2,1]
+      !        neighborSubCellIndexes(7,:)  = [ 0,2,2]
+      !        neighborSubCellIndexes(8,:)  = [13,2,2]
+      !        neighborSubCellIndexes(9,:)  = [16,2,2]
+      !        neighborSubCellIndexes(10,:) = [10,2,2]
+      !        neighborSubCellIndexes(11,:) = [11,2,2]
+      !        neighborSubCellIndexes(12,:) = [12,2,2]
+      !        neighborSubCellIndexes(13,:) = [13,1,2]
+      !        neighborSubCellIndexes(14,:) = [13,1,1]
+      !        neighborSubCellIndexes(15,:) = [15,1,1]
+      !        neighborSubCellIndexes(16,:) = [16,1,2]
+      !        neighborSubCellIndexes(17,:) = [16,1,1]
+      !        neighborSubCellIndexes(18,:) = [18,1,1]
+      !    end if        
+      !else
+      !    ! If subcell from second subRow 
+      !    if ( this%SubCellData%Column .eq. 1 ) then 
+      !        ! If subcell from first subColumn
+      !        ! Review
+      !        neighborSubCellIndexes(1,:)  = [ 1,2,2]
+      !        neighborSubCellIndexes(2,:)  = [ 2,1,2]
+      !        neighborSubCellIndexes(3,:)  = [ 1,1,2]
+      !        neighborSubCellIndexes(4,:)  = [ 0,2,2]
+      !        neighborSubCellIndexes(5,:)  = [ 7,1,2]
+      !        neighborSubCellIndexes(6,:)  = [ 0,1,2]
+      !        neighborSubCellIndexes(7,:)  = [ 7,1,1]
+      !        neighborSubCellIndexes(8,:)  = [ 8,1,1]
+      !        neighborSubCellIndexes(9,:)  = [ 9,1,1]
+      !        neighborSubCellIndexes(10,:) = [ 0,1,1]
+      !        neighborSubCellIndexes(11,:) = [13,1,1]
+      !        neighborSubCellIndexes(12,:) = [16,1,1]
+      !        neighborSubCellIndexes(13,:) = [13,2,1]
+      !        neighborSubCellIndexes(14,:) = [14,2,2]
+      !        neighborSubCellIndexes(15,:) = [13,2,2]
+      !        neighborSubCellIndexes(16,:) = [16,2,1]
+      !        neighborSubCellIndexes(17,:) = [17,2,2]
+      !        neighborSubCellIndexes(18,:) = [16,2,2]
+      !    else
+      !        ! If subcell from second subColumn
+      !        ! Review
+      !        neighborSubCellIndexes(1,:)  = [ 0,2,1]
+      !        neighborSubCellIndexes(2,:)  = [ 7,1,1]
+      !        neighborSubCellIndexes(3,:)  = [ 0,1,1]
+      !        neighborSubCellIndexes(4,:)  = [ 4,2,1]
+      !        neighborSubCellIndexes(5,:)  = [ 5,1,1]
+      !        neighborSubCellIndexes(6,:)  = [ 4,1,1]
+      !        neighborSubCellIndexes(7,:)  = [ 7,1,2]
+      !        neighborSubCellIndexes(8,:)  = [ 8,1,2]
+      !        neighborSubCellIndexes(9,:)  = [ 9,1,2]
+      !        neighborSubCellIndexes(10,:) = [ 0,1,2]
+      !        neighborSubCellIndexes(11,:) = [13,1,2]
+      !        neighborSubCellIndexes(12,:) = [16,1,2]
+      !        neighborSubCellIndexes(13,:) = [13,2,2]
+      !        neighborSubCellIndexes(14,:) = [13,2,1]
+      !        neighborSubCellIndexes(15,:) = [15,2,1]
+      !        neighborSubCellIndexes(16,:) = [16,2,2]
+      !        neighborSubCellIndexes(17,:) = [16,2,1]
+      !        neighborSubCellIndexes(18,:) = [18,2,1]
+      !    end if        
+      !end if 
+
+
+
+      !! Compute cell sizes for areas computation
+      !dx  = this%SubCellData%DX
+      !dy  = this%SubCellData%DY
+      !dz  = this%SubCellData%DZ
+      !dz0 = neighborCellData(13)%GetDZ() ! query a lower layer cell and getdz 
+      !dz1 = neighborCellData(16)%GetDZ() ! query an upper layer cell and getdz
+
+
+
+
+      !! Now access required indexes for each corner
+      !! In this step it is required initialization
+      !! of porosity and volume of corner cells 
+      !! not initialized in buffer because are 
+      !! not required for flow purposes
+      !! (related to volumeUpper or volumeLower according to corner).
+      !! Remember that it is also required to consider 
+      !! contribution of the center cell
+
+
+      !! So the missing parameter it is only the porosity
+      !! of the surrounding cube corners
+
+
+      !! Functions for building cells 
+      !! are defined at ParticleTrackingEngine.f90
+      !! Thus building corner cells makes sense when 
+      !! working at that file. 
+      !! Rather than define the missing things at this file.
+
+
+
+
+
+
+
+      !! Missing areas, should divide sum of face flows
+      !!! Corner porosities follow similar indexation 
+      !!! as corner discharge
+      !!! Compute equivalent corner volume
+      !!cornerVolumeZ0 = 1/8*( 4*dx*dy*dz + 4*dx*dy*dz0 )
+      !!cornerVolumeZ1 = 1/8*( 4*dx*dy*dz + 4*dx*dy*dz1 )
+
+      !!! Corner porosities follow similar indexation 
+      !!! as corner discharge
+      !!! Compute equivalent corner volume
+      !!cornerVolumeZ0 = 1/8*( 4*dx*dy*dz + 4*dx*dy*dz0 )
+      !!cornerVolumeZ1 = 1/8*( 4*dx*dy*dz + 4*dx*dy*dz1 )
+
+
+      !!! Porosity is used as prototype of new variable structure
+      !!this%cornerPorosity(0,0,0) = 
