@@ -329,11 +329,10 @@ contains
   end subroutine pr_ExecuteTracking
 
 
-! RWPT 
-!------------------------------------------------------------------------
+  ! RWPT 
   subroutine pr_ExecuteRandomWalkParticleTracking(this, initialLocation, maximumTime, trackCellResult, &
                                                                   neighborSubCellData, neighborCellData)
-  !subroutine pr_ExecuteRandomWalkParticleTracking(this, initialLocation, maximumTime, trackCellResult, neighborSubCellData)
+      ! REMOVE NEIGHBORSUBCELLDATA
       !------------------------------------------------------------------
       ! This function is a clone of ExecuteTracking, but includes 
       ! intermediate step of corner velocities computation 
@@ -457,19 +456,8 @@ contains
         this%TrackSubCell%SubCellData%ConvertFromLocalParentCoordinate(initialLocation)
 
       ! RWPT
-      ! Initialize corner velocities
-      !call this%TrackSubCell%ComputeCornerVelocities( neighborSubCellData )
-      !call this%TrackSubCell%ComputeCornerDischarge( this%CellData, neighborCellData )  
-      !call this%TrackSubCell%ComputeCornerPorosity( this%CellData, neighborCellData )  
+      ! Initialize corner variables
       call this%TrackSubCell%ComputeCornerVariables( this%CellData, neighborCellData )  
-      !call this%TrackSubCell%ComputeCornerDischarge( neighborCellData )  
-      ! COMPUTATION OF CORNER VELOCITIES, REQUIRES SUBROW, SUBCOLUMN
-      ! OR NOT. 
-      ! Implementation could be done like
-      ! initializing all corner velocities in just one execution 
-      ! or doit when sub cell changes.
-     
-
 
       ! Loop through sub-cells until a stopping condition is met.
       ! The loop count is set to 100. If it goes through the loop 100 times then something is wrong. 
@@ -482,7 +470,7 @@ contains
           ! for the corresponding case.
 
           call this%TrackSubCell%ExecuteRandomWalkParticleTracking( stopIfNoSubCellExit,subLoc, &
-              maximumTime, subCellResult, this%TrackingOptions )
+                                               maximumTime, subCellResult, this%TrackingOptions )
       
           ! Check subCellResult status and process accordingly
           if(subCellResult%Status .eq. subCellResult%Status_Undefined()) then
@@ -513,9 +501,6 @@ contains
                       this%TrackSubCell%SubCellData,subRow,subColumn,               &
                       this%TrackingOptions%BackwardTracking)
                     ! RWPT
-                    !call this%TrackSubCell%ComputeCornerVelocities( neighborSubCellData )
-                    !call this%TrackSubCell%ComputeCornerDischarge( this%CellData, neighborCellData )
-                    !call this%TrackSubCell%ComputeCornerPorosity( this%CellData, neighborCellData )  
                     call this%TrackSubCell%ComputeCornerVariables( this%CellData, neighborCellData )  
                 case (2)
                     if(subCellResult%Column .ne. 1) then
@@ -533,9 +518,6 @@ contains
                       this%TrackSubCell%SubCellData,subRow,subColumn,               &
                       this%TrackingOptions%BackwardTracking)
                     ! RWPT
-                    !call this%TrackSubCell%ComputeCornerVelocities( neighborSubCellData )
-                    !call this%TrackSubCell%ComputeCornerDischarge( this%CellData, neighborCellData )
-                    !call this%TrackSubCell%ComputeCornerPorosity( this%CellData, neighborCellData )  
                     call this%TrackSubCell%ComputeCornerVariables( this%CellData, neighborCellData )  
                 case (3)
                     if(subCellResult%Row .ne. 1) then
@@ -553,9 +535,6 @@ contains
                       this%TrackSubCell%SubCellData, subRow, subColumn,             &
                       this%TrackingOptions%BackwardTracking)
                     ! RWPT
-                    !call this%TrackSubCell%ComputeCornerVelocities( neighborSubCellData )
-                    !call this%TrackSubCell%ComputeCornerDischarge( this%CellData, neighborCellData )
-                    !call this%TrackSubCell%ComputeCornerPorosity( this%CellData, neighborCellData )  
                     call this%TrackSubCell%ComputeCornerVariables( this%CellData, neighborCellData )  
                 case (4)
                     if(subCellResult%Row .ne. 2) then
@@ -573,9 +552,6 @@ contains
                       this%TrackSubCell%SubCellData, subRow, subColumn,             &
                       this%TrackingOptions%BackwardTracking)
                     ! RWPT
-                    !call this%TrackSubCell%ComputeCornerVelocities( neighborSubCellData )
-                    !call this%TrackSubCell%ComputeCornerDischarge( this%CellData, neighborCellData )
-                    !call this%TrackSubCell%ComputeCornerPorosity( this%CellData, neighborCellData )  
                     call this%TrackSubCell%ComputeCornerVariables( this%CellData, neighborCellData )  
                 case default
                     ! Something went wrong. Set trackCellResult%Status equal to Undefined and return
