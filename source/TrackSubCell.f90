@@ -583,10 +583,6 @@ contains
               nz   = z + dzrw/dz
           end if
 
-          print *, '** TrackSubCell: TIME', t
-          print *, '** TrackSubCell: DT', dt
-          print *, '** TrackSubCell: dAdvx, divDx, dBx', dAdvx/dx, divDx*dt/dx, dBx*sqrt(dt)/dx
-          print *, '** TrackSubCell: dAdvy, divDy, dBy', dAdvy/dy, divDy*dt/dy, dBy*sqrt(dt)/dy
 
           ! Detect if particle leaving the cell
           ! and force the particle into exactly one
@@ -597,8 +593,6 @@ contains
               ( nz .gt. 1.0d0 ) .or. ( nz .lt. 0d0 )       & 
           )
               
-              print *, '** TrackSubCell: LEAVING SUBCELL', nx, ny, nz
-
               dtxyz(:) = 0d0
 
               ! Recompute dt for exact interface
@@ -609,8 +603,6 @@ contains
               ! Given new dt, recompute advection displacements
               call this%AdvectionDisplacement( x, y, z, dt, vx, vy, vz, & 
                                                     dAdvx, dAdvy, dAdvz )
-
-              print *, '** TrackSubCell: exitFace, t, dt', exitFace, t, dt
 
 
               ! If maximumTime was reached, but particle left
@@ -646,8 +638,6 @@ contains
                   z = 1.0d0
                   if ( exitFace .eq. 5 ) nz=0d0
               else
-                  print *, '** TrackSubCell: RESET_ODK'
-                  print *, nx, ny, nz
                   ! Restart nx, ny, nz and try again
                   ! if not a valid time step and exitFace
                   nx = x
@@ -673,8 +663,6 @@ contains
                   ! This block controls that if that happens, 
                   ! positions are restarted after two tries, 
                   
-                  print *, '** TrackSubCell: RESET_OUT'
-
                   ! Restart nx, ny, nz and try again
                   nx = x
                   ny = y
@@ -685,6 +673,7 @@ contains
                   dtLoopCounter = 0
                   posRestartCounter = posRestartCounter + 1
                   exit
+
               end if
 
           end do
@@ -1389,8 +1378,6 @@ contains
       ! Define nrtol from current dt
       nrtol    = 0.1*dt
 
-      print *, '*** TrackSubCell: NewtonRapshonEXPONENTIAL: original DT', dt
-
       ! Iteration until convergence or maxIterations
       do while( ( abs(nrerror/dt) .gt. 0.01 ) .and. ( countIter .lt. maxIter ) )
       !do while( ( abs(nrerror) .gt. nrtol ) .and. ( countIter .lt. maxIter ) )
@@ -1419,8 +1406,6 @@ contains
           ! It can't be smaller than zero
           if ( dt0 .lt. 0d0 ) dt0 = -0.5*dt0 
 
-          !print *, nrerror, dt0
-          
 
       end do
 
