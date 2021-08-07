@@ -72,14 +72,17 @@ module TrackSubCellModule
     procedure :: LinearInterpolationVelocities=>pr_LinearInterpolationVelocities
     procedure :: ComputeRandomWalkTimeStep=>pr_ComputeRandomWalkTimeStep
     procedure :: ComputeCornerVelocities=>pr_ComputeCornerVelocities
+    procedure :: ComputeCornerVariables=>pr_ComputeCornerVariables
     procedure :: ComputeCornerDischarge=>pr_ComputeCornerDischarge
     procedure :: GetInterpolatedCornerDischarge=>pr_GetInterpolatedCornerDischarge
     procedure :: SetCornerComponentsIndexes=>pr_SetCornerComponentsIndexes
+    procedure :: ComputeCornerPorosity=> pr_ComputeCornerPorosity
+    procedure :: GetInterpolatedCornerPorosity=>pr_GetInterpolatedCornerPorosity
+    procedure :: SetCornerPorosityIndexes=> pr_SetCornerPorosityIndexes
     procedure :: Trilinear=>pr_Trilinear
     procedure :: TrilinearDerivative=>pr_TrilinearDerivative
     procedure :: DispersionDivergence=>pr_DispersionDivergence
     procedure :: DispersionDivergenceDischarge=>pr_DispersionDivergenceDischarge
-    procedure :: ComputeCornerPorosity=>pr_ComputeCornerPorosity
     procedure :: DisplacementRandom=>pr_DisplacementRandom
     procedure :: DisplacementRandomDischarge=>pr_DisplacementRandomDischarge
     procedure :: GenerateStandardNormalRandom=>pr_GenerateStandardNormalRandom
@@ -2105,11 +2108,9 @@ contains
   end subroutine pr_ComputeCornerVelocities
 
 
-  ! RWPT
-  subroutine pr_ComputeCornerDischarge( this, currentCellData, neighborCellData )
+
+  subroutine pr_ComputeCornerVariables( this, currentCellData, neighborCellData )
   !----------------------------------------------------------------
-  ! From its subCellData and neighborSubCellData array, 
-  ! computes velocities at cell corners
   !
   !----------------------------------------------------------------
   ! Specifications
@@ -2121,26 +2122,83 @@ contains
   integer, dimension(18,3)         :: neighborSubCellIndexes   ! nbcell, subRow, subColumn
   doubleprecision, dimension(18,6) :: neighborSubCellFaceFlows ! nbcell, flowFaceNumber
   doubleprecision, dimension(18,3) :: neighborSubCellFaceAreas ! nbcell, faceDirection
+  doubleprecision, dimension(18)   :: neighborSubCellVolume   
+  doubleprecision, dimension(18)   :: neighborSubCellPorosity 
   doubleprecision, dimension(6)    :: centerSubCellFaceFlows
   integer :: n, m
-  ! deprecated
-  logical :: twoDimensionsDomain
-  real    :: flowContributionFactor
-  integer :: cid
-  doubleprecision :: dx, dy, dz, dz0, dz1
-  doubleprecision :: areaFlowX0, areaFlowX1
-  doubleprecision :: areaFlowY0, areaFlowY1
-  doubleprecision :: areaFlowZ
   !----------------------------------------------------------------
 
-    
+  
       ! Get sub cell indexes for current sub cell location
       neighborSubCellIndexes = currentCellData%GetNeighborSubCellIndexes( &
                              this%SubCellData%Row, this%SubCellData%Column )
 
       ! Fill neighbor cells faceFlows
       call pr_FillNeighborSubCellFaceFlowsAreas( this, currentCellData, neighborCellData, &
-                neighborSubCellIndexes, neighborSubCellFaceFlows, neighborSubCellFaceAreas )
+              neighborSubCellIndexes, neighborSubCellFaceFlows, neighborSubCellFaceAreas, &
+                                           neighborSubCellVolume, neighborSubCellPorosity )
+      ! Compute discharge
+      call pr_ComputeCornerDischarge( this, currentCellData, & 
+          neighborSubCellFaceFlows, neighborSubCellFaceAreas )
+
+      ! Compute porosities
+      call pr_ComputeCornerPorosity( this, neighborSubCellVolume, neighborSubCellPorosity )
+
+      ! Done
+      return
+
+
+  end subroutine pr_ComputeCornerVariables
+
+
+
+  ! RWPT
+  subroutine pr_ComputeCornerDischarge( this, currentCellData, &
+            neighborSubCellFaceFlows, neighborSubCellFaceAreas )
+  !----------------------------------------------------------------
+  ! From its subCellData and neighborSubCellData array, 
+  ! computes velocities at cell corners
+  !
+  !----------------------------------------------------------------
+  ! Specifications
+  !----------------------------------------------------------------
+  implicit none
+  class(TrackSubCellType) :: this
+  ! input
+  type(ModpathCellDataType) :: currentCellData
+  doubleprecision, dimension(18,6), intent(in) :: neighborSubCellFaceFlows ! nbcell, flowFaceNumber
+  doubleprecision, dimension(18,3), intent(in) :: neighborSubCellFaceAreas ! nbcell, faceDirection
+  ! local
+  doubleprecision, dimension(6) :: centerSubCellFaceFlows
+  integer :: n, m
+  !----------------------------------------------------------------
+  !subroutine pr_ComputeCornerDischarge( this, currentCellData, neighborCellData )
+  !!----------------------------------------------------------------
+  !! From its subCellData and neighborSubCellData array, 
+  !! computes velocities at cell corners
+  !!
+  !!----------------------------------------------------------------
+  !! Specifications
+  !!----------------------------------------------------------------
+  !implicit none
+  !class(TrackSubCellType) :: this
+  !type(ModpathCellDataType) :: currentCellData
+  !type(ModpathCellDataType), dimension(2,18) :: neighborCellData
+  !integer, dimension(18,3)         :: neighborSubCellIndexes   ! nbcell, subRow, subColumn
+  !doubleprecision, dimension(18,6) :: neighborSubCellFaceFlows ! nbcell, flowFaceNumber
+  !doubleprecision, dimension(18,3) :: neighborSubCellFaceAreas ! nbcell, faceDirection
+  !doubleprecision, dimension(6)    :: centerSubCellFaceFlows
+  !integer :: n, m
+  !!----------------------------------------------------------------
+
+    
+      !! Get sub cell indexes for current sub cell location
+      !neighborSubCellIndexes = currentCellData%GetNeighborSubCellIndexes( &
+      !                       this%SubCellData%Row, this%SubCellData%Column )
+
+      !! Fill neighbor cells faceFlows
+      !call pr_FillNeighborSubCellFaceFlowsAreas( this, currentCellData, neighborCellData, &
+      !          neighborSubCellIndexes, neighborSubCellFaceFlows, neighborSubCellFaceAreas )
 
       ! Fill faceFlows from current subcell
       call currentCellData%FillSubCellFaceFlowsBuffer( &
@@ -2194,6 +2252,76 @@ contains
 
 
   end subroutine pr_ComputeCornerDischarge
+
+
+
+
+
+  ! RWPT
+  function pr_GetInterpolatedCornerDischarge( this, centerSubCellFaceFlows, &
+                        neighborSubCellFaceFlows, neighborSubCellFaceAreas, & 
+                                                cornerIndex, faceDirection  ) result( qCorner )
+  !---------------------------------------------------------------------
+  ! Compute interpolated corner discharge as the sum of flow rates
+  ! of contributing faces divided by the sum of face areas
+  !
+  ! Initializes sums with contribution of center cell and 
+  ! loop over remaining involved cells
+  !---------------------------------------------------------------------
+  implicit none
+  class( TrackSubCellType ) :: this
+  ! input
+  doubleprecision, dimension(6)   , intent(in) :: centerSubCellFaceFlows 
+  doubleprecision, dimension(18,6), intent(in) :: neighborSubCellFaceFlows
+  doubleprecision, dimension(18,3), intent(in) :: neighborSubCellFaceAreas
+  integer, intent(in) :: cornerIndex, faceDirection
+  ! local
+  doubleprecision :: sumArea, sumFlowRate = 0d0
+  integer :: m 
+  ! output 
+  doubleprecision :: qCorner    
+  !---------------------------------------------------------------------
+  
+    
+     select case( faceDirection ) 
+         case (1) 
+             sumArea     = this%SubCellData%DY*this%SubCellData%DZ
+             sumFlowRate = centerSubCellFaceFlows( this%cornerXComponentIndexes( cornerIndex, 4 ) )
+             do m = 1, 3
+                 sumArea = sumArea + &
+                     neighborSubCellFaceAreas( this%cornerXComponentIndexes( cornerIndex, m ), 1 )
+                 sumFlowRate = sumFlowRate + & 
+                     neighborSubCellFaceFlows( this%cornerXComponentIndexes( cornerIndex, m ) , &
+                                               this%cornerXComponentIndexes( cornerIndex, 4 ) )  
+             end do
+         case (2)
+             sumArea     = this%SubCellData%DX*this%SubCellData%DZ
+             sumFlowRate = centerSubCellFaceFlows( this%cornerYComponentIndexes( cornerIndex, 4 ) )
+             do m = 1, 3
+                 sumArea = sumArea + &
+                     neighborSubCellFaceAreas( this%cornerYComponentIndexes( cornerIndex, m ), 2 )
+                 sumFlowRate = sumFlowRate + & 
+                     neighborSubCellFaceFlows( this%cornerYComponentIndexes( cornerIndex, m ) , &
+                                               this%cornerYComponentIndexes( cornerIndex, 4 ) )  
+             end do
+         case (3)
+             sumArea     = this%SubCellData%DX*this%SubCellData%DY
+             sumFlowRate = centerSubCellFaceFlows( this%cornerZComponentIndexes( cornerIndex, 4 ) )
+             do m = 1, 3
+                 sumArea = sumArea + &
+                     neighborSubCellFaceAreas( this%cornerZComponentIndexes( cornerIndex, m ), 3 )
+                 sumFlowRate = sumFlowRate + & 
+                     neighborSubCellFaceFlows( this%cornerZComponentIndexes( cornerIndex, m ) , &
+                                               this%cornerZComponentIndexes( cornerIndex, 4 ) )  
+             end do
+     end select 
+  
+     ! flowContributionFactor=0.25 is cancelled implicitly    
+     qCorner = sumFlowRate/sumArea
+  
+  
+  
+  end function pr_GetInterpolatedCornerDischarge
 
 
 
@@ -2284,75 +2412,7 @@ contains
 
 
   ! RWPT
-  function pr_GetInterpolatedCornerDischarge( this, centerSubCellFaceFlows, &
-                        neighborSubCellFaceFlows, neighborSubCellFaceAreas, & 
-                                                cornerIndex, faceDirection  ) result( qCorner )
-  !---------------------------------------------------------------------
-  ! Compute interpolated corner discharge as the sum of flow rates
-  ! of contributing faces divided by the sum of face areas
-  !
-  ! Initializes sums with contribution of center cell and 
-  ! loop over remaining involved cells
-  !---------------------------------------------------------------------
-  implicit none
-  class( TrackSubCellType ) :: this
-  ! input
-  doubleprecision, dimension(6)   , intent(in) :: centerSubCellFaceFlows 
-  doubleprecision, dimension(18,6), intent(in) :: neighborSubCellFaceFlows
-  doubleprecision, dimension(18,3), intent(in) :: neighborSubCellFaceAreas
-  integer, intent(in) :: cornerIndex, faceDirection
-  ! local
-  doubleprecision :: sumArea, sumFlowRate = 0d0
-  integer :: m 
-  ! output 
-  doubleprecision :: qCorner    
-  !---------------------------------------------------------------------
-  
-    
-     select case( faceDirection ) 
-         case (1) 
-             sumArea     = this%SubCellData%DY*this%SubCellData%DZ
-             sumFlowRate = centerSubCellFaceFlows( this%cornerXComponentIndexes( cornerIndex, 4 ) )
-             do m = 1, 3
-                 sumArea = sumArea + &
-                     neighborSubCellFaceAreas( this%cornerXComponentIndexes( cornerIndex, m ), 1 )
-                 sumFlowRate = sumFlowRate + & 
-                     neighborSubCellFaceFlows( this%cornerXComponentIndexes( cornerIndex, m ) , &
-                                               this%cornerXComponentIndexes( cornerIndex, 4 ) )  
-             end do
-         case (2)
-             sumArea     = this%SubCellData%DX*this%SubCellData%DZ
-             sumFlowRate = centerSubCellFaceFlows( this%cornerYComponentIndexes( cornerIndex, 4 ) )
-             do m = 1, 3
-                 sumArea = sumArea + &
-                     neighborSubCellFaceAreas( this%cornerYComponentIndexes( cornerIndex, m ), 2 )
-                 sumFlowRate = sumFlowRate + & 
-                     neighborSubCellFaceFlows( this%cornerYComponentIndexes( cornerIndex, m ) , &
-                                               this%cornerYComponentIndexes( cornerIndex, 4 ) )  
-             end do
-         case (3)
-             sumArea     = this%SubCellData%DX*this%SubCellData%DY
-             sumFlowRate = centerSubCellFaceFlows( this%cornerZComponentIndexes( cornerIndex, 4 ) )
-             do m = 1, 3
-                 sumArea = sumArea + &
-                     neighborSubCellFaceAreas( this%cornerZComponentIndexes( cornerIndex, m ), 3 )
-                 sumFlowRate = sumFlowRate + & 
-                     neighborSubCellFaceFlows( this%cornerZComponentIndexes( cornerIndex, m ) , &
-                                               this%cornerZComponentIndexes( cornerIndex, 4 ) )  
-             end do
-     end select 
-  
-     ! flowContributionFactor=0.25 is cancelled implicitly    
-     qCorner = sumFlowRate/sumArea
-  
-  
-  
-  end function pr_GetInterpolatedCornerDischarge
-
-
-
-  ! RWPT
-  subroutine pr_ComputeCornerPorosity( this, currentCellData, neighborCellData )
+  subroutine pr_ComputeCornerPorosity( this, neighborSubCellVolume, neighborSubCellPorosity )
       !----------------------------------------------------------------
       ! From its subCellData and neighborSubCellData array, 
       ! computes velocities at cell corners
@@ -2361,66 +2421,55 @@ contains
       ! Specifications
       !----------------------------------------------------------------
       implicit none
-      class (TrackSubCellType) :: this
-      !type(ModpathSubCellDataType), dimension(18) :: neighborSubCellData
-      type(ModpathCellDataType) :: currentCellData
-      type(ModpathCellDataType), dimension(18) :: neighborCellData
-      integer, dimension(18,3) :: neighborSubCellIndexes ! nbcell, subRow, subColumn
-      doubleprecision, dimension(18) :: neighborSubCellPorosity 
-      doubleprecision, dimension(18) :: neighborSubCellVolume   
-      doubleprecision, dimension(6)    :: centerSubCellFaceFlows
+      class( TrackSubCellType ) :: this
+      ! input
+      doubleprecision, dimension(18), intent(in) :: neighborSubCellVolume   
+      doubleprecision, dimension(18), intent(in) :: neighborSubCellPorosity
+      ! local 
       integer :: n, m
-      ! deprecated
-      logical :: twoDimensionsDomain
-      real    :: flowContributionFactor
-      integer :: cid, scid
-      doubleprecision :: dx, dy, dz, dz0, dz1
-      doubleprecision :: areaFlowX0, areaFlowX1
-      doubleprecision :: areaFlowY0, areaFlowY1
-      doubleprecision :: areaFlowZ
-      doubleprecision :: volumeCenter
-      doubleprecision :: volumeLower 
-      doubleprecision :: volumeUpper
       !-----------------------------------------------------------------
 
+      ! If spatially variable porosity
 
-      !print *, '** TrackSubCell:ComputeCornerPorosity: entered, constant value of', this%SubCellData%Porosity
+      ! Set required indexes
+      call this%SetCornerPorosityIndexes()
 
-      ! This is the fallback for spatially 
-      ! constant porosity
-      this%porosity000 = this%SubCellData%Porosity   
-      this%porosity100 = this%SubCellData%Porosity
-      this%porosity010 = this%SubCellData%Porosity       
-      this%porosity110 = this%SubCellData%Porosity
-      this%porosity001 = this%SubCellData%Porosity
-      this%porosity101 = this%SubCellData%Porosity       
-      this%porosity011 = this%SubCellData%Porosity
-      this%porosity111 = this%SubCellData%Porosity
+      ! Assign interpolated values
+      this%porosity000 = this%GetInterpolatedCornerPorosity( neighborSubCellVolume, neighborSubCellPorosity, 1 )
+      this%porosity100 = this%GetInterpolatedCornerPorosity( neighborSubCellVolume, neighborSubCellPorosity, 2 )
+      this%porosity010 = this%GetInterpolatedCornerPorosity( neighborSubCellVolume, neighborSubCellPorosity, 3 )
+      this%porosity110 = this%GetInterpolatedCornerPorosity( neighborSubCellVolume, neighborSubCellPorosity, 4 )
+      this%porosity001 = this%GetInterpolatedCornerPorosity( neighborSubCellVolume, neighborSubCellPorosity, 5 )
+      this%porosity101 = this%GetInterpolatedCornerPorosity( neighborSubCellVolume, neighborSubCellPorosity, 6 )
+      this%porosity011 = this%GetInterpolatedCornerPorosity( neighborSubCellVolume, neighborSubCellPorosity, 7 )
+      this%porosity111 = this%GetInterpolatedCornerPorosity( neighborSubCellVolume, neighborSubCellPorosity, 8 )
 
-      return 
+        
 
-      !! If spatially variable porosity
+      !! This is the fallback for spatially 
+      !! constant porosity
+      !this%porosity000 = this%SubCellData%Porosity   
+      !this%porosity100 = this%SubCellData%Porosity
+      !this%porosity010 = this%SubCellData%Porosity       
+      !this%porosity110 = this%SubCellData%Porosity
+      !this%porosity001 = this%SubCellData%Porosity
+      !this%porosity101 = this%SubCellData%Porosity       
+      !this%porosity011 = this%SubCellData%Porosity
+      !this%porosity111 = this%SubCellData%Porosity
 
-      !! Set required indexes
-      !call this%SetCornerPorosityIndexes()
+      !return 
 
-      !! Requires initializing volume and porosity 
-      !! of neighbor sub cells
-
-      !! Assign interpolated values
-      !this%porosity000 = this%GetInterpolatedCornerPorosity( neighborSubCellVolume, neighborSubCellPorosity, 1 )
-      !this%porosity100 = this%GetInterpolatedCornerPorosity( neighborSubCellVolume, neighborSubCellPorosity, 2 )
-      !this%porosity010 = this%GetInterpolatedCornerPorosity( neighborSubCellVolume, neighborSubCellPorosity, 3 )
-      !this%porosity110 = this%GetInterpolatedCornerPorosity( neighborSubCellVolume, neighborSubCellPorosity, 4 )
-      !this%porosity001 = this%GetInterpolatedCornerPorosity( neighborSubCellVolume, neighborSubCellPorosity, 5 )
-      !this%porosity101 = this%GetInterpolatedCornerPorosity( neighborSubCellVolume, neighborSubCellPorosity, 6 )
-      !this%porosity011 = this%GetInterpolatedCornerPorosity( neighborSubCellVolume, neighborSubCellPorosity, 7 )
-      !this%porosity111 = this%GetInterpolatedCornerPorosity( neighborSubCellVolume, neighborSubCellPorosity, 8 )
-
-      !  
-      !return
+      ! DEBUG/DEV
+      print *, '**** TrackSubCell:ComputeCornerPorosity: will print volume porosity' 
+        
+      do n=1, 18
+          print *, n, neighborSubCellVolume( n ), neighborSubCellPorosity( n ) 
+      end do
 
 
+      return
+
+      
   end subroutine pr_ComputeCornerPorosity
 
 
@@ -2507,7 +2556,7 @@ contains
       return
 
 
-  end subroutine pr_SetCornerComponentsIndexes
+  end subroutine pr_SetCornerPorosityIndexes
 
 
 
@@ -2617,7 +2666,10 @@ contains
 
 
   subroutine pr_FillNeighborSubCellFaceFlowsAreas( this, centerCellData, neighborCellData, &
-                neighborSubCellIndexes, neighborSubCellFaceFlows, neighborSubCellFaceAreas )
+               neighborSubCellIndexes, neighborSubCellFaceFlows, neighborSubCellFaceAreas, & 
+                                           neighborSubCellVolume, neighborSubCellPorosity  )
+  !subroutine pr_FillNeighborSubCellFaceFlowsAreas( this, centerCellData, neighborCellData, &
+  !              neighborSubCellIndexes, neighborSubCellFaceFlows, neighborSubCellFaceAreas )
       !-----------------------------------------------------------
       ! WHERE ?
       !-----------------------------------------------------------
@@ -2630,6 +2682,8 @@ contains
       integer, dimension(18,3), intent(in) ::  neighborSubCellIndexes ! nCellBuffer, subRow, subCol
       doubleprecision, dimension(18,6), intent(inout) :: neighborSubCellFaceFlows ! faceFlows
       doubleprecision, dimension(18,3), intent(inout) :: neighborSubCellFaceAreas ! faceAreas
+      doubleprecision, dimension(18)  , intent(inout) :: neighborSubCellVolume    ! volumes
+      doubleprecision, dimension(18)  , intent(inout) :: neighborSubCellPorosity  ! porosities
       logical :: skipSubCells = .false.
       integer :: subConnectionIndex, neighborSubRow, neighborSubColumn
       integer :: n, m
@@ -2639,6 +2693,8 @@ contains
       ! Reset arrays
       neighborSubCellFaceFlows = 0d0
       neighborSubCellFaceAreas = 0d0
+      neighborSubCellVolume    = 0d0
+      neighborSubCellPorosity  = 0d0
 
 
       ! If current cell is not refined
@@ -2680,6 +2736,8 @@ contains
             call neighborCellData( & 
                 1, neighborSubCellIndexes( n, 1 ) )%FillSubCellFaceAreas( neighborSubCellFaceAreas( n, : ), skipSubCells ) 
 
+            neighborSubCellVolume(n)   = neighborCellData( 1, neighborSubCellIndexes( n, 1 ) )%GetVolume( skipSubCells )
+            neighborSubCellPorosity(n) = neighborCellData( 1, neighborSubCellIndexes( n, 1 ) )%Porosity
 
         end do
 
@@ -2716,6 +2774,8 @@ contains
               call centerCellData%FillSubCellFaceAreas( neighborSubCellFaceAreas( n, : ), skipSubCells )
               print *, '   -- sub cell ', neighborSubCellIndexes( n, 2 ), neighborSubCellIndexes( n, 3 )
 
+              neighborSubCellVolume(n)   = centerCellData%GetVolume( skipSubCells )
+              neighborSubCellPorosity(n) = centerCellData%Porosity
 
               cycle
           end if
@@ -2859,6 +2919,10 @@ contains
           call neighborCellData( subConnectionIndex, neighborSubCellIndexes( n, 1 ) )%FillSubCellFaceAreas( &
                                                              neighborSubCellFaceAreas( n, : ), skipSubCells )  
 
+          neighborSubCellVolume(n)   = neighborCellData(&
+              subConnectionIndex, neighborSubCellIndexes( n, 1 ) )%GetVolume( skipSubCells )
+          neighborSubCellPorosity(n) = neighborCellData(&
+              subConnectionIndex, neighborSubCellIndexes( n, 1 ) )%Porosity
 
           print *, '   -- Filled with cell ',&
               neighborCellData( subConnectionIndex, neighborSubCellIndexes( n, 1 ) )%CellNumber, &

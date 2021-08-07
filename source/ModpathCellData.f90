@@ -71,6 +71,7 @@ module ModpathCellDataModule
     procedure :: GetNeighborSubCellIndexes => pr_GetNeighborSubCellIndexes
     procedure :: FillSubCellFaceAreas      => pr_FillSubCellFaceAreas
     procedure :: FillSubCellFaceFlows      => pr_FillSubCellFaceFlows
+    procedure :: GetVolume                 => pr_GetVolume
   end type
 
 contains
@@ -2042,6 +2043,42 @@ contains
 
   
   end subroutine pr_FillSubCellFaceFlows
+
+
+  ! RWPT-USG
+  function pr_GetVolume( this, skipSubCells ) result( volume )
+  !---------------------------------------------------------
+  !
+  !---------------------------------------------------------
+  implicit none
+  class( ModpathCellDataType ) :: this
+  ! input
+  logical, intent(in) :: skipSubCells
+  ! output
+  doubleprecision :: volume
+  ! local
+  doubleprecision :: dx, dy, dz
+  !---------------------------------------------------------
+
+      if ( .not. skipSubCells ) then
+          dx = this%DX / dble(this%SubCellColumnCount)
+          dy = this%DY / dble(this%SubCellRowCount)
+      else
+          dx = this%DX
+          dy = this%DY
+      end if
+      dz = this%GetDZ()
+
+      volume = dx*dy*dz
+        
+      return
+
+
+  end function pr_GetVolume 
+
+
+
+
 
 
 
