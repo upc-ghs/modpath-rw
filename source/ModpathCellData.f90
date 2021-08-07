@@ -2031,7 +2031,6 @@ contains
           ! Get face flows as usual   
           call this%FillSubCellFaceFlowsBuffer( subRow, subColumn, faceFlows )
       else
-          print *, 'SKIP'
           ! Skip subcell indexation and bring cell face flows
           faceFlows(1) = this%GetAveragedFaceFlow(1)
           faceFlows(2) = this%GetAveragedFaceFlow(2)
