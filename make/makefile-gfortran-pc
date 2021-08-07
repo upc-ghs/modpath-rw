@@ -73,6 +73,7 @@ $(OBJDIR)/ModpathCellDataContainer.o \
 $(OBJDIR)/ModpathSimulationData.o \
 $(OBJDIR)/ParticleManager.o \
 $(OBJDIR)/TrackCell.o \
+$(OBJDIR)/FlowModelData.o \
 $(OBJDIR)/ParticleTrackingEngine.o \
 $(OBJDIR)/MPath7.o 
 
