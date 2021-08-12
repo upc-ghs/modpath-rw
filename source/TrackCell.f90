@@ -331,8 +331,7 @@ contains
 
   ! RWPT 
   subroutine pr_ExecuteRandomWalkParticleTracking(this, initialLocation, maximumTime, trackCellResult, &
-                                                                  neighborSubCellData, neighborCellData)
-      ! REMOVE NEIGHBORSUBCELLDATA
+                                                                                      neighborCellData )
       !------------------------------------------------------------------
       ! This function is a clone of ExecuteTracking, but includes 
       ! intermediate step of corner velocities computation 
@@ -352,7 +351,6 @@ contains
       integer :: subRow,subColumn,count, layer, stopZone
       ! RWPT
       integer :: n
-      type(ModpathSubCellDataType), dimension(18) :: neighborSubCellData
       type(ModpathCellDataType), dimension(2, 18) :: neighborCellData
       !------------------------------------------------------------------
 
