@@ -32,8 +32,9 @@ module ParticleTrackingEngineModule
     type(TrackCellResultType),private :: TrackCellResult
 
     ! RWPT
-    type(ModpathSubCellDataType), dimension(18) :: NeighborSubCellData
-    type(ModpathCellDataType), dimension(18) :: NeighborCellData
+    !type(ModpathSubCellDataType), dimension(18) :: NeighborSubCellData
+    !type(ModpathCellDataType), dimension(18) :: NeighborCellData
+    procedure(FillNeighborCells), pass, pointer :: FillNeighborCellData=>null()
 
 
   contains
@@ -49,11 +50,27 @@ module ParticleTrackingEngineModule
     procedure :: GetTopMostActiveCell=>pr_GetTopMostActiveCell
 
     ! RWPT
-    procedure :: FillNeighborCellData=>pr_FillNeighborCellData
+    !procedure :: FillNeighborCellData=>pr_FillNeighborCellData
     ! DEPRECATION WARNING
-    procedure :: FillNeighborSubCellData=>pr_FillNeighborSubCellData
+    !procedure :: FillNeighborSubCellData=>pr_FillNeighborSubCellData
 
   end type
+
+  ! RWPT
+  ! Interfaces
+  abstract interface
+  
+      ! FillNeighborCells
+      subroutine FillNeighborCells( this, neighborCellData )
+          import ParticleTrackingEngineType
+          import ModpathCellDataType
+          !----------------------------------------
+          class(ParticleTrackingEngineType) :: this
+          type(ModpathCellDataType), dimension(2,18), intent(inout) :: neighborCellData
+      end subroutine FillNeighborCells
+  
+  end interface
+
 
 contains
 
@@ -366,7 +383,28 @@ contains
         
         
         this%Initialized = .true.
-        
+       
+        ! RWPT
+        ! Assign interface for neighbor cell data generation
+        select case( this%Grid%GridType ) 
+            case (1)
+                print *, 'STRUCTURED'
+                ! Set for structured grid
+                this%FillNeighborCellData=> pr_FillNeighborCellDataStructured
+            case (2)
+                print *, 'USG UNSTRUCTURED'
+                ! Set for MODFLOW-USG unstructured grid
+                this%FillNeighborCellData=> pr_FillNeighborCellDataUnstructured
+            case (3)
+                print *, 'STRUCTURED MF6'
+                ! Set for MODFLOW-6 structured grid (DIS)
+                this%FillNeighborCellData=> pr_FillNeighborCellDataStructured
+            case (4)
+                print *, 'DISV UNSTRUCTURED MF6'
+                ! Set for MODFLOW-6 unstructured grid (DISV)
+                this%FillNeighborCellData=> pr_FillNeighborCellDataUnstructured
+        end select
+
         
     end subroutine pr_Initialize
 
@@ -747,17 +785,15 @@ contains
  
 
 ! RWPT
-subroutine pr_FillNeighborCellData( this, neighborCellData )
+subroutine pr_FillNeighborCellDataUnstructured( this, neighborCellData )
     !------------------------------------------------------------------
     !------------------------------------------------------------------
     ! Specifications
     !------------------------------------------------------------------
     implicit none
-    class(ParticleTrackingEngineType),target :: this
-    type(ModpathCellDataType), dimension(2, 18) :: neighborCellData
+    class(ParticleTrackingEngineType) :: this
+    type(ModpathCellDataType), dimension(2, 18), intent(inout) :: neighborCellData
     integer :: n, m, id, cellCounter, firstNeighborFaceNumber
-    integer, dimension(2)   :: orthogonalFaceNumbers, connectedSubCellIndexes
-    integer, dimension(2,2) :: subCellIndexes
     logical :: forceCellRefinement
     !------------------------------------------------------------------
 
@@ -804,7 +840,7 @@ subroutine pr_FillNeighborCellData( this, neighborCellData )
     end do
 
 
-end subroutine pr_FillNeighborCellData
+end subroutine pr_FillNeighborCellDataUnstructured
 
 
 !RWPT
@@ -1507,143 +1543,121 @@ end subroutine pr_FillCellFromRealData
 
 
 
-
 ! RWPT
-! DEPRECATION WARNING
-subroutine pr_FillNeighborSubCellData( this, neighborSubCellData )
+subroutine pr_FillNeighborCellDataStructured( this, neighborCellData )
     !------------------------------------------------------------------
     ! 
-    ! Populates array of neighborSubCellData, with
-    ! initialized ModpathSubCellData objects required for computation
-    ! of corner velocities for the given TrackCell
-    !
-    ! Format of ordering into the neighborSubCellData array is (scd: subCellData):
-    !
-    !   ( scd1, scd13, scd14, sc2, scd23, scd24, 
-    !     scd3, scd35, scd36, ... scd6, scd61, scd62)
-    !
-    ! Note:
-    !   This code should be executed after each update of the current TrackCell.
-    !   It would be desirable something to organize indexes involved into computation 
-    !   of corner velocities, to avoid hardcoding or cumbersome access
     !------------------------------------------------------------------
-    !
     ! Specifications
     !------------------------------------------------------------------
     implicit none
-    class(ParticleTrackingEngineType),target :: this
-    type(ModpathSubCellDataType), dimension(18) :: neighborSubCellData
-    type(ModpathCellDataType) :: neighborCellData, neighborConnectionCellData
-    integer :: n, m, subCellCounter
+    class(ParticleTrackingEngineType) :: this
+    type(ModpathCellDataType), dimension(2, 18), intent(inout) :: neighborCellData
+    integer :: n, m, cellCounter, subCount
     !------------------------------------------------------------------
 
 
-    ! RWPT
-    ! Once cellBuffer has the data, 
-    ! populate the array with neighbor cells
-    ! Assuming only one connection per cell, that is
-    ! fully structured grid.
-    ! Only done for cells with a connection,
-    ! stills remains to be verified how to handle the case
-    ! without connection
-    subCellCounter = 0
+    cellCounter = 0
     do n = 1, 6
-        subCellCounter = subCellCounter + 1
+        cellCounter = cellCounter + 1
   
         ! If connection exists
         if ( this%TrackCell%CellData%GetFaceConnection(n,1) .gt. 0) then
   
             ! Fill the data buffer
-            call this%FillCellBuffer( this%TrackCell%CellData%GetFaceConnection(n,1) , neighborCellData )
-  
-            ! Fill the subCell data buffer
-            call neighborCellData%FillSubCellDataBuffer( neighborSubCellData( subCellCounter ), &
-               1, 1, this%TrackingOptions%BackwardTracking ) 
+            call this%FillCellBuffer( this%TrackCell%CellData%GetFaceConnection(n,1) , neighborCellData( 1, cellCounter ) )
   
             ! Extract surrounding cells from connection
             ! to complete information required for 
-            ! computation of cell corner velocities
+            ! computation of cell corner quantities 
             select case (n)
                 case (1)
+                    subCount = 0
                     do m = 3,4
-                        subCellCounter = subCellCounter + 1
-                        if ( neighborCellData%GetFaceConnection(m,1) .gt. 0 ) then
-                            call this%FillCellBuffer( neighborCellData%GetFaceConnection(m,1), neighborConnectionCellData )
-                            call neighborConnectionCellData%FillSubCellDataBuffer( neighborSubCellData( subCellCounter ), &
-                                1, 1, this%TrackingOptions%BackwardTracking )
+                        subCount = subCount + 1 
+                        if ( neighborCellData( 1, cellCounter )%GetFaceConnection(m,1) .gt. 0 ) then
+                            call this%FillCellBuffer( neighborCellData( 1, cellCounter )%GetFaceConnection( m, 1 ), & 
+                                                                      neighborCellData( 1, cellCounter + subCount ) )
                         else
-                           call neighborSubCellData( subCellCounter )%Reset() 
+                           call neighborCellData( 1, cellCounter + subCount )%Reset() 
                         end if
                     end do
+                    cellCounter = cellCounter + subCount
                 case (2)
+                    subCount = 0
                     do m = 3,4
-                        subCellCounter = subCellCounter + 1
-                        if ( neighborCellData%GetFaceConnection(m,1) .gt. 0 ) then
-                            call this%FillCellBuffer( neighborCellData%GetFaceConnection(m,1), neighborConnectionCellData )
-                            call neighborConnectionCellData%FillSubCellDataBuffer( neighborSubCellData( subCellCounter ), &
-                                1, 1, this%TrackingOptions%BackwardTracking )
+                        subCount = subCount + 1 
+                        if ( neighborCellData( 1, cellCounter )%GetFaceConnection(m,1) .gt. 0 ) then
+                            call this%FillCellBuffer( neighborCellData( 1, cellCounter )%GetFaceConnection( m, 1 ), & 
+                                                                      neighborCellData( 1, cellCounter + subCount ) )
                         else
-                           call neighborSubCellData( subCellCounter )%Reset() 
+                           call neighborCellData( 1, cellCounter + subCount )%Reset() 
                         end if
                     end do
+                    cellCounter = cellCounter + subCount
                 case (3)
+                    subCount = 0
                     do m = 5,6
-                        subCellCounter = subCellCounter + 1
-                        if ( neighborCellData%GetFaceConnection(m,1) .gt. 0 ) then
-                            call this%FillCellBuffer( neighborCellData%GetFaceConnection(m,1), neighborConnectionCellData )
-                            call neighborConnectionCellData%FillSubCellDataBuffer( neighborSubCellData( subCellCounter ), &
-                                1, 1, this%TrackingOptions%BackwardTracking )
+                        subCount = subCount + 1 
+                        if ( neighborCellData( 1, cellCounter )%GetFaceConnection(m,1) .gt. 0 ) then
+                            call this%FillCellBuffer( neighborCellData( 1, cellCounter )%GetFaceConnection( m, 1 ), & 
+                                                                      neighborCellData( 1, cellCounter + subCount ) )
                         else
-                           call neighborSubCellData( subCellCounter )%Reset() 
+                           call neighborCellData( 1, cellCounter + subCount )%Reset() 
                         end if
                     end do
+                    cellCounter = cellCounter + subCount
                 case (4)
+                    subCount = 0
                     do m = 5,6
-                        subCellCounter = subCellCounter + 1
-                        if ( neighborCellData%GetFaceConnection(m,1) .gt. 0 ) then
-                            call this%FillCellBuffer( neighborCellData%GetFaceConnection(m,1), neighborConnectionCellData )
-                            call neighborConnectionCellData%FillSubCellDataBuffer( neighborSubCellData( subCellCounter ), &
-                                1, 1, this%TrackingOptions%BackwardTracking )
+                        subCount = subCount + 1 
+                        if ( neighborCellData( 1, cellCounter )%GetFaceConnection(m,1) .gt. 0 ) then
+                            call this%FillCellBuffer( neighborCellData( 1, cellCounter )%GetFaceConnection( m, 1 ), & 
+                                                                      neighborCellData( 1, cellCounter + subCount ) )
                         else
-                           call neighborSubCellData( subCellCounter )%Reset() 
+                           call neighborCellData( 1, cellCounter + subCount )%Reset() 
                         end if
                     end do
+                    cellCounter = cellCounter + subCount
                 case (5)
+                    subCount = 0
                     do m = 1,2
-                        subCellCounter = subCellCounter + 1
-                        if ( neighborCellData%GetFaceConnection(m,1) .gt. 0 ) then
-                            call this%FillCellBuffer( neighborCellData%GetFaceConnection(m,1), neighborConnectionCellData )
-                            call neighborConnectionCellData%FillSubCellDataBuffer( neighborSubCellData( subCellCounter ), &
-                                1, 1, this%TrackingOptions%BackwardTracking )
+                        subCount = subCount + 1 
+                        if ( neighborCellData( 1, cellCounter )%GetFaceConnection(m,1) .gt. 0 ) then
+                            call this%FillCellBuffer( neighborCellData( 1, cellCounter )%GetFaceConnection( m, 1 ), & 
+                                                                      neighborCellData( 1, cellCounter + subCount ) )
                         else
-                           call neighborSubCellData( subCellCounter )%Reset() 
+                           call neighborCellData( 1, cellCounter + subCount )%Reset() 
                         end if
                     end do
+                    cellCounter = cellCounter + subCount
                 case (6)
+                    subCount = 0
                     do m = 1,2
-                        subCellCounter = subCellCounter + 1
-                        if ( neighborCellData%GetFaceConnection(m,1) .gt. 0 ) then
-                            call this%FillCellBuffer( neighborCellData%GetFaceConnection(m,1), neighborConnectionCellData )
-                            call neighborConnectionCellData%FillSubCellDataBuffer( neighborSubCellData( subCellCounter ), &
-                                1, 1, this%TrackingOptions%BackwardTracking )
+                        subCount = subCount + 1 
+                        if ( neighborCellData( 1, cellCounter )%GetFaceConnection(m,1) .gt. 0 ) then
+                            call this%FillCellBuffer( neighborCellData( 1, cellCounter )%GetFaceConnection( m, 1 ), & 
+                                                                      neighborCellData( 1, cellCounter + subCount ) )
                         else
-                           call neighborSubCellData( subCellCounter )%Reset()
+                           call neighborCellData( 1, cellCounter + subCount )%Reset() 
                         end if
                     end do
+                    cellCounter = cellCounter + subCount
             end select
         else
             ! If no connection a cell face n, 
             ! suppose no connections initialize velocities 
             ! to be exactly zero and move counter
-            call neighborSubCellData( subCellCounter )%Reset()
-            call neighborSubCellData( subCellCounter + 1 )%Reset()
-            call neighborSubCellData( subCellCounter + 2 )%Reset()
-            subCellCounter = subCellCounter + 2
+            call neighborCellData( 1, cellCounter )%Reset()
+            call neighborCellData( 1, cellCounter + 1 )%Reset()
+            call neighborCellData( 1, cellCounter + 2 )%Reset()
+            cellCounter = cellCounter + 2
         endif
     end do
 
 
-end subroutine pr_FillNeighborSubCellData
+end subroutine pr_FillNeighborCellDataStructured
+
 
 
 end module ParticleTrackingEngineModule
