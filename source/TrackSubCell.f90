@@ -647,7 +647,6 @@ contains
                   dt = dtold
                   dtLoopCounter = 0
                   posRestartCounter = posRestartCounter + 1
-                  print *, nx, ny, nz
                   exit
               end if
 
@@ -655,14 +654,6 @@ contains
               ! found a valid position after two tries.
               dtLoopCounter = dtLoopCounter + 1
               if ( dtLoopCounter .eq. 2 ) then
-                  ! When using exponential integration 
-                  ! and rwpt, it has been observed that 
-                  ! new positions can pivot between invalid 
-                  ! positions which happened when not forcing NR 
-                  ! to return a new dt smaller than the previous.
-                  ! This block controls that if that happens, 
-                  ! positions are restarted after two tries, 
-                  
                   ! Restart nx, ny, nz and try again
                   nx = x
                   ny = y
@@ -673,7 +664,6 @@ contains
                   dtLoopCounter = 0
                   posRestartCounter = posRestartCounter + 1
                   exit
-
               end if
 
           end do
@@ -698,14 +688,6 @@ contains
               trackingResult%FinalLocation%LocalX = nx
               trackingResult%FinalLocation%LocalY = ny
               trackingResult%FinalLocation%LocalZ = nz
-
-              if (.not. trackingResult%FinalLocation%Valid() ) then 
-                  print *, 'DEBUG: ** TrackSubCell'
-                  print *, 'DEBUG: xyz', x, y, z
-                  print *, 'DEBUG: nxyz', nx, ny, nz
-                  print *, 'DEBUG: exitFace', exitFace
-              end if
-
               trackingResult%FinalLocation%TrackingTime = t
               continueTimeLoop = .false.
 
@@ -1140,6 +1122,7 @@ contains
   end subroutine pr_DetectExitFaceAndUpdateTimeStepQuadratic
 
 
+
   subroutine pr_DetectExitFaceAndUpdateTimeStepNewton( this, x, y, z, nx, ny, nz, & 
             vx, vy, vz, divDx, divDy, divDz, dBx, dBy, dBz, t, dt, dtxyz, exitFace )
       !----------------------------------------------------------------
@@ -1326,6 +1309,376 @@ contains
   end subroutine pr_DetectExitFaceAndUpdateTimeStepNewton
 
 
+
+  subroutine pr_NewtonRaphsonVariablesExponential( this, dt, v, v1, v2, &
+                                              dx, dInterface, divD, dB, & 
+                                      nrf0, nrfprim, nrf2prim, nrf3prim )
+  !-----------------------------------------------------------------------------
+  !-----------------------------------------------------------------------------
+  implicit none
+  class(TrackSubCellType) :: this
+  doubleprecision, intent(in)    :: dt
+  doubleprecision, intent(in)    :: v, v1, v2, dx, dInterface, divD, dB
+  doubleprecision, intent(inout) :: nrf0, nrfprim, nrf2prim, nrf3prim
+  doubleprecision :: dvdx, dAdv
+  doubleprecision :: dvtol = 1.0d-10 ! a parameter declaration at module level ? 
+  !-----------------------------------------------------------------------------
+
+
+      ! Initialize
+      nrf0      = 0d0
+      nrfprim   = 0d0
+      nrf2prim  = 0d0
+      nrf3prim  = 0d0
+      dvdx      = ( v2 - v1 )/dx
+
+      ! Advection
+      if ( abs(dvdx) > dvtol ) then 
+           dAdv = v*( exp( dvdx*dt ) - 1.0 )/dvdx
+      else
+           dAdv = v*dt
+      end if
+
+      ! Derivatives and iteration terms
+      nrf0     = dAdv + divD*dt + dB*sqrt( dt ) - dInterface
+      nrfprim  = v*exp( dvdx*dt ) + divD + 0.5*dB/sqrt( dt )
+      nrf2prim = dvdx*v*exp( dvdx*dt ) - 0.25*dB*dt**(-1.5)
+      nrf3prim = dvdx*dvdx*v*exp( dvdx*dt ) + 0.375*dB*dt**(-2.5)
+
+
+      ! Done
+      return
+
+
+  end subroutine pr_NewtonRaphsonVariablesExponential
+
+
+
+  function pr_GetConvergenceFunction( this, nrf0, nrfprim, nrf2prim ) result( gprim )
+  !----------------------------------------------------------------
+  !----------------------------------------------------------------
+  implicit none
+  class(TrackSubCellType) :: this
+  doubleprecision, intent(in) :: nrf0, nrfprim, nrf2prim
+  doubleprecision :: gprim 
+  !----------------------------------------------------------------
+  
+      gprim    = abs( nrf2prim*nrf0 / nrfprim**2 )
+
+      ! Done
+      return
+
+  end function pr_GetConvergenceFunction
+
+
+
+  function pr_GetConvergenceFunctionDerivative( this, nrf0, nrfprim, nrf2prim, nrf3prim ) result( gprimder )
+  !----------------------------------------------------------------
+  !----------------------------------------------------------------
+  implicit none
+  class(TrackSubCellType) :: this
+  doubleprecision, intent(in) :: nrf0, nrfprim, nrf2prim, nrf3prim
+  doubleprecision :: gprimnoabs, gprimder, gprimprim
+  !----------------------------------------------------------------
+
+      gprimnoabs = nrf2prim*nrf0/nrfprim**2
+      gprimprim  = -2d0*( nrf0*nrf2prim**2 )/( nrfprim**3 ) + ( nrfprim*nrf2prim + nrf0*nrf3prim )/( nrfprim**2 )
+      gprimder   = gprimnoabs/abs( gprimnoabs )*gprimprim
+
+      ! Done      
+      return
+
+
+  end function pr_GetConvergenceFunctionDerivative
+
+
+
+  function pr_SetInitialGuess( this, dt, v, v1, v2, dx, dInterface, divD, dB ) result( dtnew )
+  !----------------------------------------------------------------
+  !----------------------------------------------------------------
+  implicit none
+  class(TrackSubCellType) :: this
+  doubleprecision, intent(in) :: dt
+  doubleprecision, intent(in) :: v, v1, v2, dx, dInterface, divD, dB
+  doubleprecision :: dtnew, dtold, dt0 
+  doubleprecision :: nrf0, nrfprim
+  doubleprecision :: nrf2prim, nrf3prim
+  doubleprecision :: gprimdernew, gprimnew
+  doubleprecision :: gprimder, gprim, gprimmin
+  doubleprecision :: gamman
+  doubleprecision :: dtfraction, dtoldfraction
+  doubleprecision :: mindtfrac
+  doubleprecision :: gdtol  = 1e-6
+  integer         :: maxter = 50
+  integer         :: counter
+  integer         :: ccount
+  integer         :: bcount
+  integer         :: zcount
+  integer         :: rcount
+  integer         :: gcount
+  logical         :: continueProcessing
+  !----------------------------------------------------------------
+
+
+      ! Initialize
+      gprimmin  = 1e10
+      gprim     = 1e10
+
+      ! Estimate order of initial dt fraction
+      ! Run over very small fractions
+      gcount = 0
+      do while ( ( gprim .gt. 1 ) .and. ( gcount .lt. 7 ) )
+
+        gcount     = gcount + 1
+        dtfraction = 10d0**( -8 + gcount )
+        dt0        = dt*dtfraction
+
+        call pr_NewtonRaphsonVariablesExponential( this, dt0, v, v1, v2, &
+                                               dx, dInterface, divD, dB, & 
+                                       nrf0, nrfprim, nrf2prim, nrf3prim )
+        gprim = pr_GetConvergenceFunction( this, nrf0, nrfprim, nrf2prim )
+       
+        if ( gprim .lt. gprimmin ) then 
+            gprimmin  = gprim
+            mindtfrac = dtfraction
+        end if 
+
+      end do
+
+      ! Set smaller fraction for gradient descent 
+      if ( ( gprim .lt. 1 ) .and. ( gcount .eq. 1 ) ) then  
+          dtoldfraction = 1d-8 
+      else if ( gprim .lt. 1 ) then 
+          dtoldfraction =  10d0**( -8 + gcount - 1 )
+      else
+          dtfraction    = mindtfrac
+          dtoldfraction = 0.5*dtfraction/10d0      
+      end if 
+   
+      ! Set initial dt, dtold
+      dtnew  = dtfraction*dt
+      dtold  = dtoldfraction*dt 
+
+      ! Do it or leave ? 
+      call pr_NewtonRaphsonVariablesExponential( this, dtnew, v, v1, v2, &
+                                             dx, dInterface, divD, dB, & 
+                                     nrf0, nrfprim, nrf2prim, nrf3prim )
+      gprim = pr_GetConvergenceFunction( this, nrf0, nrfprim, nrf2prim )
+
+      if ( gprim .lt. 0.5 ) then 
+          ! Done 
+          return
+      end if
+
+    
+      ! Continue to gradient descent  
+      gprimnew = 10d0
+      gprim    = 10d0
+      ccount  = 0
+      bcount  = 0
+      zcount  = 0
+      rcount  = 0
+      counter = 0
+      do while ( counter .lt. maxter )
+
+          counter = counter + 1 
+
+          ! Compute quantities for gradient descent
+          call pr_NewtonRaphsonVariablesExponential( this, dtold, v, v1, v2, &
+                                                   dx, dInterface, divD, dB, & 
+                                           nrf0, nrfprim, nrf2prim, nrf3prim )
+          gprimder  = pr_GetConvergenceFunctionDerivative( this, nrf0, nrfprim, nrf2prim, nrf3prim )
+
+          call pr_NewtonRaphsonVariablesExponential( this, dtnew, v, v1, v2, &
+                                                   dx, dInterface, divD, dB, & 
+                                           nrf0, nrfprim, nrf2prim, nrf3prim )
+          gprimdernew = pr_GetConvergenceFunctionDerivative( this, nrf0, nrfprim, nrf2prim, nrf3prim )
+          gprim       = pr_GetConvergenceFunction( this, nrf0, nrfprim, nrf2prim )
+
+          ! Compute gamma gradient descent and update
+          gamman  = abs( ( dtnew - dtold )*( gprimdernew - gprimder ) )/( ( gprimdernew - gprimder )**2 )
+          dtold   = dtnew
+          dtnew   = dtnew - gamman*gprimdernew
+
+          ! If nan, leave loop
+          if ( isnan( dtnew ) ) then 
+             dtnew = 0d0 
+             exit
+          end if 
+
+          ! Bound dtnew to values smaller than one or leave if ready
+          if ( ( gprim .lt. 1 ) .and. ( dtnew/dt .gt. 1 ) ) then
+
+              dtnew = dtold
+
+              ! Done
+              return
+        
+          else if ( dtnew/dt .gt. 1 ) then 
+
+              dtnew = 0.99*dt
+
+          end if 
+
+          ! Bound dtnew values higher than zero
+          ! If convergence parameter already smaller than one
+          ! set to dtold and leave.
+          if ( ( gprim .lt. 1 ) .and. ( dtnew .lt. 0 ) .and. ( dtold .gt. 0 )  )  then
+
+              dtnew = dtold
+
+              ! Done
+              return
+
+          else if ( dtnew .lt. 0 ) then
+              ! If smaller than zero but no convergence 
+              ! yet, count how many times this happens 
+              ! and leave after twice. Probably a very small value
+              ! close to zero  
+
+              dtnew = 1e-8*dt 
+              zcount = zcount + 1 
+
+              if ( zcount .gt. 1 ) then 
+              
+                  dtnew = 0d0
+                  
+                  ! Leave loop
+                  exit
+
+              end if 
+
+          end if
+
+
+          call pr_NewtonRaphsonVariablesExponential( this, dtnew, v, v1, v2, &
+                                                   dx, dInterface, divD, dB, & 
+                                           nrf0, nrfprim, nrf2prim, nrf3prim )
+          gprimnew = pr_GetConvergenceFunction( this, nrf0, nrfprim, nrf2prim )
+
+
+          ! If values appropiate for convergence,
+          ! leave after two consecutive occurrences
+          if ( ( gprimnew .lt. 1 ) .and. ( dtnew .gt. 0 ) .and. ( dtnew/dt .lt. 1 ) ) then 
+
+              rcount = rcount + 1
+              if ( rcount .gt. 1 ) then 
+                  ! Done
+                  return
+              end if
+          else 
+              rcount = 0
+          end if 
+
+
+          ! If convergence function is already
+          ! less than one and the method provides
+          ! a higher value for the new 
+          ! convergence function, leave
+          if ( ( gprim .lt. 1 ) .and. ( gprimnew .gt. gprim ) ) then
+
+              dtnew = dtold
+              
+              ! Done
+              return
+
+          end if 
+
+
+          ! If max iterations, exit do loop
+          if ( counter .gt. maxter ) then 
+              ! Leave loop  
+              exit
+          end if 
+
+
+          ! If changes in initial guess
+          ! are small, at least twice consecutive,
+          ! then leave
+          if ( ( abs( (dtold - dtnew)/dtold ) < gdtol ) .and. ( gprim .lt. 1 )  ) then
+
+              ccount = ccount + 1
+              if ( ccount .gt. 1 ) then 
+                  ! Done 
+                  return 
+              end if 
+          else 
+              ccount = 0
+          end if
+
+          
+          ! If relative changes in estimate are small and 
+          ! convergence function not good, leave and try 
+          ! higher orders
+          if ( ( abs( (dtold - dtnew)/dtold ) < gdtol ) .and. ( gprim .gt. 1 )  ) then
+
+              bcount = bcount + 1
+
+              if ( bcount .gt. 1 ) then
+                  ! Leave loop  
+                  exit
+              end if 
+     
+          else 
+              bcount = 0
+          end if
+
+
+      end do
+
+
+      ! Needed ?
+      if ( gprim .lt. 1 ) then 
+          ! Done
+          return 
+      end if 
+
+
+      ! Continue and try with higher order fractions
+      gprim     = 1e10
+      gprimmin  = 1e10
+      mindtfrac = 0d0
+
+      ! Run over higher order fractions 
+      gcount = 1
+      do while ( ( gprim .gt. 1 ) .and. ( gcount .lt. 9 ) )
+
+        gcount     = gcount + 1
+        dtfraction = 0.1*gcount
+        dt0        = dt*dtfraction
+
+        call pr_NewtonRaphsonVariablesExponential( this, dt0, v, v1, v2, &
+                                               dx, dInterface, divD, dB, & 
+                                       nrf0, nrfprim, nrf2prim, nrf3prim )
+        gprim = pr_GetConvergenceFunction( this, nrf0, nrfprim, nrf2prim )
+  
+        if ( gprim .lt. gprimmin ) then  
+            gprimmin  = gprim
+            mindtfrac = dtfraction
+        end if 
+
+      end do
+
+      ! If any was smaller than one,
+      ! set those values and leave
+      if ( gprimmin .lt. 1 ) then 
+          dtnew = dt*mindtfrac
+      end if 
+
+      ! Set advection condition if zero and v, otherwise zero 
+      if ( ( dtnew .le. 0d0 ) .and. ( abs( v ) .gt. 0d0 ) ) then 
+          dtnew = abs( dInterface/v )
+      end if 
+
+
+      ! Done
+      return
+        
+
+  end function pr_SetInitialGuess
+
+
+
   subroutine NewtonRaphsonTimeStepExponentialAdvection( this, dt, v, v1, v2, &
                                               dx, dInterface, divD, dB, dtnr )
       !----------------------------------------------------------------
@@ -1356,56 +1709,61 @@ contains
       doubleprecision :: dvdx, dAdv
       doubleprecision :: dt0
       doubleprecision :: nrf0, nrfprim, nrerror
+      doubleprecision :: nrf2prim, gprim
       doubleprecision :: dvtol = 1.0d-10
-      ! How to determine a proper tolerance ?
-      ! Convergence properties display 
-      ! problem dependence
-      !doubleprecision :: nrtol = 1.0d-3 
-      doubleprecision :: nrtol
+      doubleprecision :: nrtol = 1e-6
       integer :: countIter
-      integer :: maxIter = 100
+      integer :: maxIter = 50
+      integer :: gcount
+      ! Note
+      ! Compute 
+      !    abs(f*ftwoprim) .lt. abs(fprim**2)
+      ! https://math.stackexchange.com/questions/3136446/condition-for-convergence-of-newton-raphson-method
       !----------------------------------------------------------------
 
       ! Initialize
-      countIter = 0
-      ! Force initial guess smaller
-      ! than original value
-      dt0       = 0.01*dt 
       nrf0      = 0d0
       nrfprim   = 0d0
       nrerror   = 1d6 ! Something big
+      dvdx      = ( v2 - v1 )/dx
 
-      ! Define nrtol from current dt
-      nrtol    = 0.1*dt
+      ! Initial time step estimate
+      dt0 = pr_SetInitialGuess( this, dt, v, v1, v2, dx, dInterface, divD, dB )
+
+      ! If no proper initial guess, leave
+      if ( dt0 .eq. 0d0 ) then 
+          dtnr = 0d0 
+          return
+      end if 
 
       ! Iteration until convergence or maxIterations
-      do while( ( abs(nrerror/dt) .gt. 0.01 ) .and. ( countIter .lt. maxIter ) )
-      !do while( ( abs(nrerror) .gt. nrtol ) .and. ( countIter .lt. maxIter ) )
+      countIter = 0
+      do while( ( abs(nrerror/dt0) .gt. nrtol ) .and. ( countIter .lt. maxIter ) )
 
           countIter = countIter + 1
 
           ! Compute displacement, although initially this 
           ! should be known
-          dvdx = ( v2 - v1 )/dx
           if ( ( abs(dvdx) .gt. dvtol ) ) then
               dAdv = v*( exp(dvdx*dt0) - 1.0d0 )/dvdx
           else
-              dAdv = v*dt
+              dAdv = v*dt0
           end if
 
           ! RWPT displacement with initial guess
           nrf0  = dAdv + divD*dt0 + dB*sqrt( dt0 ) - dInterface
 
           ! Analytical derivative of RWPT displacement
-          nrfprim = v*exp(dvdx*dt0) + divD + 0.5*dB/sqrt(dt0) 
+          nrfprim  = v*exp(dvdx*dt0) + divD + 0.5*dB/sqrt(dt0) 
 
           ! NR error and new time step
           nrerror = -nrf0/nrfprim
           dt0     = dt0 + nrerror 
 
           ! It can't be smaller than zero
-          if ( dt0 .lt. 0d0 ) dt0 = -0.5*dt0 
-
+          if ( dt0 .lt. 0d0 ) then
+              dt0 = -0.9*dt0   
+          end if 
 
       end do
 
@@ -1413,18 +1771,73 @@ contains
       dtnr = dt0
 
       ! If new value higher than the previous, return zero 
-      if ( dt0 .gt. dt) then
-          print *, '*** TrackSubCell: Inconsistency in Newton Raphson, ', &
-              'new dt higher than previous, dt, dt0, nrerror', dt, dt0, nrerror 
-          dtnr = 0d0 ! Is this a proper exit condition ?
+      if ( dt0 .gt. dt ) then
+
+          !nrf2prim = dvdx*v*exp(dvdx*dt0) - 0.25*dB*dt0**(-1.5)
+          !gprim    = abs( nrf2prim*nrf0 )/abs( nrfprim**2 )
+
+          !print *, '--------------------------------------------------------------------------------------------'
+          !print *, '- TrackSubCell: Inconsistency: new dt higher than previous'
+          !print *, '    - dt           ', dt
+          !print *, '    - dtnr         ', dt0
+          !print *, '    - gprim        ', gprim
+          !print *, '    - d/dx         ', abs(dInterface/dx) 
+          !print *, '    - dInterface/v ', abs(dInterface/v)
+          !print *, '    - countIter    ', countIter
+          !print *, '    - nrerror/dt0  ', abs( nrerror/dt0 )
+          !print *, '--------------------------------------------------------------------------------------------'
+          !print *, '  - Input    '
+          !print *, '      - v          : ', v 
+          !print *, '      - v1         : ', v1
+          !print *, '      - v2         : ', v2
+          !print *, '      - dx         : ', dx
+          !print *, '      - dInterface : ', dInterface
+          !print *, '      - divD       : ', divD
+          !print *, '      - dB         : ', dB
+          !print *, '--------------------------------------------------------------------------------------------'
+
+
+          dtnr = dt
+
+          ! Done
+          return 
+
       end if 
 
+
       ! If no convergence, return zero
-      if ( ( countIter .eq. maxIter ) .and. ( abs(nrerror/dt) .gt. 0.01 ) ) then
-      !if ( ( countIter .eq. maxIter ) .and. ( abs(nrerror) .gt. nrtol ) ) then
-          print *, '*** TrackSubCell: No convergence Newton Raphson dt, dt0, nrerror', dt, dt0, nrerror 
-          dtnr = 0d0 ! Is this a proper exit condition ?
+      if ( ( countIter .eq. maxIter ) .and. ( abs(nrerror/dt0) .gt. nrtol ) ) then
+
+          !nrf2prim = dvdx*v*exp(dvdx*dt0) - 0.25*dB*dt0**(-1.5)
+          !gprim    = abs( nrf2prim*nrf0 )/abs( nrfprim**2 )
+
+          !print *, '--------------------------------------------------------------------------------------------'
+          !print *, '- TrackSubCell: NO CONVERGENCE '
+          !print *, '    - dt           ', dt
+          !print *, '    - dtnr         ', dt0
+          !print *, '    - gprim        ', gprim
+          !print *, '    - d/dx         ', abs(dInterface/dx) 
+          !print *, '    - dInterface/v ', abs(dInterface/v)
+          !print *, '    - dInterface/v/dt ', abs(dInterface/v)/dt
+          !print *, '    - countIter    ', countIter
+          !print *, '    - nrerror/dt0  ', abs( nrerror/dt0 )
+          !print *, '--------------------------------------------------------------------------------------------'
+          !print *, '  - Input    '
+          !print *, '      - v          : ', v 
+          !print *, '      - v1         : ', v1
+          !print *, '      - v2         : ', v2
+          !print *, '      - dx         : ', dx
+          !print *, '      - dInterface : ', dInterface
+          !print *, '      - divD       : ', divD
+          !print *, '      - dB         : ', dB
+
+          ! Done
+          dtnr = 0d0 
+
+          return 
+
       end if
+
 
 
   end subroutine NewtonRaphsonTimeStepExponentialAdvection
