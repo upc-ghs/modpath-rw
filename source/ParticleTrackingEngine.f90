@@ -388,19 +388,15 @@ contains
         ! Assign interface for neighbor cell data generation
         select case( this%Grid%GridType ) 
             case (1)
-                print *, 'STRUCTURED'
                 ! Set for structured grid
                 this%FillNeighborCellData=> pr_FillNeighborCellDataStructured
             case (2)
-                print *, 'USG UNSTRUCTURED'
                 ! Set for MODFLOW-USG unstructured grid
                 this%FillNeighborCellData=> pr_FillNeighborCellDataUnstructured
             case (3)
-                print *, 'STRUCTURED MF6'
                 ! Set for MODFLOW-6 structured grid (DIS)
                 this%FillNeighborCellData=> pr_FillNeighborCellDataStructured
             case (4)
-                print *, 'DISV UNSTRUCTURED MF6'
                 ! Set for MODFLOW-6 unstructured grid (DISV)
                 this%FillNeighborCellData=> pr_FillNeighborCellDataUnstructured
         end select

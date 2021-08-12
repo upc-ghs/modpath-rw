@@ -1314,6 +1314,7 @@ contains
                                               dx, dInterface, divD, dB, & 
                                       nrf0, nrfprim, nrf2prim, nrf3prim )
   !-----------------------------------------------------------------------------
+  ! Specifications
   !-----------------------------------------------------------------------------
   implicit none
   class(TrackSubCellType) :: this
@@ -1356,6 +1357,7 @@ contains
 
   function pr_GetConvergenceFunction( this, nrf0, nrfprim, nrf2prim ) result( gprim )
   !----------------------------------------------------------------
+  ! Specifications
   !----------------------------------------------------------------
   implicit none
   class(TrackSubCellType) :: this
