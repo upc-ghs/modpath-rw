@@ -825,7 +825,9 @@
     end if
     
     ! Finalize and process binary pathline file if pathline format option = 1
-    if((simulationData%SimulationType .eq. 2) .or. (simulationData%SimulationType .eq. 4)) then
+    if((simulationData%SimulationType .eq. 2) .or. & 
+       (simulationData%SimulationType .eq. 4) .or. &
+       (simulationData%SimulationType .eq. 6)) then
         if(simulationData%PathlineFormatOption .eq. 1) then
             call ulog('Consolidating pathline segments.', logUnit)
             call ConsolidatePathlines(binPathlineUnit, pathlineUnit,            &
