@@ -37,9 +37,28 @@ module ModflowRectangularGridModule
     procedure :: Reset
     procedure :: ComputeFaceAssignments
     procedure :: ExtractConnectionInfo
+    ! RWPT
+    procedure :: ExtractConnectionCount
   end type
 
     contains
+!----------------------------------------------------------------------
+  subroutine ExtractConnectionCount(this, connInfo, subFaceCount)
+  implicit none
+  class(ModflowRectangularGridType) :: this
+  integer,intent(in) :: connInfo
+  integer,intent(inout) :: subFaceCount
+  integer :: n
+  double precision :: r
+  
+  r = dble(connInfo)
+  n = int(r / 100.0)
+  n = 100 * n
+  subFaceCount = connInfo - n
+ 
+  !return 
+  
+  end subroutine ExtractConnectionCount
 !----------------------------------------------------------------------
   subroutine ExtractConnectionInfo(this, connInfo, faceNumber, subFaceNumber, subFaceCount)
   implicit none
@@ -303,7 +322,7 @@ module ModflowRectangularGridModule
   class(ModflowRectangularGridType) :: this
   integer,intent(in) :: cellNumber,face
   integer :: offset, i, count, connCount, f1, f2, n
-  integer :: faceNumber, subFaceNumber
+  !integer :: faceNumber, subFaceNumber
   
   count = 0
   offset = this%JaOffsets(cellNumber)
@@ -315,7 +334,8 @@ module ModflowRectangularGridModule
   do i = 2, connCount
       n = this%JaFace(offset + i)
       if((n .gt. f1) .and. (n .lt. f2)) then
-          call this%ExtractConnectionInfo(n, faceNumber, subFaceNumber, count)
+          call this%ExtractConnectionCount(n, count)
+          !call this%ExtractConnectionInfo(n, faceNumber, subFaceNumber, count)
           return
       end if
   end do
