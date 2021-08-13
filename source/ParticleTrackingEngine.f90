@@ -35,14 +35,14 @@ module ParticleTrackingEngineModule
     !type(ModpathSubCellDataType), dimension(18) :: NeighborSubCellData
     !type(ModpathCellDataType), dimension(18) :: NeighborCellData
     procedure(FillNeighborCells), pass, pointer :: FillNeighborCellData=>null()
-
+    procedure(FillCellData)     , pass, pointer :: FillCellBuffer=>null()
 
   contains
 
     procedure :: Initialize=>pr_Initialize
     procedure :: Reset=>pr_Reset
     procedure :: TrackPath=>pr_TrackPath
-    procedure :: FillCellBuffer=>pr_FillCellBuffer
+    !procedure :: FillCellBuffer=>pr_FillCellBuffer
     procedure :: FillFaceFlowsBuffer=>pr_FillFaceFlowsBuffer
     procedure :: FillCellFlowsBuffer=>pr_FillCellFlowsBuffer
     procedure :: GetVolumetricBalanceSummary=>pr_GetVolumetricBalanceSummary
@@ -68,7 +68,17 @@ module ParticleTrackingEngineModule
           class(ParticleTrackingEngineType) :: this
           type(ModpathCellDataType), dimension(2,18), intent(inout) :: neighborCellData
       end subroutine FillNeighborCells
-  
+
+      ! FillCellData 
+      subroutine FillCellData( this, cellNumber, cellBuffer )
+          import ParticleTrackingEngineType
+          import ModpathCellDataType
+          !----------------------------------------
+          class(ParticleTrackingEngineType) :: this
+          integer,intent(in) :: cellNumber
+          type(ModpathCellDataType),intent(inout) :: cellBuffer
+      end subroutine FillCellData
+
   end interface
 
 
@@ -389,15 +399,19 @@ contains
         select case( this%Grid%GridType ) 
             case (1)
                 ! Set for structured grid
+                this%FillCellBuffer=>pr_FillCellBufferStructured
                 this%FillNeighborCellData=> pr_FillNeighborCellDataStructured
             case (2)
                 ! Set for MODFLOW-USG unstructured grid
+                this%FillCellBuffer=>pr_FillCellBufferUnstructured
                 this%FillNeighborCellData=> pr_FillNeighborCellDataUnstructured
             case (3)
                 ! Set for MODFLOW-6 structured grid (DIS)
+                this%FillCellBuffer=>pr_FillCellBufferUnstructured
                 this%FillNeighborCellData=> pr_FillNeighborCellDataStructured
             case (4)
                 ! Set for MODFLOW-6 unstructured grid (DISV)
+                this%FillCellBuffer=>pr_FillCellBufferUnstructured
                 this%FillNeighborCellData=> pr_FillNeighborCellDataUnstructured
         end select
 
@@ -461,7 +475,89 @@ contains
     end subroutine pr_FillCellFlowsBuffer
  
   
-    subroutine pr_FillCellBuffer(this, cellNumber, cellBuffer)
+    !subroutine pr_FillCellBuffer(this, cellNumber, cellBuffer)
+    !!***************************************************************************************************************
+    !!
+    !!***************************************************************************************************************
+    !! Specifications
+    !!---------------------------------------------------------------------------------------------------------------
+    !implicit none
+    !class(ParticleTrackingEngineType) :: this
+    !integer,intent(in) :: cellNumber
+    !type(ModpathCellDataType),intent(inout) :: cellBuffer
+    !doubleprecision,dimension(6) :: boundaryFlows
+    !integer :: n, layer, boundaryFlowsOffset, gridType, cellType
+    !!---------------------------------------------------------------------------------------------------------------
+    !
+
+    !    boundaryFlowsOffset = 6 * (cellNumber - 1)
+    !    do n = 1, 6
+    !        boundaryFlows(n) = this%FlowModelData%BoundaryFlows(boundaryFlowsOffset + n)
+    !    end do
+    !    
+    !    layer = this%Grid%GetLayer(cellNumber)
+    !    
+    !    gridType = this%Grid%GridType
+    !    cellType = this%Grid%CellType(cellNumber)
+    !    select case (gridType)
+    !        case (1)
+    !            ! Set cell buffer data for a structured grid
+    !            call cellBuffer%SetDataStructured(cellNumber,this%Grid%CellCount,     &
+    !              this%Grid,this%FlowModelData%IBound,this%FlowModelData%IBoundTS,                        &
+    !              this%FlowModelData%Porosity(cellNumber),this%FlowModelData%Retardation(cellNumber),     &
+    !              this%FlowModelData%StorageFlows(cellNumber),this%FlowModelData%SourceFlows(cellNumber), &
+    !              this%FlowModelData%SinkFlows(cellNumber), this%FlowModelData%FlowsRightFace,            &
+    !              this%FlowModelData%FlowsFrontFace, this%FlowModelData%FlowsLowerFace, boundaryFlows,    &
+    !              this%FlowModelData%Heads(cellNumber), cellType,                                   &
+    !              this%FlowModelData%Zones(cellNumber))
+    !        case (2)
+    !            ! Set cell buffer data for a MODFLOW-USG unstructured grid
+    !            call cellBuffer%SetDataUnstructured(cellNumber,this%Grid%CellCount,   &
+    !              this%Grid%JaCount,this%Grid,                                        &
+    !              this%FlowModelData%IBound,this%FlowModelData%IBoundTS,                                  &
+    !              this%FlowModelData%Porosity(cellNumber),this%FlowModelData%Retardation(cellNumber),     &
+    !              this%FlowModelData%StorageFlows(cellNumber),this%FlowModelData%SourceFlows(cellNumber), &
+    !              this%FlowModelData%SinkFlows(cellNumber), this%FlowModelData%FlowsJA, boundaryFlows,    &
+    !              this%FlowModelData%Heads(cellNumber), cellType,                                   &
+    !              this%FlowModelData%Zones(cellNumber))
+    !            ! Compute internal sub-cell face flows for cells with multiple sub-cell
+    !            if(cellBuffer%GetSubCellCount() .gt. 1) then
+    !                call cellBuffer%ComputeSubCellFlows()
+    !            end if
+    !        case (3)
+    !            ! Set cell buffer data for a MODFLOW-6 structured grid (DIS)
+    !            call cellBuffer%SetDataUnstructured(cellNumber,this%Grid%CellCount,   &
+    !              this%Grid%JaCount,this%Grid,                                        &
+    !              this%FlowModelData%IBound,this%FlowModelData%IBoundTS,                                  &
+    !              this%FlowModelData%Porosity(cellNumber),this%FlowModelData%Retardation(cellNumber),     &
+    !              this%FlowModelData%StorageFlows(cellNumber),this%FlowModelData%SourceFlows(cellNumber), &
+    !              this%FlowModelData%SinkFlows(cellNumber), this%FlowModelData%FlowsJA, boundaryFlows,    &
+    !              this%FlowModelData%Heads(cellNumber), cellType,                                   &
+    !              this%FlowModelData%Zones(cellNumber))
+    !        case (4)
+    !            ! Set cell buffer data for a MODFLOW-6 unstructured grid (DISV)
+    !            call cellBuffer%SetDataUnstructured(cellNumber,this%Grid%CellCount,   &
+    !              this%Grid%JaCount,this%Grid,                                        &
+    !              this%FlowModelData%IBound,this%FlowModelData%IBoundTS,                                  &
+    !              this%FlowModelData%Porosity(cellNumber),this%FlowModelData%Retardation(cellNumber),     &
+    !              this%FlowModelData%StorageFlows(cellNumber),this%FlowModelData%SourceFlows(cellNumber), &
+    !              this%FlowModelData%SinkFlows(cellNumber), this%FlowModelData%FlowsJA, boundaryFlows,    &
+    !              this%FlowModelData%Heads(cellNumber), cellType,                                   &
+    !              this%FlowModelData%Zones(cellNumber))
+    !             ! Compute internal sub-cell face flows for cells with multiple sub-cells
+    !            if(cellBuffer%GetSubCellCount() .gt. 1) then
+    !                call cellBuffer%ComputeSubCellFlows()
+    !            end if
+    !           
+    !        case default
+    !        ! Write error message and stop
+    !    end select
+
+
+    !end subroutine pr_FillCellBuffer
+
+
+    subroutine pr_FillCellBufferUnstructured(this, cellNumber, cellBuffer)
     !***************************************************************************************************************
     !
     !***************************************************************************************************************
@@ -475,72 +571,66 @@ contains
     integer :: n, layer, boundaryFlowsOffset, gridType, cellType
     !---------------------------------------------------------------------------------------------------------------
     
-
         boundaryFlowsOffset = 6 * (cellNumber - 1)
         do n = 1, 6
             boundaryFlows(n) = this%FlowModelData%BoundaryFlows(boundaryFlowsOffset + n)
         end do
         
-        layer = this%Grid%GetLayer(cellNumber)
-        
-        gridType = this%Grid%GridType
         cellType = this%Grid%CellType(cellNumber)
-        select case (gridType)
-            case (1)
-                ! Set cell buffer data for a structured grid
-                call cellBuffer%SetDataStructured(cellNumber,this%Grid%CellCount,     &
-                  this%Grid,this%FlowModelData%IBound,this%FlowModelData%IBoundTS,                        &
-                  this%FlowModelData%Porosity(cellNumber),this%FlowModelData%Retardation(cellNumber),     &
-                  this%FlowModelData%StorageFlows(cellNumber),this%FlowModelData%SourceFlows(cellNumber), &
-                  this%FlowModelData%SinkFlows(cellNumber), this%FlowModelData%FlowsRightFace,            &
-                  this%FlowModelData%FlowsFrontFace, this%FlowModelData%FlowsLowerFace, boundaryFlows,    &
-                  this%FlowModelData%Heads(cellNumber), cellType,                                   &
-                  this%FlowModelData%Zones(cellNumber))
-            case (2)
-                ! Set cell buffer data for a MODFLOW-USG unstructured grid
-                call cellBuffer%SetDataUnstructured(cellNumber,this%Grid%CellCount,   &
-                  this%Grid%JaCount,this%Grid,                                        &
-                  this%FlowModelData%IBound,this%FlowModelData%IBoundTS,                                  &
-                  this%FlowModelData%Porosity(cellNumber),this%FlowModelData%Retardation(cellNumber),     &
-                  this%FlowModelData%StorageFlows(cellNumber),this%FlowModelData%SourceFlows(cellNumber), &
-                  this%FlowModelData%SinkFlows(cellNumber), this%FlowModelData%FlowsJA, boundaryFlows,    &
-                  this%FlowModelData%Heads(cellNumber), cellType,                                   &
-                  this%FlowModelData%Zones(cellNumber))
-                ! Compute internal sub-cell face flows for cells with multiple sub-cell
-                if(cellBuffer%GetSubCellCount() .gt. 1) then
-                    call cellBuffer%ComputeSubCellFlows()
-                end if
-            case (3)
-                ! Set cell buffer data for a MODFLOW-6 structured grid (DIS)
-                call cellBuffer%SetDataUnstructured(cellNumber,this%Grid%CellCount,   &
-                  this%Grid%JaCount,this%Grid,                                        &
-                  this%FlowModelData%IBound,this%FlowModelData%IBoundTS,                                  &
-                  this%FlowModelData%Porosity(cellNumber),this%FlowModelData%Retardation(cellNumber),     &
-                  this%FlowModelData%StorageFlows(cellNumber),this%FlowModelData%SourceFlows(cellNumber), &
-                  this%FlowModelData%SinkFlows(cellNumber), this%FlowModelData%FlowsJA, boundaryFlows,    &
-                  this%FlowModelData%Heads(cellNumber), cellType,                                   &
-                  this%FlowModelData%Zones(cellNumber))
-            case (4)
-                ! Set cell buffer data for a MODFLOW-6 unstructured grid (DISV)
-                call cellBuffer%SetDataUnstructured(cellNumber,this%Grid%CellCount,   &
-                  this%Grid%JaCount,this%Grid,                                        &
-                  this%FlowModelData%IBound,this%FlowModelData%IBoundTS,                                  &
-                  this%FlowModelData%Porosity(cellNumber),this%FlowModelData%Retardation(cellNumber),     &
-                  this%FlowModelData%StorageFlows(cellNumber),this%FlowModelData%SourceFlows(cellNumber), &
-                  this%FlowModelData%SinkFlows(cellNumber), this%FlowModelData%FlowsJA, boundaryFlows,    &
-                  this%FlowModelData%Heads(cellNumber), cellType,                                   &
-                  this%FlowModelData%Zones(cellNumber))
-                 ! Compute internal sub-cell face flows for cells with multiple sub-cells
-                if(cellBuffer%GetSubCellCount() .gt. 1) then
-                    call cellBuffer%ComputeSubCellFlows()
-                end if
-               
-            case default
-            ! Write error message and stop
-        end select
+
+        ! Set cell buffer data for a MODFLOW-USG unstructured grid
+        ! Set cell buffer data for a MODFLOW-6 structured grid (DIS)
+        ! Set cell buffer data for a MODFLOW-6 unstructured grid (DISV)
+        call cellBuffer%SetDataUnstructured(cellNumber,this%Grid%CellCount,   &
+          this%Grid%JaCount,this%Grid,                                        &
+          this%FlowModelData%IBound,this%FlowModelData%IBoundTS,                                  &
+          this%FlowModelData%Porosity(cellNumber),this%FlowModelData%Retardation(cellNumber),     &
+          this%FlowModelData%StorageFlows(cellNumber),this%FlowModelData%SourceFlows(cellNumber), &
+          this%FlowModelData%SinkFlows(cellNumber), this%FlowModelData%FlowsJA, boundaryFlows,    &
+          this%FlowModelData%Heads(cellNumber), cellType,                                   &
+          this%FlowModelData%Zones(cellNumber))
 
 
-    end subroutine pr_FillCellBuffer
+        return
+
+    end subroutine pr_FillCellBufferUnstructured
+
+
+    subroutine pr_FillCellBufferStructured(this, cellNumber, cellBuffer)
+    !***************************************************************************************************************
+    !
+    !***************************************************************************************************************
+    ! Specifications
+    !---------------------------------------------------------------------------------------------------------------
+    implicit none
+    class(ParticleTrackingEngineType) :: this
+    integer,intent(in) :: cellNumber
+    type(ModpathCellDataType),intent(inout) :: cellBuffer
+    doubleprecision,dimension(6) :: boundaryFlows
+    integer :: n, layer, boundaryFlowsOffset, gridType, cellType
+    !---------------------------------------------------------------------------------------------------------------
+    
+        boundaryFlowsOffset = 6 * (cellNumber - 1)
+        do n = 1, 6
+            boundaryFlows(n) = this%FlowModelData%BoundaryFlows(boundaryFlowsOffset + n)
+        end do
+        
+        cellType = this%Grid%CellType(cellNumber)
+
+        ! Set cell buffer data for a structured grid
+        call cellBuffer%SetDataStructured(cellNumber,this%Grid%CellCount,     &
+          this%Grid,this%FlowModelData%IBound,this%FlowModelData%IBoundTS,                        &
+          this%FlowModelData%Porosity(cellNumber),this%FlowModelData%Retardation(cellNumber),     &
+          this%FlowModelData%StorageFlows(cellNumber),this%FlowModelData%SourceFlows(cellNumber), &
+          this%FlowModelData%SinkFlows(cellNumber), this%FlowModelData%FlowsRightFace,            &
+          this%FlowModelData%FlowsFrontFace, this%FlowModelData%FlowsLowerFace, boundaryFlows,    &
+          this%FlowModelData%Heads(cellNumber), cellType,                                   &
+          this%FlowModelData%Zones(cellNumber))
+
+        return
+
+    end subroutine pr_FillCellBufferStructured
+
 
 
     subroutine pr_Reset(this)
@@ -778,7 +868,7 @@ contains
     
 
     end subroutine pr_TrackPath
- 
+
 
 ! RWPT
 subroutine pr_FillNeighborCellDataUnstructured( this, neighborCellData )

@@ -971,6 +971,9 @@ contains
       if(this%SubFaceCounts(n) .gt. 1) then
           this%SubCellRowCount = 2
           this%SubCellColumnCount = 2
+          ! Compute internal sub-cell face flows for cells with multiple sub-cell
+          call this%ComputeSubCellFlows()
+          return
       end if
   end do
 
