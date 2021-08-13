@@ -1641,9 +1641,8 @@ subroutine pr_FillNeighborCellDataStructured( this, neighborCellData )
                     cellCounter = cellCounter + subCount
             end select
         else
-            ! If no connection a cell face n, 
-            ! suppose no connections initialize velocities 
-            ! to be exactly zero and move counter
+            ! If no connection through cell face n, 
+            ! reset buffers
             call neighborCellData( 1, cellCounter )%Reset()
             call neighborCellData( 1, cellCounter + 1 )%Reset()
             call neighborCellData( 1, cellCounter + 2 )%Reset()

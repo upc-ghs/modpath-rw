@@ -724,9 +724,9 @@ contains
       implicit none
       class(TrackSubCellType) :: this
       ! input
-      doubleprecision :: x, y, z
+      doubleprecision, intent(in) :: x, y, z
       ! output
-      doubleprecision :: vx, vy, vz
+      doubleprecision, intent(out) :: vx, vy, vz
       !----------------------------------------------------------------
 
       vx = ( 1.0d0 - x )*this%SubCellData%vx1 + x*this%SubCellData%vx2
@@ -1397,6 +1397,7 @@ contains
 
   function pr_SetInitialGuess( this, dt, v, v1, v2, dx, dInterface, divD, dB ) result( dtnew )
   !----------------------------------------------------------------
+  ! Specifications
   !----------------------------------------------------------------
   implicit none
   class(TrackSubCellType) :: this
@@ -1866,7 +1867,7 @@ contains
       doubleprecision, intent(in) :: x, y, z
       doubleprecision, intent(in) :: alphaL, alphaT, Dmol
       ! output
-      doubleprecision, intent(inout) :: divDx, divDy, divDz
+      doubleprecision, intent(out) :: divDx, divDy, divDz
       ! local
       doubleprecision, dimension(4) :: v000
       doubleprecision, dimension(4) :: v100
@@ -2017,6 +2018,7 @@ contains
   end subroutine pr_DispersionDivergenceDischarge
 
 
+
   subroutine pr_DisplacementRandomDischarge( this, x, y, z, alphaL, alphaT, Dmol, dBx, dBy, dBz ) 
       !----------------------------------------------------------------
       ! Computes the product between displacement matrix and random 
@@ -2037,7 +2039,7 @@ contains
       doubleprecision, intent(in)    :: x, y, z
       doubleprecision, intent(in)    :: alphaL, alphaT, Dmol
       ! output
-      doubleprecision, intent(inout) :: dBx, dBy, dBz
+      doubleprecision, intent(out) :: dBx, dBy, dBz
       ! local
       doubleprecision :: vBx, vBy, vBz, vBnorm, vBnormxy
       doubleprecision :: B11, B12, B13, B21, B22, B23, B31, B32
@@ -2125,7 +2127,7 @@ contains
       implicit none
       class(TrackSubCellType) :: this 
       ! input/output
-      doubleprecision, intent(inout) :: random_value
+      doubleprecision, intent(out) :: random_value
       ! local
       doubleprecision :: harvest(12)
       !----------------------------------------------------------------
@@ -2152,8 +2154,8 @@ contains
   type(ModpathCellDataType) :: currentCellData
   type(ModpathCellDataType), dimension(2,18) :: neighborCellData
   integer, dimension(18,3)         :: neighborSubCellIndexes   ! nbcell, subRow, subColumn
-  doubleprecision, dimension(18,6) :: neighborSubCellFaceFlows ! nbcell, flowFaceNumber
-  doubleprecision, dimension(18,3) :: neighborSubCellFaceAreas ! nbcell, faceDirection
+  doubleprecision, dimension(6,18) :: neighborSubCellFaceFlows ! nbcell, flowFaceNumber
+  doubleprecision, dimension(3,18) :: neighborSubCellFaceAreas ! nbcell, faceDirection
   doubleprecision, dimension(18)   :: neighborSubCellVolume   
   doubleprecision, dimension(18)   :: neighborSubCellPorosity 
   doubleprecision, dimension(6)    :: centerSubCellFaceFlows
@@ -2196,10 +2198,10 @@ contains
       class (ModpathCellDataType), intent(in) :: centerCellData 
       class (ModpathCellDataType), dimension(2,18), intent(in) :: neighborCellData 
       integer, dimension(18,3), intent(in) ::  neighborSubCellIndexes ! nCellBuffer, subRow, subCol
-      doubleprecision, dimension(18,6), intent(inout) :: neighborSubCellFaceFlows ! faceFlows
-      doubleprecision, dimension(18,3), intent(inout) :: neighborSubCellFaceAreas ! faceAreas
-      doubleprecision, dimension(18)  , intent(inout) :: neighborSubCellVolume    ! volumes
-      doubleprecision, dimension(18)  , intent(inout) :: neighborSubCellPorosity  ! porosities
+      doubleprecision, dimension(6,18), intent(out) :: neighborSubCellFaceFlows ! faceFlows
+      doubleprecision, dimension(3,18), intent(out) :: neighborSubCellFaceAreas ! faceAreas
+      doubleprecision, dimension(18)  , intent(out) :: neighborSubCellVolume    ! volumes
+      doubleprecision, dimension(18)  , intent(out) :: neighborSubCellPorosity  ! porosities
       logical :: skipSubCells = .false.
       integer :: subConnectionIndex, neighborSubRow, neighborSubColumn
       integer :: n, m
@@ -2215,26 +2217,26 @@ contains
 
       ! If current cell is not refined
       if ( centerCellData%GetSubCellCount() .eq. 1 ) then 
-        ! Cell is not refined then neighbors
-        ! have the same size, some maybe refined
-        ! due to connections with smaller cells.
-        ! Skip sub cell indexation in such case. 
-        do n = 1,18
-            skipSubCells = .false.
+          ! Cell is not refined then neighbors
+          ! have the same size, some maybe refined
+          ! due to connections with smaller cells.
+          ! Skip sub cell indexation in such case. 
+          skipSubCells = .true.
+          do n = 1,18
 
-            call neighborCellData( &
-                1, neighborSubCellIndexes( n, 1 ) )%FillSubCellFaceFlows( 1, 1, &
-                                  neighborSubCellFaceFlows( n, : ), skipSubCells )
-            call neighborCellData( & 
-                1, neighborSubCellIndexes( n, 1 ) )%FillSubCellFaceAreas( neighborSubCellFaceAreas( n, : ), skipSubCells ) 
+              call neighborCellData( &
+                  1, neighborSubCellIndexes( n, 1 ) )%FillSubCellFaceFlows( 1, 1, &
+                                    neighborSubCellFaceFlows( :, n ), skipSubCells )
+              call neighborCellData( & 
+                  1, neighborSubCellIndexes( n, 1 ) )%FillSubCellFaceAreas( neighborSubCellFaceAreas( :, n ), skipSubCells ) 
 
-            neighborSubCellVolume(n)   = neighborCellData( 1, neighborSubCellIndexes( n, 1 ) )%GetVolume( skipSubCells )
-            neighborSubCellPorosity(n) = neighborCellData( 1, neighborSubCellIndexes( n, 1 ) )%Porosity
+              neighborSubCellVolume(n)   = neighborCellData( 1, neighborSubCellIndexes( n, 1 ) )%GetVolume( skipSubCells )
+              neighborSubCellPorosity(n) = neighborCellData( 1, neighborSubCellIndexes( n, 1 ) )%Porosity
 
-        end do
+          end do
 
-        ! Done 
-        return
+          ! Done 
+          return
 
       end if  
 
@@ -2247,9 +2249,9 @@ contains
           if ( neighborSubCellIndexes( n, 1 ) .eq. 0 ) then
               call centerCellData%FillSubCellFaceFlowsBuffer( &
                                 neighborSubCellIndexes( n, 2 ), neighborSubCellIndexes( n, 3 ), & 
-                                                               neighborSubCellFaceFlows( n, : ) )
+                                                               neighborSubCellFaceFlows( :, n ) )
 
-              call centerCellData%FillSubCellFaceAreas( neighborSubCellFaceAreas( n, : ), skipSubCells )
+              call centerCellData%FillSubCellFaceAreas( neighborSubCellFaceAreas( :, n ), skipSubCells )
 
               neighborSubCellVolume(n)   = centerCellData%GetVolume( skipSubCells )
               neighborSubCellPorosity(n) = centerCellData%Porosity
@@ -2320,10 +2322,10 @@ contains
 
           ! Fill variables 
           call neighborCellData( subConnectionIndex, neighborSubCellIndexes( n, 1 ) )%FillSubCellFaceFlows( &
-                          neighborSubRow, neighborSubColumn, neighborSubCellFaceFlows( n, : ), skipSubCells )
+                          neighborSubRow, neighborSubColumn, neighborSubCellFaceFlows( :, n ), skipSubCells )
 
           call neighborCellData( subConnectionIndex, neighborSubCellIndexes( n, 1 ) )%FillSubCellFaceAreas( &
-                                                             neighborSubCellFaceAreas( n, : ), skipSubCells )  
+                                                             neighborSubCellFaceAreas( :, n ), skipSubCells )  
 
           neighborSubCellVolume(n)   = neighborCellData(&
               subConnectionIndex, neighborSubCellIndexes( n, 1 ) )%GetVolume( skipSubCells )
@@ -2351,8 +2353,8 @@ contains
   class(TrackSubCellType) :: this
   ! input
   type(ModpathCellDataType) :: currentCellData
-  doubleprecision, dimension(18,6), intent(in) :: neighborSubCellFaceFlows ! nbcell, flowFaceNumber
-  doubleprecision, dimension(18,3), intent(in) :: neighborSubCellFaceAreas ! nbcell, faceDirection
+  doubleprecision, dimension(6,18), intent(in) :: neighborSubCellFaceFlows ! nbcell, flowFaceNumber
+  doubleprecision, dimension(3,18), intent(in) :: neighborSubCellFaceAreas ! nbcell, faceDirection
   ! local
   doubleprecision, dimension(6) :: centerSubCellFaceFlows
   integer :: n, m
@@ -2416,8 +2418,8 @@ contains
   class( TrackSubCellType ) :: this
   ! input
   doubleprecision, dimension(6)   , intent(in) :: centerSubCellFaceFlows 
-  doubleprecision, dimension(18,6), intent(in) :: neighborSubCellFaceFlows
-  doubleprecision, dimension(18,3), intent(in) :: neighborSubCellFaceAreas
+  doubleprecision, dimension(6,18), intent(in) :: neighborSubCellFaceFlows
+  doubleprecision, dimension(3,18), intent(in) :: neighborSubCellFaceAreas
   integer, intent(in) :: cornerIndex, faceDirection
   ! local
   doubleprecision :: sumArea, sumFlowRate = 0d0
@@ -2433,30 +2435,30 @@ contains
              sumFlowRate = centerSubCellFaceFlows( this%cornerXComponentIndexes( cornerIndex, 4 ) )
              do m = 1, 3
                  sumArea = sumArea + &
-                     neighborSubCellFaceAreas( this%cornerXComponentIndexes( cornerIndex, m ), 1 )
+                     neighborSubCellFaceAreas( 1, this%cornerXComponentIndexes( cornerIndex, m ) )
                  sumFlowRate = sumFlowRate + & 
-                     neighborSubCellFaceFlows( this%cornerXComponentIndexes( cornerIndex, m ) , &
-                                               this%cornerXComponentIndexes( cornerIndex, 4 ) )  
+                     neighborSubCellFaceFlows( this%cornerXComponentIndexes( cornerIndex, 4 ) , &
+                                               this%cornerXComponentIndexes( cornerIndex, m ) )  
              end do
          case (2)
              sumArea     = this%SubCellData%DX*this%SubCellData%DZ
              sumFlowRate = centerSubCellFaceFlows( this%cornerYComponentIndexes( cornerIndex, 4 ) )
              do m = 1, 3
                  sumArea = sumArea + &
-                     neighborSubCellFaceAreas( this%cornerYComponentIndexes( cornerIndex, m ), 2 )
+                     neighborSubCellFaceAreas( 2, this%cornerYComponentIndexes( cornerIndex, m ) )
                  sumFlowRate = sumFlowRate + & 
-                     neighborSubCellFaceFlows( this%cornerYComponentIndexes( cornerIndex, m ) , &
-                                               this%cornerYComponentIndexes( cornerIndex, 4 ) )  
+                     neighborSubCellFaceFlows( this%cornerYComponentIndexes( cornerIndex, 4 ) , &
+                                               this%cornerYComponentIndexes( cornerIndex, m ) )  
              end do
          case (3)
              sumArea     = this%SubCellData%DX*this%SubCellData%DY
              sumFlowRate = centerSubCellFaceFlows( this%cornerZComponentIndexes( cornerIndex, 4 ) )
              do m = 1, 3
                  sumArea = sumArea + &
-                     neighborSubCellFaceAreas( this%cornerZComponentIndexes( cornerIndex, m ), 3 )
+                     neighborSubCellFaceAreas( 3, this%cornerZComponentIndexes( cornerIndex, m ) )
                  sumFlowRate = sumFlowRate + & 
-                     neighborSubCellFaceFlows( this%cornerZComponentIndexes( cornerIndex, m ) , &
-                                               this%cornerZComponentIndexes( cornerIndex, 4 ) )  
+                     neighborSubCellFaceFlows( this%cornerZComponentIndexes( cornerIndex, 4 ) , &
+                                               this%cornerZComponentIndexes( cornerIndex, m ) )  
              end do
      end select 
  

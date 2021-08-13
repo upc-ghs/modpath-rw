@@ -463,10 +463,6 @@ contains
       do count = 1, 100
 
           ! RWPT
-          ! It is possible that computation of corner velocities should 
-          ! be done here. At this point, subRow, subColumn are known 
-          ! for the corresponding case.
-
           call this%TrackSubCell%ExecuteRandomWalkParticleTracking( stopIfNoSubCellExit,subLoc, &
                                                maximumTime, subCellResult, this%TrackingOptions )
       
