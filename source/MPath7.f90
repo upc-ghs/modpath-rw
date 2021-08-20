@@ -63,7 +63,7 @@
     class(RectangularGridDisuMfusgType), allocatable, target :: disuMfusgGrid
 
     type(TimeDiscretizationDataType), allocatable :: tdisData
-    type(ParticleTrackingEngineType), allocatable,target :: trackingEngine
+    type(ParticleTrackingEngineType) :: trackingEngine
     type(FlowModelDataType), allocatable :: flowModelData
     type(ModpathBasicDataType), allocatable, target :: basicData
     type(ModpathSimulationDataType), allocatable, target :: simulationData
@@ -99,9 +99,9 @@
     character(len=75) terminationMessage
     character(len=80) compilerVersionText
     logical :: isTimeSeriesPoint, timeseriesRecordWritten
-    
 !---------------------------------------------------------------------------------
-    
+
+
     ! Set version
 !!    version = '7.2.002'
     version = '7.2.002 PROVISIONAL'    ! kluge provisional
@@ -345,7 +345,6 @@
 
     ! Initialize the particle tracking engine:
     call ulog('Allocate particle tracking engine component.', logUnit)
-    allocate(trackingEngine)
     allocate(flowModelData)
     call flowModelData%Initialize(headReader, budgetReader, modelGrid,&
                                     basicData%HNoFlow, basicData%HDry )
@@ -582,10 +581,8 @@
     itend = 0
     call ulog('Begin TRACKING_INTERVAL_LOOP', logUnit)
     TRACKING_INTERVAL_LOOP: do while (itend .eq. 0)
-    
-
-    print *, '-------------------------------------------------------------------------------'
-
+   
+    print *, '---------------------------------------------------------------------'
 
     itend = 1
     maxTime = tsMax
@@ -610,16 +607,17 @@
     activeCount = 0
     if(simulationData%ParticleGroupCount .gt. 0) then
         do groupIndex = 1, simulationData%ParticleGroupCount
-            !$omp parallel do schedule( dynamic,1 )          &
+            !$omp parallel do schedule( dynamic, 1 )         &
             !$omp default( none )                            &
-            !$omp shared( groupIndex )                       &
             !$omp shared( simulationData, modelGrid )        &
+            !$omp shared( flowModelData )                    &
             !$omp shared( geoRef )                           &
             !$omp shared( pathlineUnit, binPathlineUnit )    &
             !$omp shared( timeseriesUnit, traceModeUnit )    &
             !$omp shared( period, step, ktime, nt )          &
             !$omp shared( time, maxTime, isTimeSeriesPoint ) &
             !$omp shared( tPoint, tPointCount )              &
+            !$omp shared( groupIndex )                       &
             !$omp private( p, traceModeOn )                  &
             !$omp private( topActiveCellNumber )             &
             !$omp private( pLoc, plCount, tsCount )          &
@@ -630,7 +628,7 @@
             !$omp firstprivate( trackingEngine )             &
             !$omp reduction( +:pendingCount )                &
             !$omp reduction( +:activeCount )                 &
-            !$omp reduction( +:pathlineRecordCount ) 
+            !$omp reduction( +:pathlineRecordCount )
             do particleIndex = 1, simulationData%ParticleGroups(groupIndex)%TotalParticleCount
                 timeseriesRecordWritten = .false.
                 p => simulationData%ParticleGroups(groupIndex)%Particles(particleIndex)
@@ -839,7 +837,6 @@
     if(allocated(headReader)) deallocate(headReader)
     if(allocated(budgetReader)) deallocate(budgetReader)
     if(allocated(tdisData)) deallocate(tdisData)
-    if(allocated(trackingEngine)) deallocate(trackingEngine)
     if(allocated(flowModelData)) deallocate(flowModelData)
     if(allocated(basicData)) deallocate(basicData)
     if(allocated(simulationData)) deallocate(simulationData)
