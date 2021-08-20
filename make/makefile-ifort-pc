@@ -18,8 +18,6 @@ ${SOURCEDIR1}
 # Define the Fortran compile flags
 FC = ifort
 FFLAGS = -Ofast -traceback -qopenmp -ipo
-#FFLAGS = -O2 -traceback -qopenmp
-#FFLAGS = -O0 -traceback -qopenmp -g -debug all -ftrapuv
 
 
 # Define the C compile flags
