@@ -71,6 +71,7 @@ $(OBJDIR)/RectangularGridDis.o \
 $(OBJDIR)/TrackPathResult.o \
 $(OBJDIR)/TrackCellResult.o \
 $(OBJDIR)/TrackCell.o \
+$(OBJDIR)/FlowModelData.o \
 $(OBJDIR)/ParticleTrackingEngine.o \
 $(OBJDIR)/ModpathCellDataContainer.o \
 $(OBJDIR)/ParticleManager.o \
