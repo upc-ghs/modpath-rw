@@ -50,6 +50,7 @@
     use BudgetRecordHeaderModule,only : BudgetRecordHeaderType
     use GeoReferenceModule,only : GeoReferenceType
     use CompilerVersion,only : get_compiler
+    use omp_lib
     implicit none
     
     ! Variables declarations
@@ -99,6 +100,21 @@
     character(len=75) terminationMessage
     character(len=80) compilerVersionText
     logical :: isTimeSeriesPoint, timeseriesRecordWritten
+
+
+
+    ! DEV PARALLEL OUTPUT
+    !integer :: nObservations
+    !logical :: observationSimulation = .false.
+    !integer, allocatable, dimension(:) :: observationCells
+    !integer, allocatable, dimension(:) :: observationUnits
+    !character(len=50), allocatable, dimension(:) :: observationFiles
+
+    integer :: ompNumThreads
+    integer :: ompThreadId
+    integer, allocatable, dimension(:) :: timeseriesTempUnits
+    character(len=50), allocatable, dimension(:) :: timeseriesTempFiles
+    character(len=50) :: tempChar
 !---------------------------------------------------------------------------------
 
 
@@ -132,7 +148,54 @@
      traceModeUnit = 115
      binPathlineUnit = 116
      gridMetaUnit = 117
-     
+
+
+
+    ! DEV PARALLEL OUTPUT
+    !ompNumThreads = omp_get_num_threads()
+    ompNumThreads = omp_get_max_threads()
+    !allocate( timeseriesTempUnits(ompNumThreads) )
+    !allocate( timeseriesTempFiles(ompNumThreads) )
+
+    !! Initialize timeseries parallel units
+    !do m = 1, ompNumThreads
+    !    timeseriesTempUnits( m ) = 6600 + m
+    !    write( unit=timseriesTempFiles( m ), fmt='(a)' )'parallelts_'//trim(adjustl( m ))//'.ts'
+    !    !open( unit=timeseriesTempUnits( m ),     &
+    !    !      file=timeseriesTempFiles( m ),     & 
+    !    !      status='replace', form='formatted', access='sequential')
+    !end do
+
+    !! Set units and file names
+    !do m = 1, ompNumThreads
+    !    !read(inUnit, '(a)', iostat=ioInUnit) line
+    !    !icol = 1
+    !    !call urword(line, icol, istart, istop, 2, n, r, 0, 0)
+    !    !this%TrackingOptions%observationCells( nc ) = n
+    !    ! 5500 is just to move to a known place of id units, improve
+    !    !this%TrackingOptions%observationUnits( nc ) = 5500 + nc
+    !    timeseriesTempUnits( m ) = 6600 + m
+    !    !! Write the cell ID
+    !    !write( unit=tempChar, fmt=* )this%TrackingOptions%observationCells( nc )
+    !    !! Write the output file name
+    !    write( unit=timseriesTempFiles( m ), fmt='(a)' )'parallelts_'//trim(adjustl( m ))//'.ts'
+    !end do
+
+    !! Init timeseries output units
+    !do m = 1, ompNumThreads
+    !    open( unit=timeseriesTempUnits( m ),     &
+    !          file=timeseriesTempFiles( m ),     & 
+    !          status='replace', form='formatted', access='sequential')
+    !end do
+
+    !! Close timeseries units
+    !do m = 1, ompNumThreads
+    !    close( timeseriesTempUnits( m ) )
+    !end do
+
+    ! END DEV PARALLEL OUTPUT
+
+
     ! Parse the command line for simulation file name, log file name, and options
     call ParseCommandLine(mpsimFile, mplogFile, logType)
     ! Open the log file (unless -nolog option)
@@ -444,6 +507,26 @@
         call WriteTimeseriesHeader(timeseriesUnit,                              &
           simulationData%TrackingDirection, simulationData%ReferenceTime,       &
           modelGrid%OriginX, modelGrid%OriginY, modelGrid%RotationAngle)
+
+        ! DEV PARALLEL OUTPUT
+        ! SHOULD INITIALIZE TEMPORAL UNITS IF PARALLEL
+        allocate( timeseriesTempUnits(ompNumThreads) )
+        allocate( timeseriesTempFiles(ompNumThreads) )
+
+        ! Initialize timeseries parallel units
+        do m = 1, ompNumThreads
+            timeseriesTempUnits( m ) = 6600 + m
+            write( unit=tempChar, fmt=* )m 
+            write( unit=timeseriesTempFiles( m ), fmt='(a)' )'parallelts_'//trim(adjustl(tempChar))//'.ts'
+            open( unit=timeseriesTempUnits( m ),     &
+                  file=timeseriesTempFiles( m ),     & 
+                  status='replace', form='formatted', access='sequential')
+        end do
+
+        print *, ompNumThreads
+        print *, timeseriesTempUnits
+        print *, timeseriesTempFiles
+
     end if
     if(simulationData%TraceMode .gt. 0) then
         open(unit=traceModeUnit, file=simulationData%TraceFile,                 &
@@ -599,8 +682,20 @@
               isTimeSeriesPoint = .true.
             end if
         end if
+
+        !! Initialize timeseries parallel units
+        !do m = 1, ompNumThreads
+        !    !timeseriesTempUnits( m ) = 6600 + m
+        !    !write( unit=timseriesTempFiles( m ), fmt='(a)' )'parallelts_'//trim(adjustl( m ))//'.ts'
+        !    open( unit=timeseriesTempUnits( m ),     &
+        !          file=timeseriesTempFiles( m ),     & 
+        !          status='replace', form='formatted', access='sequential')
+        !end do
     end if
-    
+   
+
+
+
     ! Track particles
     pendingCount = 0
     activeCount = 0
@@ -613,6 +708,8 @@
             !$omp shared( geoRef )                           &
             !$omp shared( pathlineUnit, binPathlineUnit )    &
             !$omp shared( timeseriesUnit, traceModeUnit )    &
+            !$omp shared( timeseriesTempUnits )              &
+            !$omp shared( timeseriesTempFiles )              &
             !$omp shared( period, step, ktime, nt )          &
             !$omp shared( time, maxTime, isTimeSeriesPoint ) &
             !$omp shared( tPoint, tPointCount )              &
@@ -624,6 +721,7 @@
             !$omp private( pCoordTP, pCoord )                &
             !$omp private( trackPathResult, status )         &
             !$omp private( timeseriesRecordWritten )         &
+            !$omp private( ompThreadId )                     &
             !$omp firstprivate( trackingEngine )             &
             !$omp reduction( +:pendingCount )                &
             !$omp reduction( +:activeCount )                 &
@@ -753,12 +851,20 @@
                     if(simulationData%SimulationType .ge. 3) then
                         if(tsCount .gt. 0) then
                             ! Write timeseries record to the timeseries file
-                            !$omp critical (timeseries)
+                            !!$omp critical (timeseries)
+                            !pCoordTP => trackPathResult%ParticlePath%Timeseries%Items(1)
+                            !call WriteTimeseriesRecord(p%SequenceNumber, p%ID,  &
+                            !  groupIndex, ktime, nt, pCoordTP, geoRef, timeseriesUnit)
+                            !!$omp end critical (timeseries)
+                            !timeseriesRecordWritten = .true.
+
+                            ! SO IF PARALLEL OUTPUT
+                            ompThreadId = omp_get_thread_num()
                             pCoordTP => trackPathResult%ParticlePath%Timeseries%Items(1)
                             call WriteTimeseriesRecord(p%SequenceNumber, p%ID,  &
-                              groupIndex, ktime, nt, pCoordTP, geoRef, timeseriesUnit)
-                            !$omp end critical (timeseries)
+                              groupIndex, ktime, nt, pCoordTP, geoRef, timeseriesTempUnits( ompThreadId+1 ))
                             timeseriesRecordWritten = .true.
+
                         end if
                     end if
                 end if
@@ -787,7 +893,15 @@
             !$omp end parallel do
         end do
     end if
-    
+
+    ! DEV PARALLEL OUTPUT
+    ! SHOULD MERGE
+    ! Close timeseries units
+    !do m = 1, ompNumThreads
+    !    close( timeseriesTempUnits( m ) )
+    !end do
+
+
     ! Update tracking time
     time = maxTime
     
