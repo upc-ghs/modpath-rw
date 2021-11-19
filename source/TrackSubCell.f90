@@ -273,7 +273,7 @@ contains
       end if
       
       ! Assign tracking result data
-     trackingResult%ExitFaceConnection = this%SubCellData%Connection(exitFace)
+      trackingResult%ExitFaceConnection = this%SubCellData%Connection(exitFace)
       if(this%SubCellData%Connection(exitFace) .lt. 0) then
           trackingResult%Status = trackingResult%Status_ExitAtInternalFace()
       else
@@ -635,7 +635,7 @@ contains
                   dyrw = dAdvy + divDy*dt + dBy*sqrt( dt )
                   nx = x + dxrw/dx
                   ny = y + dyrw/dy
-                  z = 1.0d0
+                  nz = 1.0d0
                   if ( exitFace .eq. 5 ) nz=0d0
               else
                   ! Restart nx, ny, nz and try again
@@ -669,30 +669,114 @@ contains
           end do
 
           ! Report and leave
-          if ( (reachedMaximumTime) .or. ( exitFace .ne. 0 ) ) then
+          if ( ( reachedMaximumTime ) .or. ( exitFace .ne. 0 ) ) then
               if (reachedMaximumTime) then
                   ! In this case it is allowed for a particle
                   ! to reach the maximum time and eventually have an exit face
                   trackingResult%Status = trackingResult%Status_ReachedMaximumTime()
-              else
-                  trackingResult%ExitFaceConnection = this%SubCellData%Connection(exitFace)
-                  if(this%SubCellData%Connection(exitFace) .lt. 0) then
-                      ! This is the case for unstructured grid
-                      trackingResult%Status = trackingResult%Status_ExitAtInternalFace()
-                  else
-                      trackingResult%Status = trackingResult%Status_ExitAtCellFace()
-                  end if
-              end if
-              trackingResult%ExitFace = exitFace
-              trackingResult%FinalLocation%CellNumber = cellNumber
-              trackingResult%FinalLocation%LocalX = nx
-              trackingResult%FinalLocation%LocalY = ny
-              trackingResult%FinalLocation%LocalZ = nz
-              trackingResult%FinalLocation%TrackingTime = t
-              continueTimeLoop = .false.
 
-              ! Done
-              return
+                  trackingResult%ExitFace = exitFace
+                  trackingResult%FinalLocation%CellNumber = cellNumber
+                  trackingResult%FinalLocation%LocalX = nx
+                  trackingResult%FinalLocation%LocalY = ny
+                  trackingResult%FinalLocation%LocalZ = nz
+                  trackingResult%FinalLocation%TrackingTime = t
+                  continueTimeLoop = .false.
+
+                  ! Done
+                  return
+
+              else
+
+                  ! Depending on status for cell 
+                  ! in ExitFaceConnection determine what happens to 
+                  ! the particle 
+                  if( this%SubCellData%Connection(exitFace) .lt. 0 ) then
+                      ! Internal transfer. This is the case for unstructured grid
+                      trackingResult%Status = trackingResult%Status_ExitAtInternalFace()
+                      trackingResult%ExitFaceConnection = this%SubCellData%Connection(exitFace)
+
+                      trackingResult%ExitFace = exitFace
+                      trackingResult%FinalLocation%CellNumber = cellNumber
+                      trackingResult%FinalLocation%LocalX = nx
+                      trackingResult%FinalLocation%LocalY = ny
+                      trackingResult%FinalLocation%LocalZ = nz
+                      trackingResult%FinalLocation%TrackingTime = t
+                      continueTimeLoop = .false.
+
+                      ! Done
+                      return
+
+                  else if( this%SubCellData%Connection(exitFace) .gt. 0 ) then
+                      ! Is another active cell
+                      trackingResult%Status = trackingResult%Status_ExitAtCellFace()
+                      trackingResult%ExitFaceConnection = this%SubCellData%Connection(exitFace)
+
+                      trackingResult%ExitFace = exitFace
+                      trackingResult%FinalLocation%CellNumber = cellNumber
+                      trackingResult%FinalLocation%LocalX = nx
+                      trackingResult%FinalLocation%LocalY = ny
+                      trackingResult%FinalLocation%LocalZ = nz
+                      trackingResult%FinalLocation%TrackingTime = t
+                      continueTimeLoop = .false.
+
+                      ! Done
+                      return
+
+                  else
+                      ! Is zero, a boundary, inactive
+                      !trackingResult%Status = trackingResult%Status_ExitAtCellFace()
+                      !print *, '** TrackSubCell: cellNumber, exitFace', cellNumber, exitFace
+                      !print *, '** TrackSubCell: Connection(exitFace)', this%SubCellData%Connection(exitFace)
+
+                      ! NOTE: ExitFaceConnection from trackingResult is then 
+                      ! employed at TrackCell
+
+                      ! To impose a impermeable boundary condition ?
+                      ! Impermeable means that particle does not leaves
+                      ! current cell 
+
+                      ! It should continue displacing the particle
+                      ! So there is not exitFace in this case 
+                      !exitFace = 0
+
+                      ! continueTimeLoop remains .true.
+                      
+                      ! The problem is dInterface, beacause 
+                      ! as the particle will remain with ni = 1 .or. 0,
+                      ! with dInterface = 0.0, then the algorithm
+                      ! for moving the particle to the interface will continue 
+                      ! to throw that particle is transfered to 
+                      ! the inactive cell.
+
+                      ! A first approach would be displace 
+                      ! the particle back. Which delta t ?
+
+                      ! A more simple solution is to 
+                      ! simply cancel the displacement in the conflicting
+                      ! direction and restart the time step  
+                      if ( ( exitFace .eq. 1 ) .or. ( exitFace .eq. 2 ) ) then 
+                         ! x-direction
+                         nx = x
+                      else if ( ( exitFace .eq. 3 ) .or. ( exitFace .eq. 4 ) ) then 
+                         ! y-direction
+                         ny = y
+                      else
+                         ! z-direction
+                         nz = z
+                      end if 
+
+                      ! Restart the time step
+                      dt = dtold
+
+                      ! No exitFace
+                      exitFace = 0
+
+                      ! And continue the show
+
+                  end if
+
+              end if
 
           end if
 

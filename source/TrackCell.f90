@@ -373,6 +373,7 @@ contains
       
       ! If the initial location cell is inactive for this time step, set status to InactiveCell
       if(this%CellData%IboundTS .eq. 0) then
+          print *, 'IT SHOULD NOT HAPPEN, INITIAL LOCALTION INACTIVE CELL'
           trackCellResult%Status = trackCellResult%Status_InactiveCell()
           return
       end if

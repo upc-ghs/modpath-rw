@@ -757,7 +757,9 @@ contains
                         call this%LocBuffP%AddItem(this%TrackCellResult%TrackingPoints%Items(n))
                     end do 
                 end if
-                
+               
+                !! SOMEWHERE AROUND THIS BLOCK SHOULD SOLVE THE RWPT PARTICLE REBOUND
+
                 ! If NextCellNumber is > 0, it means the particle has moved to another cell. 
                 ! If so, convert loc from the current cell coordinates to the equivalent location in the new cell.
                 nextCell = this%TrackCellResult%NextCellNumber
@@ -773,12 +775,14 @@ contains
                           fromLocalZ, loc)
                         loc%TrackingTime = this%TrackCellResult%TrackingPoints%Items(count)%TrackingTime
                     else
+                        print *, 'INACTIVEEEE', nextCell
                         ! If next cell is inactive, it implies that a boundary face has been reached. 
                         ! Set status and return.
                         continueLoop = .false.
                         trackPathResult%Status = trackPathResult%Status_ReachedBoundaryFace()        
                     end if
                 else
+                    print *, 'CELLNUMBER ', nextCell 
                     ! If next cell number = 0, the boundary of the grid has been reached. 
                     ! Set status and return.
                     continueLoop = .false.

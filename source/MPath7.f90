@@ -418,7 +418,10 @@
     if(simulationData%SimulationType .eq. 2) then
         tPointCount = simulationData%TimePointCount
         if(tPointCount .gt. 0) tPointCount = 1
-    else if(simulationData%SimulationType .ge. 3) then
+    ! RWPT
+    !else if( (simulationData%SimulationType .ge. 3) ) then
+    else if( (simulationData%SimulationType .ge. 3) .and. &
+             (simulationData%SimulationType .lt. 7) ) then
         tPointCount = 1
     end if
     if(allocated(tPoint)) deallocate(tPoint)
@@ -549,7 +552,10 @@
     
     ! If simulation type is TIMESERIES, write initial locations of all particles active at tracking time = 0,
     ! or all particles regardless of status if that option is set
-    if((simulationData%SimulationType .ge.3) .and. (ktime .eq. kfirst)) then
+    ! RWPT
+    if( (simulationData%SimulationType .ge. 3) .and. & 
+        (simulationData%SimulationType .lt. 7) .and. (ktime .eq. kfirst) ) then
+    !if((simulationData%SimulationType .ge.3) .and. (ktime .eq. kfirst)) then
         do groupIndex =1, simulationData%ParticleGroupCount
             do particleIndex = 1, simulationData%ParticleGroups(groupIndex)%TotalParticleCount
                 ! Add code
@@ -591,7 +597,9 @@
     itend = 1
     maxTime = tsMax
     isTimeSeriesPoint = .false.
-    if(simulationData%SimulationType .gt. 1) then     
+    ! RWPT
+    if( (simulationData%SimulationType .gt. 1) .and. (simulationData%SimulationType .lt. 7) ) then     
+    !if(simulationData%SimulationType .gt. 1) then     
         ! For timeseries and pathline runs, find out if maxTime should be set to the value of the
         ! next time point or the time at the end of the time step
         if (nt+1 .le. simulationData%TimePointCount) then
@@ -720,18 +728,25 @@
                     status = trackPathResult%Status
                     if(  status .eq. trackPathResult%Status_ReachedBoundaryFace()) then
                         p%Status = 2
+                        print *, 'BOUNDARY'
                     else if(status .eq. trackPathResult%Status_StopAtWeakSink()) then
                         p%Status = 3
+                        print *, 'WEAKSINK'
                     else if(status .eq. trackPathResult%Status_StopAtWeakSource()) then
                         p%Status = 4
+                        print *, 'WEAKSOURCE'
                     else if(status .eq. trackPathResult%Status_NoExitPossible()) then
                         p%Status = 5
+                        print *, 'WEAKSOURCE'
                     else if(status .eq. trackPathResult%Status_StopZoneCell()) then
                         p%Status = 6
+                        print *, 'STOPZONE'
                     else if(status .eq. trackPathResult%Status_InactiveCell()) then
                         p%Status = 7
+                        print *, 'INACTIVE'
                     else if(status .eq. trackPathResult%Status_Undefined()) then
                         p%Status = 9
+                        print *, 'UNDEFINED'
                     else
                         ! Leave status set to active (status = 1)
                     end if
@@ -771,8 +786,10 @@
                 
                 ! If option is set to write timeseries records for all particles
                 ! regardless of status, write the record if not done already.
-                if((simulationData%SimulationType .ge. 3) .and.                   &
-                   (simulationData%TimeseriesOutputOption .eq. 1) .and.           &
+                ! RWPT
+                if((simulationData%SimulationType .ge. 3) .and.              &
+                   (simulationData%SimulationType .lt. 7) .and.              &
+                   (simulationData%TimeseriesOutputOption .eq. 1) .and.      &
                    (isTimeSeriesPoint) .and. (.not.timeseriesRecordWritten)) then
                       pCoord%CellNumber = p%CellNumber
                       pCoord%Layer = p%Layer

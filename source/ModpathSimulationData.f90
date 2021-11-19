@@ -259,6 +259,12 @@ contains
             call urword(this%AdvectiveObservationsFile, icol, istart, istop, 0, n, r,0,0)
             this%AdvectiveObservationsFile = this%AdvectiveObservationsFile(istart:istop)
           end if
+      case(7)
+          write(outUnit,'(A,I2,A)') 'RWPT Endpoint Analysis (Simulation type =', this%SimulationType, ')'
+          read(inUnit, '(a)') this%EndpointFile
+          icol = 1
+          call urword(this%EndpointFile,icol,istart,istop,0,n,r,0,0)
+          this%EndpointFile = this%EndpointFile(istart:istop)
       case default
           call ustop('Invalid simulation type. Stop.')
   end select
@@ -284,7 +290,9 @@ contains
  
   ! RWPT 
   ! Only allow forward tracking for RWPT simulations
-  if ( ( ( this%SimulationType .eq. 5 ) .or. ( this%SimulationType .eq. 6 ) ) &
+  if ( ( ( this%SimulationType .eq. 5 ) .or.  &
+         ( this%SimulationType .eq. 6 ) .or.  & 
+         ( this%SimulationType .eq. 7 )    )  &
       .and. ( this%TrackingDirection .eq. 2 ) ) then 
       call ustop('Random Walk Particle Tracking only accepts Forward tracking. Stop.')
   end if
@@ -545,7 +553,9 @@ contains
 
     ! RWPT
     ! Assign specific RWPT options 
-    if ( (this%SimulationType .eq. 5) .or. (this%SimulationType .eq. 6) ) then
+    if ( (this%SimulationType .eq. 5) .or. & 
+         (this%SimulationType .eq. 6) .or. & 
+         (this%SimulationType .eq. 7) ) then
 
         ! Identify the simulation 
         this%TrackingOptions%RandomWalkParticleTracking = .true.
