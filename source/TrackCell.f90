@@ -14,7 +14,8 @@ module TrackCellModule
   type,public :: TrackCellType
     type(ModpathCellDataType) :: CellData
     type(ParticleTrackingOptionsType) :: TrackingOptions
-    type(TrackSubCellType),private :: TrackSubCell
+    type(TrackSubCellType) :: TrackSubCell
+    !type(TrackSubCellType),private :: TrackSubCell
     logical :: SteadyState
   contains
     procedure :: ExecuteTracking=>pr_ExecuteTracking
@@ -566,6 +567,10 @@ contains
               trackCellResult%Status = trackCellResult%Status_ExitAtCellFace()
               trackCellResult%ExitFace = subCellResult%ExitFace
               trackCellResult%NextCellNumber = subCellResult%ExitFaceConnection
+
+              ! Assign subCellResult to TrackSubCell (temp)
+              this%TrackSubCell%TrackSubCellResult = subCellResult
+
               return
           else if(subCellResult%Status .eq. subCellResult%Status_ReachedMaximumTime()) then
               pLoc = this%TrackSubCell%SubCellData%ConvertToLocalParentCoordinate(subCellResult%FinalLocation)
@@ -574,9 +579,17 @@ contains
               trackCellResult%Status = trackCellResult%Status_ReachedStoppingTime()
               trackCellResult%ExitFace = subCellResult%ExitFace
               trackCellResult%NextCellNumber = pLoc%CellNumber
+
+              ! Assign subCellResult to TrackSubCell (temp)
+              this%TrackSubCell%TrackSubCellResult = subCellResult
+
               return
           else if(subCellResult%Status .eq. subCellResult%Status_NoExitPossible()) then
               trackCellResult%Status = trackCellResult%Status_NoExitPossible()
+
+              ! Assign subCellResult to TrackSubCell (temp)
+              this%TrackSubCell%TrackSubCellResult = subCellResult
+
               return
           end if
           
