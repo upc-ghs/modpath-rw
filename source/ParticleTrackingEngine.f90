@@ -678,6 +678,9 @@ contains
 
     ! RWPT
     type(ModpathCellDataType), dimension( 2, 18 ) :: neighborCellData
+
+    ! OBS
+    integer   :: idObservationCell
     !---------------------------------------------------------------------------------------------------------------
       
         ! Reset trackPathResult and initialize particleID
@@ -838,7 +841,23 @@ contains
                  this%FlowModelData%GetCurrentTimeStep())
                !$omp end critical (tracedata)
             end if
-            
+        
+            ! If there are observation cells
+            if ( this%TrackingOptions%observationSimulation ) then
+                ! Determine if the current TrackCell is on 
+                ! array of observations cells and extract
+                ! the corresponding unit
+
+                ! Get id of observation cell in observation cell list
+                ! Default is -999
+                idObservationCell = this%TrackingOptions%IdObservationCell( this%TrackCell%CellData%CellNumber ) 
+                if ( idObservationCell .ge. 0 ) then
+                    call WriteObservationCellRecord( this, group, particleID,      &
+                         this%TrackCell,                                           &
+                         this%TrackingOptions%observationUnits( idObservationCell ))
+                end if
+            end if
+
             ! If continueLoop is still set to true, go through the loop again. If set to false, exit the loop now.
         end do
         
@@ -886,7 +905,6 @@ subroutine pr_FillNeighborCellDataUnstructured( this, neighborCellData )
     integer :: n, m, id, cellCounter, firstNeighborFaceNumber
     logical :: forceCellRefinement
     !------------------------------------------------------------------
-
     ! Reset all buffers
     do m = 1, 18 
         call neighborCellData( 1, m )%Reset() 
@@ -1746,6 +1764,48 @@ subroutine pr_FillNeighborCellDataStructured( this, neighborCellData )
 
 
 end subroutine pr_FillNeighborCellDataStructured
+
+
+! OBS
+subroutine WriteObservationCellRecord( this, groupIndex, particleID, trackCell, outUnit)
+    !--------
+    ! Write observation cell record
+    ! Doc me
+    !----------
+    ! Specifications
+    !-----------------
+    implicit none
+    class(ParticleTrackingEngineType) :: this
+    ! input
+    type(TrackCellType), intent(in) :: trackCell
+    integer, intent(in)             :: outUnit, groupIndex, particleID
+    ! local
+    doubleprecision     :: initialGlobalX, initialGlobalY, initialGlobalZ
+    doubleprecision     :: finalGlobalX, finalGlobalY, finalGlobalZ
+    doubleprecision     :: initialTime, finalTime
+    !----------------------------------------------
+
+    initialTime = trackCell%TrackSubCell%TrackSubCellResult%InitialLocation%TrackingTime
+    call this%Grid%ConvertToModelXYZ( trackCell%CellData%CellNumber,      &
+        trackCell%TrackSubCell%TrackSubCellResult%InitialLocation%LocalX, & 
+        trackCell%TrackSubCell%TrackSubCellResult%InitialLocation%LocalY, &
+        trackCell%TrackSubCell%TrackSubCellResult%InitialLocation%LocalZ, &
+        initialGlobalX, initialGlobalY, initialGlobalZ )
+
+    finalTime = trackCell%TrackSubCell%TrackSubCellResult%FinalLocation%TrackingTime
+    call this%Grid%ConvertToModelXYZ( trackCell%CellData%CellNumber,    &
+        trackCell%TrackSubCell%TrackSubCellResult%FinalLocation%LocalX, & 
+        trackCell%TrackSubCell%TrackSubCellResult%FinalLocation%LocalY, &
+        trackCell%TrackSubCell%TrackSubCellResult%FinalLocation%LocalZ, &
+        finalGlobalX, finalGlobalY, finalGlobalZ )
+
+    write(outUnit, '(2I8,es18.9e3,8es18.9e3)')                      &
+      groupIndex, particleID,                                       & 
+      initialTime, initialGlobalX, initialGlobalY, initialGlobalZ,  &
+      finalTime, finalGlobalX, finalGlobalY, finalGlobalZ                        
+
+end subroutine WriteObservationCellRecord
+
 
 
 

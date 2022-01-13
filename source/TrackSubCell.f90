@@ -63,6 +63,9 @@ module TrackSubCellModule
     procedure(Advection), pass, pointer :: AdvectionDisplacement=>null()
     procedure(ExitFaceAndTimeStep), pass, pointer :: ExitFaceAndUpdateTimeStep=>null()
 
+    ! OBS
+    type(TrackSubCellResultType) :: TrackSubCellResult
+
   contains
     procedure,private :: CalculateDT=>pr_CalculateDT
     procedure,private :: NewXYZ=>pr_NewXYZ

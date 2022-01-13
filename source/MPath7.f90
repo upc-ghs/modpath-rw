@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 !  MPath7.f90 
 !  PROGRAM: MPath7
 
