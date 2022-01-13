@@ -50,6 +50,7 @@
     use BudgetRecordHeaderModule,only : BudgetRecordHeaderType
     use GeoReferenceModule,only : GeoReferenceType
     use CompilerVersion,only : get_compiler
+    use GridProjectedKDEModule, only : GridProjectedKDEType
     implicit none
     
     ! Variables declarations
@@ -76,6 +77,8 @@
     type(ParticleType),pointer :: p
     type(BudgetRecordHeaderType) :: budgetRecordHeader
     type(GeoReferenceType) :: geoRef
+    ! GPKDE
+    type(GridProjectedKDEType), allocatable:: gpkde
     doubleprecision,dimension(:),allocatable :: timePoints
     doubleprecision,dimension(:),allocatable :: tPoint
     integer,dimension(7) :: budgetIntervalBins
@@ -99,7 +102,9 @@
     character(len=75) terminationMessage
     character(len=80) compilerVersionText
     logical :: isTimeSeriesPoint, timeseriesRecordWritten
-    
+    ! GPKDE
+    doubleprecision, dimension(:,:), allocatable :: activeParticleCoordinates
+
 !---------------------------------------------------------------------------------
     
     ! Set version
@@ -176,8 +181,9 @@
     write(mplistUnit, '(a)') 'Resources Software User Rights Notice for complete use, copyright,'    
     write(mplistUnit, '(a)') 'and distribution information.'    
     write(mplistUnit, *)
-    
-    
+   
+
+
     ! Read the MODPATH name file
     call ReadNameFile(mpnamFile, mplistUnit, gridFileType)
     
@@ -357,7 +363,37 @@
             basicData%DefaultIfaceValues, basicData%DefaultIfaceCount)
     call trackingEngine%Initialize(modelGrid, simulationData%TrackingOptions, flowModelData)
     ! The trackingEngine initialization is complete
-   
+
+
+    ! GPKDE
+    ! Initialize GPKDE reconstruction 
+    print *, '## TEST: init gpkde' 
+    print *, modelGrid%GridType
+    print *, modelGrid%LayerCount
+    print *, modelGrid%CellCount
+    print *, modelGrid%GetDZ(100) ! requires a cell number
+    print *, modelGrid%RowCount 
+    print *, modelGrid%ColumnCount 
+    !print *, modelGrid%CellX
+    !print *, modelGrid%CellY
+    !allocate( gpkde )
+    !call exit(0)
+    ! Initialization should be performed once grid properties are known.
+    ! Moreover, reconstruction can employ a grid different than flow model grid.
+    ! So for USG grids, reconstructed information could be obtained in a regular
+    ! rectangular grid, given particles position.
+    !call gpkde%Initialize( domainSize, binSize,       &
+    !    minHOverLambda          = minHOverLambda,     & 
+    !    maxHOverLambda          = maxHOverLambda,     & 
+    !    deltaHOverLambda        = deltaHOverLambda,   &
+    !    databaseOptimization    = .true.,             & 
+    !    bruteOptimization       = .true.,             & 
+    !    anisotropicSigmaSupport = .false.,            &
+    !    nOptimizationLoops      = nOptimizationLoops  & 
+    !)
+
+
+
 
     ! Compute range of time steps to use in the time step loop
     message ='Compute range of time steps. Prepare for time step loop'
@@ -371,7 +407,8 @@
         klast = 1
         kincr = -1
     end if 
-    
+
+
     ! Set the appropriate value of stoptime. Start by setting stoptime to correspond to the start or the
     ! end of the simulation (depending on the tracking direction)
     if(simulationData%TrackingDirection .eq. 1) then
@@ -555,7 +592,6 @@
     ! RWPT
     if( (simulationData%SimulationType .ge. 3) .and. & 
         (simulationData%SimulationType .lt. 7) .and. (ktime .eq. kfirst) ) then
-    !if((simulationData%SimulationType .ge.3) .and. (ktime .eq. kfirst)) then
         do groupIndex =1, simulationData%ParticleGroupCount
             do particleIndex = 1, simulationData%ParticleGroups(groupIndex)%TotalParticleCount
                 ! Add code
@@ -599,7 +635,6 @@
     isTimeSeriesPoint = .false.
     ! RWPT
     if( (simulationData%SimulationType .gt. 1) .and. (simulationData%SimulationType .lt. 7) ) then     
-    !if(simulationData%SimulationType .gt. 1) then     
         ! For timeseries and pathline runs, find out if maxTime should be set to the value of the
         ! next time point or the time at the end of the time step
         if (nt+1 .le. simulationData%TimePointCount) then
@@ -776,6 +811,9 @@
                             ! Write timeseries record to the timeseries file
                             !$omp critical (timeseries)
                             pCoordTP => trackPathResult%ParticlePath%Timeseries%Items(1)
+                            ! GPKDE
+                            p%GlobalX = pCoordTP%GlobalX
+                            p%GlobalY = pCoordTP%GlobalY
                             call WriteTimeseriesRecord(p%SequenceNumber, p%ID,  &
                               groupIndex, ktime, nt, pCoordTP, geoRef, timeseriesUnit)
                             !$omp end critical (timeseries)
@@ -800,6 +838,9 @@
                       call modelGrid%ConvertToModelXYZ(pCoord%CellNumber,       &
                         pCoord%LocalX, pCoord%LocalY, pCoord%LocalZ,            &
                         pCoord%GlobalX, pCoord%GlobalY, pCoord%GlobalZ)
+                      ! GPKDE
+                      p%GlobalX = pCoord%GlobalX
+                      p%GlobalY = pCoord%GlobalY
                       !$omp critical (timeseries)
                       call WriteTimeseriesRecord(p%SequenceNumber, p%ID,        &
                         groupIndex, ktime, nt, pCoord, geoRef, timeseriesUnit)
@@ -810,7 +851,43 @@
             !$omp end parallel do
         end do
     end if
-    
+   
+
+    ! GPKDE
+    ! Get active particles coordinates
+    print *, 'ACTIVE: ', activeCount
+    allocate( activeParticleCoordinates(activeCount,3) )
+    ! ONLY one groupIndex
+    groupIndex = 1
+    !do groupIndex = 1, simulationData%ParticleGroupCount
+        !!$omp parallel do           &
+        !!$omp default( none )       &
+        !!$omp shared( groupIndex )  &
+        do particleIndex = 1, simulationData%ParticleGroups(groupIndex)%TotalParticleCount
+            p => simulationData%ParticleGroups(groupIndex)%Particles(particleIndex)
+            ! If active, to the array for GPKDE
+            if(p%Status .eq. 1) then
+                activeParticleCoordinates( particleIndex, 1 ) = p%GlobalX
+                activeParticleCoordinates( particleIndex, 2 ) = p%GlobalY
+                activeParticleCoordinates( particleIndex, 3 ) = p%GlobalZ
+                print *, activeParticleCoordinates( particleIndex, : )
+            end if
+        end do
+        !!$omp end parallel do
+    !end do
+    !print *, activeParticleCoordinates
+    !! Once all particles have reached a position
+    !! for the same time, reconstruct concentrations
+    !! TIC
+    !call system_clock(clockCountStart, clockCountRate, clockCountMax)
+    !print *, '## TEST: compute density '
+    !call gpkde%ComputeDensity( dataArray, nOptimizationLoops=gpkde%nOptimizationLoops )
+    !! TOC
+    !call system_clock(clockCountStop, clockCountRate, clockCountMax)
+    !elapsedTime = dble(clockCountStop - clockCountStart) / dble(clockCountRate)
+    !print *, '## TEST: compute density done!: ', elapsedTime, ' seconds'
+    call exit(0)
+
     ! Update tracking time
     time = maxTime
     
@@ -865,6 +942,8 @@
     if(allocated(flowModelData)) deallocate(flowModelData)
     if(allocated(basicData)) deallocate(basicData)
     if(allocated(simulationData)) deallocate(simulationData)
+    ! GPKDE
+    if(allocated(gpkde)) deallocate(gpkde)
     call ulog('Memory deallocation complete.', logUnit)
     
     write(*, '(a)') terminationMessage
