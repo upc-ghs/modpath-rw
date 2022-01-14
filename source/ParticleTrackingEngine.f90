@@ -778,14 +778,14 @@ contains
                           fromLocalZ, loc)
                         loc%TrackingTime = this%TrackCellResult%TrackingPoints%Items(count)%TrackingTime
                     else
-                        print *, 'INACTIVEEEE', nextCell
+                        !print *, 'INACTIVEEEE', nextCell
                         ! If next cell is inactive, it implies that a boundary face has been reached. 
                         ! Set status and return.
                         continueLoop = .false.
                         trackPathResult%Status = trackPathResult%Status_ReachedBoundaryFace()        
                     end if
                 else
-                    print *, 'CELLNUMBER ', nextCell 
+                    !print *, 'CELLNUMBER ', nextCell 
                     ! If next cell number = 0, the boundary of the grid has been reached. 
                     ! Set status and return.
                     continueLoop = .false.

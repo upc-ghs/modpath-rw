@@ -16,7 +16,7 @@ module ParticleTrackingOptionsModule
     doubleprecision :: Stoptime = 1.0d+30
     integer :: StopZone = 0
 
-    !RWPT
+    ! RWPT
     logical                       :: RandomWalkParticleTracking = .false.
     doubleprecision               :: alphaL, alphaT, Dmol = 0
     integer                       :: timeStepKind
@@ -24,17 +24,24 @@ module ParticleTrackingOptionsModule
     integer                       :: advectionKind
     logical                       :: twoDimensions = .false.
 
+    ! GPKDE
+    logical                       :: GPKDEReconstruction = .false.
+    doubleprecision, dimension(3) :: gpkdeDomainSize
+    doubleprecision, dimension(3) :: gpkdeBinSize
+    integer                       :: gpkdeNOptLoops 
+    character(len=200)            :: gpkdeOutputFile
+    integer                       :: gpkdeOutputUnit = 125
+
     ! OBS
     integer :: nObservations
     logical :: observationSimulation = .false.
     integer, allocatable, dimension(:) :: observationCells
     integer, allocatable, dimension(:) :: observationUnits
-    character(len=50), allocatable, dimension(:) :: observationFiles
+    character(len=200), allocatable, dimension(:) :: observationFiles
 
   contains
      procedure :: Reset=>pr_Reset
      procedure :: InitializeObservations=>pr_InitializeObservations 
-     !procedure :: IsObservationCell=>pr_IsObservationCell
      procedure :: IdObservationCell=>pr_IdObservationCell
   end type
   

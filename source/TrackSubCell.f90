@@ -643,6 +643,8 @@ contains
               else
                   ! Restart nx, ny, nz and try again
                   ! if not a valid time step and exitFace
+                  print *, 'RESTARTING...', dtLoopCounter
+                  print *, nx,ny,nz,x,y,z,dtold,dt,exitFace
                   nx = x
                   ny = y
                   nz = z
@@ -653,21 +655,23 @@ contains
                   exit
               end if
 
-              ! Restart if method did not
-              ! found a valid position after two tries.
-              dtLoopCounter = dtLoopCounter + 1
-              if ( dtLoopCounter .eq. 2 ) then
-                  ! Restart nx, ny, nz and try again
-                  nx = x
-                  ny = y
-                  nz = z
-                  t  = t - dt
-                  dt = dtold
-                  exitFace = 0
-                  dtLoopCounter = 0
-                  posRestartCounter = posRestartCounter + 1
-                  exit
-              end if
+              !! Restart if method did not
+              !! found a valid position after two tries.
+              !dtLoopCounter = dtLoopCounter + 1
+              !if ( dtLoopCounter .eq. 2 ) then
+              !    print *, 'RESTARTING...', dtLoopCounter
+              !    print *, nx,ny,nz,x,y,z,dtold,dt,exitFace
+              !    ! Restart nx, ny, nz and try again
+              !    nx = x
+              !    ny = y
+              !    nz = z
+              !    t  = t - dt
+              !    dt = dtold
+              !    exitFace = 0
+              !    dtLoopCounter = 0
+              !    posRestartCounter = posRestartCounter + 1
+              !    exit
+              !end if
 
           end do
 
@@ -782,6 +786,8 @@ contains
               end if
 
           end if
+
+          !print *, 'PASSING '
 
           ! Update particle positions
           x = nx
@@ -1030,6 +1036,8 @@ contains
       doubleprecision :: dInterface
       doubleprecision :: AFace, BFace, z1, z2, zsqrt
       !----------------------------------------------------------------
+        
+      print*,'DETECTING EULERIAN...'
 
       ! Initialize
       AFace      = 0d0

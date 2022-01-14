@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 !  MPath7.f90 
 !  PROGRAM: MPath7
 
@@ -103,8 +102,10 @@
     character(len=75) terminationMessage
     character(len=80) compilerVersionText
     logical :: isTimeSeriesPoint, timeseriesRecordWritten
+
     ! GPKDE
     doubleprecision, dimension(:,:), allocatable :: activeParticleCoordinates
+    integer :: activeCounter
 
 !---------------------------------------------------------------------------------
     
@@ -366,33 +367,25 @@
     ! The trackingEngine initialization is complete
 
 
-    ! GPKDE
     ! Initialize GPKDE reconstruction 
-    print *, '## TEST: init gpkde' 
-    print *, modelGrid%GridType
-    print *, modelGrid%LayerCount
-    print *, modelGrid%CellCount
-    print *, modelGrid%GetDZ(100) ! requires a cell number
-    print *, modelGrid%RowCount 
-    print *, modelGrid%ColumnCount 
-    !print *, modelGrid%CellX
-    !print *, modelGrid%CellY
-    !allocate( gpkde )
-    !call exit(0)
-    ! Initialization should be performed once grid properties are known.
-    ! Moreover, reconstruction can employ a grid different than flow model grid.
-    ! So for USG grids, reconstructed information could be obtained in a regular
-    ! rectangular grid, given particles position.
-    !call gpkde%Initialize( domainSize, binSize,       &
-    !    minHOverLambda          = minHOverLambda,     & 
-    !    maxHOverLambda          = maxHOverLambda,     & 
-    !    deltaHOverLambda        = deltaHOverLambda,   &
-    !    databaseOptimization    = .true.,             & 
-    !    bruteOptimization       = .true.,             & 
-    !    anisotropicSigmaSupport = .false.,            &
-    !    nOptimizationLoops      = nOptimizationLoops  & 
-    !)
-
+    if ( simulationData%TrackingOptions%GPKDEReconstruction ) then
+        allocate( gpkde )
+        ! Initialization should be performed once grid properties are known.
+        ! Moreover, reconstruction can employ a grid different than flow model grid.
+        ! So for USG grids, reconstructed information could be obtained in a regular
+        ! rectangular grid, given particles position.
+        print *, 'GPKDESIM: DOMAIN SIZE', simulationData%TrackingOptions%gpkdeDomainSize
+        print *, 'GPKDESIM: BIN SIZE', simulationData%TrackingOptions%gpkdeBinSize
+        call gpkde%Initialize(& 
+            simulationData%TrackingOptions%gpkdeDomainSize,&
+            simulationData%TrackingOptions%gpkdeBinSize,   &
+            nOptimizationLoops=simulationData%TrackingOptions%gpkdeNOptLoops &
+        )
+        ! Initialize output unit/file
+        open(unit=simulationData%TrackingOptions%gpkdeOutputUnit, &
+             file=simulationData%TrackingOptions%gpkdeOutputFile, &
+           status='replace', form='formatted', access='sequential')
+    end if
 
 
 
@@ -650,6 +643,7 @@
         end if
     end if
     
+    print *, 'MPATH: WILL ENTER PARTICLE LOOP '
     ! Track particles
     pendingCount = 0
     activeCount = 0
@@ -764,25 +758,25 @@
                     status = trackPathResult%Status
                     if(  status .eq. trackPathResult%Status_ReachedBoundaryFace()) then
                         p%Status = 2
-                        print *, 'BOUNDARY'
+                        !print *, 'BOUNDARY'
                     else if(status .eq. trackPathResult%Status_StopAtWeakSink()) then
                         p%Status = 3
-                        print *, 'WEAKSINK'
+                        !print *, 'WEAKSINK'
                     else if(status .eq. trackPathResult%Status_StopAtWeakSource()) then
                         p%Status = 4
-                        print *, 'WEAKSOURCE'
+                        !print *, 'WEAKSOURCE'
                     else if(status .eq. trackPathResult%Status_NoExitPossible()) then
                         p%Status = 5
-                        print *, 'WEAKSOURCE'
+                        !print *, 'WEAKSOURCE'
                     else if(status .eq. trackPathResult%Status_StopZoneCell()) then
                         p%Status = 6
-                        print *, 'STOPZONE'
+                        !print *, 'STOPZONE'
                     else if(status .eq. trackPathResult%Status_InactiveCell()) then
                         p%Status = 7
-                        print *, 'INACTIVE'
+                        !print *, 'INACTIVE'
                     else if(status .eq. trackPathResult%Status_Undefined()) then
                         p%Status = 9
-                        print *, 'UNDEFINED'
+                        !print *, 'UNDEFINED'
                     else
                         ! Leave status set to active (status = 1)
                     end if
@@ -852,42 +846,52 @@
             !$omp end parallel do
         end do
     end if
+    print *, 'MPATH: LEAVING PARTICLE LOOP '
    
 
     ! GPKDE
-    ! Get active particles coordinates
-    print *, 'ACTIVE: ', activeCount
-    allocate( activeParticleCoordinates(activeCount,3) )
-    ! ONLY one groupIndex
-    groupIndex = 1
-    !do groupIndex = 1, simulationData%ParticleGroupCount
-        !!$omp parallel do           &
-        !!$omp default( none )       &
-        !!$omp shared( groupIndex )  &
-        do particleIndex = 1, simulationData%ParticleGroups(groupIndex)%TotalParticleCount
-            p => simulationData%ParticleGroups(groupIndex)%Particles(particleIndex)
-            ! If active, to the array for GPKDE
-            if(p%Status .eq. 1) then
-                activeParticleCoordinates( particleIndex, 1 ) = p%GlobalX
-                activeParticleCoordinates( particleIndex, 2 ) = p%GlobalY
-                activeParticleCoordinates( particleIndex, 3 ) = p%GlobalZ
-                print *, activeParticleCoordinates( particleIndex, : )
-            end if
-        end do
-        !!$omp end parallel do
-    !end do
-    !print *, activeParticleCoordinates
-    !! Once all particles have reached a position
-    !! for the same time, reconstruct concentrations
-    !! TIC
-    !call system_clock(clockCountStart, clockCountRate, clockCountMax)
-    !print *, '## TEST: compute density '
-    !call gpkde%ComputeDensity( dataArray, nOptimizationLoops=gpkde%nOptimizationLoops )
-    !! TOC
-    !call system_clock(clockCountStop, clockCountRate, clockCountMax)
-    !elapsedTime = dble(clockCountStop - clockCountStart) / dble(clockCountRate)
-    !print *, '## TEST: compute density done!: ', elapsedTime, ' seconds'
-    call exit(0)
+    if ( simulationData%TrackingOptions%GPKDEReconstruction ) then
+        activeCounter = 0
+        ! Get active particles coordinates
+        print *, 'ACTIVE: ', activeCount
+        if ( allocated( activeParticleCoordinates ) ) deallocate( activeParticleCoordinates )
+        allocate( activeParticleCoordinates(activeCount,3) )
+        ! ONLY one groupIndex
+        groupIndex = 1
+        !do groupIndex = 1, simulationData%ParticleGroupCount
+            !!$omp parallel do           &
+            !!$omp default( none )       &
+            !!$omp shared( groupIndex )  &
+            do particleIndex = 1, simulationData%ParticleGroups(groupIndex)%TotalParticleCount
+                p => simulationData%ParticleGroups(groupIndex)%Particles(particleIndex)
+                ! If active, to the array for GPKDE
+                if(p%Status .eq. 1) then
+                    activeCounter = activeCounter + 1
+                    activeParticleCoordinates( activeCounter, 1 ) = p%GlobalX
+                    activeParticleCoordinates( activeCounter, 2 ) = p%GlobalY
+                    activeParticleCoordinates( activeCounter, 3 ) = p%GlobalZ
+                    !print *, activeParticleCoordinates( particleIndex, : )
+                end if
+            end do
+            !!$omp end parallel do
+        !end do
+        !print *, activeParticleCoordinates
+        ! Once all particles have reached a position
+        ! for the same time, reconstruct concentrations
+        print *, '# INTEGRATION TEST: compute density '
+        print *, '# INTEGRATION TEST: outputUnit ', simulationData%TrackingOptions%gpkdeOutputUnit
+        print *, '# INTEGRATION TEST: outputDataId ', nt
+
+        !print *, activeParticleCoordinates
+
+        call gpkde%ComputeDensity(                                              &
+           activeParticleCoordinates,                                           &
+           outputFileUnit     = simulationData%TrackingOptions%gpkdeOutputUnit, &
+           outputDataId       = nt                                              &
+        )
+
+    end if
+    !call exit(0)
 
     ! Update tracking time
     time = maxTime

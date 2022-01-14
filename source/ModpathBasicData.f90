@@ -181,11 +181,15 @@ contains
 
       ! POROSITY
       if((grid%GridType .eq. 1) .or. (grid%GridType .eq. 3)) then
+          !print *, 'BASIC DATA WILL READ POROSITY 1 3 '
             call u3ddblmp(inUnit, outUnit, grid%LayerCount, grid%RowCount,      &
               grid%ColumnCount, grid%CellCount, this%Porosity, ANAME(2))                      
       else if((grid%GridType .eq. 2) .or. (grid%GridType .eq. 4)) then
+          !print *, 'BASIC DATA WILL READ POROSITY 2 4 '
           call u3ddblmpusg(inUnit, outUnit, grid%CellCount, grid%LayerCount,              &
             this%Porosity, aname(2), cellsPerLayer)
+          !print *, shape(this%Porosity)
+          !print *, this%Porosity(cellsPerLayer(1)-5:cellsPerLayer(1)+5)
       else
             write(outUnit,*) 'Invalid grid type specified when reading POROSITY array data.'
             write(outUnit,*) 'Stopping.'

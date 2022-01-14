@@ -100,8 +100,16 @@ contains
   integer :: dispersionUnit = 88
   integer :: iodispersion   = 0
   integer :: ioInUnit       = 0
+
+  ! OBS
   integer :: nObservations  = 0
   character(len=100) :: tempChar
+
+  ! GPKDE
+  character(len=200) :: gpkdeFile
+  integer :: gpkdeUnit = 89
+  integer :: iogpkde   = 0
+
 
   !---------------------------------------------
 
@@ -576,6 +584,20 @@ contains
         call urword(line,icol,istart,istop,3,n,r,0,0)
         this%TrackingOptions%alphaL = r
 
+        ! READ A DISTRIBUTED THING
+        !if((grid%GridType .eq. 1) .or. (grid%GridType .eq. 3)) then
+        !    call u3ddblmp(inUnit, outUnit, grid%LayerCount, grid%RowCount,      &
+        !      grid%ColumnCount, grid%CellCount, this%Retardation, ANAME(2))            
+        !else if((grid%GridType .eq. 2) .or. (grid%GridType .eq. 4)) then
+        !    call u3ddblmpusg(inUnit, outUnit, grid%CellCount, grid%LayerCount,            &
+        !      this%Retardation, aname(2), cellsPerLayer)
+        !else
+        !    write(outUnit,*) 'Invalid grid type specified when reading retardation array data.'
+        !    write(outUnit,*) 'Stopping.'
+        !    call ustop(' ')            
+        !end if
+
+
         ! alphaT
         read( dispersionUnit, * ) line
         icol = 1
@@ -673,6 +695,81 @@ contains
         close( dispersionUnit )
 
     end if
+
+    ! GPKDE
+    ! GPKDE requires timeseries
+    if ( &
+        (this%SimulationType .eq. 3) .or. (this%SimulationType .eq. 4) .or. &
+        (this%SimulationType .eq. 5) .or. (this%SimulationType .eq. 6) ) then
+        read(inUnit, '(a)', iostat=ioInUnit) line
+        if ( (ioInUnit .lt. 0) ) then 
+            ! No gpkde 
+            write(outUnit,'(A)') 'GPKDE Reconstruction: disabled density reconstrution stage'
+            print *, 'ModpathSimulationData: GPKDE NO'
+        else
+            icol = 1
+            call urword(line, icol, istart, istop, 2, n, r, 0, 0)
+
+            if (n .eq. 0) then
+                ! No gpkde 
+                write(outUnit,'(A)') 'GPKDE Reconstruction: disabled density reconstrution stage'
+                print *, 'ModpathSimulationData: GPKDE NO'
+            else if (n .eq. 1) then
+                ! Yes gpkde 
+                write(outUnit,'(A)') 'GPKDE Reconstruction: enabled density reconstrution stage'
+                this%TrackingOptions%GPKDEReconstruction = .true.
+
+                ! Open the GPKDE reconstruction data file
+                read(inUnit, '(a)') gpkdeFile
+                icol = 1
+                call urword(gpkdeFile,icol,istart,istop,0,n,r,0,0)
+                gpkdeFile = gpkdeFile(istart:istop)
+                open( gpkdeUnit, file=gpkdeFile, status='old', access='sequential')
+
+                ! Read gpkde output file
+                read(gpkdeUnit, '(a)') this%TrackingOptions%gpkdeOutputFile
+                icol = 1
+                call urword(this%TrackingOptions%gpkdeOutputFile,icol,istart,istop,0,n,r,0,0)
+                this%TrackingOptions%gpkdeOutputFile = this%TrackingOptions%gpkdeOutputFile(istart:istop)
+
+                ! Read domainSize
+                read(gpkdeUnit, '(a)') line
+                icol = 1
+                call urword(line, icol, istart, istop, 3, n, r, 0, 0)
+                this%TrackingOptions%gpkdeDomainSize(1) = r
+                call urword(line, icol, istart, istop, 3, n, r, 0, 0)
+                this%TrackingOptions%gpkdeDomainSize(2) = r
+                call urword(line, icol, istart, istop, 3, n, r, 0, 0)
+                this%TrackingOptions%gpkdeDomainSize(3) = r
+
+                print *, 'AT SIMULATION DATA: DOMAINSIZE', this%TrackingOptions%gpkdeDomainSize
+
+                ! Read binSize
+                read(gpkdeUnit, '(a)') line
+                icol = 1
+                call urword(line, icol, istart, istop, 3, n, r, 0, 0)
+                this%TrackingOptions%gpkdeBinSize(1) = r
+                call urword(line, icol, istart, istop, 3, n, r, 0, 0)
+                this%TrackingOptions%gpkdeBinSize(2) = r
+                call urword(line, icol, istart, istop, 3, n, r, 0, 0)
+                this%TrackingOptions%gpkdeBinSize(3) = r
+                print *, 'AT SIMULATION DATA: BINSIZE', this%TrackingOptions%gpkdeDomainSize
+
+                ! Read nOptimizationLoops
+                read(gpkdeUnit, '(a)') line
+                icol = 1
+                call urword(line, icol, istart, istop, 2, n, r, 0, 0)
+                this%TrackingOptions%gpkdeNOptLoops = n
+
+                ! Close gpkde data file
+                close( gpkdeUnit )
+
+            end if
+
+        end if 
+
+    end if
+
 
     ! Now try to read if any observation cells
     ! limit the number of observations to two, during dev
