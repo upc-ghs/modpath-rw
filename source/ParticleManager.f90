@@ -118,6 +118,30 @@ module ParticleManagerModule
   
   end subroutine WriteTimeseriesRecord
 
+
+  subroutine WriteBinaryTimeseriesRecord(sequenceNumber, particleID, groupIndex,      &
+    timeStep, timePointIndex, pCoord, geoRef, outUnit)
+  implicit none
+  type(ParticleCoordinateType),intent(in) :: pCoord
+  type(GeoReferenceType),intent(in) :: geoRef
+  integer,intent(in) :: outUnit, particleID, timePointIndex, groupIndex,        &
+    timeStep, sequenceNumber
+  integer :: currentPosition
+  doubleprecision :: modelX, modelY, globalX, globalY
+  
+  modelX = pCoord%GlobalX
+  modelY = pCoord%GlobalY
+  
+  !'(2I8,es18.9e3,i10,i5,2i10,6es18.9e3,i10)'
+  inquire(unit=outUnit, pos=currentPosition)
+  write(outUnit) &
+    timePointIndex, timeStep, pCoord%TrackingTime, sequenceNumber, groupIndex,  &
+    particleID, pCoord%CellNumber, pCoord%LocalX, pCoord%LocalY, pCoord%LocalZ, &
+    modelX, modelY, pCoord%GlobalZ, pCoord%Layer
+  
+  end subroutine WriteTimeseriesRecord
+
+
   subroutine WritePathlineHeader(outUnit, trackingDirection, referenceTime,     &
       originX, originY, rotationAngle)
   implicit none

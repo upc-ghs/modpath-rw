@@ -516,16 +516,17 @@
         ! Initialize timeseries parallel units
         do m = 1, ompNumThreads
             timeseriesTempUnits( m ) = 6600 + m
-            write( unit=tempChar, fmt=* )m 
-            write( unit=timeseriesTempFiles( m ), fmt='(a)' )'parallelts_'//trim(adjustl(tempChar))//'.ts'
-            open( unit=timeseriesTempUnits( m ),     &
-                  file=timeseriesTempFiles( m ),     & 
-                  status='replace', form='formatted', access='sequential')
+            ! FORMATTED
+            !write( unit=tempChar, fmt=* )m 
+            !write( unit=timeseriesTempFiles( m ), fmt='(a)' )'parallelts_'//trim(adjustl(tempChar))//'.ts'
+            !open( unit=timeseriesTempUnits( m ),     &
+            !      file=timeseriesTempFiles( m ),     & 
+            !      status='replace', form='formatted', access='sequential')
+            ! BINARY
+            open(unit=timeseriesTempUnits( m ), status='scratch', form='unformatted', &
+                                                access='stream', action='readwrite'   )
         end do
 
-        print *, ompNumThreads
-        print *, timeseriesTempUnits
-        print *, timeseriesTempFiles
 
     end if
     if(simulationData%TraceMode .gt. 0) then
