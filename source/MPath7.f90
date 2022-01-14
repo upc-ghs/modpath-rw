@@ -883,10 +883,14 @@
                       call modelGrid%ConvertToModelXYZ(pCoord%CellNumber,       &
                         pCoord%LocalX, pCoord%LocalY, pCoord%LocalZ,            &
                         pCoord%GlobalX, pCoord%GlobalY, pCoord%GlobalZ)
-                      !$omp critical (timeseries)
-                      call WriteTimeseriesRecord(p%SequenceNumber, p%ID,        &
-                        groupIndex, ktime, nt, pCoord, geoRef, timeseriesUnit)
-                      !$omp end critical (timeseries)
+                      !!$omp critical (timeseries)
+                      !call WriteTimeseriesRecord(p%SequenceNumber, p%ID,        &
+                      !  groupIndex, ktime, nt, pCoord, geoRef, timeseriesUnit)
+                      !!$omp end critical (timeseries)
+                      ! SO IF PARALLEL OUTPUT
+                      ompThreadId = omp_get_thread_num()
+                      call WriteTimeseriesRecord(p%SequenceNumber, p%ID,  &
+                        groupIndex, ktime, nt, pCoord, geoRef, timeseriesTempUnits( ompThreadId+1 ))
                 end if
 
             end do
@@ -894,9 +898,9 @@
         end do
     end if
 
-    ! DEV PARALLEL OUTPUT
-    ! SHOULD MERGE
-    ! Close timeseries units
+    !! DEV PARALLEL OUTPUT
+    !! SHOULD MERGE
+    !! Close timeseries units
     !do m = 1, ompNumThreads
     !    close( timeseriesTempUnits( m ) )
     !end do
