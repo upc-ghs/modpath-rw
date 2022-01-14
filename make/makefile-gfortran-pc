@@ -6,18 +6,21 @@
 # the executable, and the executable name and path.
 OBJDIR = ./obj_temp
 BINDIR = .
-PROGRAM = mpath7dev
+PROGRAM = mpath7rwpt
 
 SOURCEDIR1=../source
+SOURCEDIR2=../gpkde/src
 
 VPATH = \
-${SOURCEDIR1} 
+${SOURCEDIR1} \
+${SOURCEDIR2} 
 
 .SUFFIXES: .c .cpp .f .f90 .F90 .fpp .o
 
 # Define the Fortran compile flags
 FC = gfortran
-FFLAGS = -O2 -fbacktrace -fopenmp 
+FFLAGS = -fbacktrace -fopenmp -Wall -fbounds-check 
+#FFLAGS = -O2 -fbacktrace -fopenmp 
 
 # Define the C compile flags
 CC = gcc
@@ -26,7 +29,13 @@ CFLAGS = -O3 -D_UF
 # Define the libraries
 SYSLIBS = 
 
+# Start with objects from GPKDE then
+# continues to modpath
 OBJECTS = \
+$(OBJDIR)/Histogram.o \
+$(OBJDIR)/KernelMultiGaussian.o \
+$(OBJDIR)/GridCell.o \
+$(OBJDIR)/GridProjectedKDE.o \
 $(OBJDIR)/Coordinate.o \
 $(OBJDIR)/TrackCellOptions.o \
 $(OBJDIR)/BudgetListItem.o \
