@@ -113,6 +113,7 @@
     integer :: ompNumThreads
     integer :: ompThreadId
     integer, allocatable, dimension(:) :: timeseriesTempUnits
+    integer, allocatable, dimension(:) :: timeseriesRecordCounts
     character(len=50), allocatable, dimension(:) :: timeseriesTempFiles
     character(len=50) :: tempChar
 !---------------------------------------------------------------------------------
@@ -154,6 +155,7 @@
     ! DEV PARALLEL OUTPUT
     !ompNumThreads = omp_get_num_threads()
     ompNumThreads = omp_get_max_threads()
+    print *, 'DETECTED NTHREADS ', ompNumThreads
     !allocate( timeseriesTempUnits(ompNumThreads) )
     !allocate( timeseriesTempFiles(ompNumThreads) )
 
@@ -511,6 +513,7 @@
         ! DEV PARALLEL OUTPUT
         ! SHOULD INITIALIZE TEMPORAL UNITS IF PARALLEL
         allocate( timeseriesTempUnits(ompNumThreads) )
+        allocate( timeseriesRecordCounts(ompNumThreads) )
         allocate( timeseriesTempFiles(ompNumThreads) )
 
         ! Initialize timeseries parallel units
@@ -526,7 +529,7 @@
             open(unit=timeseriesTempUnits( m ), status='scratch', form='unformatted', &
                                                 access='stream', action='readwrite'   )
         end do
-
+        timeseriesRecordCounts = 0
 
     end if
     if(simulationData%TraceMode .gt. 0) then
@@ -710,6 +713,7 @@
             !$omp shared( pathlineUnit, binPathlineUnit )    &
             !$omp shared( timeseriesUnit, traceModeUnit )    &
             !$omp shared( timeseriesTempUnits )              &
+            !$omp shared( timeseriesRecordCounts )           &
             !$omp shared( timeseriesTempFiles )              &
             !$omp shared( period, step, ktime, nt )          &
             !$omp shared( time, maxTime, isTimeSeriesPoint ) &
@@ -860,10 +864,13 @@
                             !timeseriesRecordWritten = .true.
 
                             ! SO IF PARALLEL OUTPUT
-                            ompThreadId = omp_get_thread_num()
+                            ompThreadId = omp_get_thread_num() + 1 ! Starts at zero
                             pCoordTP => trackPathResult%ParticlePath%Timeseries%Items(1)
-                            call WriteTimeseriesRecord(p%SequenceNumber, p%ID,  &
-                              groupIndex, ktime, nt, pCoordTP, geoRef, timeseriesTempUnits( ompThreadId+1 ))
+                            call WriteBinaryTimeseriesRecord(p%SequenceNumber, p%ID,  &
+                              groupIndex, ktime, nt, pCoordTP, geoRef, timeseriesTempUnits( ompThreadId ))
+                            timeseriesRecordCounts( ompThreadId ) = timeseriesRecordCounts( ompThreadId ) + 1
+                            !call WriteTimeseriesRecord(p%SequenceNumber, p%ID,  &
+                            !  groupIndex, ktime, nt, pCoordTP, geoRef, timeseriesTempUnits( ompThreadId+1 ))
                             timeseriesRecordWritten = .true.
 
                         end if
@@ -889,9 +896,12 @@
                       !  groupIndex, ktime, nt, pCoord, geoRef, timeseriesUnit)
                       !!$omp end critical (timeseries)
                       ! SO IF PARALLEL OUTPUT
-                      ompThreadId = omp_get_thread_num()
-                      call WriteTimeseriesRecord(p%SequenceNumber, p%ID,  &
-                        groupIndex, ktime, nt, pCoord, geoRef, timeseriesTempUnits( ompThreadId+1 ))
+                      ompThreadId = omp_get_thread_num() + 1 ! Starts at zero
+                      call WriteBinaryTimeseriesRecord(p%SequenceNumber, p%ID,  &
+                        groupIndex, ktime, nt, pCoord, geoRef, timeseriesTempUnits( ompThreadId ))
+                      timeseriesRecordCounts( ompThreadId ) = timeseriesRecordCounts( ompThreadId ) + 1
+                      !call WriteTimeseriesRecord(p%SequenceNumber, p%ID,  &
+                      !  groupIndex, ktime, nt, pCoord, geoRef, timeseriesTempUnits( ompThreadId+1 ))
                 end if
 
             end do
@@ -899,12 +909,22 @@
         end do
     end if
 
-    !! DEV PARALLEL OUTPUT
-    !! SHOULD MERGE
-    !! Close timeseries units
-    !do m = 1, ompNumThreads
-    !    close( timeseriesTempUnits( m ) )
-    !end do
+    ! DEV PARALLEL OUTPUT
+    ! SHOULD MERGE/CONSOLIDATE
+    ! If simulation timeseries (and parallel output)
+    ! consolidate
+    if(simulationData%SimulationType .ge. 3) then
+        call ConsolidateParallelTimeseries( timeseriesTempUnits, timeseriesUnit, timeseriesRecordCounts )
+        ! Restart temporal units and record counters
+        do m = 1, ompNumThreads
+            if ( timeseriesRecordCounts(m) .gt. 0 ) then
+                close( timeseriesTempUnits( m ) )
+                open(unit=timeseriesTempUnits( m ), status='scratch', form='unformatted', &
+                                                    access='stream', action='readwrite'   )
+            end if
+        end do
+        timeseriesRecordCounts = 0 
+    end if
 
 
     ! Update tracking time

@@ -133,13 +133,53 @@ module ParticleManagerModule
   modelY = pCoord%GlobalY
   
   !'(2I8,es18.9e3,i10,i5,2i10,6es18.9e3,i10)'
-  inquire(unit=outUnit, pos=currentPosition)
+  !inquire(unit=outUnit, pos=currentPosition) ! necessary ?
+  !print *, 'WTBTS: ', currentPosition
   write(outUnit) &
     timePointIndex, timeStep, pCoord%TrackingTime, sequenceNumber, groupIndex,  &
     particleID, pCoord%CellNumber, pCoord%LocalX, pCoord%LocalY, pCoord%LocalZ, &
     modelX, modelY, pCoord%GlobalZ, pCoord%Layer
   
-  end subroutine WriteTimeseriesRecord
+  end subroutine WriteBinaryTimeseriesRecord
+
+    
+  subroutine ConsolidateParallelTimeseries(inUnits, outUnit, recordCounts)
+  !--------------------------------------------------------------------------------------
+  !
+  !--------------------------------------------------------------------------------------
+  implicit none
+  integer, dimension(:), intent(in) :: inUnits, recordCounts
+  integer, intent(in) :: outUnit
+  type(ParticleCoordinateType) :: pCoord
+  type(GeoReferenceType) :: geoRef
+  integer :: timePointIndex, timeStep, sequenceNumber,  groupIndex, particleID
+  doubleprecision :: modelX, modelY
+  integer :: n, m, i
+  integer :: nThreads
+  !--------------------------------------------------------------------------------------
+
+
+  nThreads = size( inUnits ) 
+
+  ! Read from temporal units and dump
+  do n = 1, nThreads
+    if( recordCounts(n) .ge. 1 ) then
+        rewind( inUnits(n) )
+        do i = 1, recordCounts(n)
+            read( inUnits(n) ) &
+              timePointIndex, timeStep, pCoord%TrackingTime, sequenceNumber, groupIndex,   &
+              particleID, pCoord%CellNumber, pCoord%LocalX, pCoord%LocalY, pCoord%LocalZ,  &
+              modelX, modelY, pCoord%GlobalZ, pCoord%Layer
+            write(outUnit, '(2I8,es18.9e3,i10,i5,2i10,6es18.9e3,i10)') & 
+              timePointIndex, timeStep, pCoord%TrackingTime, sequenceNumber, groupIndex,   &
+              particleID, pCoord%CellNumber, pCoord%LocalX, pCoord%LocalY, pCoord%LocalZ,  &
+              modelX, modelY, pCoord%GlobalZ, pCoord%Layer
+        end do
+    end if
+  end do
+
+  
+  end subroutine ConsolidateParallelTimeseries
 
 
   subroutine WritePathlineHeader(outUnit, trackingDirection, referenceTime,     &
