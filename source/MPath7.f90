@@ -156,6 +156,10 @@
     !ompNumThreads = omp_get_num_threads()
     ompNumThreads = omp_get_max_threads()
     print *, 'DETECTED NTHREADS ', ompNumThreads
+    print *, 'DETECTED NUM PROC ', omp_get_num_procs()
+    print *, 'SETTING THREADS... '
+    call omp_set_num_threads( omp_get_num_procs() )
+    print *, 'printing max num threads ', omp_get_max_threads()
     !allocate( timeseriesTempUnits(ompNumThreads) )
     !allocate( timeseriesTempFiles(ompNumThreads) )
 
@@ -519,13 +523,13 @@
         ! Initialize timeseries parallel units
         do m = 1, ompNumThreads
             timeseriesTempUnits( m ) = 6600 + m
-            ! FORMATTED
+            ! if formatted units, requires a better naming convention
             !write( unit=tempChar, fmt=* )m 
             !write( unit=timeseriesTempFiles( m ), fmt='(a)' )'parallelts_'//trim(adjustl(tempChar))//'.ts'
             !open( unit=timeseriesTempUnits( m ),     &
             !      file=timeseriesTempFiles( m ),     & 
             !      status='replace', form='formatted', access='sequential')
-            ! BINARY
+            ! if binary unformatted temporal units
             open(unit=timeseriesTempUnits( m ), status='scratch', form='unformatted', &
                                                 access='stream', action='readwrite'   )
         end do
@@ -840,6 +844,8 @@
                         ! Write pathline to pathline file
                         if(plCount .gt. 1) then
                             pathlineRecordCount = pathlineRecordCount + 1
+                            ! DEV PARALLEL OUTPUT
+                            !   - with critical directive
                             !$omp critical (pathline)
                             select case (simulationData%PathlineFormatOption)
                                 case (1)
@@ -856,6 +862,8 @@
                     if(simulationData%SimulationType .ge. 3) then
                         if(tsCount .gt. 0) then
                             ! Write timeseries record to the timeseries file
+                            ! DEV PARALLEL OUTPUT
+                            !   - with critical directive
                             !!$omp critical (timeseries)
                             !pCoordTP => trackPathResult%ParticlePath%Timeseries%Items(1)
                             !call WriteTimeseriesRecord(p%SequenceNumber, p%ID,  &
@@ -863,14 +871,17 @@
                             !!$omp end critical (timeseries)
                             !timeseriesRecordWritten = .true.
 
-                            ! SO IF PARALLEL OUTPUT
+                            !   - with parallel units per thread
                             ompThreadId = omp_get_thread_num() + 1 ! Starts at zero
                             pCoordTP => trackPathResult%ParticlePath%Timeseries%Items(1)
+                            !   - binary
                             call WriteBinaryTimeseriesRecord(p%SequenceNumber, p%ID,  &
                               groupIndex, ktime, nt, pCoordTP, geoRef, timeseriesTempUnits( ompThreadId ))
-                            timeseriesRecordCounts( ompThreadId ) = timeseriesRecordCounts( ompThreadId ) + 1
+                            !   - formatted
                             !call WriteTimeseriesRecord(p%SequenceNumber, p%ID,  &
                             !  groupIndex, ktime, nt, pCoordTP, geoRef, timeseriesTempUnits( ompThreadId+1 ))
+                            !   - needed for consolidate from binaries
+                            timeseriesRecordCounts( ompThreadId ) = timeseriesRecordCounts( ompThreadId ) + 1
                             timeseriesRecordWritten = .true.
 
                         end if
@@ -891,17 +902,22 @@
                       call modelGrid%ConvertToModelXYZ(pCoord%CellNumber,       &
                         pCoord%LocalX, pCoord%LocalY, pCoord%LocalZ,            &
                         pCoord%GlobalX, pCoord%GlobalY, pCoord%GlobalZ)
+                      ! DEV PARALLEL OUTPUT
+                      !     - with critical directive
                       !!$omp critical (timeseries)
                       !call WriteTimeseriesRecord(p%SequenceNumber, p%ID,        &
                       !  groupIndex, ktime, nt, pCoord, geoRef, timeseriesUnit)
                       !!$omp end critical (timeseries)
-                      ! SO IF PARALLEL OUTPUT
+                            !   - with parallel units per thread
                       ompThreadId = omp_get_thread_num() + 1 ! Starts at zero
+                            !   - binary
                       call WriteBinaryTimeseriesRecord(p%SequenceNumber, p%ID,  &
                         groupIndex, ktime, nt, pCoord, geoRef, timeseriesTempUnits( ompThreadId ))
-                      timeseriesRecordCounts( ompThreadId ) = timeseriesRecordCounts( ompThreadId ) + 1
+                            !   - formatted
                       !call WriteTimeseriesRecord(p%SequenceNumber, p%ID,  &
                       !  groupIndex, ktime, nt, pCoord, geoRef, timeseriesTempUnits( ompThreadId+1 ))
+                            !   - needed for consolidate from binaries
+                      timeseriesRecordCounts( ompThreadId ) = timeseriesRecordCounts( ompThreadId ) + 1
                 end if
 
             end do
@@ -910,17 +926,19 @@
     end if
 
     ! DEV PARALLEL OUTPUT
-    ! SHOULD MERGE/CONSOLIDATE
-    ! If simulation timeseries (and parallel output)
-    ! consolidate
+    ! If simulation timeseries 
+    !   - and parallel output
+    !   - and consolidate in single file
     if(simulationData%SimulationType .ge. 3) then
         call ConsolidateParallelTimeseries( timeseriesTempUnits, timeseriesUnit, timeseriesRecordCounts )
         ! Restart temporal units and record counters
         do m = 1, ompNumThreads
             if ( timeseriesRecordCounts(m) .gt. 0 ) then
                 close( timeseriesTempUnits( m ) )
+                ! if binary unformatted units
                 open(unit=timeseriesTempUnits( m ), status='scratch', form='unformatted', &
                                                     access='stream', action='readwrite'   )
+
             end if
         end do
         timeseriesRecordCounts = 0 
