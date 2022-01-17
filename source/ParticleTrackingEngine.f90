@@ -1342,7 +1342,7 @@ subroutine pr_TrackPath(this, trackPathResult, traceModeOn, traceModeUnit,      
   
   ! Initialize loc
   call loc%SetData(location)
-  
+
   ! Initialize TrackCell
   this%TrackCell%SteadyState = this%SteadyState
   this%TrackCell%TrackingOptions = this%TrackingOptions
@@ -1394,9 +1394,11 @@ subroutine pr_TrackPath(this, trackPathResult, traceModeOn, traceModeUnit,      
 
       ! Check the status flag of the result to find out what to do next
       if(this%TrackCellResult%Status .eq. this%TrackCellResult%Status_Undefined()) then
+          print *, 'LEAVING STATUS UNDEFINED :' 
           continueLoop = .false.
           trackPathResult%Status = this%TrackCellResult%Status
       else if(this%TrackCellResult%Status .eq. this%TrackCellResult%Status_ExitAtCellFace()) then
+          !print *, 'LEAVING REACHED EXIT AT CELL FACE :'
           count = this%TrackCellResult%TrackingPoints%GetItemCount()
           if(count .gt. 1) then
               do n = 2, count
@@ -1432,6 +1434,7 @@ subroutine pr_TrackPath(this, trackPathResult, traceModeOn, traceModeUnit,      
           end if
           
       else if(this%TrackCellResult%Status .eq. this%TrackCellResult%Status_ReachedStoppingTime()) then
+          !print *, 'LEAVING REACHED STOPPING TIME :'
           count = this%TrackCellResult%TrackingPoints%GetItemCount()
           if(count .gt. 1) then
               do n = 2, count
@@ -1449,18 +1452,25 @@ subroutine pr_TrackPath(this, trackPathResult, traceModeOn, traceModeUnit,      
           end if
           
       else
+          print *,'LEAVING STATUS, PARTICLEID:', particleID
           continueLoop = .false.
           if(this%TrackCellResult%Status .eq. this%TrackCellResult%Status_NoExitPossible()) then
+          print *, 'NO EXIT POSSIBLE'
               trackPathResult%Status = this%TrackCellResult%Status_NoExitPossible()         
           else if(this%TrackCellResult%Status .eq. this%TrackCellResult%Status_StopZoneCell()) then
+          print *, 'STOP ZONE CELL'
               trackPathResult%Status = this%TrackCellResult%Status_StopZoneCell()                  
           else if(this%TrackCellResult%Status .eq. this%TrackCellResult%Status_StopAtWeakSink()) then
+          print *, 'STOP WEAK SINK'
               trackPathResult%Status = this%TrackCellResult%Status_StopAtWeakSink()                   
           else if(this%TrackCellResult%Status .eq. this%TrackCellResult%Status_StopAtWeakSource()) then
+          print *, 'STOP WEAK SOURCE'
               trackPathResult%Status = this%TrackCellResult%Status_StopAtWeakSource()
           else if(this%TrackCellResult%Status .eq. this%TrackCellResult%Status_InactiveCell()) then
+          print *, 'STOP INACTIVE CELL'
               trackPathResult%Status = this%TrackCellResult%Status_InactiveCell()      
           else
+          print *, 'UNDEFINED'
               trackPathResult%Status = this%TrackCellResult%Status_Undefined()
           end if
           
@@ -1489,6 +1499,7 @@ subroutine pr_TrackPath(this, trackPathResult, traceModeOn, traceModeUnit,      
           ! Default is -999
           idObservationCell = this%TrackingOptions%IdObservationCell( this%TrackCell%CellData%CellNumber ) 
           if ( idObservationCell .ge. 0 ) then
+              print *, 'OBSERVATION CELL: ',  this%TrackCell%CellData%CellNumber
               call WriteObservationCellRecord( this, group, particleID,      &
                    this%TrackCell,                                           &
                    this%TrackingOptions%observationUnits( idObservationCell ))
