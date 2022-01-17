@@ -144,7 +144,14 @@ contains
   
   ! Add the initial location to the TrackingPoints list
   call trackCellResult%TrackingPoints%AddItem(initialLocation)
-  
+
+  ! OBS
+  ! Initialize subCellResult with initial locations
+  call subCellResult%InitializeLocation( initialLocation ) 
+  ! Assign subCellResult to TrackSubCell (temp)
+  this%TrackSubCell%TrackSubCellResult = subCellResult
+
+
   ! Check for stopping conditions
   
   ! Check to see if this cell is an automatic stop zone cell
@@ -170,10 +177,12 @@ contains
           trackCellResult%Status = trackCellResult%Status_NoExitPossible()
           return;
       else
+              print *, 'CELLNUMBER: ', this%CellData%CellNumber, ' NO EXIT POSSIBLE IS TRANSIENT' 
           if((this%TrackingOptions%BackwardTracking) .and. (this%CellData%SourceFlow .ne. 0.0d0)) then
                trackCellResult%Status = trackCellResult%Status_NoExitPossible()
                return;
           else if((.not. this%TrackingOptions%BackwardTracking) .and. (this%CellData%SinkFlow .ne. 0.0d0)) then
+              print *, 'CELLNUMBER: ', this%CellData%CellNumber, ' ENTERED NO EXIT POSSIBLE IS TRANSIENT' 
                trackCellResult%Status = trackCellResult%Status_NoExitPossible()
                return;
           end if
@@ -192,7 +201,9 @@ contains
       end if
   else
       if(this%TrackingOptions%StopAtWeakSinks) then
+              !print *, 'CELLNUMBER: ', this%CellData%CellNumber, ' STOP AT WEAK SINKS' 
           if(this%CellData%SinkFlow .ne. 0.0d0) then
+              print *, 'CELLNUMBER: ', this%CellData%CellNumber, ' STOP AT WEAK SINKS SINK FLOW NON ZERO' 
               trackCellResult%Status = trackCellResult%Status_StopAtWeakSink()
               return;
           else
@@ -308,6 +319,11 @@ contains
           trackCellResult%Status = trackCellResult%Status_ExitAtCellFace()
           trackCellResult%ExitFace = subCellResult%ExitFace
           trackCellResult%NextCellNumber = subCellResult%ExitFaceConnection
+
+          ! OBS
+          ! Assign subCellResult to TrackSubCell (temp)
+          this%TrackSubCell%TrackSubCellResult = subCellResult
+
           return
       else if(subCellResult%Status .eq. subCellResult%Status_ReachedMaximumTime()) then
           pLoc = this%TrackSubCell%SubCellData%ConvertToLocalParentCoordinate(subCellResult%FinalLocation)
@@ -316,9 +332,19 @@ contains
           trackCellResult%Status = trackCellResult%Status_ReachedStoppingTime()
           trackCellResult%ExitFace = subCellResult%ExitFace
           trackCellResult%NextCellNumber = pLoc%CellNumber
+
+          ! OBS
+          ! Assign subCellResult to TrackSubCell (temp)
+          this%TrackSubCell%TrackSubCellResult = subCellResult
+
           return
       else if(subCellResult%Status .eq. subCellResult%Status_NoExitPossible()) then
           trackCellResult%Status = trackCellResult%Status_NoExitPossible()
+
+          ! OBS
+          ! Assign subCellResult to TrackSubCell (temp)
+          this%TrackSubCell%TrackSubCellResult = subCellResult
+
           return
       end if
       
@@ -380,7 +406,13 @@ contains
       
       ! Add the initial location to the TrackingPoints list
       call trackCellResult%TrackingPoints%AddItem(initialLocation)
-      
+     
+      ! OBS
+      ! Initialize subCellResult with initial locations
+      call subCellResult%InitializeLocation( initialLocation ) 
+      ! Assign subCellResult to TrackSubCell (temp)
+      this%TrackSubCell%TrackSubCellResult = subCellResult
+
       ! Check for stopping conditions
       
       ! Check to see if this cell is an automatic stop zone cell
@@ -406,6 +438,7 @@ contains
               trackCellResult%Status = trackCellResult%Status_NoExitPossible()
               return;
           else
+              print *, 'CELLNUMBER: ', this%CellData%CellNumber, ' NO EXIT POSSIBLE IS TRANSIENT' 
               if((this%TrackingOptions%BackwardTracking) .and. (this%CellData%SourceFlow .ne. 0.0d0)) then
                    trackCellResult%Status = trackCellResult%Status_NoExitPossible()
                    return;
@@ -428,6 +461,7 @@ contains
           end if
       else
           if(this%TrackingOptions%StopAtWeakSinks) then
+              print *, 'CELLNUMBER: ', this%CellData%CellNumber, ' STOP AT WEAK SINKS' 
               if(this%CellData%SinkFlow .ne. 0.0d0) then
                   trackCellResult%Status = trackCellResult%Status_StopAtWeakSink()
                   return;

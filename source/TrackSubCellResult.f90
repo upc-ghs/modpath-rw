@@ -22,6 +22,7 @@ module TrackSubCellResultModule
     procedure :: Status_ExitAtInternalFace=>TrackSubCellResultType_ExitAtInternalFace
     procedure :: Status_ReachedMaximumTime=>TrackSubCellResultType_ReachedMaximumTime
     procedure :: Status_NoExitPossible=>TrackSubCellResultType_NoExitPossible
+    procedure :: InitializeLocation=>pr_InitializeLocation
   end type
   
 contains
@@ -89,5 +90,42 @@ end subroutine
   status = 3
   
   end function TrackSubCellResultType_NoExitPossible
+
+
+  subroutine pr_InitializeLocation( this, initialLocation )
+  !---------------------------------------------------
+  !
+  !---------------------------------------------------
+    class(TrackSubCellResultType) :: this
+    type(ParticleLocationType),intent(in) :: initialLocation
+    integer :: cellNumber
+    doubleprecision :: initialX,initialY,initialZ,initialTime
+  !---------------------------------------------------
+    
+    call this%Reset()
+    
+    cellNumber  = initialLocation%CellNumber
+    initialX    = initialLocation%LocalX
+    initialY    = initialLocation%LocalY
+    initialZ    = initialLocation%LocalZ
+    initialTime = initialLocation%TrackingTime
+    
+    this%CellNumber                   = cellNumber
+    this%InitialLocation%CellNumber   = cellNumber
+    this%InitialLocation%LocalX       = initialX
+    this%InitialLocation%LocalY       = initialY
+    this%InitialLocation%LocalZ       = initialZ
+    this%InitialLocation%TrackingTime = initialTime
+    this%FinalLocation%LocalX         = initialX
+    this%FinalLocation%LocalY         = initialY
+    this%FinalLocation%LocalZ         = initialZ
+    this%FinalLocation%TrackingTime   = initialTime
+    this%Status = this%Status_Undefined()
+
+  end subroutine pr_InitializeLocation
+
+
+
+
 
 end module TrackSubCellResultModule
