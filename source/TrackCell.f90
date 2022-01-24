@@ -144,7 +144,14 @@ contains
   
   ! Add the initial location to the TrackingPoints list
   call trackCellResult%TrackingPoints%AddItem(initialLocation)
-  
+
+  ! OBS
+  ! Initialize subCellResult with initial locations
+  call subCellResult%InitializeLocation( initialLocation ) 
+  ! Assign subCellResult to TrackSubCell (temp)
+  this%TrackSubCell%TrackSubCellResult = subCellResult
+
+
   ! Check for stopping conditions
   
   ! Check to see if this cell is an automatic stop zone cell
@@ -308,6 +315,11 @@ contains
           trackCellResult%Status = trackCellResult%Status_ExitAtCellFace()
           trackCellResult%ExitFace = subCellResult%ExitFace
           trackCellResult%NextCellNumber = subCellResult%ExitFaceConnection
+
+          ! OBS
+          ! Assign subCellResult to TrackSubCell (temp)
+          this%TrackSubCell%TrackSubCellResult = subCellResult
+
           return
       else if(subCellResult%Status .eq. subCellResult%Status_ReachedMaximumTime()) then
           pLoc = this%TrackSubCell%SubCellData%ConvertToLocalParentCoordinate(subCellResult%FinalLocation)
@@ -316,9 +328,19 @@ contains
           trackCellResult%Status = trackCellResult%Status_ReachedStoppingTime()
           trackCellResult%ExitFace = subCellResult%ExitFace
           trackCellResult%NextCellNumber = pLoc%CellNumber
+
+          ! OBS
+          ! Assign subCellResult to TrackSubCell (temp)
+          this%TrackSubCell%TrackSubCellResult = subCellResult
+
           return
       else if(subCellResult%Status .eq. subCellResult%Status_NoExitPossible()) then
           trackCellResult%Status = trackCellResult%Status_NoExitPossible()
+
+          ! OBS
+          ! Assign subCellResult to TrackSubCell (temp)
+          this%TrackSubCell%TrackSubCellResult = subCellResult
+
           return
       end if
       
@@ -374,14 +396,19 @@ contains
       
       ! If the initial location cell is inactive for this time step, set status to InactiveCell
       if(this%CellData%IboundTS .eq. 0) then
-          print *, 'IT SHOULD NOT HAPPEN, INITIAL LOCALTION INACTIVE CELL'
           trackCellResult%Status = trackCellResult%Status_InactiveCell()
           return
       end if
       
       ! Add the initial location to the TrackingPoints list
       call trackCellResult%TrackingPoints%AddItem(initialLocation)
-      
+     
+      ! OBS
+      ! Initialize subCellResult with initial locations
+      call subCellResult%InitializeLocation( initialLocation ) 
+      ! Assign subCellResult to TrackSubCell (temp)
+      this%TrackSubCell%TrackSubCellResult = subCellResult
+
       ! Check for stopping conditions
       
       ! Check to see if this cell is an automatic stop zone cell

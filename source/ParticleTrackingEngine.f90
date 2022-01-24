@@ -1526,7 +1526,6 @@ subroutine pr_FillNeighborCellsConnectionFromHorizontalFace(this, centerCellData
         ! Done
         return
 
-
     else
         ! No connection
 
