@@ -18,7 +18,8 @@ module ParticleTrackingOptionsModule
 
     !RWPT
     logical                       :: RandomWalkParticleTracking = .false.
-    doubleprecision               :: alphaL, alphaT, Dmol = 0
+    doubleprecision               :: Dmol = 0
+    !doubleprecision               :: alphaL, alphaT, Dmol = 0
     integer                       :: timeStepKind
     doubleprecision, dimension(2) :: timeStepParameters = 0
     integer                       :: advectionKind

@@ -496,6 +496,7 @@ contains
       end if
 
       ! Assign pointers
+      ! This should be done only once
       if ( trackingOptions%advectionKind .eq. 1 ) then 
           this%AdvectionDisplacement=>pr_AdvectionDisplacementExponential
           this%ExitFaceAndUpdateTimeStep=>pr_DetectExitFaceAndUpdateTimeStepNewton
@@ -526,8 +527,10 @@ contains
       twoDimensions = trackingOptions%twoDimensions
 
       ! Initialize dispersion
-      alphaL = trackingOptions%alphaL
-      alphaT = trackingOptions%alphaT
+      alphaL = this%SubCellData%alphaL
+      alphaT = this%SubCellData%alphaT
+      !alphaL = trackingOptions%alphaL
+      !alphaT = trackingOptions%alphaT
       Dmol   = trackingOptions%Dmol
 
       ! Compute time step for RWPT
@@ -935,6 +938,7 @@ contains
       ! local
       doubleprecision :: vx1, vx2, vy1, vy2, vz1, vz2 
       doubleprecision :: dx, dy, dz
+      doubleprecision :: alphaL, alphaT
       doubleprecision, dimension(2) :: dts
       !----------------------------------------------------------------
 
@@ -954,6 +958,10 @@ contains
       dy = this%SubCellData%DY
       dz = this%SubCellData%DZ
 
+      ! Local copies of dispersivities 
+      alphaL = this%SubCellData%alphaL
+      alphaT = this%SubCellData%alphaT
+
       ! Compute time step
       select case (trackingOptions%timeStepKind)
           case (1)
@@ -965,9 +973,9 @@ contains
           case (2)
               ! Fix Peclet 
               dt = 1/( trackingOptions%timeStepParameters(2)*(                  &
-                  trackingOptions%alphaL*max(abs(vx1), abs(vx2))/( dx**2 ) +    &
-                  trackingOptions%alphaT*max(abs(vy1), abs(vy2))/( dy**2 ) +    &
-                  trackingOptions%alphaT*max(abs(vz1), abs(vz2))/( dz**2 ) ) )
+                  alphaL*max(abs(vx1), abs(vx2))/( dx**2 ) +    &
+                  alphaT*max(abs(vy1), abs(vy2))/( dy**2 ) +    &
+                  alphaT*max(abs(vz1), abs(vz2))/( dz**2 ) ) )
           case (3)
               ! Courant condition
               dts(1) = trackingOptions%timeStepParameters(1)/( & 
@@ -976,9 +984,9 @@ contains
                   max(abs(vz1), abs(vz2))/dz )
               ! Peclet condition
               dts(2) = 1/( trackingOptions%timeStepParameters(2)*(              &
-                  trackingOptions%alphaL*max(abs(vx1), abs(vx2))/( dx**2 ) +    & 
-                  trackingOptions%alphaT*max(abs(vy1), abs(vy2))/( dy**2 ) +    &
-                  trackingOptions%alphaT*max(abs(vz1), abs(vz2))/( dz**2 ) ) )
+                  alphaL*max(abs(vx1), abs(vx2))/( dx**2 ) +    & 
+                  alphaT*max(abs(vy1), abs(vy2))/( dy**2 ) +    &
+                  alphaT*max(abs(vz1), abs(vz2))/( dz**2 ) ) )
               ! Compute minimum
               dt     = minval( dts, dts > 0 )
       end select

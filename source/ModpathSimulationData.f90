@@ -42,6 +42,7 @@ module ModpathSimulationDataModule
     character(len=200) :: TimeseriesFile
     character(len=200) :: TraceFile
     character(len=200) :: AdvectiveObservationsFile
+    character(len=200) :: DispersionFile ! RWPT
     integer,dimension(:),allocatable :: BudgetCells
     integer,dimension(:),allocatable :: Zones
     doubleprecision,dimension(:),allocatable :: Retardation
@@ -97,7 +98,7 @@ contains
 
   ! RWPT
   character(len=200) :: dispersionFile
-  integer :: dispersionUnit = 88
+  !integer :: dispersionUnit = 88
   integer :: iodispersion   = 0
   integer :: ioInUnit       = 0
   integer :: nObservations  = 0
@@ -521,6 +522,7 @@ contains
       else
           call ustop('Invalid starting locations file name. stop.')
       end if
+      print *, 'READ AND PREPARE LOCATIONS, PARTICLES'
       call ReadAndPrepareLocations(slocUnit, outUnit, this%ParticleGroups(n),   &
         ibound, grid%CellCount, grid, seqNumber)
       write(outUnit, '(a,i4,a,i10,a)') 'Particle group ', n, ' contains ',      &
@@ -560,127 +562,31 @@ contains
          (this%SimulationType .eq. 6) .or. & 
          (this%SimulationType .eq. 7) ) then
 
+        !print *, 'ModpathSimulationData: RWPT YES'
         ! Identify the simulation 
         this%TrackingOptions%RandomWalkParticleTracking = .true.
 
         ! Open the dispersion data file
-        read(inUnit, '(a)') dispersionFile
+        ! Requires error handling
+        read(inUnit, '(a)') this%DispersionFile
         icol = 1
-        call urword(dispersionFile,icol,istart,istop,0,n,r,0,0)
-        dispersionFile = dispersionFile(istart:istop)
-        open( dispersionUnit, file=dispersionFile, status='old', access='sequential')
+        call urword(this%DispersionFile,icol,istart,istop,0,n,r,0,0)
+        this%DispersionFile = this%DispersionFile(istart:istop)
 
-        ! alphaL
-        read( dispersionUnit, * ) line
-        icol = 1
-        call urword(line,icol,istart,istop,3,n,r,0,0)
-        this%TrackingOptions%alphaL = r
-
-        ! alphaT
-        read( dispersionUnit, * ) line
-        icol = 1
-        call urword(line,icol,istart,istop,3,n,r,0,0)
-        this%TrackingOptions%alphaT = r
-
-        ! Dmol
-        read( dispersionUnit, * ) line
-        icol = 1
-        call urword(line,icol,istart,istop,3,n,r,0,0)
-        this%TrackingOptions%Dmol = r
-
-        ! Time Step kind 
-        read(dispersionUnit, '(a)') line
-        icol = 1
-        call urword(line,icol,istart,istop,1,n,r,0,0)
-        line = line(istart:istop)
-        ! Give a Courant
-        if ( line .eq. 'CONSTANT_CU' ) then
-            this%TrackingOptions%timeStepKind = 1
-            read( dispersionUnit, * ) line
-            icol = 1
-            call urword(line,icol,istart,istop,3,n,r,0,0)
-            this%TrackingOptions%timeStepParameters(1) = r
-        ! Give a Peclet
-        else if ( line .eq. 'CONSTANT_PE' ) then
-            this%TrackingOptions%timeStepKind = 2
-            read( dispersionUnit, * ) line
-            icol = 1
-            call urword(line,icol,istart,istop,3,n,r,0,0)
-            this%TrackingOptions%timeStepParameters(2) = r
-        ! Minimum between Courant and Peclet 
-        else if ( line .eq. 'MIN_CU_PE' ) then
-            this%TrackingOptions%timeStepKind = 3
-            read( dispersionUnit, * ) line
-            icol = 1
-            call urword(line,icol,istart,istop,3,n,r,0,0)
-            this%TrackingOptions%timeStepParameters(1) = r
-            read( dispersionUnit, * ) line
-            icol = 1
-            call urword(line,icol,istart,istop,3,n,r,0,0)
-            this%TrackingOptions%timeStepParameters(2) = r
-        else
-            call ustop('RWPT: Invalid options for time step selection. Stop.')
-        end if
-
-        ! Advection Integration Kind
-        read(dispersionUnit, '(a)', iostat=iodispersion) line
-        if ( iodispersion .lt. 0 ) then 
-            ! end of file
-            this%TrackingOptions%advectionKind = 1
-            write(outUnit,'(A)') 'RWPT: Advection integration not specified. Default to EXPONENTIAL.'
-        else
-            icol = 1
-            call urword(line,icol,istart,istop,1,n,r,0,0)
-            line = line(istart:istop)
-            select case(line)
-                case('EXPONENTIAL')
-                    this%TrackingOptions%advectionKind = 1
-                    write(outUnit,'(A)') 'RWPT: Advection integration is EXPONENTIAL.'
-                case('EULERIAN')
-                    this%TrackingOptions%advectionKind = 2
-                    write(outUnit,'(A)') 'RWPT: Advection integration is EULERIAN.'
-                case default
-                    this%TrackingOptions%advectionKind = 1
-                    write(outUnit,'(A)') 'RWPT: Advection integration not specified. Default to EXPONENTIAL.'
-            end select
-        end if
-
-        ! Domain dimensions option
-        read(dispersionUnit, '(a)', iostat=iodispersion) line
-        if ( iodispersion .lt. 0 ) then 
-            ! end of file
-            this%TrackingOptions%twoDimensions = .false.
-            write(outUnit,'(A)') 'RWPT: Number of dimensions not specified. Defaults to 3D.'
-        else
-            icol = 1
-            call urword(line,icol,istart,istop,1,n,r,0,0)
-            line = line(istart:istop)
-            select case(line)
-                case('2D')
-                    this%TrackingOptions%twoDimensions = .true.
-                    write(outUnit,'(A)') 'RWPT: Selected 2D domain solver.'
-                case('3D')
-                    this%TrackingOptions%twoDimensions = .false.
-                    write(outUnit,'(A)') 'RWPT: Selected 3D domain solver.'
-                case default
-                    this%TrackingOptions%twoDimensions = .false.
-                    write(outUnit,'(A)') 'RWPT: Invalid option for domain solver, defaults to 3D.'
-            end select
-        end if 
-
-
-        ! Close dispersion data file
-        close( dispersionUnit )
+        ! Initialization and reading of dispersion file data is handled in TransportModelData.f90        
 
     end if
 
+
     ! Now try to read if any observation cells
     ! limit the number of observations to two, during dev
-    read(inUnit, '(a)', iostat=ioInUnit) line
+    read(inUnit, * , iostat=ioInUnit) line
     if ( ioInUnit .lt. 0 ) then 
         ! No obs 
         write(outUnit,'(A)') 'OBS: No observation cells.'
+        print *, 'ModpathSimulationData: NO OBSERVATION CELLS'
     else 
+        print *, 'ModpathSimulationData: YES OBSERVATION CELLS', ioInUnit
         ! Yes obs
         icol = 1
         call urword(line, icol, istart, istop, 2, n, r, 0, 0)

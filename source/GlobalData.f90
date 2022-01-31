@@ -5,6 +5,7 @@ module GlobalDataModule
       headuUnit, budgetUnit, traceModeUnit, binPathlineUnit
     integer, save :: inUnit, pathlineUnit, endpointUnit, timeseriesUnit,        &
       mplistUnit, mpsimUnit, traceUnit, budchkUnit, aobsUnit, logUnit
+    integer, save :: dispersionUnit 
     integer, save :: particleGroupCount
     integer, save :: gridFileType
     integer, save :: logType

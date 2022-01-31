@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 !  MPath7.f90 
 !  PROGRAM: MPath7
 
@@ -19,9 +18,10 @@
 !   Specifications:
 !---------------------------------------------------------------------------------
     use GlobalDataModule,only : niunit, narealsp, issflg, nper, mpbasUnit,      &
-        disUnit, tdisUnit, gridMetaUnit, headUnit, headuUnit, budgetUnit,        &
+        disUnit, tdisUnit, gridMetaUnit, headUnit, headuUnit, budgetUnit,       &
         inUnit, pathlineUnit, endpointUnit, timeseriesUnit, binPathlineUnit,    &
         mplistUnit, traceUnit, budchkUnit, aobsUnit, logUnit, mpsimUnit,        &
+        dispersionUnit,                                                         & ! RWPT
         traceModeUnit, mpnamFile, mplistFile, mpbasFile, disFile, tdisFile,     &
         gridFile, headFile, budgetFile, mpsimFile, traceFile,  gridMetaFile,    &
         mplogFile, logType, particleGroupCount, gridFileType
@@ -42,6 +42,7 @@
     use TimeDiscretizationDataModule,only : TimeDiscretizationDataType
     use ParticleTrackingEngineModule,only : ParticleTrackingEngineType
     use FlowModelDataModule, only: FlowModelDataType
+    use TransportModelDataModule, only: TransportModelDataType
     use TrackPathResultModule,only : TrackPathResultType
     use ParticleLocationModule,only : ParticleLocationType
     use ParticleCoordinateModule,only : ParticleCoordinateType
@@ -66,6 +67,7 @@
     type(TimeDiscretizationDataType), allocatable :: tdisData
     type(ParticleTrackingEngineType), allocatable,target :: trackingEngine
     type(FlowModelDataType), allocatable :: flowModelData
+    type(TransportModelDataType), allocatable :: transportModelData  ! RWPT
     type(ModpathBasicDataType), allocatable, target :: basicData
     type(ModpathSimulationDataType), allocatable, target :: simulationData
     type(ModpathCellDataType), allocatable, target :: cellData
@@ -116,24 +118,26 @@
     terminationMessage = "Normal termination."
     
     ! Assign dedicated file unit numbers
-     disUnit = 101
-     endpointUnit = 102
-     pathlineUnit = 103
-     timeseriesUnit = 104
-     mplistUnit = 105
-     traceUnit = 106
-     budchkUnit = 107
-     aobsUnit = 108
-     logUnit = 109
-     mpsimUnit = 110
-     tdisUnit = 111
-     mpbasUnit = 112
-     headUnit = 113
-     budgetUnit = 114
-     traceModeUnit = 115
-     binPathlineUnit = 116
-     gridMetaUnit = 117
-     
+    disUnit = 101
+    endpointUnit = 102
+    pathlineUnit = 103
+    timeseriesUnit = 104
+    mplistUnit = 105
+    traceUnit = 106
+    budchkUnit = 107
+    aobsUnit = 108
+    logUnit = 109
+    mpsimUnit = 110
+    tdisUnit = 111
+    mpbasUnit = 112
+    headUnit = 113
+    budgetUnit = 114
+    traceModeUnit = 115
+    binPathlineUnit = 116
+    gridMetaUnit = 117
+    dispersionUnit = 118 ! RWPT
+
+
     ! Parse the command line for simulation file name, log file name, and options
     call ParseCommandLine(mpsimFile, mplogFile, logType)
     ! Open the log file (unless -nolog option)
@@ -327,7 +331,7 @@
     allocate(basicData)
     call ulog('Read MODPATH basic data component.', logUnit)   
     call basicData%ReadData(mpbasUnit, mplistUnit, modelGrid)
-    
+
     ! Read the remainder of the MODPATH simulation file
     call ulog('Read the remainder of the MODPATH simulation data component.', logUnit)
     call simulationData%ReadData(mpsimUnit, mplistUnit, basicData%IBound, tdisData, modelGrid)
@@ -356,9 +360,17 @@
     call flowModelData%SetRetardation(simulationData%Retardation, modelGrid%CellCount)
     call flowModelData%SetDefaultIface(basicData%DefaultIfaceLabels, &
             basicData%DefaultIfaceValues, basicData%DefaultIfaceCount)
-    call trackingEngine%Initialize(modelGrid, simulationData%TrackingOptions, flowModelData)
+    if ( simulationData%TrackingOptions%RandomWalkParticleTracking ) then 
+        ! Initialize transportModelData
+        allocate( transportModelData ) 
+        call transportModelData%Initialize( modelGrid )
+        call transportModelData%ReadData( dispersionUnit, simulationData%DispersionFile, mplistUnit, &
+                                                                      simulationData%TrackingOptions )
+        call trackingEngine%Initialize(modelGrid, simulationData%TrackingOptions, flowModelData, transportModelData)
+    else 
+        call trackingEngine%Initialize(modelGrid, simulationData%TrackingOptions, flowModelData)
+    end if 
     ! The trackingEngine initialization is complete
-   
 
     ! Compute range of time steps to use in the time step loop
     message ='Compute range of time steps. Prepare for time step loop'

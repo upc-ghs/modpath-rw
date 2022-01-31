@@ -181,8 +181,8 @@ contains
 
       ! POROSITY
       if((grid%GridType .eq. 1) .or. (grid%GridType .eq. 3)) then
-            call u3ddblmp(inUnit, outUnit, grid%LayerCount, grid%RowCount,      &
-              grid%ColumnCount, grid%CellCount, this%Porosity, ANAME(2))                      
+          call u3ddblmp(inUnit, outUnit, grid%LayerCount, grid%RowCount,      &
+            grid%ColumnCount, grid%CellCount, this%Porosity, ANAME(2))                      
       else if((grid%GridType .eq. 2) .or. (grid%GridType .eq. 4)) then
           call u3ddblmpusg(inUnit, outUnit, grid%CellCount, grid%LayerCount,              &
             this%Porosity, aname(2), cellsPerLayer)
