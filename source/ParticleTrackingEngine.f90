@@ -10,6 +10,7 @@ module ParticleTrackingEngineModule
   use ModpathSubCellDataModule,only : ModpathSubCellDataType
   use ParticleTrackingOptionsModule,only : ParticleTrackingOptionsType
   use FlowModelDataModule,only : FlowModelDataType
+  use TransportModelDataModule,only : TransportModelDataType
   implicit none
   
   ! Set default access status to private
@@ -25,6 +26,7 @@ module ParticleTrackingEngineModule
 
     ! Derived type pointers
     type(FlowModelDataType), pointer :: FlowModelData => null()
+    type(TransportModelDataType), pointer :: TransportModelData => null()
     class(ModflowRectangularGridType),pointer :: Grid => null()
 
     ! Private variables
@@ -32,27 +34,21 @@ module ParticleTrackingEngineModule
     type(TrackCellResultType),private :: TrackCellResult
 
     ! RWPT
-    !type(ModpathSubCellDataType), dimension(18) :: NeighborSubCellData
-    !type(ModpathCellDataType), dimension(18) :: NeighborCellData
     procedure(FillNeighborCells), pass, pointer :: FillNeighborCellData=>null()
     procedure(FillCellData)     , pass, pointer :: FillCellBuffer=>null()
+    procedure(ParticleTracker)  , pass, pointer :: TrackPath=>null()
 
   contains
 
     procedure :: Initialize=>pr_Initialize
     procedure :: Reset=>pr_Reset
-    procedure :: TrackPath=>pr_TrackPath
+    !procedure :: TrackPath=>pr_TrackPath
     !procedure :: FillCellBuffer=>pr_FillCellBuffer
     procedure :: FillFaceFlowsBuffer=>pr_FillFaceFlowsBuffer
     procedure :: FillCellFlowsBuffer=>pr_FillCellFlowsBuffer
     procedure :: GetVolumetricBalanceSummary=>pr_GetVolumetricBalanceSummary
     procedure :: WriteCellBuffer=>pr_WriteCellBuffer
     procedure :: GetTopMostActiveCell=>pr_GetTopMostActiveCell
-
-    ! RWPT
-    !procedure :: FillNeighborCellData=>pr_FillNeighborCellData
-    ! DEPRECATION WARNING
-    !procedure :: FillNeighborSubCellData=>pr_FillNeighborSubCellData
 
   end type
 
@@ -78,6 +74,24 @@ module ParticleTrackingEngineModule
           integer,intent(in) :: cellNumber
           type(ModpathCellDataType),intent(inout) :: cellBuffer
       end subroutine FillCellData
+
+      ! ParticleTracker
+      subroutine ParticleTracker(this, trackPathResult, traceModeOn, traceModeUnit,   &
+        group, particleID, seqNumber, location, maximumTrackingTime, timeseriesPoints,&
+        timeseriesPointCount)
+          import ParticleTrackingEngineType
+          import TrackPathResultType
+          import ParticleLocationType
+          !----------------------------------------
+          class(ParticleTrackingEngineType), target :: this
+          type(TrackPathResultType),target,intent(out) :: trackPathResult
+          type(ParticleLocationType),intent(in) :: location
+          integer,intent(in) :: group, particleID, seqNumber, timeseriesPointCount, &
+            traceModeUnit
+          logical,intent(in) :: traceModeOn
+          doubleprecision,intent(in) :: maximumTrackingTime
+          doubleprecision,dimension(timeseriesPointCount),intent(in) :: timeseriesPoints
+      end subroutine ParticleTracker
 
   end interface
 
@@ -367,7 +381,7 @@ contains
     end function pr_FindTimeIndex
 
 
-    subroutine pr_Initialize(this, grid, trackingOptions, flowModelData)
+    subroutine pr_Initialize(this, grid, trackingOptions, flowModelData, transportModelData)
     !***************************************************************************************************************
     !
     !***************************************************************************************************************
@@ -375,14 +389,13 @@ contains
     !---------------------------------------------------------------------------------------------------------------
     implicit none
     class(ParticleTrackingEngineType) :: this
-    class(ModflowRectangularGridType),intent(inout),pointer :: grid
-    type(ParticleTrackingOptionsType),intent(in) :: trackingOptions
+    class(ModflowRectangularGridType), intent(inout), pointer :: grid
+    type(ParticleTrackingOptionsType), intent(in) :: trackingOptions
     type(FlowModelDataType), intent(in), target :: flowModelData
+    type(TransportModelDataType), optional, target :: transportModelData
     !---------------------------------------------------------------------------------------------------------------
    
 
-        this%Initialized = .false.
-        
         ! Call Reset to make sure that all arrays are initially unallocated
         call this%Reset()
         
@@ -390,32 +403,69 @@ contains
         this%FlowModelData => flowModelData
         this%Grid => grid
         this%TrackingOptions = trackingOptions
+       
+        if (this%TrackingOptions%RandomWalkParticleTracking) then
+            ! RWPT
+            if ( .not. present( transportModelData ) ) then
+                print *, 'Error: ParticleTrackingEngine:Initialize: RWPT requires transportModelData, not given.'
+                call exit(0)
+            end if 
+
+            ! Define transport data pointer 
+            this%TransportModelData => transportModelData
+
+            ! Assign interfaces for FillCellBuffer and FillNeighborCellData
+            select case( this%Grid%GridType ) 
+                case (1)
+                    ! Set for structured grid
+                    this%FillCellBuffer=>pr_FillTransportCellBufferStructured
+                    this%FillNeighborCellData=> pr_FillNeighborCellDataStructured
+                case (2)
+                    ! Set for MODFLOW-USG unstructured grid
+                    this%FillCellBuffer=>pr_FillTransportCellBufferUnstructured
+                    this%FillNeighborCellData=> pr_FillNeighborCellDataUnstructured
+                case (3)
+                    ! Set for MODFLOW-6 structured grid (DIS)
+                    this%FillCellBuffer=>pr_FillTransportCellBufferUnstructured
+                    this%FillNeighborCellData=> pr_FillNeighborCellDataStructured
+                case (4)
+                    ! Set for MODFLOW-6 unstructured grid (DISV)
+                    this%FillCellBuffer=>pr_FillTransportCellBufferUnstructured
+                    this%FillNeighborCellData=> pr_FillNeighborCellDataUnstructured
+            end select
+
+            ! Assign tracking function with RWPT
+            this%TrackPath => pr_RWPTrackPath
+
+        else 
+            ! MODPATH
+
+            ! Assign interface for FillCellBuffer
+            select case( this%Grid%GridType ) 
+                case (1)
+                    ! Set for structured grid
+                    this%FillCellBuffer=>pr_FillCellBufferStructured
+                case (2)
+                    ! Set for MODFLOW-USG unstructured grid
+                    this%FillCellBuffer=>pr_FillCellBufferUnstructured
+                case (3)
+                    ! Set for MODFLOW-6 structured grid (DIS)
+                    this%FillCellBuffer=>pr_FillCellBufferUnstructured
+                case (4)
+                    ! Set for MODFLOW-6 unstructured grid (DISV)
+                    this%FillCellBuffer=>pr_FillCellBufferUnstructured
+            end select
         
+            ! Assign tracking function  with classical modpath
+            this%TrackPath => pr_TrackPath
         
+        end if
+
+
+        ! Properties 
         this%Initialized = .true.
        
-        ! RWPT
-        ! Assign interface for neighbor cell data generation
-        select case( this%Grid%GridType ) 
-            case (1)
-                ! Set for structured grid
-                this%FillCellBuffer=>pr_FillCellBufferStructured
-                this%FillNeighborCellData=> pr_FillNeighborCellDataStructured
-            case (2)
-                ! Set for MODFLOW-USG unstructured grid
-                this%FillCellBuffer=>pr_FillCellBufferUnstructured
-                this%FillNeighborCellData=> pr_FillNeighborCellDataUnstructured
-            case (3)
-                ! Set for MODFLOW-6 structured grid (DIS)
-                this%FillCellBuffer=>pr_FillCellBufferUnstructured
-                this%FillNeighborCellData=> pr_FillNeighborCellDataStructured
-            case (4)
-                ! Set for MODFLOW-6 unstructured grid (DISV)
-                this%FillCellBuffer=>pr_FillCellBufferUnstructured
-                this%FillNeighborCellData=> pr_FillNeighborCellDataUnstructured
-        end select
 
-        
     end subroutine pr_Initialize
 
 
@@ -474,88 +524,7 @@ contains
       
     end subroutine pr_FillCellFlowsBuffer
  
-  
-    !subroutine pr_FillCellBuffer(this, cellNumber, cellBuffer)
-    !!***************************************************************************************************************
-    !!
-    !!***************************************************************************************************************
-    !! Specifications
-    !!---------------------------------------------------------------------------------------------------------------
-    !implicit none
-    !class(ParticleTrackingEngineType) :: this
-    !integer,intent(in) :: cellNumber
-    !type(ModpathCellDataType),intent(inout) :: cellBuffer
-    !doubleprecision,dimension(6) :: boundaryFlows
-    !integer :: n, layer, boundaryFlowsOffset, gridType, cellType
-    !!---------------------------------------------------------------------------------------------------------------
-    !
-
-    !    boundaryFlowsOffset = 6 * (cellNumber - 1)
-    !    do n = 1, 6
-    !        boundaryFlows(n) = this%FlowModelData%BoundaryFlows(boundaryFlowsOffset + n)
-    !    end do
-    !    
-    !    layer = this%Grid%GetLayer(cellNumber)
-    !    
-    !    gridType = this%Grid%GridType
-    !    cellType = this%Grid%CellType(cellNumber)
-    !    select case (gridType)
-    !        case (1)
-    !            ! Set cell buffer data for a structured grid
-    !            call cellBuffer%SetDataStructured(cellNumber,this%Grid%CellCount,     &
-    !              this%Grid,this%FlowModelData%IBound,this%FlowModelData%IBoundTS,                        &
-    !              this%FlowModelData%Porosity(cellNumber),this%FlowModelData%Retardation(cellNumber),     &
-    !              this%FlowModelData%StorageFlows(cellNumber),this%FlowModelData%SourceFlows(cellNumber), &
-    !              this%FlowModelData%SinkFlows(cellNumber), this%FlowModelData%FlowsRightFace,            &
-    !              this%FlowModelData%FlowsFrontFace, this%FlowModelData%FlowsLowerFace, boundaryFlows,    &
-    !              this%FlowModelData%Heads(cellNumber), cellType,                                   &
-    !              this%FlowModelData%Zones(cellNumber))
-    !        case (2)
-    !            ! Set cell buffer data for a MODFLOW-USG unstructured grid
-    !            call cellBuffer%SetDataUnstructured(cellNumber,this%Grid%CellCount,   &
-    !              this%Grid%JaCount,this%Grid,                                        &
-    !              this%FlowModelData%IBound,this%FlowModelData%IBoundTS,                                  &
-    !              this%FlowModelData%Porosity(cellNumber),this%FlowModelData%Retardation(cellNumber),     &
-    !              this%FlowModelData%StorageFlows(cellNumber),this%FlowModelData%SourceFlows(cellNumber), &
-    !              this%FlowModelData%SinkFlows(cellNumber), this%FlowModelData%FlowsJA, boundaryFlows,    &
-    !              this%FlowModelData%Heads(cellNumber), cellType,                                   &
-    !              this%FlowModelData%Zones(cellNumber))
-    !            ! Compute internal sub-cell face flows for cells with multiple sub-cell
-    !            if(cellBuffer%GetSubCellCount() .gt. 1) then
-    !                call cellBuffer%ComputeSubCellFlows()
-    !            end if
-    !        case (3)
-    !            ! Set cell buffer data for a MODFLOW-6 structured grid (DIS)
-    !            call cellBuffer%SetDataUnstructured(cellNumber,this%Grid%CellCount,   &
-    !              this%Grid%JaCount,this%Grid,                                        &
-    !              this%FlowModelData%IBound,this%FlowModelData%IBoundTS,                                  &
-    !              this%FlowModelData%Porosity(cellNumber),this%FlowModelData%Retardation(cellNumber),     &
-    !              this%FlowModelData%StorageFlows(cellNumber),this%FlowModelData%SourceFlows(cellNumber), &
-    !              this%FlowModelData%SinkFlows(cellNumber), this%FlowModelData%FlowsJA, boundaryFlows,    &
-    !              this%FlowModelData%Heads(cellNumber), cellType,                                   &
-    !              this%FlowModelData%Zones(cellNumber))
-    !        case (4)
-    !            ! Set cell buffer data for a MODFLOW-6 unstructured grid (DISV)
-    !            call cellBuffer%SetDataUnstructured(cellNumber,this%Grid%CellCount,   &
-    !              this%Grid%JaCount,this%Grid,                                        &
-    !              this%FlowModelData%IBound,this%FlowModelData%IBoundTS,                                  &
-    !              this%FlowModelData%Porosity(cellNumber),this%FlowModelData%Retardation(cellNumber),     &
-    !              this%FlowModelData%StorageFlows(cellNumber),this%FlowModelData%SourceFlows(cellNumber), &
-    !              this%FlowModelData%SinkFlows(cellNumber), this%FlowModelData%FlowsJA, boundaryFlows,    &
-    !              this%FlowModelData%Heads(cellNumber), cellType,                                   &
-    !              this%FlowModelData%Zones(cellNumber))
-    !             ! Compute internal sub-cell face flows for cells with multiple sub-cells
-    !            if(cellBuffer%GetSubCellCount() .gt. 1) then
-    !                call cellBuffer%ComputeSubCellFlows()
-    !            end if
-    !           
-    !        case default
-    !        ! Write error message and stop
-    !    end select
-
-
-    !end subroutine pr_FillCellBuffer
-
+ 
 
     subroutine pr_FillCellBufferUnstructured(this, cellNumber, cellBuffer)
     !***************************************************************************************************************
@@ -581,19 +550,51 @@ contains
         ! Set cell buffer data for a MODFLOW-USG unstructured grid
         ! Set cell buffer data for a MODFLOW-6 structured grid (DIS)
         ! Set cell buffer data for a MODFLOW-6 unstructured grid (DISV)
-        call cellBuffer%SetDataUnstructured(cellNumber,this%Grid%CellCount,   &
-          this%Grid%JaCount,this%Grid,                                        &
+        call cellBuffer%SetDataUnstructured(cellNumber,this%Grid%CellCount,                       &
+          this%Grid%JaCount,this%Grid,                                                            &
           this%FlowModelData%IBound,this%FlowModelData%IBoundTS,                                  &
           this%FlowModelData%Porosity(cellNumber),this%FlowModelData%Retardation(cellNumber),     &
           this%FlowModelData%StorageFlows(cellNumber),this%FlowModelData%SourceFlows(cellNumber), &
           this%FlowModelData%SinkFlows(cellNumber), this%FlowModelData%FlowsJA, boundaryFlows,    &
-          this%FlowModelData%Heads(cellNumber), cellType,                                   &
+          this%FlowModelData%Heads(cellNumber), cellType,                                         &
           this%FlowModelData%Zones(cellNumber))
 
 
         return
 
+
     end subroutine pr_FillCellBufferUnstructured
+
+
+
+    subroutine pr_FillTransportCellBufferUnstructured(this, cellNumber, cellBuffer)
+    !***************************************************************************************************************
+    !
+    !***************************************************************************************************************
+    ! Specifications
+    !---------------------------------------------------------------------------------------------------------------
+    implicit none
+    class(ParticleTrackingEngineType) :: this
+    integer,intent(in) :: cellNumber
+    type(ModpathCellDataType),intent(inout) :: cellBuffer
+    doubleprecision,dimension(6) :: boundaryFlows
+    !integer :: n, layer, boundaryFlowsOffset, gridType, cellType
+    !---------------------------------------------------------------------------------------------------------------
+   
+
+        call pr_FillCellBufferUnstructured(this, cellNumber, cellBuffer)
+
+        ! If AlphaLong or AlphaTrans are constants, then 
+        ! it should handle said scenario to avoid unnecessary memory usage
+        cellBuffer%alphaL = this%TransportModelData%AlphaLong(cellNumber)
+        cellBuffer%alphaT = this%TransportModelData%AlphaTrans(cellNumber)
+        
+
+        return
+
+
+    end subroutine pr_FillTransportCellBufferUnstructured
+
 
 
     subroutine pr_FillCellBufferStructured(this, cellNumber, cellBuffer)
@@ -627,9 +628,42 @@ contains
           this%FlowModelData%Heads(cellNumber), cellType,                                   &
           this%FlowModelData%Zones(cellNumber))
 
+
         return
 
+
     end subroutine pr_FillCellBufferStructured
+
+
+
+    subroutine pr_FillTransportCellBufferStructured(this, cellNumber, cellBuffer)
+    !***************************************************************************************************************
+    !
+    !***************************************************************************************************************
+    ! Specifications
+    !---------------------------------------------------------------------------------------------------------------
+    implicit none
+    class(ParticleTrackingEngineType) :: this
+    integer,intent(in) :: cellNumber
+    type(ModpathCellDataType),intent(inout) :: cellBuffer
+    doubleprecision,dimension(6) :: boundaryFlows
+    !integer :: n, layer, boundaryFlowsOffset, gridType, cellType
+    !---------------------------------------------------------------------------------------------------------------
+   
+
+        call pr_FillCellBufferStructured(this, cellNumber, cellBuffer)
+
+        ! If AlphaLong or AlphaTrans are constants, then 
+        ! it should handle said scenario to avoid unnecessary memory usage
+        cellBuffer%alphaL = this%TransportModelData%AlphaLong(cellNumber)
+        cellBuffer%alphaT = this%TransportModelData%AlphaTrans(cellNumber)
+        
+
+        return
+
+
+    end subroutine pr_FillTransportCellBufferStructured
+
 
 
 
@@ -643,14 +677,247 @@ contains
     implicit none
     class(ParticleTrackingEngineType) :: this
     !---------------------------------------------------------------------------------------------------------------
-   
+  
+
+        this%Initialized = .false.
+
+        ! Object pointers
         this%Grid => null()
         this%FlowModelData => null()
+        this%TransportModelData => null()
         
+        ! Interfaces
+        this%FillNeighborCellData=>null()
+        this%FillCellBuffer=>null()
+        this%TrackPath=>null()
+
+
     end subroutine pr_Reset
 
 
+
+! RWPT: Restored TrackPath
     subroutine pr_TrackPath(this, trackPathResult, traceModeOn, traceModeUnit,      &
+      group, particleID, seqNumber, location, maximumTrackingTime, timeseriesPoints,&
+      timeseriesPointCount)
+    !***************************************************************************************************************
+    !
+    !***************************************************************************************************************
+    ! Specifications
+    !---------------------------------------------------------------------------------------------------------------
+    implicit none
+    class(ParticleTrackingEngineType),target :: this
+    type(TrackPathResultType),target,intent(out) :: trackPathResult
+    type(ParticleLocationType),intent(in) :: location
+    integer,intent(in) :: group, particleID, seqNumber, timeseriesPointCount,     &
+      traceModeUnit
+    logical,intent(in) :: traceModeOn
+    type(ParticleLocationType) :: loc
+    type(ParticleCoordinateType) :: pCoord
+    type(ModpathCellDataType),pointer :: cellData
+    type(TrackCellResultType),pointer :: tcResult
+    doubleprecision,intent(in) :: maximumTrackingTime
+    doubleprecision,dimension(timeseriesPointCount),intent(in) :: timeseriesPoints
+    doubleprecision :: stopTime, fromLocalX, fromLocalY, fromLocalZ, globalX,     &
+      globalY, globalZ
+    integer :: timeIndex, n, count, nextCell
+    logical :: continueLoop, isTimeSeriesPoint, isMaximumTime
+
+    ! OBS
+    integer   :: idObservationCell
+    !---------------------------------------------------------------------------------------------------------------
+      
+        ! Reset trackPathResult and initialize particleID
+        call trackPathResult%Reset()
+        trackPathResult%ParticleID = particleID
+        trackPathResult%Group = group
+        trackPathResult%SequenceNumber = seqNumber
+        
+        ! Reset LocBuffP and LocBuffTS and initialize location data
+        call this%LocBuffP%Clear()
+        call this%LocBuffTS%Clear()
+        call loc%SetData(location)
+        call this%LocBuffP%AddItem(loc)
+        
+        ! Initialize loc
+        call loc%SetData(location)
+        
+        ! Initialize TrackCell
+        this%TrackCell%SteadyState = this%FlowModelData%SteadyState
+        this%TrackCell%TrackingOptions = this%TrackingOptions
+        call this%FillCellBuffer(loc%CellNumber,  this%TrackCell%CellData)
+
+        continueLoop = .true.
+        isTimeSeriesPoint = .false.
+        isMaximumTime = .false.
+        
+        do while(continueLoop)
+            ! Check to see if the particle has moved to another cell. If so, load the new cell data
+            if(loc%CellNumber .ne. this%TrackCell%CellData%CellNumber) then
+                call this%FillCellBuffer(loc%CellNumber, this%TrackCell%CellData)
+            end if
+            
+            ! Find the next stopping time value (tmax), then track the particle through the cell starting at location loc.
+            timeIndex = -1
+            if(timeseriesPointCount .gt. 0) then
+                timeIndex = pr_FindTimeIndex(timeseriesPoints, loc%TrackingTime,      &
+                  maximumTrackingTime, timeseriesPointCount)
+            end if
+            stopTime = maximumTrackingTime
+            isTimeSeriesPoint = .false.
+            if(timeIndex .ne. -1) then
+                stopTime = timeseriesPoints(timeIndex)
+                isTimeSeriesPoint = .true.
+            end if
+            isMaximumTime = .false.
+            if(stopTime .eq. maximumTrackingTime) isMaximumTime = .true.
+            
+            ! Start with the particle loacion loc and track it through the cell until it reaches
+            ! an exit face or the tracking time reaches the value specified by stopTime
+            call this%TrackCell%ExecuteTracking(loc, stopTime, this%TrackCellResult)
+            
+            ! Check the status flag of the result to find out what to do next
+            if(this%TrackCellResult%Status .eq. this%TrackCellResult%Status_Undefined()) then
+                continueLoop = .false.
+                trackPathResult%Status = this%TrackCellResult%Status
+            else if(this%TrackCellResult%Status .eq. this%TrackCellResult%Status_ExitAtCellFace()) then
+                count = this%TrackCellResult%TrackingPoints%GetItemCount()
+                if(count .gt. 1) then
+                    do n = 2, count
+                        call this%LocBuffP%AddItem(this%TrackCellResult%TrackingPoints%Items(n))
+                    end do 
+                end if
+               
+                ! If NextCellNumber is > 0, it means the particle has moved to another cell. 
+                ! If so, convert loc from the current cell coordinates to the equivalent location in the new cell.
+                nextCell = this%TrackCellResult%NextCellNumber
+                if(nextCell .gt. 0) then
+                    if(this%FlowModelData%IBoundTS(nextCell) .ne. 0) then
+                        ! The next cell is active
+                        fromLocalX = this%TrackCellResult%TrackingPoints%Items(count)%LocalX
+                        fromLocalY = this%TrackCellResult%TrackingPoints%Items(count)%LocalY
+                        fromLocalZ = this%TrackCellResult%TrackingPoints%Items(count)%LocalZ         
+                        call this%Grid%ConvertFromNeighbor(                           &
+                          this%TrackCellResult%NextCellNumber,                        &
+                          this%TrackCellResult%CellNumber, fromLocalX, fromLocalY,    &
+                          fromLocalZ, loc)
+                        loc%TrackingTime = this%TrackCellResult%TrackingPoints%Items(count)%TrackingTime
+                    else
+                        ! If next cell is inactive, it implies that a boundary face has been reached. 
+                        ! Set status and return.
+                        continueLoop = .false.
+                        trackPathResult%Status = trackPathResult%Status_ReachedBoundaryFace()        
+                    end if
+                else
+                    ! If next cell number = 0, the boundary of the grid has been reached. 
+                    ! Set status and return.
+                    continueLoop = .false.
+                    trackPathResult%Status = trackPathResult%Status_ReachedBoundaryFace()
+                end if
+                
+            else if(this%TrackCellResult%Status .eq. this%TrackCellResult%Status_ReachedStoppingTime()) then
+                count = this%TrackCellResult%TrackingPoints%GetItemCount()
+                if(count .gt. 1) then
+                    do n = 2, count
+                        call this%LocBuffP%AddItem(this%TrackCellResult%TrackingPoints%Items(n))
+                    end do 
+                    if(isTimeSeriesPoint) then
+                        call this%LocBuffTS%AddItem(this%TrackCellResult%TrackingPoints%Items(count))
+                    end if
+                end if
+                
+                call loc%SetData(this%TrackCellResult%TrackingPoints%Items(count))
+                if(isMaximumTime) then
+                    continueLoop = .false.
+                    trackPathResult%Status = trackPathResult%Status_ReachedStoppingTime()
+                end if
+                
+            else
+                continueLoop = .false.
+                if(this%TrackCellResult%Status .eq. this%TrackCellResult%Status_NoExitPossible()) then
+                    trackPathResult%Status = this%TrackCellResult%Status_NoExitPossible()         
+                else if(this%TrackCellResult%Status .eq. this%TrackCellResult%Status_StopZoneCell()) then
+                    trackPathResult%Status = this%TrackCellResult%Status_StopZoneCell()                  
+                else if(this%TrackCellResult%Status .eq. this%TrackCellResult%Status_StopAtWeakSink()) then
+                    trackPathResult%Status = this%TrackCellResult%Status_StopAtWeakSink()                   
+                else if(this%TrackCellResult%Status .eq. this%TrackCellResult%Status_StopAtWeakSource()) then
+                    trackPathResult%Status = this%TrackCellResult%Status_StopAtWeakSource()
+                else if(this%TrackCellResult%Status .eq. this%TrackCellResult%Status_InactiveCell()) then
+                    trackPathResult%Status = this%TrackCellResult%Status_InactiveCell()      
+                else
+                    trackPathResult%Status = this%TrackCellResult%Status_Undefined()
+                end if
+                
+                ! If the trackPathResult status is anything except Undefined, add the last tracking point to
+                ! the trackPathResult tracking points
+                if(trackPathResult%Status .ne. this%TrackCellResult%Status_Undefined()) then
+                    call this%LocBuffP%AddItem(this%TrackCellResult%TrackingPoints%Items(1))              
+                end if
+                
+            end if
+        
+            ! Write trace mode data if the trace mode is on for this particle
+            if(traceModeOn) then
+               !$omp critical (tracedata)
+               call WriteTraceData(traceModeUnit, this%TrackCell,                   &
+                 this%TrackCellResult, this%FlowModelData%GetCurrentStressPeriod(), &
+                 this%FlowModelData%GetCurrentTimeStep())
+               !$omp end critical (tracedata)
+            end if
+        
+            ! If there are observation cells
+            if ( this%TrackingOptions%observationSimulation ) then
+                ! Determine if the current TrackCell is on 
+                ! array of observations cells and extract
+                ! the corresponding unit
+
+                ! Get id of observation cell in observation cell list
+                ! Default is -999
+                idObservationCell = this%TrackingOptions%IdObservationCell( this%TrackCell%CellData%CellNumber ) 
+                if ( idObservationCell .ge. 0 ) then
+                    call WriteObservationCellRecord( this, group, particleID,      &
+                         this%TrackCell,                                           &
+                         this%TrackingOptions%observationUnits( idObservationCell ))
+                end if
+            end if
+
+            ! If continueLoop is still set to true, go through the loop again. If set to false, exit the loop now.
+        end do
+        
+        ! Generate global coordinates and finish initializing the result data
+        count = this%LocBuffP%GetItemCount()
+        do n = 1, count
+            pCoord%CellNumber = this%LocBuffP%Items(n)%CellNumber
+            pCoord%Layer = this%LocBuffP%Items(n)%Layer
+            pCoord%LocalX = this%LocBuffP%Items(n)%LocalX
+            pCoord%LocalY = this%LocBuffP%Items(n)%LocalY
+            pCoord%LocalZ = this%LocBuffP%Items(n)%LocalZ
+            pCoord%TrackingTime = this%LocBuffP%Items(n)%TrackingTime
+            call this%Grid%ConvertToModelXYZ(pCoord%CellNumber, pCoord%LocalX, &
+              pCoord%LocalY, pCoord%LocalZ, pCoord%GlobalX, pCoord%GlobalY,    &
+              pCoord%GlobalZ)
+            call trackPathResult%ParticlePath%Pathline%AddItem(pCoord)
+        end do
+        
+        do n = 1, this%LocBuffTS%GetItemCount()
+            pCoord%CellNumber = this%LocBuffTS%Items(n)%CellNumber
+            pCoord%Layer = this%LocBuffTS%Items(n)%Layer
+            pCoord%LocalX = this%LocBuffTS%Items(n)%LocalX
+            pCoord%LocalY = this%LocBuffTS%Items(n)%LocalY
+            pCoord%LocalZ = this%LocBuffTS%Items(n)%LocalZ
+            pCoord%TrackingTime = this%LocBuffTS%Items(n)%TrackingTime
+            call this%Grid%ConvertToModelXYZ(pCoord%CellNumber, pCoord%LocalX, &
+              pCoord%LocalY, pCoord%LocalZ, pCoord%GlobalX, pCoord%GlobalY,    &
+              pCoord%GlobalZ)
+            call trackPathResult%ParticlePath%Timeseries%AddItem(pCoord)
+        end do
+    
+
+    end subroutine pr_TrackPath
+
+
+! RWPT
+    subroutine pr_RWPTrackPath(this, trackPathResult, traceModeOn, traceModeUnit,   &
       group, particleID, seqNumber, location, maximumTrackingTime, timeseriesPoints,&
       timeseriesPointCount)
     !***************************************************************************************************************
@@ -704,10 +971,8 @@ contains
         call this%FillCellBuffer(loc%CellNumber,  this%TrackCell%CellData)
 
 
-        ! RWPT
-        if (this%TrackingOptions%RandomWalkParticleTracking) then
-            call this%FillNeighborCellData( neighborCellData )
-        end if
+        ! RWPT: fill neighbor cells
+        call this%FillNeighborCellData( neighborCellData )
 
 
         continueLoop = .true.
@@ -718,10 +983,8 @@ contains
             ! Check to see if the particle has moved to another cell. If so, load the new cell data
             if(loc%CellNumber .ne. this%TrackCell%CellData%CellNumber) then
                 call this%FillCellBuffer(loc%CellNumber, this%TrackCell%CellData)
-                ! RWPT
-                if (this%TrackingOptions%RandomWalkParticleTracking) then
-                    call this%FillNeighborCellData( neighborCellData )
-                end if
+                ! RWPT: update neighbor cells
+                call this%FillNeighborCellData( neighborCellData )
             end if
             
             ! Find the next stopping time value (tmax), then track the particle through the cell starting at location loc.
@@ -739,15 +1002,11 @@ contains
             isMaximumTime = .false.
             if(stopTime .eq. maximumTrackingTime) isMaximumTime = .true.
             
-            ! RWPT
+            ! RWPT: apply tracking
             ! Start with the particle loacion loc and track it through the cell until it reaches
             ! an exit face or the tracking time reaches the value specified by stopTime
-            if ( .not. this%TrackingOptions%RandomWalkParticleTracking ) then 
-                call this%TrackCell%ExecuteTracking(loc, stopTime, this%TrackCellResult)
-            else
-                call this%TrackCell%ExecuteRandomWalkParticleTracking(loc, stopTime, this%TrackCellResult, &
-                                                                                          neighborCellData )
-            end if
+            call this%TrackCell%ExecuteRandomWalkParticleTracking(loc, stopTime, this%TrackCellResult, &
+                                                                                      neighborCellData )
             
             ! Check the status flag of the result to find out what to do next
             if(this%TrackCellResult%Status .eq. this%TrackCellResult%Status_Undefined()) then
@@ -890,7 +1149,8 @@ contains
         end do
     
 
-    end subroutine pr_TrackPath
+    end subroutine pr_RWPTrackPath
+
 
 
 ! RWPT
@@ -1809,3 +2069,339 @@ end subroutine WriteObservationCellRecord
 
 
 end module ParticleTrackingEngineModule
+
+
+
+
+
+
+
+
+
+! THRASH 
+
+    ! ORIGINAL 
+    !subroutine pr_FillCellBuffer(this, cellNumber, cellBuffer)
+    !!***************************************************************************************************************
+    !!
+    !!***************************************************************************************************************
+    !! Specifications
+    !!---------------------------------------------------------------------------------------------------------------
+    !implicit none
+    !class(ParticleTrackingEngineType) :: this
+    !integer,intent(in) :: cellNumber
+    !type(ModpathCellDataType),intent(inout) :: cellBuffer
+    !doubleprecision,dimension(6) :: boundaryFlows
+    !integer :: n, layer, boundaryFlowsOffset, gridType, cellType
+    !!---------------------------------------------------------------------------------------------------------------
+    !
+
+    !    boundaryFlowsOffset = 6 * (cellNumber - 1)
+    !    do n = 1, 6
+    !        boundaryFlows(n) = this%FlowModelData%BoundaryFlows(boundaryFlowsOffset + n)
+    !    end do
+    !    
+    !    layer = this%Grid%GetLayer(cellNumber)
+    !    
+    !    gridType = this%Grid%GridType
+    !    cellType = this%Grid%CellType(cellNumber)
+    !    select case (gridType)
+    !        case (1)
+    !            ! Set cell buffer data for a structured grid
+    !            call cellBuffer%SetDataStructured(cellNumber,this%Grid%CellCount,     &
+    !              this%Grid,this%FlowModelData%IBound,this%FlowModelData%IBoundTS,                        &
+    !              this%FlowModelData%Porosity(cellNumber),this%FlowModelData%Retardation(cellNumber),     &
+    !              this%FlowModelData%StorageFlows(cellNumber),this%FlowModelData%SourceFlows(cellNumber), &
+    !              this%FlowModelData%SinkFlows(cellNumber), this%FlowModelData%FlowsRightFace,            &
+    !              this%FlowModelData%FlowsFrontFace, this%FlowModelData%FlowsLowerFace, boundaryFlows,    &
+    !              this%FlowModelData%Heads(cellNumber), cellType,                                   &
+    !              this%FlowModelData%Zones(cellNumber))
+    !        case (2)
+    !            ! Set cell buffer data for a MODFLOW-USG unstructured grid
+    !            call cellBuffer%SetDataUnstructured(cellNumber,this%Grid%CellCount,   &
+    !              this%Grid%JaCount,this%Grid,                                        &
+    !              this%FlowModelData%IBound,this%FlowModelData%IBoundTS,                                  &
+    !              this%FlowModelData%Porosity(cellNumber),this%FlowModelData%Retardation(cellNumber),     &
+    !              this%FlowModelData%StorageFlows(cellNumber),this%FlowModelData%SourceFlows(cellNumber), &
+    !              this%FlowModelData%SinkFlows(cellNumber), this%FlowModelData%FlowsJA, boundaryFlows,    &
+    !              this%FlowModelData%Heads(cellNumber), cellType,                                   &
+    !              this%FlowModelData%Zones(cellNumber))
+    !            ! Compute internal sub-cell face flows for cells with multiple sub-cell
+    !            if(cellBuffer%GetSubCellCount() .gt. 1) then
+    !                call cellBuffer%ComputeSubCellFlows()
+    !            end if
+    !        case (3)
+    !            ! Set cell buffer data for a MODFLOW-6 structured grid (DIS)
+    !            call cellBuffer%SetDataUnstructured(cellNumber,this%Grid%CellCount,   &
+    !              this%Grid%JaCount,this%Grid,                                        &
+    !              this%FlowModelData%IBound,this%FlowModelData%IBoundTS,                                  &
+    !              this%FlowModelData%Porosity(cellNumber),this%FlowModelData%Retardation(cellNumber),     &
+    !              this%FlowModelData%StorageFlows(cellNumber),this%FlowModelData%SourceFlows(cellNumber), &
+    !              this%FlowModelData%SinkFlows(cellNumber), this%FlowModelData%FlowsJA, boundaryFlows,    &
+    !              this%FlowModelData%Heads(cellNumber), cellType,                                   &
+    !              this%FlowModelData%Zones(cellNumber))
+    !        case (4)
+    !            ! Set cell buffer data for a MODFLOW-6 unstructured grid (DISV)
+    !            call cellBuffer%SetDataUnstructured(cellNumber,this%Grid%CellCount,   &
+    !              this%Grid%JaCount,this%Grid,                                        &
+    !              this%FlowModelData%IBound,this%FlowModelData%IBoundTS,                                  &
+    !              this%FlowModelData%Porosity(cellNumber),this%FlowModelData%Retardation(cellNumber),     &
+    !              this%FlowModelData%StorageFlows(cellNumber),this%FlowModelData%SourceFlows(cellNumber), &
+    !              this%FlowModelData%SinkFlows(cellNumber), this%FlowModelData%FlowsJA, boundaryFlows,    &
+    !              this%FlowModelData%Heads(cellNumber), cellType,                                   &
+    !              this%FlowModelData%Zones(cellNumber))
+    !             ! Compute internal sub-cell face flows for cells with multiple sub-cells
+    !            if(cellBuffer%GetSubCellCount() .gt. 1) then
+    !                call cellBuffer%ComputeSubCellFlows()
+    !            end if
+    !           
+    !        case default
+    !        ! Write error message and stop
+    !    end select
+
+
+    !end subroutine pr_FillCellBuffer
+
+
+! MERGED PROTOTYPE
+!    subroutine pr_TrackPath(this, trackPathResult, traceModeOn, traceModeUnit,      &
+!      group, particleID, seqNumber, location, maximumTrackingTime, timeseriesPoints,&
+!      timeseriesPointCount)
+!    !***************************************************************************************************************
+!    !
+!    !***************************************************************************************************************
+!    ! Specifications
+!    !---------------------------------------------------------------------------------------------------------------
+!    implicit none
+!    class(ParticleTrackingEngineType),target :: this
+!    type(TrackPathResultType),target,intent(out) :: trackPathResult
+!    type(ParticleLocationType),intent(in) :: location
+!    integer,intent(in) :: group, particleID, seqNumber, timeseriesPointCount,     &
+!      traceModeUnit
+!    logical,intent(in) :: traceModeOn
+!    type(ParticleLocationType) :: loc
+!    type(ParticleCoordinateType) :: pCoord
+!    type(ModpathCellDataType),pointer :: cellData
+!    type(TrackCellResultType),pointer :: tcResult
+!    doubleprecision,intent(in) :: maximumTrackingTime
+!    doubleprecision,dimension(timeseriesPointCount),intent(in) :: timeseriesPoints
+!    doubleprecision :: stopTime, fromLocalX, fromLocalY, fromLocalZ, globalX,     &
+!      globalY, globalZ
+!    integer :: timeIndex, n, count, nextCell
+!    logical :: continueLoop, isTimeSeriesPoint, isMaximumTime
+!
+!    ! RWPT
+!    type(ModpathCellDataType), dimension( 2, 18 ) :: neighborCellData
+!
+!    ! OBS
+!    integer   :: idObservationCell
+!    !---------------------------------------------------------------------------------------------------------------
+!      
+!        ! Reset trackPathResult and initialize particleID
+!        call trackPathResult%Reset()
+!        trackPathResult%ParticleID = particleID
+!        trackPathResult%Group = group
+!        trackPathResult%SequenceNumber = seqNumber
+!        
+!        ! Reset LocBuffP and LocBuffTS and initialize location data
+!        call this%LocBuffP%Clear()
+!        call this%LocBuffTS%Clear()
+!        call loc%SetData(location)
+!        call this%LocBuffP%AddItem(loc)
+!        
+!        ! Initialize loc
+!        call loc%SetData(location)
+!        
+!        ! Initialize TrackCell
+!        this%TrackCell%SteadyState = this%FlowModelData%SteadyState
+!        this%TrackCell%TrackingOptions = this%TrackingOptions
+!        call this%FillCellBuffer(loc%CellNumber,  this%TrackCell%CellData)
+!
+!
+!        ! RWPT
+!        if (this%TrackingOptions%RandomWalkParticleTracking) then
+!            call this%FillNeighborCellData( neighborCellData )
+!        end if
+!
+!
+!        continueLoop = .true.
+!        isTimeSeriesPoint = .false.
+!        isMaximumTime = .false.
+!        
+!        do while(continueLoop)
+!            ! Check to see if the particle has moved to another cell. If so, load the new cell data
+!            if(loc%CellNumber .ne. this%TrackCell%CellData%CellNumber) then
+!                call this%FillCellBuffer(loc%CellNumber, this%TrackCell%CellData)
+!                ! RWPT
+!                if (this%TrackingOptions%RandomWalkParticleTracking) then
+!                    call this%FillNeighborCellData( neighborCellData )
+!                end if
+!            end if
+!            
+!            ! Find the next stopping time value (tmax), then track the particle through the cell starting at location loc.
+!            timeIndex = -1
+!            if(timeseriesPointCount .gt. 0) then
+!                timeIndex = pr_FindTimeIndex(timeseriesPoints, loc%TrackingTime,      &
+!                  maximumTrackingTime, timeseriesPointCount)
+!            end if
+!            stopTime = maximumTrackingTime
+!            isTimeSeriesPoint = .false.
+!            if(timeIndex .ne. -1) then
+!                stopTime = timeseriesPoints(timeIndex)
+!                isTimeSeriesPoint = .true.
+!            end if
+!            isMaximumTime = .false.
+!            if(stopTime .eq. maximumTrackingTime) isMaximumTime = .true.
+!            
+!            ! RWPT
+!            ! Start with the particle loacion loc and track it through the cell until it reaches
+!            ! an exit face or the tracking time reaches the value specified by stopTime
+!            if ( .not. this%TrackingOptions%RandomWalkParticleTracking ) then 
+!                call this%TrackCell%ExecuteTracking(loc, stopTime, this%TrackCellResult)
+!            else
+!                call this%TrackCell%ExecuteRandomWalkParticleTracking(loc, stopTime, this%TrackCellResult, &
+!                                                                                          neighborCellData )
+!            end if
+!            
+!            ! Check the status flag of the result to find out what to do next
+!            if(this%TrackCellResult%Status .eq. this%TrackCellResult%Status_Undefined()) then
+!                continueLoop = .false.
+!                trackPathResult%Status = this%TrackCellResult%Status
+!            else if(this%TrackCellResult%Status .eq. this%TrackCellResult%Status_ExitAtCellFace()) then
+!                count = this%TrackCellResult%TrackingPoints%GetItemCount()
+!                if(count .gt. 1) then
+!                    do n = 2, count
+!                        call this%LocBuffP%AddItem(this%TrackCellResult%TrackingPoints%Items(n))
+!                    end do 
+!                end if
+!               
+!                !! SOMEWHERE AROUND THIS BLOCK SHOULD SOLVE THE RWPT PARTICLE REBOUND
+!
+!                ! If NextCellNumber is > 0, it means the particle has moved to another cell. 
+!                ! If so, convert loc from the current cell coordinates to the equivalent location in the new cell.
+!                nextCell = this%TrackCellResult%NextCellNumber
+!                if(nextCell .gt. 0) then
+!                    if(this%FlowModelData%IBoundTS(nextCell) .ne. 0) then
+!                        ! The next cell is active
+!                        fromLocalX = this%TrackCellResult%TrackingPoints%Items(count)%LocalX
+!                        fromLocalY = this%TrackCellResult%TrackingPoints%Items(count)%LocalY
+!                        fromLocalZ = this%TrackCellResult%TrackingPoints%Items(count)%LocalZ         
+!                        call this%Grid%ConvertFromNeighbor(                           &
+!                          this%TrackCellResult%NextCellNumber,                        &
+!                          this%TrackCellResult%CellNumber, fromLocalX, fromLocalY,    &
+!                          fromLocalZ, loc)
+!                        loc%TrackingTime = this%TrackCellResult%TrackingPoints%Items(count)%TrackingTime
+!                    else
+!                        !print *, 'INACTIVEEEE', nextCell
+!                        ! If next cell is inactive, it implies that a boundary face has been reached. 
+!                        ! Set status and return.
+!                        continueLoop = .false.
+!                        trackPathResult%Status = trackPathResult%Status_ReachedBoundaryFace()        
+!                    end if
+!                else
+!                    !print *, 'CELLNUMBER ', nextCell 
+!                    ! If next cell number = 0, the boundary of the grid has been reached. 
+!                    ! Set status and return.
+!                    continueLoop = .false.
+!                    trackPathResult%Status = trackPathResult%Status_ReachedBoundaryFace()
+!                end if
+!                
+!            else if(this%TrackCellResult%Status .eq. this%TrackCellResult%Status_ReachedStoppingTime()) then
+!                count = this%TrackCellResult%TrackingPoints%GetItemCount()
+!                if(count .gt. 1) then
+!                    do n = 2, count
+!                        call this%LocBuffP%AddItem(this%TrackCellResult%TrackingPoints%Items(n))
+!                    end do 
+!                    if(isTimeSeriesPoint) then
+!                        call this%LocBuffTS%AddItem(this%TrackCellResult%TrackingPoints%Items(count))
+!                    end if
+!                end if
+!                
+!                call loc%SetData(this%TrackCellResult%TrackingPoints%Items(count))
+!                if(isMaximumTime) then
+!                    continueLoop = .false.
+!                    trackPathResult%Status = trackPathResult%Status_ReachedStoppingTime()
+!                end if
+!                
+!            else
+!                continueLoop = .false.
+!                if(this%TrackCellResult%Status .eq. this%TrackCellResult%Status_NoExitPossible()) then
+!                    trackPathResult%Status = this%TrackCellResult%Status_NoExitPossible()         
+!                else if(this%TrackCellResult%Status .eq. this%TrackCellResult%Status_StopZoneCell()) then
+!                    trackPathResult%Status = this%TrackCellResult%Status_StopZoneCell()                  
+!                else if(this%TrackCellResult%Status .eq. this%TrackCellResult%Status_StopAtWeakSink()) then
+!                    trackPathResult%Status = this%TrackCellResult%Status_StopAtWeakSink()                   
+!                else if(this%TrackCellResult%Status .eq. this%TrackCellResult%Status_StopAtWeakSource()) then
+!                    trackPathResult%Status = this%TrackCellResult%Status_StopAtWeakSource()
+!                else if(this%TrackCellResult%Status .eq. this%TrackCellResult%Status_InactiveCell()) then
+!                    trackPathResult%Status = this%TrackCellResult%Status_InactiveCell()      
+!                else
+!                    trackPathResult%Status = this%TrackCellResult%Status_Undefined()
+!                end if
+!                
+!                ! If the trackPathResult status is anything except Undefined, add the last tracking point to
+!                ! the trackPathResult tracking points
+!                if(trackPathResult%Status .ne. this%TrackCellResult%Status_Undefined()) then
+!                    call this%LocBuffP%AddItem(this%TrackCellResult%TrackingPoints%Items(1))              
+!                end if
+!                
+!            end if
+!        
+!            ! Write trace mode data if the trace mode is on for this particle
+!            if(traceModeOn) then
+!               !$omp critical (tracedata)
+!               call WriteTraceData(traceModeUnit, this%TrackCell,                   &
+!                 this%TrackCellResult, this%FlowModelData%GetCurrentStressPeriod(), &
+!                 this%FlowModelData%GetCurrentTimeStep())
+!               !$omp end critical (tracedata)
+!            end if
+!        
+!            ! If there are observation cells
+!            if ( this%TrackingOptions%observationSimulation ) then
+!                ! Determine if the current TrackCell is on 
+!                ! array of observations cells and extract
+!                ! the corresponding unit
+!
+!                ! Get id of observation cell in observation cell list
+!                ! Default is -999
+!                idObservationCell = this%TrackingOptions%IdObservationCell( this%TrackCell%CellData%CellNumber ) 
+!                if ( idObservationCell .ge. 0 ) then
+!                    call WriteObservationCellRecord( this, group, particleID,      &
+!                         this%TrackCell,                                           &
+!                         this%TrackingOptions%observationUnits( idObservationCell ))
+!                end if
+!            end if
+!
+!            ! If continueLoop is still set to true, go through the loop again. If set to false, exit the loop now.
+!        end do
+!        
+!        ! Generate global coordinates and finish initializing the result data
+!        count = this%LocBuffP%GetItemCount()
+!        do n = 1, count
+!            pCoord%CellNumber = this%LocBuffP%Items(n)%CellNumber
+!            pCoord%Layer = this%LocBuffP%Items(n)%Layer
+!            pCoord%LocalX = this%LocBuffP%Items(n)%LocalX
+!            pCoord%LocalY = this%LocBuffP%Items(n)%LocalY
+!            pCoord%LocalZ = this%LocBuffP%Items(n)%LocalZ
+!            pCoord%TrackingTime = this%LocBuffP%Items(n)%TrackingTime
+!            call this%Grid%ConvertToModelXYZ(pCoord%CellNumber, pCoord%LocalX, &
+!              pCoord%LocalY, pCoord%LocalZ, pCoord%GlobalX, pCoord%GlobalY,    &
+!              pCoord%GlobalZ)
+!            call trackPathResult%ParticlePath%Pathline%AddItem(pCoord)
+!        end do
+!        
+!        do n = 1, this%LocBuffTS%GetItemCount()
+!            pCoord%CellNumber = this%LocBuffTS%Items(n)%CellNumber
+!            pCoord%Layer = this%LocBuffTS%Items(n)%Layer
+!            pCoord%LocalX = this%LocBuffTS%Items(n)%LocalX
+!            pCoord%LocalY = this%LocBuffTS%Items(n)%LocalY
+!            pCoord%LocalZ = this%LocBuffTS%Items(n)%LocalZ
+!            pCoord%TrackingTime = this%LocBuffTS%Items(n)%TrackingTime
+!            call this%Grid%ConvertToModelXYZ(pCoord%CellNumber, pCoord%LocalX, &
+!              pCoord%LocalY, pCoord%LocalZ, pCoord%GlobalX, pCoord%GlobalY,    &
+!              pCoord%GlobalZ)
+!            call trackPathResult%ParticlePath%Timeseries%AddItem(pCoord)
+!        end do
+!    
+!
+!    end subroutine pr_TrackPath

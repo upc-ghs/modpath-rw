@@ -29,13 +29,18 @@ module ModpathCellDataModule
     doubleprecision,dimension(4) :: SubCellFlows,Q5,Q6
     doubleprecision,dimension(2) :: Q1,Q2,Q3,Q4
     integer :: ArraySizeMode = 1
-    ! RWPT NEW PROPERTY
+
+    ! RWPT-USG NEW PROPERTIES
     logical :: fromSubCell    = .false.
     logical :: fromSubSubCell = .false.
     logical :: isParentCell   = .false.
     integer :: parentCellNumber
     integer :: parentSubRow, parentSubColumn
     integer :: requestedFromDirection
+
+    ! RWPT TRANSPORT PROPERTIES
+    doubleprecision, public :: alphaL, alphaT
+
   contains
     procedure :: GetDZ=>pr_GetDZ
     procedure :: GetArraySizeMode=>pr_GetArraySizeMode
@@ -67,11 +72,13 @@ module ModpathCellDataModule
     procedure :: SetDataUnstructured=>pr_SetDataUnstructured
     procedure :: SetDataStructured=>pr_SetDataStructured
     generic :: SetData=>pr_SetDataUnstructured
-    ! RWPT
+
+    ! RWPT-USG
     procedure :: GetNeighborSubCellIndexes => pr_GetNeighborSubCellIndexes
     procedure :: FillSubCellFaceAreas      => pr_FillSubCellFaceAreas
     procedure :: FillSubCellFaceFlows      => pr_FillSubCellFaceFlows
     procedure :: GetVolume                 => pr_GetVolume
+
   end type
 
 contains
@@ -1756,6 +1763,11 @@ contains
   subCellData%Retardation = this%Retardation 
 
 
+  ! Necessary for distributed dispersivities
+  subCellData%alphaL = this%alphaL
+  subCellData%alphaT = this%alphaT
+
+
   end subroutine pr_FillSubCellDataBuffer
 
 !------------------------------------------
@@ -1825,6 +1837,7 @@ contains
 
 
 
+  ! RWPT-USG
   function pr_GetNeighborSubCellIndexes( this, subRow, subColumn ) result( neighborSubCellIndexes )
       !-----------------------------------------------------------
       ! Indexation of subcells follow the same convention
@@ -1986,6 +1999,7 @@ contains
 
 
 
+  ! RWPT-USG
   subroutine pr_FillSubCellFaceAreas(this, areas, skipSubCells)
   !---------------------------------------------------------
   !
