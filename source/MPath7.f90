@@ -741,25 +741,18 @@
                     status = trackPathResult%Status
                     if(  status .eq. trackPathResult%Status_ReachedBoundaryFace()) then
                         p%Status = 2
-                        print *, 'BOUNDARY'
                     else if(status .eq. trackPathResult%Status_StopAtWeakSink()) then
                         p%Status = 3
-                        print *, 'WEAKSINK'
                     else if(status .eq. trackPathResult%Status_StopAtWeakSource()) then
                         p%Status = 4
-                        print *, 'WEAKSOURCE'
                     else if(status .eq. trackPathResult%Status_NoExitPossible()) then
                         p%Status = 5
-                        print *, 'WEAKSOURCE'
                     else if(status .eq. trackPathResult%Status_StopZoneCell()) then
                         p%Status = 6
-                        print *, 'STOPZONE'
                     else if(status .eq. trackPathResult%Status_InactiveCell()) then
                         p%Status = 7
-                        print *, 'INACTIVE'
                     else if(status .eq. trackPathResult%Status_Undefined()) then
                         p%Status = 9
-                        print *, 'UNDEFINED'
                     else
                         ! Leave status set to active (status = 1)
                     end if

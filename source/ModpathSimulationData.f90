@@ -522,7 +522,6 @@ contains
       else
           call ustop('Invalid starting locations file name. stop.')
       end if
-      print *, 'READ AND PREPARE LOCATIONS, PARTICLES'
       call ReadAndPrepareLocations(slocUnit, outUnit, this%ParticleGroups(n),   &
         ibound, grid%CellCount, grid, seqNumber)
       write(outUnit, '(a,i4,a,i10,a)') 'Particle group ', n, ' contains ',      &
@@ -584,9 +583,9 @@ contains
     if ( ioInUnit .lt. 0 ) then 
         ! No obs 
         write(outUnit,'(A)') 'OBS: No observation cells.'
-        print *, 'ModpathSimulationData: NO OBSERVATION CELLS'
+        !print *, 'ModpathSimulationData: NO OBSERVATION CELLS'
     else 
-        print *, 'ModpathSimulationData: YES OBSERVATION CELLS', ioInUnit
+        !print *, 'ModpathSimulationData: YES OBSERVATION CELLS', ioInUnit
         ! Yes obs
         icol = 1
         call urword(line, icol, istart, istop, 2, n, r, 0, 0)

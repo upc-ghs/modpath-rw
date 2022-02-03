@@ -645,16 +645,15 @@ contains
               else
                   ! Restart nx, ny, nz and try again
                   ! if not a valid time step and exitFace
-                  print *, 'RESTARTING...', dtLoopCounter
-                  print *, nx,ny,nz
-                  print *, x,y,z
-                  print *, dtold,dt,exitFace
+                  !print *, 'RESTARTING...', dtLoopCounter
+                  !print *, nx,ny,nz
+                  !print *, x,y,z
+                  !print *, dtold,dt,exitFace
                   nx = x
                   ny = y
                   nz = z
                   t  = t - dt
                   dt = dtold
-                  dtLoopCounter = 0
                   posRestartCounter = posRestartCounter + 1
 
                   ! Exit interface loop and try again
