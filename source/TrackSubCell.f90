@@ -589,7 +589,6 @@ contains
               nz   = z + dzrw/dz
           end if
 
-
           ! Detect if particle leaving the cell
           ! and force the particle into exactly one
           ! interface by computing the required dt
@@ -598,7 +597,8 @@ contains
               ( ny .gt. 1.0d0 ) .or. ( ny .lt. 0d0 )  .or. &
               ( nz .gt. 1.0d0 ) .or. ( nz .lt. 0d0 )       & 
           )
-              
+             
+              dtLoopCounter = dtLoopCounter + 1
               dtxyz(:) = 0d0
 
               ! Recompute dt for exact interface
@@ -609,7 +609,6 @@ contains
               ! Given new dt, recompute advection displacements
               call this%AdvectionDisplacement( x, y, z, dt, vx, vy, vz, & 
                                                     dAdvx, dAdvy, dAdvz )
-
 
               ! If maximumTime was reached, but particle left
               ! the cell, then the condition is resetted
@@ -646,6 +645,10 @@ contains
               else
                   ! Restart nx, ny, nz and try again
                   ! if not a valid time step and exitFace
+                  print *, 'RESTARTING...', dtLoopCounter
+                  print *, nx,ny,nz
+                  print *, x,y,z
+                  print *, dtold,dt,exitFace
                   nx = x
                   ny = y
                   nz = z
@@ -653,29 +656,219 @@ contains
                   dt = dtold
                   dtLoopCounter = 0
                   posRestartCounter = posRestartCounter + 1
+
+                  ! Exit interface loop and try again
                   exit
               end if
 
-              ! Restart if method did not
-              ! found a valid position after two tries.
-              dtLoopCounter = dtLoopCounter + 1
-              if ( dtLoopCounter .eq. 2 ) then
-                  ! Restart nx, ny, nz and try again
-                  nx = x
-                  ny = y
-                  nz = z
-                  t  = t - dt
-                  dt = dtold
-                  exitFace = 0
-                  dtLoopCounter = 0
-                  posRestartCounter = posRestartCounter + 1
-                  exit
-              end if
 
-          end do
+              ! Boundary conditions
+              ! Logic should be: 
+              ! Is there an interface and which kind
+
+              ! NOT WORKING
+              ! Handle rebound ?
+              if( this%SubCellData%Connection(exitFace) .eq. 0 ) then
+                      ! Is zero, a boundary, inactive
+                      !print *, '      ** BOUNDARY'
+                      !print *, '         ** cellNumber, exitFace', cellNumber, exitFace
+                      !print *, '         ** Connection(exitFace)', this%SubCellData%Connection(exitFace)
+
+                      !! NOTE: ExitFaceConnection from trackingResult is then 
+                      !! employed at TrackCell
+
+                      !! To impose a impermeable boundary condition ?
+                      !! Impermeable means that particle does not leaves
+                      !! current cell 
+
+                      !! It should continue displacing the particle
+                      !! So there is not exitFace in this case 
+                      !!exitFace = 0
+
+                      !! continueTimeLoop remains .true.
+                      !
+                      !! The problem is dInterface, beacause 
+                      !! as the particle will remain with ni = 1 .or. 0,
+                      !! with dInterface = 0.0, then the algorithm
+                      !! for moving the particle to the interface will continue 
+                      !! to throw that particle is transfered to 
+                      !! the inactive cell.
+
+                      !! A first approach would be displace 
+                      !! the particle back. Which delta t ?
+
+                      !! A more simple solution is to 
+                      !! simply cancel the displacement in the conflicting
+                      !! direction and restart the time step  
+
+                      ! Particle is displaced to interface and once exitFace 
+                      ! is known is possible to compute reflective boundary 
+                      ! positions
+                      
+
+                      ! Particle rebounds with elastic reflection,
+                      ! same dt as displacement to interface
+                      if ( ( exitFace .eq. 1 ) .or. ( exitFace .eq. 2 ) ) then 
+                         ! x-direction
+                         nx = x
+                         ny = ny + dyrw/dy
+                         if ( .not. twoDimensions ) then
+                             nz = nz + dzrw/dz
+                         end if
+                      else if ( ( exitFace .eq. 3 ) .or. ( exitFace .eq. 4 ) ) then 
+                         ! y-direction
+                         nx = nx + dxrw/dx
+                         ny = y
+                         if ( .not. twoDimensions ) then
+                             nz = nz + dzrw/dz
+                         end if
+                      else
+                         ! z-direction
+                         nx = nx + dxrw/dx
+                         ny = ny + dyrw/dy
+                         nz = z
+                      end if 
+
+
+                      ! If after rebound remains within cell
+                      if (                                               &
+                          ( nx .le. 1.0d0 ) .and. ( nx .ge. 0d0 )  .and. &
+                          ( ny .le. 1.0d0 ) .and. ( ny .ge. 0d0 )  .and. &
+                          ( nz .le. 1.0d0 ) .and. ( nz .ge. 0d0 )        & 
+                      ) then 
+
+                          ! Update current time with same time step 
+                          ! determined for interface 
+                          t = t + dt
+
+                          ! In case the new time is higher than maximum
+                          ! then updates dt and corrects final position
+                          if (maximumTime .lt. t) then
+
+                              t  = t - dt
+                              dt = maximumTime - t
+                              t  = maximumTime
+                              reachedMaximumTime = .true.
+
+                              call this%AdvectionDisplacement( x, y, z, dt, vx, vy, vz, dAdvx, dAdvy, dAdvz )
+
+                              ! Compute RWPT movement
+                              dxrw = dAdvx + divDx*dt + dBx*sqrt( dt )
+                              nx   = x + dxrw/dx
+                              dyrw = dAdvy + divDy*dt + dBy*sqrt( dt )
+                              ny   = y + dyrw/dy
+                              if ( .not. twoDimensions ) then 
+                                  dzrw = dAdvz + divDz*dt + dBz*sqrt( dt )
+                                  nz   = z + dzrw/dz
+                              end if
+
+                          end if 
+
+                          ! And continue displacement within the cell
+
+                          ! Restore time step
+                          dt = dtold
+
+                          ! No exitFace
+                          exitFace = 0
+
+                      else
+                          ! If after rebound is leaving cell
+
+                          ! However interface displacement should be done 
+                          ! now starting from position previous to leaving 
+                          ! interface, that is, the origin interface, where 
+                          ! rebound occurs.
+
+                            
+                          ! Set starting position to interface
+                          if ( ( exitFace .eq. 1 ) .or. ( exitFace .eq. 2 ) ) then 
+                             ! x-direction
+                             x = 1.0d0
+                             if ( exitFace .eq. 1 ) x=0d0
+                             y = ny - dyrw/dy
+                             if ( y .lt. 0d0 ) y = 0d0
+                             if ( y .gt. 1d0 ) y = 1d0
+                             if ( .not. twoDimensions ) then
+                                 z = z - dzrw/dz
+                                 if ( z .lt. 0d0 ) z = 0d0
+                                 if ( z .gt. 1d0 ) z = 1d0
+                             end if
+                          else if ( ( exitFace .eq. 3 ) .or. ( exitFace .eq. 4 ) ) then 
+                             ! y-direction
+                             x = nx - dxrw/dx
+                             if ( x .lt. 0d0 ) x = 0d0
+                             if ( x .gt. 1d0 ) x = 1d0
+                             y = 1.0d0
+                             if ( exitFace .eq. 3 ) y=0d0
+                             if ( .not. twoDimensions ) then
+                                 z = z - dzrw/dz
+                                 if ( z .lt. 0d0 ) z = 0d0
+                                 if ( z .gt. 1d0 ) z = 1d0
+                             end if
+                          else
+                             ! z-direction
+                             x = nx - dxrw/dx
+                             if ( x .lt. 0d0 ) x = 0d0
+                             if ( x .gt. 1d0 ) x = 1d0
+                             y = ny - dyrw/dy
+                             if ( y .lt. 0d0 ) y = 0d0
+                             if ( y .gt. 1d0 ) y = 1d0
+                             z = 1.0d0
+                             if ( exitFace .eq. 5 ) z=0d0
+                          end if 
+                          
+
+                          ! And update dispersion values to position 
+                          ! given by origin interface
+                          call this%LinearInterpolationVelocities( x, y, z, vx, vy, vz )
+                          call this%DispersionDivergenceDischarge( x, y, z, alphaL, alphaT, Dmol, divDx, divDy, divDz )
+                          call this%DisplacementRandomDischarge( x, y, z, alphaL, alphaT, Dmol, dBx, dBy, dBz )
+
+                          ! Update current time
+                          t = t + dt
+
+                          ! Recompute dt for maximumTime 
+                          if (maximumTime .lt. t) then
+                              t  = t - dt
+                              dt = maximumTime - t
+                              t  = maximumTime
+                              reachedMaximumTime = .true.
+
+                              call this%AdvectionDisplacement( x, y, z, dt, vx, vy, vz, dAdvx, dAdvy, dAdvz )
+
+                              ! Compute RWPT movement
+                              dxrw = dAdvx + divDx*dt + dBx*sqrt( dt )
+                              nx   = x + dxrw/dx
+                              dyrw = dAdvy + divDy*dt + dBy*sqrt( dt )
+                              ny   = y + dyrw/dy
+                              if ( .not. twoDimensions ) then 
+                                  dzrw = dAdvz + divDz*dt + dBz*sqrt( dt )
+                                  nz   = z + dzrw/dz
+                              end if
+
+                          end if 
+
+                          ! Leave elastic rebound and continue new 
+                          ! interface loop
+                          exitFace = 0
+
+                      end if 
+
+              end if ! elasticRebound
+              
+              ! And let the show continue
+
+          end do ! particleLeavingCell
+
+
+          ! Restart loop counter 
+          dtLoopCounter = 0
+
 
           ! Report and leave
           if ( ( reachedMaximumTime ) .or. ( exitFace .ne. 0 ) ) then
+
               if (reachedMaximumTime) then
                   ! In this case it is allowed for a particle
                   ! to reach the maximum time and eventually have an exit face
@@ -729,57 +922,6 @@ contains
                       ! Done
                       return
 
-                  else
-                      ! Is zero, a boundary, inactive
-                      !trackingResult%Status = trackingResult%Status_ExitAtCellFace()
-                      !print *, '** TrackSubCell: cellNumber, exitFace', cellNumber, exitFace
-                      !print *, '** TrackSubCell: Connection(exitFace)', this%SubCellData%Connection(exitFace)
-
-                      ! NOTE: ExitFaceConnection from trackingResult is then 
-                      ! employed at TrackCell
-
-                      ! To impose a impermeable boundary condition ?
-                      ! Impermeable means that particle does not leaves
-                      ! current cell 
-
-                      ! It should continue displacing the particle
-                      ! So there is not exitFace in this case 
-                      !exitFace = 0
-
-                      ! continueTimeLoop remains .true.
-                      
-                      ! The problem is dInterface, beacause 
-                      ! as the particle will remain with ni = 1 .or. 0,
-                      ! with dInterface = 0.0, then the algorithm
-                      ! for moving the particle to the interface will continue 
-                      ! to throw that particle is transfered to 
-                      ! the inactive cell.
-
-                      ! A first approach would be displace 
-                      ! the particle back. Which delta t ?
-
-                      ! A more simple solution is to 
-                      ! simply cancel the displacement in the conflicting
-                      ! direction and restart the time step  
-                      if ( ( exitFace .eq. 1 ) .or. ( exitFace .eq. 2 ) ) then 
-                         ! x-direction
-                         nx = x
-                      else if ( ( exitFace .eq. 3 ) .or. ( exitFace .eq. 4 ) ) then 
-                         ! y-direction
-                         ny = y
-                      else
-                         ! z-direction
-                         nz = z
-                      end if 
-
-                      ! Restart the time step
-                      dt = dtold
-
-                      ! No exitFace
-                      exitFace = 0
-
-                      ! And continue the show
-
                   end if
 
               end if
@@ -791,10 +933,12 @@ contains
           y = ny
           z = nz
 
-      end do 
+
+      end do ! continueTimeLoop 
 
       ! Done
       return
+
 
   end subroutine pr_ExecuteRandomWalkParticleTracking
 
@@ -1036,7 +1180,7 @@ contains
       integer :: imindt
       doubleprecision :: dx, dy, dz
       doubleprecision :: dInterface
-      doubleprecision :: AFace, BFace, z1, z2, zsqrt
+      doubleprecision :: AFace, BFace, z1, z2, zsqrt, zsqrtarg
       !----------------------------------------------------------------
 
       ! Initialize
@@ -1082,22 +1226,27 @@ contains
           BFace = dBx
 
           ! Given dInterface, compute new dt
-          zsqrt = sqrt( BFace**2 + 4*dInterface*AFace )
-          z1    = (-BFace + zsqrt )/( 2*AFace )
-          z2    = (-BFace - zsqrt )/( 2*AFace )
+          zsqrtarg = BFace**2 + 4*dInterface*AFace
+          if ( zsqrtarg .ge. 0 ) then 
 
-          ! Compute new dt
-          if ( ( z1 .gt. 0d0 ) .and. ( z2 .gt. 0d0 ) ) then
-              dtxyz(1) = min( z1**2, z2**2 )
-          else if ( z1 .gt. 0d0 ) then
-              dtxyz(1) = z1**2
-          else if ( z2 .gt. 0d0 ) then
-              dtxyz(1) = z2**2
+              zsqrt = sqrt( zsqrtarg )
+              z1    = (-BFace + zsqrt )/( 2*AFace )
+              z2    = (-BFace - zsqrt )/( 2*AFace )
+
+              ! Compute new dt
+              if ( ( z1 .gt. 0d0 ) .and. ( z2 .gt. 0d0 ) ) then
+                  dtxyz(1) = min( z1**2, z2**2 )
+              else if ( z1 .gt. 0d0 ) then
+                  dtxyz(1) = z1**2
+              else if ( z2 .gt. 0d0 ) then
+                  dtxyz(1) = z2**2
+              end if
+
+              ! If computed dt is higher than current
+              ! is not valid, set to zero
+              if ( dtxyz(1) .gt. dt ) dtxyz(1) = 0d0
+
           end if
-
-          ! If computed dt is higher than current
-          ! is not valid, set to zero
-          if ( dtxyz(1) .gt. dt ) dtxyz(1) = 0d0 
 
       end if
 
@@ -1126,22 +1275,27 @@ contains
           BFace = dBy
 
           ! Given dInterface, compute new dt
-          zsqrt = sqrt( BFace**2 + 4*dInterface*AFace )
-          z1    = (-BFace + zsqrt )/( 2*AFace )
-          z2    = (-BFace - zsqrt )/( 2*AFace )
+          zsqrtarg = BFace**2 + 4*dInterface*AFace
+          if ( zsqrtarg .ge. 0 ) then
 
-          ! Determine new dt
-          if ( ( z1 .gt. 0d0 ) .and. ( z2 .gt. 0d0 ) ) then
-              dtxyz(2) = min( z1**2, z2**2 )
-          else if ( z1 .gt. 0d0 ) then
-              dtxyz(2) = z1**2
-          else if ( z2 .gt. 0d0 ) then
-              dtxyz(2) = z2**2
+              zsqrt = sqrt( zsqrtarg )
+              z1    = (-BFace + zsqrt )/( 2*AFace )
+              z2    = (-BFace - zsqrt )/( 2*AFace )
+
+              ! Determine new dt
+              if ( ( z1 .gt. 0d0 ) .and. ( z2 .gt. 0d0 ) ) then
+                  dtxyz(2) = min( z1**2, z2**2 )
+              else if ( z1 .gt. 0d0 ) then
+                  dtxyz(2) = z1**2
+              else if ( z2 .gt. 0d0 ) then
+                  dtxyz(2) = z2**2
+              end if
+
+              ! If computed dt is higher than current
+              ! is not valid, set to zero
+              if ( dtxyz(2) .gt. dt ) dtxyz(2) = 0d0 
+
           end if
-
-          ! If computed dt is higher than current
-          ! is not valid, set to zero
-          if ( dtxyz(2) .gt. dt ) dtxyz(2) = 0d0 
 
       end if
 
@@ -1170,22 +1324,27 @@ contains
           BFace = dBz
 
           ! Given dInterface, compute new dt
-          zsqrt = sqrt( BFace**2 + 4*dInterface*AFace )
-          z1    = (-BFace + zsqrt )/( 2*AFace )
-          z2    = (-BFace - zsqrt )/( 2*AFace )
+          zsqrtarg = BFace**2 + 4*dInterface*AFace
+          if ( zsqrtarg .ge. 0 ) then
 
-          if ( ( z1 .gt. 0d0 ) .and. ( z2 .gt. 0d0 ) ) then
-              dtxyz(3) = min( z1**2, z2**2 )
-          else if ( z1 .gt. 0d0 ) then
-              dtxyz(3) = z1**2
-          else if ( z2 .gt. 0d0 ) then
-              dtxyz(3) = z2**2
+              zsqrt = sqrt( zsqrtarg )
+              z1    = (-BFace + zsqrt )/( 2*AFace )
+              z2    = (-BFace - zsqrt )/( 2*AFace )
+
+              if ( ( z1 .gt. 0d0 ) .and. ( z2 .gt. 0d0 ) ) then
+                  dtxyz(3) = min( z1**2, z2**2 )
+              else if ( z1 .gt. 0d0 ) then
+                  dtxyz(3) = z1**2
+              else if ( z2 .gt. 0d0 ) then
+                  dtxyz(3) = z2**2
+              end if
+
+              ! If computed dt is higher than current
+              ! is not valid, set to zero
+              if ( dtxyz(3) .gt. dt ) dtxyz(3) = 0d0 
+           
           end if
 
-          ! If computed dt is higher than current
-          ! is not valid, set to zero
-          if ( dtxyz(3) .gt. dt ) dtxyz(3) = 0d0 
-           
       end if
 
 
@@ -1543,6 +1702,7 @@ contains
 
       end do
 
+
       ! Set smaller fraction for gradient descent 
       if ( ( gprim .lt. 1 ) .and. ( gcount .eq. 1 ) ) then  
           dtoldfraction = 1d-8 
@@ -1594,9 +1754,13 @@ contains
           gprim       = pr_GetConvergenceFunction( this, nrf0, nrfprim, nrf2prim )
 
           ! Compute gamma gradient descent and update
-          gamman  = abs( ( dtnew - dtold )*( gprimdernew - gprimder ) )/( ( gprimdernew - gprimder )**2 )
-          dtold   = dtnew
-          dtnew   = dtnew - gamman*gprimdernew
+          if ( ( gprimdernew - gprimder ) .gt. 0d0 ) then
+              gamman = abs( ( dtnew - dtold )*( gprimdernew - gprimder ) )/( ( gprimdernew - gprimder )**2 )
+          else 
+              gamman = 0d0
+          end if 
+          dtold = dtnew
+          dtnew = dtnew - gamman*gprimdernew
 
           ! If nan, leave loop
           if ( isnan( dtnew ) ) then 
@@ -1982,6 +2146,16 @@ contains
       doubleprecision :: p011
       doubleprecision :: p111
 
+
+      doubleprecision :: D000
+      doubleprecision :: D100
+      doubleprecision :: D010
+      doubleprecision :: D110
+      doubleprecision :: D001
+      doubleprecision :: D101
+      doubleprecision :: D011
+      doubleprecision :: D111
+
       doubleprecision :: dDxxdx, dDxydy, dDxzdz, &
                          dDxydx, dDyydy, dDyzdz, &
                          dDxzdx, dDyzdy, dDzzdz
@@ -2013,97 +2187,345 @@ contains
       p111 = this%porosity111
 
 
+      ! SOMETHING MORE ELEGANT! 
+
+
       ! Direction, coordinates, corner values
+      D000 = p000*Dmol
+      D100 = p100*Dmol
+      D010 = p010*Dmol
+      D110 = p110*Dmol
+      D001 = p001*Dmol
+      D101 = p101*Dmol
+      D011 = p011*Dmol
+      D111 = p111*Dmol
+      if( v000(4) .gt. 0d0 ) D000 = ( alphaT*v000(4) + p000*Dmol ) + ( alphaL - alphaT )*v000(1)**2/v000(4)
+      if( v100(4) .gt. 0d0 ) D100 = ( alphaT*v100(4) + p100*Dmol ) + ( alphaL - alphaT )*v100(1)**2/v100(4)
+      if( v010(4) .gt. 0d0 ) D010 = ( alphaT*v010(4) + p010*Dmol ) + ( alphaL - alphaT )*v010(1)**2/v010(4)
+      if( v110(4) .gt. 0d0 ) D110 = ( alphaT*v110(4) + p110*Dmol ) + ( alphaL - alphaT )*v110(1)**2/v110(4)
+      if( v001(4) .gt. 0d0 ) D001 = ( alphaT*v001(4) + p001*Dmol ) + ( alphaL - alphaT )*v001(1)**2/v001(4)
+      if( v101(4) .gt. 0d0 ) D101 = ( alphaT*v101(4) + p101*Dmol ) + ( alphaL - alphaT )*v101(1)**2/v101(4)
+      if( v011(4) .gt. 0d0 ) D011 = ( alphaT*v011(4) + p011*Dmol ) + ( alphaL - alphaT )*v011(1)**2/v011(4)
+      if( v111(4) .gt. 0d0 ) D111 = ( alphaT*v111(4) + p111*Dmol ) + ( alphaL - alphaT )*v111(1)**2/v111(4)
+
       call this%TrilinearDerivative( 1, x, y, z, &
-                ( alphaT*v000(4) + p000*Dmol ) + ( alphaL - alphaT )*v000(1)**2/v000(4), & 
-                ( alphaT*v100(4) + p100*Dmol ) + ( alphaL - alphaT )*v100(1)**2/v100(4), &
-                ( alphaT*v010(4) + p010*Dmol ) + ( alphaL - alphaT )*v010(1)**2/v010(4), &
-                ( alphaT*v110(4) + p110*Dmol ) + ( alphaL - alphaT )*v110(1)**2/v110(4), &
-                ( alphaT*v001(4) + p001*Dmol ) + ( alphaL - alphaT )*v001(1)**2/v001(4), &
-                ( alphaT*v101(4) + p101*Dmol ) + ( alphaL - alphaT )*v101(1)**2/v101(4), &
-                ( alphaT*v011(4) + p011*Dmol ) + ( alphaL - alphaT )*v011(1)**2/v011(4), &
-                ( alphaT*v111(4) + p111*Dmol ) + ( alphaL - alphaT )*v111(1)**2/v111(4), &
+                D000, & 
+                D100, &
+                D010, &
+                D110, &
+                D001, &
+                D101, &
+                D011, &
+                D111, &
                 dDxxdx )
+      D000 = p000*Dmol
+      D100 = p100*Dmol
+      D010 = p010*Dmol
+      D110 = p110*Dmol
+      D001 = p001*Dmol
+      D101 = p101*Dmol
+      D011 = p011*Dmol
+      D111 = p111*Dmol
+      if( v000(4) .gt. 0d0 ) D000 = ( alphaT*v000(4) + p000*Dmol ) + ( alphaL - alphaT )*v000(2)**2/v000(4)
+      if( v100(4) .gt. 0d0 ) D100 = ( alphaT*v100(4) + p100*Dmol ) + ( alphaL - alphaT )*v100(2)**2/v100(4)
+      if( v010(4) .gt. 0d0 ) D010 = ( alphaT*v010(4) + p010*Dmol ) + ( alphaL - alphaT )*v010(2)**2/v010(4)
+      if( v110(4) .gt. 0d0 ) D110 = ( alphaT*v110(4) + p110*Dmol ) + ( alphaL - alphaT )*v110(2)**2/v110(4)
+      if( v001(4) .gt. 0d0 ) D001 = ( alphaT*v001(4) + p001*Dmol ) + ( alphaL - alphaT )*v001(2)**2/v001(4)
+      if( v101(4) .gt. 0d0 ) D101 = ( alphaT*v101(4) + p101*Dmol ) + ( alphaL - alphaT )*v101(2)**2/v101(4)
+      if( v011(4) .gt. 0d0 ) D011 = ( alphaT*v011(4) + p011*Dmol ) + ( alphaL - alphaT )*v011(2)**2/v011(4)
+      if( v111(4) .gt. 0d0 ) D111 = ( alphaT*v111(4) + p111*Dmol ) + ( alphaL - alphaT )*v111(2)**2/v111(4)
       call this%TrilinearDerivative( 2, x, y, z, &
-                ( alphaT*v000(4) + p000*Dmol ) + ( alphaL - alphaT )*v000(2)**2/v000(4), &
-                ( alphaT*v100(4) + p100*Dmol ) + ( alphaL - alphaT )*v100(2)**2/v100(4), &
-                ( alphaT*v010(4) + p010*Dmol ) + ( alphaL - alphaT )*v010(2)**2/v010(4), &
-                ( alphaT*v110(4) + p110*Dmol ) + ( alphaL - alphaT )*v110(2)**2/v110(4), &
-                ( alphaT*v001(4) + p001*Dmol ) + ( alphaL - alphaT )*v001(2)**2/v001(4), &
-                ( alphaT*v101(4) + p101*Dmol ) + ( alphaL - alphaT )*v101(2)**2/v101(4), &
-                ( alphaT*v011(4) + p011*Dmol ) + ( alphaL - alphaT )*v011(2)**2/v011(4), &
-                ( alphaT*v111(4) + p111*Dmol ) + ( alphaL - alphaT )*v111(2)**2/v111(4), &
+                D000, &
+                D100, &
+                D010, &
+                D110, &
+                D001, &
+                D101, &
+                D011, &
+                D111, &
                 dDyydy )
+      D000 = p000*Dmol
+      D100 = p100*Dmol
+      D010 = p010*Dmol
+      D110 = p110*Dmol
+      D001 = p001*Dmol
+      D101 = p101*Dmol
+      D011 = p011*Dmol
+      D111 = p111*Dmol
+      if( v000(4) .gt. 0d0 ) D000 = ( alphaT*v000(4) + p000*Dmol ) + ( alphaL - alphaT )*v000(3)**2/v000(4)
+      if( v100(4) .gt. 0d0 ) D100 = ( alphaT*v100(4) + p100*Dmol ) + ( alphaL - alphaT )*v100(3)**2/v100(4)
+      if( v010(4) .gt. 0d0 ) D010 = ( alphaT*v010(4) + p010*Dmol ) + ( alphaL - alphaT )*v010(3)**2/v010(4)
+      if( v110(4) .gt. 0d0 ) D110 = ( alphaT*v110(4) + p110*Dmol ) + ( alphaL - alphaT )*v110(3)**2/v110(4)
+      if( v001(4) .gt. 0d0 ) D001 = ( alphaT*v001(4) + p001*Dmol ) + ( alphaL - alphaT )*v001(3)**2/v001(4)
+      if( v101(4) .gt. 0d0 ) D101 = ( alphaT*v101(4) + p101*Dmol ) + ( alphaL - alphaT )*v101(3)**2/v101(4)
+      if( v011(4) .gt. 0d0 ) D011 = ( alphaT*v011(4) + p011*Dmol ) + ( alphaL - alphaT )*v011(3)**2/v011(4)
+      if( v111(4) .gt. 0d0 ) D111 = ( alphaT*v111(4) + p111*Dmol ) + ( alphaL - alphaT )*v111(3)**2/v111(4)
       call this%TrilinearDerivative( 3, x, y, z, &
-                ( alphaT*v000(4) + p000*Dmol ) + ( alphaL - alphaT )*v000(3)**2/v000(4), &
-                ( alphaT*v100(4) + p100*Dmol ) + ( alphaL - alphaT )*v100(3)**2/v100(4), &
-                ( alphaT*v010(4) + p010*Dmol ) + ( alphaL - alphaT )*v010(3)**2/v010(4), &
-                ( alphaT*v110(4) + p110*Dmol ) + ( alphaL - alphaT )*v110(3)**2/v110(4), &
-                ( alphaT*v001(4) + p001*Dmol ) + ( alphaL - alphaT )*v001(3)**2/v001(4), &
-                ( alphaT*v101(4) + p101*Dmol ) + ( alphaL - alphaT )*v101(3)**2/v101(4), &
-                ( alphaT*v011(4) + p011*Dmol ) + ( alphaL - alphaT )*v011(3)**2/v011(4), &
-                ( alphaT*v111(4) + p111*Dmol ) + ( alphaL - alphaT )*v111(3)**2/v111(4), &
+                D000, &
+                D100, &
+                D010, &
+                D110, &
+                D001, &
+                D101, &
+                D011, &
+                D111, &
                 dDzzdz )
+
+
+      D000 = 0d0
+      D100 = 0d0
+      D010 = 0d0
+      D110 = 0d0
+      D001 = 0d0
+      D101 = 0d0
+      D011 = 0d0
+      D111 = 0d0
+      if( v000(4) .gt. 0d0 ) D000 = ( alphaL - alphaT )*v000(1)*v000(2)/v000(4)
+      if( v100(4) .gt. 0d0 ) D100 = ( alphaL - alphaT )*v100(1)*v100(2)/v100(4)
+      if( v010(4) .gt. 0d0 ) D010 = ( alphaL - alphaT )*v010(1)*v010(2)/v010(4)
+      if( v110(4) .gt. 0d0 ) D110 = ( alphaL - alphaT )*v110(1)*v110(2)/v110(4)
+      if( v001(4) .gt. 0d0 ) D001 = ( alphaL - alphaT )*v001(1)*v001(2)/v001(4)
+      if( v101(4) .gt. 0d0 ) D101 = ( alphaL - alphaT )*v101(1)*v101(2)/v101(4)
+      if( v011(4) .gt. 0d0 ) D011 = ( alphaL - alphaT )*v011(1)*v011(2)/v011(4)
+      if( v111(4) .gt. 0d0 ) D111 = ( alphaL - alphaT )*v111(1)*v111(2)/v111(4)
       call this%TrilinearDerivative( 1, x, y, z, & 
-                ( alphaL - alphaT )*v000(1)*v000(2)/v000(4), & 
-                ( alphaL - alphaT )*v100(1)*v100(2)/v100(4), &
-                ( alphaL - alphaT )*v010(1)*v010(2)/v010(4), &
-                ( alphaL - alphaT )*v110(1)*v110(2)/v110(4), &
-                ( alphaL - alphaT )*v001(1)*v001(2)/v001(4), &
-                ( alphaL - alphaT )*v101(1)*v101(2)/v101(4), &
-                ( alphaL - alphaT )*v011(1)*v011(2)/v011(4), &
-                ( alphaL - alphaT )*v111(1)*v111(2)/v111(4), &
+                D000, & 
+                D100, &
+                D010, &
+                D110, &
+                D001, &
+                D101, &
+                D011, &
+                D111, &
                 dDxydx )
+      D000 = 0d0
+      D100 = 0d0
+      D010 = 0d0
+      D110 = 0d0
+      D001 = 0d0
+      D101 = 0d0
+      D011 = 0d0
+      D111 = 0d0
+      if( v000(4) .gt. 0d0 ) D000 = ( alphaL - alphaT )*v000(1)*v000(3)/v000(4)
+      if( v100(4) .gt. 0d0 ) D100 = ( alphaL - alphaT )*v100(1)*v100(3)/v100(4)
+      if( v010(4) .gt. 0d0 ) D010 = ( alphaL - alphaT )*v010(1)*v010(3)/v010(4)
+      if( v110(4) .gt. 0d0 ) D110 = ( alphaL - alphaT )*v110(1)*v110(3)/v110(4)
+      if( v001(4) .gt. 0d0 ) D001 = ( alphaL - alphaT )*v001(1)*v001(3)/v001(4)
+      if( v101(4) .gt. 0d0 ) D101 = ( alphaL - alphaT )*v101(1)*v101(3)/v101(4)
+      if( v011(4) .gt. 0d0 ) D011 = ( alphaL - alphaT )*v011(1)*v011(3)/v011(4)
+      if( v111(4) .gt. 0d0 ) D111 = ( alphaL - alphaT )*v111(1)*v111(3)/v111(4)
       call this%TrilinearDerivative( 1, x, y, z, &
-                ( alphaL - alphaT )*v000(1)*v000(3)/v000(4), &
-                ( alphaL - alphaT )*v100(1)*v100(3)/v100(4), &
-                ( alphaL - alphaT )*v010(1)*v010(3)/v010(4), &
-                ( alphaL - alphaT )*v110(1)*v110(3)/v110(4), &
-                ( alphaL - alphaT )*v001(1)*v001(3)/v001(4), &
-                ( alphaL - alphaT )*v101(1)*v101(3)/v101(4), &
-                ( alphaL - alphaT )*v011(1)*v011(3)/v011(4), &
-                ( alphaL - alphaT )*v111(1)*v111(3)/v111(4), &
+                D000, &
+                D100, &
+                D010, &
+                D110, &
+                D001, &
+                D101, &
+                D011, &
+                D111, &
                 dDxzdx )
+      D000 = 0d0
+      D100 = 0d0
+      D010 = 0d0
+      D110 = 0d0
+      D001 = 0d0
+      D101 = 0d0
+      D011 = 0d0
+      D111 = 0d0
+      if( v000(4) .gt. 0d0 ) D000 = ( alphaL - alphaT )*v000(1)*v000(2)/v000(4)
+      if( v100(4) .gt. 0d0 ) D100 = ( alphaL - alphaT )*v100(1)*v100(2)/v100(4)
+      if( v010(4) .gt. 0d0 ) D010 = ( alphaL - alphaT )*v010(1)*v010(2)/v010(4)
+      if( v110(4) .gt. 0d0 ) D110 = ( alphaL - alphaT )*v110(1)*v110(2)/v110(4)
+      if( v001(4) .gt. 0d0 ) D001 = ( alphaL - alphaT )*v001(1)*v001(2)/v001(4)
+      if( v101(4) .gt. 0d0 ) D101 = ( alphaL - alphaT )*v101(1)*v101(2)/v101(4)
+      if( v011(4) .gt. 0d0 ) D011 = ( alphaL - alphaT )*v011(1)*v011(2)/v011(4)
+      if( v111(4) .gt. 0d0 ) D111 = ( alphaL - alphaT )*v111(1)*v111(2)/v111(4)
       call this%TrilinearDerivative( 2, x, y, z, &
-                ( alphaL - alphaT )*v000(1)*v000(2)/v000(4), &
-                ( alphaL - alphaT )*v100(1)*v100(2)/v100(4), &
-                ( alphaL - alphaT )*v010(1)*v010(2)/v010(4), &
-                ( alphaL - alphaT )*v110(1)*v110(2)/v110(4), &
-                ( alphaL - alphaT )*v001(1)*v001(2)/v001(4), &
-                ( alphaL - alphaT )*v101(1)*v101(2)/v101(4), &
-                ( alphaL - alphaT )*v011(1)*v011(2)/v011(4), &
-                ( alphaL - alphaT )*v111(1)*v111(2)/v111(4), &
+                D000, &
+                D100, &
+                D010, &
+                D110, &
+                D001, &
+                D101, &
+                D011, &
+                D111, &
                 dDxydy )
+      D000 = 0d0
+      D100 = 0d0
+      D010 = 0d0
+      D110 = 0d0
+      D001 = 0d0
+      D101 = 0d0
+      D011 = 0d0
+      D111 = 0d0
+      if( v000(4) .gt. 0d0 ) D000 = ( alphaL - alphaT )*v000(2)*v000(3)/v000(4)
+      if( v100(4) .gt. 0d0 ) D100 = ( alphaL - alphaT )*v100(2)*v100(3)/v100(4)
+      if( v010(4) .gt. 0d0 ) D010 = ( alphaL - alphaT )*v010(2)*v010(3)/v010(4)
+      if( v110(4) .gt. 0d0 ) D110 = ( alphaL - alphaT )*v110(2)*v110(3)/v110(4)
+      if( v001(4) .gt. 0d0 ) D001 = ( alphaL - alphaT )*v001(2)*v001(3)/v001(4)
+      if( v101(4) .gt. 0d0 ) D101 = ( alphaL - alphaT )*v101(2)*v101(3)/v101(4)
+      if( v011(4) .gt. 0d0 ) D011 = ( alphaL - alphaT )*v011(2)*v011(3)/v011(4)
+      if( v111(4) .gt. 0d0 ) D111 = ( alphaL - alphaT )*v111(2)*v111(3)/v111(4)
       call this%TrilinearDerivative( 2, x, y, z, &
-                ( alphaL - alphaT )*v000(2)*v000(3)/v000(4), &
-                ( alphaL - alphaT )*v100(2)*v100(3)/v100(4), &
-                ( alphaL - alphaT )*v010(2)*v010(3)/v010(4), &
-                ( alphaL - alphaT )*v110(2)*v110(3)/v110(4), &
-                ( alphaL - alphaT )*v001(2)*v001(3)/v001(4), &
-                ( alphaL - alphaT )*v101(2)*v101(3)/v101(4), &
-                ( alphaL - alphaT )*v011(2)*v011(3)/v011(4), &
-                ( alphaL - alphaT )*v111(2)*v111(3)/v111(4), &
+                D000, &
+                D100, &
+                D010, &
+                D110, &
+                D001, &
+                D101, &
+                D011, &
+                D111, &
                 dDyzdy )
+      D000 = 0d0
+      D100 = 0d0
+      D010 = 0d0
+      D110 = 0d0
+      D001 = 0d0
+      D101 = 0d0
+      D011 = 0d0
+      D111 = 0d0
+      if( v000(4) .gt. 0d0 ) D000 = ( alphaL - alphaT )*v000(1)*v000(3)/v000(4)
+      if( v100(4) .gt. 0d0 ) D100 = ( alphaL - alphaT )*v100(1)*v100(3)/v100(4)
+      if( v010(4) .gt. 0d0 ) D010 = ( alphaL - alphaT )*v010(1)*v010(3)/v010(4)
+      if( v110(4) .gt. 0d0 ) D110 = ( alphaL - alphaT )*v110(1)*v110(3)/v110(4)
+      if( v001(4) .gt. 0d0 ) D001 = ( alphaL - alphaT )*v001(1)*v001(3)/v001(4)
+      if( v101(4) .gt. 0d0 ) D101 = ( alphaL - alphaT )*v101(1)*v101(3)/v101(4)
+      if( v011(4) .gt. 0d0 ) D011 = ( alphaL - alphaT )*v011(1)*v011(3)/v011(4)
+      if( v111(4) .gt. 0d0 ) D111 = ( alphaL - alphaT )*v111(1)*v111(3)/v111(4)
       call this%TrilinearDerivative( 3, x, y, z, &
-                ( alphaL - alphaT )*v000(1)*v000(3)/v000(4), &
-                ( alphaL - alphaT )*v100(1)*v100(3)/v100(4), &
-                ( alphaL - alphaT )*v010(1)*v010(3)/v010(4), &
-                ( alphaL - alphaT )*v110(1)*v110(3)/v110(4), &
-                ( alphaL - alphaT )*v001(1)*v001(3)/v001(4), &
-                ( alphaL - alphaT )*v101(1)*v101(3)/v101(4), &
-                ( alphaL - alphaT )*v011(1)*v011(3)/v011(4), &
-                ( alphaL - alphaT )*v111(1)*v111(3)/v111(4), &
+                D000, &
+                D100, &
+                D010, &
+                D110, &
+                D001, &
+                D101, &
+                D011, &
+                D111, &
                 dDxzdz )
+      D000 = 0d0
+      D100 = 0d0
+      D010 = 0d0
+      D110 = 0d0
+      D001 = 0d0
+      D101 = 0d0
+      D011 = 0d0
+      D111 = 0d0
+      if( v000(4) .gt. 0d0 ) D000 = ( alphaL - alphaT )*v000(2)*v000(3)/v000(4)
+      if( v100(4) .gt. 0d0 ) D100 = ( alphaL - alphaT )*v100(2)*v100(3)/v100(4)
+      if( v010(4) .gt. 0d0 ) D010 = ( alphaL - alphaT )*v010(2)*v010(3)/v010(4)
+      if( v110(4) .gt. 0d0 ) D110 = ( alphaL - alphaT )*v110(2)*v110(3)/v110(4)
+      if( v001(4) .gt. 0d0 ) D001 = ( alphaL - alphaT )*v001(2)*v001(3)/v001(4)
+      if( v101(4) .gt. 0d0 ) D101 = ( alphaL - alphaT )*v101(2)*v101(3)/v101(4)
+      if( v011(4) .gt. 0d0 ) D011 = ( alphaL - alphaT )*v011(2)*v011(3)/v011(4)
+      if( v111(4) .gt. 0d0 ) D111 = ( alphaL - alphaT )*v111(2)*v111(3)/v111(4)
       call this%TrilinearDerivative( 3, x, y, z, &
-                ( alphaL - alphaT )*v000(2)*v000(3)/v000(4), &
-                ( alphaL - alphaT )*v100(2)*v100(3)/v100(4), &
-                ( alphaL - alphaT )*v010(2)*v010(3)/v010(4), &
-                ( alphaL - alphaT )*v110(2)*v110(3)/v110(4), &
-                ( alphaL - alphaT )*v001(2)*v001(3)/v001(4), &
-                ( alphaL - alphaT )*v101(2)*v101(3)/v101(4), &
-                ( alphaL - alphaT )*v011(2)*v011(3)/v011(4), &
-                ( alphaL - alphaT )*v111(2)*v111(3)/v111(4), &
+                D000, &
+                D100, &
+                D010, &
+                D110, &
+                D001, &
+                D101, &
+                D011, &
+                D111, &
                 dDyzdz )
+
+
+
+
+
+
+
+      ! Direction, coordinates, corner values
+      !call this%TrilinearDerivative( 1, x, y, z, &
+      !          ( alphaT*v000(4) + p000*Dmol ) + ( alphaL - alphaT )*v000(1)**2/v000(4), & 
+      !          ( alphaT*v100(4) + p100*Dmol ) + ( alphaL - alphaT )*v100(1)**2/v100(4), &
+      !          ( alphaT*v010(4) + p010*Dmol ) + ( alphaL - alphaT )*v010(1)**2/v010(4), &
+      !          ( alphaT*v110(4) + p110*Dmol ) + ( alphaL - alphaT )*v110(1)**2/v110(4), &
+      !          ( alphaT*v001(4) + p001*Dmol ) + ( alphaL - alphaT )*v001(1)**2/v001(4), &
+      !          ( alphaT*v101(4) + p101*Dmol ) + ( alphaL - alphaT )*v101(1)**2/v101(4), &
+      !          ( alphaT*v011(4) + p011*Dmol ) + ( alphaL - alphaT )*v011(1)**2/v011(4), &
+      !          ( alphaT*v111(4) + p111*Dmol ) + ( alphaL - alphaT )*v111(1)**2/v111(4), &
+      !          dDxxdx )
+      !call this%TrilinearDerivative( 2, x, y, z, &
+      !          ( alphaT*v000(4) + p000*Dmol ) + ( alphaL - alphaT )*v000(2)**2/v000(4), &
+      !          ( alphaT*v100(4) + p100*Dmol ) + ( alphaL - alphaT )*v100(2)**2/v100(4), &
+      !          ( alphaT*v010(4) + p010*Dmol ) + ( alphaL - alphaT )*v010(2)**2/v010(4), &
+      !          ( alphaT*v110(4) + p110*Dmol ) + ( alphaL - alphaT )*v110(2)**2/v110(4), &
+      !          ( alphaT*v001(4) + p001*Dmol ) + ( alphaL - alphaT )*v001(2)**2/v001(4), &
+      !          ( alphaT*v101(4) + p101*Dmol ) + ( alphaL - alphaT )*v101(2)**2/v101(4), &
+      !          ( alphaT*v011(4) + p011*Dmol ) + ( alphaL - alphaT )*v011(2)**2/v011(4), &
+      !          ( alphaT*v111(4) + p111*Dmol ) + ( alphaL - alphaT )*v111(2)**2/v111(4), &
+      !          dDyydy )
+      !call this%TrilinearDerivative( 3, x, y, z, &
+      !          ( alphaT*v000(4) + p000*Dmol ) + ( alphaL - alphaT )*v000(3)**2/v000(4), &
+      !          ( alphaT*v100(4) + p100*Dmol ) + ( alphaL - alphaT )*v100(3)**2/v100(4), &
+      !          ( alphaT*v010(4) + p010*Dmol ) + ( alphaL - alphaT )*v010(3)**2/v010(4), &
+      !          ( alphaT*v110(4) + p110*Dmol ) + ( alphaL - alphaT )*v110(3)**2/v110(4), &
+      !          ( alphaT*v001(4) + p001*Dmol ) + ( alphaL - alphaT )*v001(3)**2/v001(4), &
+      !          ( alphaT*v101(4) + p101*Dmol ) + ( alphaL - alphaT )*v101(3)**2/v101(4), &
+      !          ( alphaT*v011(4) + p011*Dmol ) + ( alphaL - alphaT )*v011(3)**2/v011(4), &
+      !          ( alphaT*v111(4) + p111*Dmol ) + ( alphaL - alphaT )*v111(3)**2/v111(4), &
+      !          dDzzdz )
+      !call this%TrilinearDerivative( 1, x, y, z, & 
+      !          ( alphaL - alphaT )*v000(1)*v000(2)/v000(4), & 
+      !          ( alphaL - alphaT )*v100(1)*v100(2)/v100(4), &
+      !          ( alphaL - alphaT )*v010(1)*v010(2)/v010(4), &
+      !          ( alphaL - alphaT )*v110(1)*v110(2)/v110(4), &
+      !          ( alphaL - alphaT )*v001(1)*v001(2)/v001(4), &
+      !          ( alphaL - alphaT )*v101(1)*v101(2)/v101(4), &
+      !          ( alphaL - alphaT )*v011(1)*v011(2)/v011(4), &
+      !          ( alphaL - alphaT )*v111(1)*v111(2)/v111(4), &
+      !          dDxydx )
+      !call this%TrilinearDerivative( 1, x, y, z, &
+      !          ( alphaL - alphaT )*v000(1)*v000(3)/v000(4), &
+      !          ( alphaL - alphaT )*v100(1)*v100(3)/v100(4), &
+      !          ( alphaL - alphaT )*v010(1)*v010(3)/v010(4), &
+      !          ( alphaL - alphaT )*v110(1)*v110(3)/v110(4), &
+      !          ( alphaL - alphaT )*v001(1)*v001(3)/v001(4), &
+      !          ( alphaL - alphaT )*v101(1)*v101(3)/v101(4), &
+      !          ( alphaL - alphaT )*v011(1)*v011(3)/v011(4), &
+      !          ( alphaL - alphaT )*v111(1)*v111(3)/v111(4), &
+      !          dDxzdx )
+      !call this%TrilinearDerivative( 2, x, y, z, &
+      !          ( alphaL - alphaT )*v000(1)*v000(2)/v000(4), &
+      !          ( alphaL - alphaT )*v100(1)*v100(2)/v100(4), &
+      !          ( alphaL - alphaT )*v010(1)*v010(2)/v010(4), &
+      !          ( alphaL - alphaT )*v110(1)*v110(2)/v110(4), &
+      !          ( alphaL - alphaT )*v001(1)*v001(2)/v001(4), &
+      !          ( alphaL - alphaT )*v101(1)*v101(2)/v101(4), &
+      !          ( alphaL - alphaT )*v011(1)*v011(2)/v011(4), &
+      !          ( alphaL - alphaT )*v111(1)*v111(2)/v111(4), &
+      !          dDxydy )
+      !call this%TrilinearDerivative( 2, x, y, z, &
+      !          ( alphaL - alphaT )*v000(2)*v000(3)/v000(4), &
+      !          ( alphaL - alphaT )*v100(2)*v100(3)/v100(4), &
+      !          ( alphaL - alphaT )*v010(2)*v010(3)/v010(4), &
+      !          ( alphaL - alphaT )*v110(2)*v110(3)/v110(4), &
+      !          ( alphaL - alphaT )*v001(2)*v001(3)/v001(4), &
+      !          ( alphaL - alphaT )*v101(2)*v101(3)/v101(4), &
+      !          ( alphaL - alphaT )*v011(2)*v011(3)/v011(4), &
+      !          ( alphaL - alphaT )*v111(2)*v111(3)/v111(4), &
+      !          dDyzdy )
+      !call this%TrilinearDerivative( 3, x, y, z, &
+      !          ( alphaL - alphaT )*v000(1)*v000(3)/v000(4), &
+      !          ( alphaL - alphaT )*v100(1)*v100(3)/v100(4), &
+      !          ( alphaL - alphaT )*v010(1)*v010(3)/v010(4), &
+      !          ( alphaL - alphaT )*v110(1)*v110(3)/v110(4), &
+      !          ( alphaL - alphaT )*v001(1)*v001(3)/v001(4), &
+      !          ( alphaL - alphaT )*v101(1)*v101(3)/v101(4), &
+      !          ( alphaL - alphaT )*v011(1)*v011(3)/v011(4), &
+      !          ( alphaL - alphaT )*v111(1)*v111(3)/v111(4), &
+      !          dDxzdz )
+      !call this%TrilinearDerivative( 3, x, y, z, &
+      !          ( alphaL - alphaT )*v000(2)*v000(3)/v000(4), &
+      !          ( alphaL - alphaT )*v100(2)*v100(3)/v100(4), &
+      !          ( alphaL - alphaT )*v010(2)*v010(3)/v010(4), &
+      !          ( alphaL - alphaT )*v110(2)*v110(3)/v110(4), &
+      !          ( alphaL - alphaT )*v001(2)*v001(3)/v001(4), &
+      !          ( alphaL - alphaT )*v101(2)*v101(3)/v101(4), &
+      !          ( alphaL - alphaT )*v011(2)*v011(3)/v011(4), &
+      !          ( alphaL - alphaT )*v111(2)*v111(3)/v111(4), &
+      !          dDyzdz )
 
       divDx = ( dDxxdx + dDxydy + dDxzdz )/this%SubCellData%Porosity/this%SubCellData%Retardation
       divDy = ( dDxydx + dDyydy + dDyzdz )/this%SubCellData%Porosity/this%SubCellData%Retardation
