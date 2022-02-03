@@ -949,7 +949,9 @@ contains
     ! OBS
     integer   :: idObservationCell
     !---------------------------------------------------------------------------------------------------------------
-      
+
+        print *, 'TrackingEngine: AT RWPTrackPath: cellNumber:', location%CellNumber, ' particleID:', particleID
+
         ! Reset trackPathResult and initialize particleID
         call trackPathResult%Reset()
         trackPathResult%ParticleID = particleID
@@ -970,16 +972,19 @@ contains
         this%TrackCell%TrackingOptions = this%TrackingOptions
         call this%FillCellBuffer(loc%CellNumber,  this%TrackCell%CellData)
 
+        !print *, 'TrackingEngine: FillNeighborCellData'
 
         ! RWPT: fill neighbor cells
         call this%FillNeighborCellData( neighborCellData )
 
+        print *, 'TrackingEngine: PASSED FillNeighborCellData'
 
         continueLoop = .true.
         isTimeSeriesPoint = .false.
         isMaximumTime = .false.
         
         do while(continueLoop)
+            print *, '#####################################################', loc%CellNumber
             ! Check to see if the particle has moved to another cell. If so, load the new cell data
             if(loc%CellNumber .ne. this%TrackCell%CellData%CellNumber) then
                 call this%FillCellBuffer(loc%CellNumber, this%TrackCell%CellData)
@@ -1010,6 +1015,7 @@ contains
             
             ! Check the status flag of the result to find out what to do next
             if(this%TrackCellResult%Status .eq. this%TrackCellResult%Status_Undefined()) then
+                print *, '*TRACKINGENGINE: UNDEFINED'
                 continueLoop = .false.
                 trackPathResult%Status = this%TrackCellResult%Status
             else if(this%TrackCellResult%Status .eq. this%TrackCellResult%Status_ExitAtCellFace()) then
@@ -1165,6 +1171,9 @@ subroutine pr_FillNeighborCellDataUnstructured( this, neighborCellData )
     integer :: n, m, id, cellCounter, firstNeighborFaceNumber
     logical :: forceCellRefinement
     !------------------------------------------------------------------
+    
+    !print *, 'TrackingEngine: FillNeighborCellDataUnstructured'
+
     ! Reset all buffers
     do m = 1, 18 
         call neighborCellData( 1, m )%Reset() 
@@ -1271,6 +1280,9 @@ subroutine pr_FillNeighborCellsSubBuffer( this, &
     integer :: n, m 
     integer :: directionId
     !---------------------------------------------------------------------
+
+    !print *, 'TrackingEngine: FillNeighborCellsSubBuffer, centerCell: ', centerCellDataBuffer%cellNumber, & 
+    !         ' faceNumber:', faceNumber
 
 
     ! Handle the case of a z-axis faceNumber
@@ -1390,11 +1402,14 @@ subroutine pr_FillNeighborCellsSubBuffer( this, &
 
     else if ( centerCellDataBuffer%GetFaceConnection( faceNumber, 1 ) .gt. 0 ) then
         ! Connected to one cell
+        !print *, 'TrackingEngine: FillNeighborCellsSubBuffer: Connected to One Cell'
 
         ! Fill direct connection buffer 
         call pr_FillNeighborCellsConnectionFromHorizontalFace( this, centerCellDataBuffer, &
                     faceNumber, neighborCellsDataBuffer( :, directConnectionBufferIndex ), &
                                                                        forceCellRefinement )
+
+        !print *, 'TrackingEngine: FillNeighborCellsSubBuffer: PASSED FillNeighborCellsConnectionFromHorizontalFace'
 
         ! If the buffer was filled with one of the subcells
         ! from a bigger cell
@@ -1552,6 +1567,7 @@ subroutine pr_FillNeighborCellsSubBuffer( this, &
 
     else
         ! No connection 
+        !print *, 'TrackingEngine: FillNeighborCellsSubBuffer: No Connection'
 
         ! Done
         return
@@ -1589,6 +1605,8 @@ subroutine pr_FillNeighborCellsConnectionFromHorizontalFace(this, centerCellData
     integer                                  :: m
     !--------------------------------------------------------------------------------------
 
+    ! Debug
+    !print *, 'TrackingEngine: FillNeighborCellsConnectionFromHorizontalFace'
 
     ! If invalid center cell leave 
     if ( centerCellDataBuffer%CellNumber .le. 0 ) then
@@ -1653,6 +1671,9 @@ subroutine pr_FillNeighborCellsConnectionFromHorizontalFace(this, centerCellData
         ! Only one connection, verify if 
         ! same size or bigger size cell
 
+        ! Debug
+        !print *, 'TrackingEngine: FillNeighborCellsConnectionFromHorizontalFace: One Connection'
+
         ! Info for verification
         select case ( faceNumber )
             case (1)
@@ -1677,6 +1698,15 @@ subroutine pr_FillNeighborCellsConnectionFromHorizontalFace(this, centerCellData
                 subCellIndexes(2,:)        = (/2,1/) 
         end select
 
+        ! Debug
+        !! Note: when compiler flags include fbounds-check then GetFaceConnection of a cellNumber equal zero will
+        !! throw an exception 
+        !print *, 'TrackingEngine: FillNeighborCellsConnectionFromHorizontalFace: One Connection: before if block'
+        !print *, 'TrackingEngine: FillNeighborCellsConnectionFromHorizontalFace: One Connection: centerCell: ', & 
+        !   centerCellDataBuffer%CellNumber
+        !print *, centerCellDataBuffer%GetFaceConnection( faceNumber, 1 )
+        !print *, centerCellDataBuffer%GetFaceConnection( orthogonalFaceNumbers(1), 1 )
+        !print *, 'TrackingEngine: FillNeighborCellsConnectionFromHorizontalFace: One Connection: before if block, after call'
 
         ! Detect connection state
         ! Verify response when no connection 
@@ -1689,6 +1719,9 @@ subroutine pr_FillNeighborCellsConnectionFromHorizontalFace(this, centerCellData
               this%Grid%GetFaceConnection(                                                                 & 
                   centerCellDataBuffer%GetFaceConnection( orthogonalFaceNumbers(2), 1 ), faceNumber, 1 ) ) &
         ) then 
+
+            ! Debug
+            !print *, 'TrackingEngine: FillNeighborCellsConnectionFromHorizontalFace: One Connection: if block'
 
             ! If bigger cell
             ! Fill the parentCellDataBuffer
@@ -1740,6 +1773,8 @@ subroutine pr_FillNeighborCellsConnectionFromHorizontalFace(this, centerCellData
             end if
 
         else
+            ! Debug
+            !print *, 'TrackingEngine: FillNeighborCellsConnectionFromHorizontalFace: One Connection: else block'
 
             if ( .not. centerCellDataBuffer%isParentCell ) then
 
@@ -1788,6 +1823,8 @@ subroutine pr_FillNeighborCellsConnectionFromHorizontalFace(this, centerCellData
 
     else
         ! No connection
+        ! Debug
+        !print *, 'TrackingEngine: FillNeighborCellsConnectionFromHorizontalFace: No Connection'
 
         ! Done
         return
