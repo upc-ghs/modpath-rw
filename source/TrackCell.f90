@@ -177,12 +177,10 @@ contains
           trackCellResult%Status = trackCellResult%Status_NoExitPossible()
           return;
       else
-              print *, 'CELLNUMBER: ', this%CellData%CellNumber, ' NO EXIT POSSIBLE IS TRANSIENT' 
           if((this%TrackingOptions%BackwardTracking) .and. (this%CellData%SourceFlow .ne. 0.0d0)) then
                trackCellResult%Status = trackCellResult%Status_NoExitPossible()
                return;
           else if((.not. this%TrackingOptions%BackwardTracking) .and. (this%CellData%SinkFlow .ne. 0.0d0)) then
-              print *, 'CELLNUMBER: ', this%CellData%CellNumber, ' ENTERED NO EXIT POSSIBLE IS TRANSIENT' 
                trackCellResult%Status = trackCellResult%Status_NoExitPossible()
                return;
           end if
@@ -201,9 +199,7 @@ contains
       end if
   else
       if(this%TrackingOptions%StopAtWeakSinks) then
-              !print *, 'CELLNUMBER: ', this%CellData%CellNumber, ' STOP AT WEAK SINKS' 
           if(this%CellData%SinkFlow .ne. 0.0d0) then
-              print *, 'CELLNUMBER: ', this%CellData%CellNumber, ' STOP AT WEAK SINKS SINK FLOW NON ZERO' 
               trackCellResult%Status = trackCellResult%Status_StopAtWeakSink()
               return;
           else
@@ -438,7 +434,6 @@ contains
               trackCellResult%Status = trackCellResult%Status_NoExitPossible()
               return;
           else
-              print *, 'CELLNUMBER: ', this%CellData%CellNumber, ' NO EXIT POSSIBLE IS TRANSIENT' 
               if((this%TrackingOptions%BackwardTracking) .and. (this%CellData%SourceFlow .ne. 0.0d0)) then
                    trackCellResult%Status = trackCellResult%Status_NoExitPossible()
                    return;
@@ -461,7 +456,6 @@ contains
           end if
       else
           if(this%TrackingOptions%StopAtWeakSinks) then
-              print *, 'CELLNUMBER: ', this%CellData%CellNumber, ' STOP AT WEAK SINKS' 
               if(this%CellData%SinkFlow .ne. 0.0d0) then
                   trackCellResult%Status = trackCellResult%Status_StopAtWeakSink()
                   return;
