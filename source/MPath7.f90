@@ -104,19 +104,19 @@
 
 
     ! DEV PARALLEL OUTPUT
-    !integer :: nObservations
-    !logical :: observationSimulation = .false.
-    !integer, allocatable, dimension(:) :: observationCells
-    !integer, allocatable, dimension(:) :: observationUnits
-    !character(len=50), allocatable, dimension(:) :: observationFiles
-
     integer :: ompNumThreads
     integer :: ompThreadId
     integer :: timeseriesBinUnit
+    integer :: reclen, lastRecord
     integer, allocatable, dimension(:) :: timeseriesTempUnits
     integer, allocatable, dimension(:) :: timeseriesRecordCounts
-    character(len=50), allocatable, dimension(:) :: timeseriesTempFiles
-    character(len=50) :: tempChar
+    character(len=200), allocatable, dimension(:) :: timeseriesTempFiles
+    character(len=200) :: tempChar
+    logical :: parallel = .false.
+    integer :: tsOutputType = 0
+
+    ! Interface for timeseries writing
+    procedure(TimeseriesWriter), pointer :: WriteTimeseries=>null()
 !---------------------------------------------------------------------------------
 
 
@@ -133,86 +133,41 @@
     terminationMessage = "Normal termination."
     
     ! Assign dedicated file unit numbers
-     disUnit = 101
-     endpointUnit = 102
-     pathlineUnit = 103
-     timeseriesUnit = 104
-     mplistUnit = 105
-     traceUnit = 106
-     budchkUnit = 107
-     aobsUnit = 108
-     logUnit = 109
-     mpsimUnit = 110
-     tdisUnit = 111
-     mpbasUnit = 112
-     headUnit = 113
-     budgetUnit = 114
-     traceModeUnit = 115
-     binPathlineUnit = 116
-     gridMetaUnit = 117
-
-
-
-    ! DEV PARALLEL OUTPUT
-    timeseriesBinUnit = 204
-    !ompNumThreads = omp_get_num_threads()
-    ompNumThreads = omp_get_max_threads()
-    print *, 'DETECTED NTHREADS ', ompNumThreads
-    print *, 'DETECTED NUM PROC ', omp_get_num_procs()
-    !print *, 'SETTING THREADS... '
-    !call omp_set_num_threads( omp_get_num_procs() )
-    !print *, 'printing max num threads ', omp_get_max_threads()
-    !allocate( timeseriesTempUnits(ompNumThreads) )
-    !allocate( timeseriesTempFiles(ompNumThreads) )
-
-    !! Initialize timeseries parallel units
-    !do m = 1, ompNumThreads
-    !    timeseriesTempUnits( m ) = 6600 + m
-    !    write( unit=timseriesTempFiles( m ), fmt='(a)' )'parallelts_'//trim(adjustl( m ))//'.ts'
-    !    !open( unit=timeseriesTempUnits( m ),     &
-    !    !      file=timeseriesTempFiles( m ),     & 
-    !    !      status='replace', form='formatted', access='sequential')
-    !end do
-
-    !! Set units and file names
-    !do m = 1, ompNumThreads
-    !    !read(inUnit, '(a)', iostat=ioInUnit) line
-    !    !icol = 1
-    !    !call urword(line, icol, istart, istop, 2, n, r, 0, 0)
-    !    !this%TrackingOptions%observationCells( nc ) = n
-    !    ! 5500 is just to move to a known place of id units, improve
-    !    !this%TrackingOptions%observationUnits( nc ) = 5500 + nc
-    !    timeseriesTempUnits( m ) = 6600 + m
-    !    !! Write the cell ID
-    !    !write( unit=tempChar, fmt=* )this%TrackingOptions%observationCells( nc )
-    !    !! Write the output file name
-    !    write( unit=timseriesTempFiles( m ), fmt='(a)' )'parallelts_'//trim(adjustl( m ))//'.ts'
-    !end do
-
-    !! Init timeseries output units
-    !do m = 1, ompNumThreads
-    !    open( unit=timeseriesTempUnits( m ),     &
-    !          file=timeseriesTempFiles( m ),     & 
-    !          status='replace', form='formatted', access='sequential')
-    !end do
-
-    !! Close timeseries units
-    !do m = 1, ompNumThreads
-    !    close( timeseriesTempUnits( m ) )
-    !end do
-
-    ! END DEV PARALLEL OUTPUT
+    disUnit = 101
+    endpointUnit = 102
+    pathlineUnit = 103
+    timeseriesUnit = 104
+    mplistUnit = 105
+    traceUnit = 106
+    budchkUnit = 107
+    aobsUnit = 108
+    logUnit = 109
+    mpsimUnit = 110
+    tdisUnit = 111
+    mpbasUnit = 112
+    headUnit = 113
+    budgetUnit = 114
+    traceModeUnit = 115
+    binPathlineUnit = 116
+    gridMetaUnit = 117
 
 
     ! Parse the command line for simulation file name, log file name, and options
-    call ParseCommandLine(mpsimFile, mplogFile, logType)
+    call ParseCommandLine(mpsimFile, mplogFile, logType, parallel, tsOutputType)
     ! Open the log file (unless -nolog option)
     if (logType /= 0) then
         open(unit=logUnit, file=mplogFile, status='replace', form='formatted', access='sequential')
     else
         logUnit = -logUnit
     end if
+    ! Get the number of threads for the parallel region
+    if ( parallel ) then
+        ompNumThreads = omp_get_max_threads()
+    else
+        ompNumThreads = 1
+    end if 
     call ulog('Command line parsed.', logUnit)
+
     ! If simulation file name not on command line, prompt user for name
     if (mpsimFile == "") then
         call ulog('Prompt for the name of the MODPATH simulation file.', logUnit)
@@ -508,40 +463,79 @@
           simulationData%ReferenceTime, modelGrid%OriginX, modelGrid%OriginY,   &
           modelGrid%RotationAngle)
     end if
-    if((simulationData%SimulationType .eq. 3) .or.                              &
-      (simulationData%SimulationType .eq. 4)) then
-        !open(unit=timeseriesUnit, file=simulationData%TimeseriesFile,           &
-        !  status='replace', form='formatted', access='sequential')
-        !call WriteTimeseriesHeader(timeseriesUnit,                              &
-        !  simulationData%TrackingDirection, simulationData%ReferenceTime,       &
-        !  modelGrid%OriginX, modelGrid%OriginY, modelGrid%RotationAngle)
-        ! DEV PARALLEL OUTPUT
-        !write( unit=tempChar, fmt='(a)' )'bin_'//trim(adjustl(simulationData%TimeseriesFile))
-        !open(unit=timeseriesBinUnit, file=tempChar,                   &
-        !  status='replace', form='formatted', access='direct', recl=84)
-        open(unit=timeseriesBinUnit, file=simulationData%TimeseriesFile,            &
-          status='replace', form='formatted', access='direct', recl=90)
+    if((simulationData%SimulationType .eq. 3)  .or.                             &
+       (simulationData%SimulationType .eq. 4)) then
 
-        ! DEV PARALLEL OUTPUT
-        ! SHOULD INITIALIZE TEMPORAL UNITS IF PARALLEL
+        ! Allocate arrays of parallel output
+        ! In serial will be allocated with 
+        ! ompNumThreads = 1 but are not used in 
+        ! writing outputs, only should be present 
+        ! for consistency with TimeseriesWriter interface
         allocate( timeseriesTempUnits(ompNumThreads) )
         allocate( timeseriesRecordCounts(ompNumThreads) )
-        allocate( timeseriesTempFiles(ompNumThreads) )
 
-        ! Initialize timeseries parallel units
-        do m = 1, ompNumThreads
-            timeseriesTempUnits( m ) = 6600 + m
-            ! if formatted units, requires a better naming convention
-            !write( unit=tempChar, fmt=* )m 
-            !write( unit=timeseriesTempFiles( m ), fmt='(a)' )'parallelts_'//trim(adjustl(tempChar))//'.ts'
-            !open( unit=timeseriesTempUnits( m ),     &
-            !      file=timeseriesTempFiles( m ),     & 
-            !      status='replace', form='formatted', access='sequential')
-            ! if binary unformatted temporal units
-            open(unit=timeseriesTempUnits( m ), status='scratch', form='unformatted', &
-                                                access='stream', action='readwrite'   )
-        end do
-        timeseriesRecordCounts = 0
+        ! If not parallel 
+        if ( .not. parallel ) then 
+            ! Default output 
+            open(unit=timeseriesUnit, file=simulationData%TimeseriesFile,           &
+              status='replace', form='formatted', access='sequential')
+            call WriteTimeseriesHeader(timeseriesUnit,                              &
+              simulationData%TrackingDirection, simulationData%ReferenceTime,       &
+              modelGrid%OriginX, modelGrid%OriginY, modelGrid%RotationAngle)
+            WriteTimeseries => WriteTimeseriesRecordSerial
+        else
+
+            ! If parallel with critical directive
+            select case( tsOutputType ) 
+                case (1)
+                    print *, 'TIMESERIES OUTPUT IS CRITICAL' 
+                    ! Default output 
+                    open(unit=timeseriesUnit, file=simulationData%TimeseriesFile,           &
+                      status='replace', form='formatted', access='sequential')
+                    call WriteTimeseriesHeader(timeseriesUnit,                              &
+                      simulationData%TrackingDirection, simulationData%ReferenceTime,       &
+                      modelGrid%OriginX, modelGrid%OriginY, modelGrid%RotationAngle)
+                    WriteTimeseries => WriteTimeseriesRecordCritical 
+                case (2) 
+                    print *, 'TIMESERIES OUTPUT IS PARALLEL CONSOLIDATED' 
+                    ! Consolidated
+                    ! HEADER ?
+                    ! Open consolidated direct access output unit
+                    !2I8+es18.9e3+i10+i5+2i10+6es18.9e3+i10+jumpchar
+                    reclen = 2*8+18+10+5+2*10+6*18+10+1 
+                    open(unit=timeseriesUnit, file=simulationData%TimeseriesFile,     &
+                      status='replace', form='formatted', access='direct', recl=reclen)
+                    lastRecord = 0
+
+                    ! Initialize binary temporal units 
+                    do m = 1, ompNumThreads
+                        timeseriesTempUnits( m ) = 6600 + m
+                        open(unit=timeseriesTempUnits( m ), status='scratch', form='unformatted', &
+                                                            access='stream', action='readwrite'   )
+                    end do
+                    timeseriesRecordCounts = 0
+                    ! Assign writer pointer
+                    WriteTimeseries => WriteTimeseriesRecordConsolidate 
+                case (3) 
+                    print *, 'TIMESERIES OUTPUT IS PARALLEL NOT CONSOLIDATED' 
+                    ! Not consolidated 
+                    allocate( timeseriesTempFiles(ompNumThreads) )
+                    
+                    ! Initialize formatted parallel units 
+                    do m = 1, ompNumThreads
+                        timeseriesTempUnits( m ) = 6600 + m
+                        write( unit=tempChar, fmt=* )m 
+                        write( unit=timeseriesTempFiles( m ), fmt='(a)')&
+                            trim(adjustl(tempChar))//'_'//trim(adjustl(simulationData%TimeseriesFile))
+                        print *, timeseriesTempFiles( m )
+                        open( unit=timeseriesTempUnits( m ),     &
+                              file=timeseriesTempFiles( m ),     & 
+                              status='replace', form='formatted', access='sequential')
+                    end do
+                    WriteTimeseries => WriteTimeseriesRecordThread
+                end select
+        end if 
+
 
     end if
     if(simulationData%TraceMode .gt. 0) then
@@ -662,12 +656,25 @@
                         pCoord%GlobalX, pCoord%GlobalY, pCoord%GlobalZ)
                       p%InitialGlobalZ = pCoord%GlobalZ
                       p%GlobalZ = p%InitialGlobalZ
+
                       !call WriteTimeseriesRecord(p%SequenceNumber, p%ID,        &
                       !  groupIndex, ktime, 0, pCoord, geoRef, timeseriesUnit)
+
+                      ! If parallel:
+                      !     - With consolidated output initial positions are 
+                      !       stored into temporal unit for first thread 
+                      !       and then consolidated
+                      !     - Without consolidation then initial positions 
+                      !       will be stored in file for first thread
+                      ! If not parallel: remains the same as usual
+                      call WriteTimeseries(p%SequenceNumber, p%ID, groupIndex, & 
+                                     ktime, 0, pCoord, geoRef, timeseriesUnit, & 
+                                  timeseriesRecordCounts, timeseriesTempUnits  )
                   end if
             end do
         end do
     end if
+
     
     
 
@@ -698,18 +705,8 @@
               isTimeSeriesPoint = .true.
             end if
         end if
-
-        !! Initialize timeseries parallel units
-        !do m = 1, ompNumThreads
-        !    !timeseriesTempUnits( m ) = 6600 + m
-        !    !write( unit=timseriesTempFiles( m ), fmt='(a)' )'parallelts_'//trim(adjustl( m ))//'.ts'
-        !    open( unit=timeseriesTempUnits( m ),     &
-        !          file=timeseriesTempFiles( m ),     & 
-        !          status='replace', form='formatted', access='sequential')
-        !end do
     end if
    
-
 
 
     ! Track particles
@@ -740,6 +737,7 @@
             !$omp private( timeseriesRecordWritten )         &
             !$omp private( ompThreadId )                     &
             !$omp firstprivate( trackingEngine )             &
+            !$omp firstprivate( WriteTimeseries )            &
             !$omp reduction( +:pendingCount )                &
             !$omp reduction( +:activeCount )                 &
             !$omp reduction( +:pathlineRecordCount )
@@ -852,8 +850,6 @@
                         ! Write pathline to pathline file
                         if(plCount .gt. 1) then
                             pathlineRecordCount = pathlineRecordCount + 1
-                            ! DEV PARALLEL OUTPUT
-                            !   - with critical directive
                             !$omp critical (pathline)
                             select case (simulationData%PathlineFormatOption)
                                 case (1)
@@ -870,33 +866,30 @@
                     if(simulationData%SimulationType .ge. 3) then
                         if(tsCount .gt. 0) then
                             ! Write timeseries record to the timeseries file
-                            ! DEV PARALLEL OUTPUT
-                            !     - NO critical directive
-                            !pCoordTP => trackPathResult%ParticlePath%Timeseries%Items(1)
-                            !call WriteTimeseriesRecord(p%SequenceNumber, p%ID,        &
-                            !  groupIndex, ktime, nt, pCoord, geoRef, timeseriesUnit)
-                            !!   - with critical directive
-                            !!$omp critical (timeseries)
-                            !pCoordTP => trackPathResult%ParticlePath%Timeseries%Items(1)
-                            !call WriteTimeseriesRecord(p%SequenceNumber, p%ID,  &
-                            !  groupIndex, ktime, nt, pCoordTP, geoRef, timeseriesUnit)
-                            !!$omp end critical (timeseries)
-                            !   - with parallel units per thread
-                            ompThreadId = omp_get_thread_num() + 1 ! Starts at zero
                             pCoordTP => trackPathResult%ParticlePath%Timeseries%Items(1)
-                            !!   - needed for consolidate from binaries
-                            timeseriesRecordCounts( ompThreadId ) = timeseriesRecordCounts( ompThreadId ) + 1
-                            !print *, 'WILL WHAT'
-                            !!   - binary
-                            !call WriteBinaryTimeseriesRecord(p%SequenceNumber, p%ID,  &
-                            !  groupIndex, ktime, nt, pCoordTP, geoRef, timeseriesTempUnits( ompThreadId ))
-                            !!   - binary with recordID
-                            call WriteBinaryTimeseriesRecordId(p%SequenceNumber, p%ID,                        &
-                              groupIndex, ktime, nt, pCoordTP, geoRef, timeseriesRecordCounts( ompThreadId ), &
-                              timeseriesTempUnits( ompThreadId ))
-                            !!   - formatted
+
+                            ! DEV PARALLEL OUTPUTo
+                            !!! WITH CRITICAL DIRECTIVE 
+                            !!!$omp critical (timeseries)
                             !!call WriteTimeseriesRecord(p%SequenceNumber, p%ID,  &
-                            !!  groupIndex, ktime, nt, pCoordTP, geoRef, timeseriesTempUnits( ompThreadId+1 ))
+                            !!  groupIndex, ktime, nt, pCoordTP, geoRef, timeseriesUnit)
+                            !!!$omp end critical (timeseries)
+                            !! PARALLEL UNITS, ONE PER THREAD 
+                            !ompThreadId = omp_get_thread_num() + 1 ! Starts at zero
+                            !!!   - binary with recordID AND CONSOLIDATION
+                            !timeseriesRecordCounts( ompThreadId ) = timeseriesRecordCounts( ompThreadId ) + 1
+                            !call WriteBinaryTimeseriesRecordId(p%SequenceNumber, p%ID,                        &
+                            !  groupIndex, ktime, nt, pCoordTP, geoRef, timeseriesRecordCounts( ompThreadId ), &
+                            !  timeseriesTempUnits( ompThreadId ))
+                            !!!   - formatted, NO CONSOLIDATION
+                            !!!call WriteTimeseriesRecord(p%SequenceNumber, p%ID,  &
+                            !!!  groupIndex, ktime, nt, pCoordTP, geoRef, timeseriesTempUnits( ompThreadId+1 ))
+                            ! END DEV PARALLEL OUTPUTo
+
+                            ! With interface
+                            call WriteTimeseries(p%SequenceNumber, p%ID, groupIndex, & 
+                                        ktime, nt, pCoordTP, geoRef, timeseriesUnit, & 
+                                        timeseriesRecordCounts, timeseriesTempUnits  )
                             timeseriesRecordWritten = .true.
 
                         end if
@@ -917,29 +910,31 @@
                       call modelGrid%ConvertToModelXYZ(pCoord%CellNumber,       &
                         pCoord%LocalX, pCoord%LocalY, pCoord%LocalZ,            &
                         pCoord%GlobalX, pCoord%GlobalY, pCoord%GlobalZ)
+
                       ! DEV PARALLEL OUTPUT
-                      !!     ! - NO critical directive
-                      !call WriteTimeseriesRecord(p%SequenceNumber, p%ID,        &
-                      !  groupIndex, ktime, nt, pCoord, geoRef, timeseriesUnit)
-                      !      ! - with critical directive
+                      !! WITH CRITICAL DIRECTIVE 
                       !!$omp critical (timeseries)
                       !call WriteTimeseriesRecord(p%SequenceNumber, p%ID,        &
                       !  groupIndex, ktime, nt, pCoord, geoRef, timeseriesUnit)
                       !!$omp end critical (timeseries)
-                      !      !   - with parallel units per thread
-                      ompThreadId = omp_get_thread_num() + 1 ! Starts at zero
-                      !      !   - needed for consolidate from binaries
-                      timeseriesRecordCounts( ompThreadId ) = timeseriesRecordCounts( ompThreadId ) + 1
-                      !      !   - binary
-                      !call WriteBinaryTimeseriesRecord(p%SequenceNumber, p%ID,  &
-                      !  groupIndex, ktime, nt, pCoord, geoRef, timeseriesTempUnits( ompThreadId ))
-                      !      !   - formatted
-                      !!   - binary with recordID
-                      call WriteBinaryTimeseriesRecordId(p%SequenceNumber, p%ID,                        &
-                        groupIndex, ktime, nt, pCoordTP, geoRef, timeseriesRecordCounts( ompThreadId ), &
-                        timeseriesTempUnits( ompThreadId ))
+                      !! PARALLEL UNITS, ONE PER THREAD
+                      !ompThreadId = omp_get_thread_num() + 1 ! Starts at zero
+                      !!!   - binary with recordID AND CONSOLIDATION
+                      !timeseriesRecordCounts( ompThreadId ) = timeseriesRecordCounts( ompThreadId ) + 1
+                      !call WriteBinaryTimeseriesRecordId(p%SequenceNumber, p%ID,                        &
+                      !  groupIndex, ktime, nt, pCoordTP, geoRef, timeseriesRecordCounts( ompThreadId ), &
+                      !  timeseriesTempUnits( ompThreadId ))
+                      !! - formatted NO CONSOLIDATION
                       !!call WriteTimeseriesRecord(p%SequenceNumber, p%ID,  &
                       !!  groupIndex, ktime, nt, pCoord, geoRef, timeseriesTempUnits( ompThreadId+1 ))
+                      ! END DEV PARALLEL OUTPUT
+
+                      ! With interface
+                      call WriteTimeseries(p%SequenceNumber, p%ID, groupIndex, & 
+                                    ktime, nt, pCoord, geoRef, timeseriesUnit, & 
+                                    timeseriesRecordCounts, timeseriesTempUnits)
+
+
                 end if
 
             end do
@@ -947,62 +942,25 @@
         end do
     end if
 
-    !! DEV PARALLEL OUTPUT
-    !! If simulation timeseries 
-    !!   - and parallel output
-    !!   - and consolidate in single file
-    !if(simulationData%SimulationType .ge. 3) then
-    !    call ConsolidateParallelTimeseries( timeseriesTempUnits, timeseriesUnit, timeseriesRecordCounts )
-    !    ! Restart temporal units and record counters
-    !    do m = 1, ompNumThreads
-    !        if ( timeseriesRecordCounts(m) .gt. 0 ) then
-    !            close( timeseriesTempUnits( m ) )
-    !            ! if binary unformatted units
-    !            open(unit=timeseriesTempUnits( m ), status='scratch', form='unformatted', &
-    !                                                access='stream', action='readwrite'   )
 
-    !        end if
-    !    end do
-    !    timeseriesRecordCounts = 0 
-    !end if
-
-    print *, 'WILL CONSOLIDATE'
-    if(simulationData%SimulationType .ge. 3) then
-        call ConsolidateParallelTimeseriesRecords( timeseriesTempUnits, timeseriesBinUnit, timeseriesRecordCounts )
-        ! Restart temporal units and record counters
+    ! If timeseries simulation and parallel and consolidated output
+    ! Consolidation should be done at this stage if the order 
+    ! of appearance of data is relevant. That is, at this point 
+    ! timeseries data points will be ordered in time 
+    if( ((simulationData%SimulationType .eq. 3)  .or. (simulationData%SimulationType .eq. 4) ) .and. & 
+        parallel .and. (tsOutputType .eq. 2) ) then
+        !print *, 'WILL CONSOLIDATE. LASTRECORD: ', lastRecord
+        call ConsolidateParallelTimeseriesRecords( timeseriesTempUnits, timeseriesUnit, timeseriesRecordCounts, lastRecord )
+        ! Restart temporal binary units and record counters
         do m = 1, ompNumThreads
             if ( timeseriesRecordCounts(m) .gt. 0 ) then
                 close( timeseriesTempUnits( m ) )
-                ! if binary unformatted units
                 open(unit=timeseriesTempUnits( m ), status='scratch', form='unformatted', &
                                                     access='stream', action='readwrite'   )
-
             end if
         end do
         timeseriesRecordCounts = 0 
     end if
-    ! Is possible to parallelize the consolidation process
-    ! but for binary ourput. Sequential, formatted files 
-    ! cannot be written in specific lines.
-
-    ! So the parallelized formatted/unformatted binary output would be
-    ! similar to writing thread specific binary/non-binary files, but
-    ! with the additional information of the record count, or record id 
-
-    ! It seems is not strictly necessary because the important number is 
-    ! the total record count. In any situation, the consolidation process
-    ! requires reading the temp file and writing into the consolidated one,
-    ! which is inefficient on its own. The optimal form would be to output
-    ! in parallel directly to the consolidated file.
-
-    ! So, it is possible that each thread could write
-    ! in parallel in different record locations, as long
-    ! as the change in the variable keeping the record id  
-    ! does not interferes with the record being written.
-
-
-    !call exit(0)
-
 
 
     ! Update tracking time
@@ -1078,7 +1036,9 @@
     
     contains
 
-    subroutine ParseCommandLine(mpsimFile, mplogFile, logType)
+
+
+    subroutine ParseCommandLine(mpsimFile, mplogFile, logType, parallel, tsOutputType)
 !***************************************************************************************************************
 ! Description goes here
 !***************************************************************************************************************
@@ -1089,8 +1049,13 @@
     character*(*),intent(inout) :: mpsimFile
     character*(*),intent(inout) :: mplogFile
     integer,intent(inout) :: logType
+    logical,intent(inout) :: parallel
+    integer,intent(inout) :: tsOutputType
     character*200 comlin
     integer :: narg, length, status, ndot, nlast, na, nc
+    integer :: nprocs
+    character*200 nprocschar
+    character*200 tsoutchar
     logical :: exists
 !---------------------------------------------------------------------------------------------------------------
     
@@ -1098,9 +1063,12 @@
     narg = command_argument_count()
     
     ! Initialize mpsimFile, mplogFile, and logType
-    mpsimFile = ""
-    mplogFile = ""
-    logType = 1
+    mpsimFile    = ""
+    mplogFile    = ""
+    logType      = 1
+    parallel     = .false.
+    nprocs       = 0
+    tsOutputType = 0
 
     ! Loop through the command-line arguments (if any)
     na = 1
@@ -1141,6 +1109,27 @@
                 else
                     call ustop('Conflicting log file names on the command line. Stop.')
                 end if
+            case ("-parallel")
+                ! -parallel option
+                parallel = .true.
+            case ("-np")
+                call get_command_argument(na, comlin, length, status)
+                na = na + 1
+                if ((status /= 0) .or. (comlin(1:1) == "-")) then
+                    call ustop('Invalid or missing log file name on the command line. Stop.')
+                else
+                    nprocschar = comlin(1:length)
+                    read(nprocschar,*) nprocs
+                end if
+            case ("-tsout")
+                call get_command_argument(na, comlin, length, status)
+                na = na + 1
+                if ((status /= 0) .or. (comlin(1:1) == "-")) then
+                    call ustop('Invalid or missing log file name on the command line. Stop.')
+                else
+                    tsoutchar = comlin(1:length)
+                    read(tsoutchar,*) tsOutputType
+                end if
             case default
                 if (comlin(1:1).eq."-") then
                     call ustop('Unrecognized option on the command line. Stop.')
@@ -1156,8 +1145,33 @@
     ! If log file name not specified, set to default
     if (mplogFile == "") mplogFile = "mpath7.log"
 
+
+    ! Set parallel processes
+    if ( parallel .and. (nprocs .eq. 0) ) then 
+        ! If parallel and no np specified, set number of processors 
+        call omp_set_num_threads( omp_get_num_procs() )
+        ! Set default outputType to parallel consolidated
+        if ( tsOutputType .eq. 0 ) tsOutputType = 2
+    else if ( parallel .and. (nprocs .gt. 1 ) ) then 
+        ! If parallel and np specified, set np processes
+        call omp_set_num_threads( nprocs )
+        if ( tsOutputType .eq. 0 ) tsOutputType = 2
+    else if ( nprocs .eq. 1 ) then
+        ! If nprocs equal one, then serial
+        parallel = .false.
+        call omp_set_num_threads( nprocs )
+    else if ( omp_get_max_threads() .gt. 1 ) then 
+        ! If max threads defined through OMP_NUM_THREADS, use it
+        parallel = .true.
+        nprocs = omp_get_max_threads()
+        call omp_set_num_threads( nprocs )
+        if ( tsOutputType .eq. 0 ) tsOutputType = 2
+    end if 
+
+
     return
     
+
     end subroutine ParseCommandLine
 
     subroutine PromptSimulationFile(mpsimFile)
