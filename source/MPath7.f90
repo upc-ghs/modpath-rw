@@ -488,7 +488,7 @@
             ! If parallel with critical directive
             select case( tsOutputType ) 
                 case (1)
-                    print *, 'TIMESERIES OUTPUT IS CRITICAL' 
+                    !print *, 'TIMESERIES OUTPUT IS CRITICAL' 
                     ! Default output 
                     open(unit=timeseriesUnit, file=simulationData%TimeseriesFile,           &
                       status='replace', form='formatted', access='sequential')
@@ -497,7 +497,7 @@
                       modelGrid%OriginX, modelGrid%OriginY, modelGrid%RotationAngle)
                     WriteTimeseries => WriteTimeseriesRecordCritical 
                 case (2) 
-                    print *, 'TIMESERIES OUTPUT IS PARALLEL CONSOLIDATED' 
+                    !print *, 'TIMESERIES OUTPUT IS PARALLEL CONSOLIDATED' 
                     ! Consolidated
                     ! HEADER ?
                     ! Open consolidated direct access output unit
@@ -517,7 +517,7 @@
                     ! Assign writer pointer
                     WriteTimeseries => WriteTimeseriesRecordConsolidate 
                 case (3) 
-                    print *, 'TIMESERIES OUTPUT IS PARALLEL NOT CONSOLIDATED' 
+                    !print *, 'TIMESERIES OUTPUT IS PARALLEL NOT CONSOLIDATED' 
                     ! Not consolidated 
                     allocate( timeseriesTempFiles(ompNumThreads) )
                     
@@ -527,7 +527,7 @@
                         write( unit=tempChar, fmt=* )m 
                         write( unit=timeseriesTempFiles( m ), fmt='(a)')&
                             trim(adjustl(tempChar))//'_'//trim(adjustl(simulationData%TimeseriesFile))
-                        print *, timeseriesTempFiles( m )
+                        !print *, timeseriesTempFiles( m )
                         open( unit=timeseriesTempUnits( m ),     &
                               file=timeseriesTempFiles( m ),     & 
                               status='replace', form='formatted', access='sequential')
