@@ -41,6 +41,10 @@ module ModpathCellDataModule
     ! RWPT TRANSPORT PROPERTIES
     doubleprecision, public :: alphaL, alphaT
 
+    ! RWPT convertible cells parameters
+    logical :: dry
+    logical :: partiallyDry
+
   contains
     procedure :: GetDZ=>pr_GetDZ
     procedure :: GetArraySizeMode=>pr_GetArraySizeMode
@@ -79,6 +83,8 @@ module ModpathCellDataModule
     procedure :: FillSubCellFaceFlows      => pr_FillSubCellFaceFlows
     procedure :: GetVolume                 => pr_GetVolume
 
+    ! RWPT
+    procedure :: VerifyDryCell             => pr_VerifyDryCell
   end type
 
 contains
@@ -91,9 +97,27 @@ contains
   dz = this%Top - this%Bottom
   ! If the layer is convertible, set dz = Head - Bottom if Head < Top
   if(this%LayerType .eq. 1) then
-      if(this%Head .lt. this%Top) dz = this%Head - this%Bottom
-      ! If dz < 0, set dz to an arbitrary, small positive value
-      if(dz .lt. 0.0d0) dz = 1.0d-4
+      ! ORIGINAL
+      !if(this%Head .lt. this%Top) dz = this%Head - this%Bottom
+      !! If dz < 0, set dz to an arbitrary, small positive value
+      !if(dz .lt. 0.0d0) dz = 1.0d-4
+      ! END ORIGINAL
+
+      if(this%Head .lt. this%Top) then 
+          ! DEV RWPT: if dz < 0, means that the cell is completely dry
+          ! DEV RWPT: if dz > 0, but Head < Top, cell is partially dry
+          ! this second case can be used for displacing particles by RWPT in 
+          ! that are within the region that is partially saturated.
+          dz = this%Head - this%Bottom
+          this%dry = .false.
+          this%partiallyDry = .true.
+          ! If dz < 0, set dz to an arbitrary, small positive value (MODPATH default)
+          if(dz .lt. 0.0d0) then 
+              dz = 1.0d-4
+              this%dry = .true.
+              this%partiallyDry = .false.
+          end if 
+      end if 
   end if
   
   end function pr_GetDZ
@@ -1659,6 +1683,15 @@ contains
   subCellData%DX = this%DX / dble(this%SubCellColumnCount)
   subCellData%DY = this%DY / dble(this%SubCellRowCount)
   subCellData%DZ = this%GetDZ()
+
+  ! RWPT
+  ! dry and partiallyDry properties where defined when calling GetDZ()
+  subCellData%dry          = this%dry
+  subCellData%partiallyDry = this%partiallyDry
+  subCellData%Head         = this%Head
+  subCellData%Top          = this%Top
+  subCellData%Bottom       = this%Bottom
+  ! END RWPT
   
   sign = 1.0d0
   if(backwardTracking) sign = -sign
@@ -2093,6 +2126,42 @@ contains
   end function pr_GetVolume 
 
 
+  subroutine pr_VerifyDryCell(this)
+  !---------------------------------------------------------
+  !
+  !---------------------------------------------------------
+  implicit none
+  class(ModpathCellDataType) :: this
+  doubleprecision :: dz
+  !---------------------------------------------------------
+  
+  dz = this%Top - this%Bottom
+  ! If the layer is convertible, set dz = Head - Bottom if Head < Top
+  if(this%LayerType .eq. 1) then
+      ! ORIGINAL
+      !if(this%Head .lt. this%Top) dz = this%Head - this%Bottom
+      !! If dz < 0, set dz to an arbitrary, small positive value
+      !if(dz .lt. 0.0d0) dz = 1.0d-4
+      ! END ORIGINAL
+
+      if(this%Head .lt. this%Top) then 
+          ! DEV RWPT: if dz < 0, means that the cell is completely dry
+          ! DEV RWPT: if dz > 0, but Head < Top, cell is partially dry
+          ! this second case can be used for displacing particles by RWPT in 
+          ! that are within the region that is partially saturated.
+          dz = this%Head - this%Bottom
+          this%dry = .false.
+          this%partiallyDry = .true.
+          ! If dz < 0, set dz to an arbitrary, small positive value (MODPATH default)
+          if(dz .lt. 0.0d0) then 
+              dz = 1.0d-4
+              this%dry = .true.
+              this%partiallyDry = .false.
+          end if 
+      end if 
+  end if
+ 
+  end subroutine pr_VerifyDryCell
 
 
 
