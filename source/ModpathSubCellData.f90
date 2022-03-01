@@ -15,6 +15,10 @@ module ModpathSubCellDataModule
     !RWPT
     doubleprecision :: Porosity, Retardation
     doubleprecision :: alphaL, alphaT
+    logical :: dry
+    logical :: partiallyDry
+    doubleprecision :: Head, Top, Bottom 
+   
 
   contains
     procedure :: IsExitFace=>pr_IsExitFace

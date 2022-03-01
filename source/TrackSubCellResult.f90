@@ -22,6 +22,9 @@ module TrackSubCellResultModule
     procedure :: Status_ExitAtInternalFace=>TrackSubCellResultType_ExitAtInternalFace
     procedure :: Status_ReachedMaximumTime=>TrackSubCellResultType_ReachedMaximumTime
     procedure :: Status_NoExitPossible=>TrackSubCellResultType_NoExitPossible
+    ! RWPT
+    procedure :: Status_InactiveCell=>TrackSubCellResultType_InactiveCell
+    ! RWPT (?)
     procedure :: InitializeLocation=>pr_InitializeLocation
   end type
   
@@ -90,6 +93,16 @@ end subroutine
   status = 3
   
   end function TrackSubCellResultType_NoExitPossible
+
+  !-------------------------------------------------------------------
+  function TrackSubCellResultType_InactiveCell(this) result(status)
+  implicit none
+  class(TrackSubCellResultType) :: this
+  integer :: status
+  
+  status = 7
+  
+  end function TrackSubCellResultType_InactiveCell
 
 
   subroutine pr_InitializeLocation( this, initialLocation )

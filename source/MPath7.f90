@@ -79,6 +79,9 @@
     type(ParticleType),pointer :: p
     type(BudgetRecordHeaderType) :: budgetRecordHeader
     type(GeoReferenceType) :: geoRef
+    ! RWPT 
+    type(ModpathCellDataType) :: cellDataBuffer
+
     doubleprecision,dimension(:),allocatable :: timePoints
     doubleprecision,dimension(:),allocatable :: tPoint
     integer,dimension(7) :: budgetIntervalBins
@@ -586,8 +589,10 @@
                         pCoord%GlobalX, pCoord%GlobalY, pCoord%GlobalZ)
                       p%InitialGlobalZ = pCoord%GlobalZ
                       p%GlobalZ = p%InitialGlobalZ
-                      call WriteTimeseriesRecord(p%SequenceNumber, p%ID,        &
-                        groupIndex, ktime, 0, pCoord, geoRef, timeseriesUnit)
+                      !call WriteTimeseriesRecord(p%SequenceNumber, p%ID,        &
+                      !  groupIndex, ktime, 0, pCoord, geoRef, timeseriesUnit)
+                      call WriteTimeseriesRecordStatus(p%SequenceNumber, p%ID,        &
+                        groupIndex, ktime, 0, pCoord, geoRef, p%Status, timeseriesUnit)
                   end if
             end do
         end do
@@ -650,6 +655,7 @@
             !$omp private( pCoordTP, pCoord )                &
             !$omp private( trackPathResult, status )         &
             !$omp private( timeseriesRecordWritten )         &
+            !$omp private( cellDataBuffer )                  &
             !$omp firstprivate( trackingEngine )             &
             !$omp reduction( +:pendingCount )                &
             !$omp reduction( +:activeCount )                 &
@@ -703,7 +709,33 @@
                         p%GlobalZ = p%InitialGlobalZ
                     end if
                 end if
-         
+        
+                ! RWPT
+                ! Verify cell not dry anymore
+                if (p%Status .eq. 7 ) then 
+                    ! Give me the cell 
+                    pLoc%CellNumber = p%CellNumber
+                    pLoc%Layer = p%Layer
+                    pLoc%LocalX = p%LocalX
+                    pLoc%LocalY = p%LocalY
+                    pLoc%LocalZ = p%LocalZ
+                    pLoc%TrackingTime = p%TrackingTime
+
+                    ! Initialize cellBuffer cellNumber
+                    call trackingEngine%FillCellBuffer( p%CellNumber, cellDataBuffer )
+
+                    ! Verify dry/partially dried cells
+                    call cellDataBuffer%VerifyDryCell()
+
+                    !print *, 'PARTICLE ID', p%ID , '; Inactive cell', p%CellNumber
+                    ! If partially dried restore active/track status, otherwise keep Status = 7
+                    if ( cellDataBuffer%partiallyDry ) p%Status = 1 ! Track particle
+                    !print *, 'PARTICLE STATUS IS ', p%Status
+                    !call exit(0)
+
+                end if 
+
+
                 ! Count the number of particles that are currently active or pending
                 ! release at the beginning of this pass.         
                 if(p%Status .EQ. 0) pendingCount = pendingCount + 1
@@ -718,7 +750,9 @@
                     pLoc%LocalY = p%LocalY
                     pLoc%LocalZ = p%LocalZ
                     pLoc%TrackingTime = p%TrackingTime
-                    
+                   
+                    !print *, 'MPATH: CALL TRACKPATH ACTIVE PARTICLES', activeCount
+
                     ! Call TrackPath
                     call trackingEngine%TrackPath(trackPathResult, traceModeOn, &
                       traceModeUnit, p%Group, p%ID, p%SequenceNumber, pLoc,     &
@@ -750,6 +784,7 @@
                     else if(status .eq. trackPathResult%Status_StopZoneCell()) then
                         p%Status = 6
                     else if(status .eq. trackPathResult%Status_InactiveCell()) then
+                        !print *, 'MPATH: INACTIVE CELL STATUS, pid', p%ID
                         p%Status = 7
                     else if(status .eq. trackPathResult%Status_Undefined()) then
                         p%Status = 9
@@ -782,8 +817,8 @@
                             ! Write timeseries record to the timeseries file
                             !$omp critical (timeseries)
                             pCoordTP => trackPathResult%ParticlePath%Timeseries%Items(1)
-                            call WriteTimeseriesRecord(p%SequenceNumber, p%ID,  &
-                              groupIndex, ktime, nt, pCoordTP, geoRef, timeseriesUnit)
+                            call WriteTimeseriesRecordStatus(p%SequenceNumber, p%ID,  &
+                              groupIndex, ktime, nt, pCoordTP, geoRef, p%Status, timeseriesUnit)
                             !$omp end critical (timeseries)
                             timeseriesRecordWritten = .true.
                         end if
@@ -807,10 +842,14 @@
                         pCoord%LocalX, pCoord%LocalY, pCoord%LocalZ,            &
                         pCoord%GlobalX, pCoord%GlobalY, pCoord%GlobalZ)
                       !$omp critical (timeseries)
-                      call WriteTimeseriesRecord(p%SequenceNumber, p%ID,        &
-                        groupIndex, ktime, nt, pCoord, geoRef, timeseriesUnit)
+                      call WriteTimeseriesRecordStatus(p%SequenceNumber, p%ID,        &
+                        groupIndex, ktime, nt, pCoord, geoRef, p%Status,  timeseriesUnit)
                       !$omp end critical (timeseries)
                 end if
+
+                if (p%Status .eq. 7 ) then 
+                    print *, 'THE SEVEN'
+                end if 
 
             end do
             !$omp end parallel do

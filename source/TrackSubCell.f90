@@ -459,7 +459,7 @@ contains
       doubleprecision :: dtold
       doubleprecision, dimension(3) :: dts
       doubleprecision, dimension(3) :: dtxyz
-      integer :: dtLoopCounter, posRestartCounter
+      integer :: dtLoopCounter, posRestartCounter, reboundCounter
       !------------------------------------------------------------
 
       ! Needs cleaning
@@ -504,11 +504,120 @@ contains
           this%AdvectionDisplacement=>pr_AdvectionDisplacementEulerian
           this%ExitFaceAndUpdateTimeStep=>pr_DetectExitFaceAndUpdateTimeStepQuadratic
       end if
-
+    
       ! Local copies of cell size
       dx = this%SubCellData%DX
       dy = this%SubCellData%DY
       dz = this%SubCellData%DZ
+
+      if ( this%SubCellData%dry ) then
+          ! If cell is completely dry, then particle is not displaced
+
+          ! Q:
+          ! If particle is set to InactiveCell, 
+          ! can be displaced in a later cycle if cell is rewetted ?
+          ! A: 
+          ! in MPath7.f90 there is a verification. If cell 
+          ! is partially dry, particle status is set to active for 
+          ! retracking
+          trackingResult%Status = trackingResult%Status_InactiveCell()
+          return
+
+          !print *, '########### DRY CELL ', cellNumber
+          !print *, ' ** dx, dy, dz'
+          !print *, dx,dy,dz
+          !print *, this%SubCellData%DX, this%SubCellData%DY, this%SubCellData%DZ
+          !print *, ' ** vx, vy, vz'
+          !print *, this%SubCellData%vx1, this%SubCellData%vx2
+          !print *, this%SubCellData%vy1, this%SubCellData%vy2
+          !print *, this%SubCellData%vz1, this%SubCellData%vz2
+          !print *, ' ** initialX, initialY, initialZ'
+          !print *, initialX, initialY, initialZ
+          !print *, ' ** Top, Bottom, Head: UNDEFINED YET'
+          !print *, this%SubCellData%Top, this%SubCellData%Bottom, this%SubCellData%Head
+          !! call exit(0)
+
+
+      end if 
+
+
+      if ( this%SubCellData%partiallyDry ) then
+
+          ! Verify if particle location is within dry zone
+          ! Verify with which value this z is initialized
+          ! z < ( this%Head - this%Bottom )/( this%Top - this%Bottom )
+          !print *, '## PARTIALLY DRY, particle initialLocation'
+          !print *,  initialLocation%LocalX
+          !print *,  initialLocation%LocalY
+          !print *,  initialLocation%LocalZ
+         
+          ! FIRST ATTEMPT: 
+          ! assumption: z coordinate is relative respect to cell size ( top - bottom ) 
+          ! if cell partially dry head > bottom
+          if ( &
+              z < ( this%SubCellData%Head - this%SubCellData%Bottom )/( this%SubCellData%Top - this%SubCellData%Bottom ) & 
+          ) then 
+              ! Track
+              !print *, '       z Satisfies minor than relative head. TRACK'
+              continue
+          else
+              !print *, '       FAILED z Satisfies minor than relative head z, relhead', &
+              !    z, ( this%SubCellData%Head - this%SubCellData%Bottom )/( this%SubCellData%Top - this%SubCellData%Bottom )
+                
+              trackingResult%Status = trackingResult%Status_InactiveCell()
+              return
+          end if 
+
+
+          !print *, '########### PARTIALLY DRY CELL ', cellNumber
+          !print *, ' ** z, head, top, bottom,  (head - bottom)/(top-bottom), top-bottom, head-bottom '
+          !print *,  z, this%SubCellData%Head, this%SubCellData%Top, this%SubCellData%Bottom, &
+          !    ( this%SubCellData%Head - this%SubCellData%Bottom )/( this%SubCellData%Top - this%SubCellData%Bottom ), &
+          !    ( this%SubCellData%Top - this%SubCellData%Bottom ),   ( this%SubCellData%Head - this%SubCellData%Bottom )
+          !print *, ' ** dx, dy, dz'
+          !print *, dx,dy,dz
+          !print *, this%SubCellData%DX, this%SubCellData%DY, this%SubCellData%DZ
+          !print *, ' ** vx, vy, vz'
+          !print *, this%SubCellData%vx1, this%SubCellData%vx2
+          !print *, this%SubCellData%vy1, this%SubCellData%vy2
+          !print *, this%SubCellData%vz1, this%SubCellData%vz2
+          !print *, ' ** initialX, initialY, initialZ'
+          !print *, initialX, initialY, initialZ
+          !print *, ' ** Top, Bottom, Head, Head-Bottom'
+          !print *, this%SubCellData%Top, this%SubCellData%Bottom, this%SubCellData%Head, & 
+          !    this%SubCellData%Head - this%SubCellData%Bottom
+          !print *, '########### Will TRACK ', cellNumber
+          !call exit(0)
+          !trackingResult%Status = trackingResult%Status_InactiveCell()
+          !return
+          continue
+
+      end if 
+
+
+      ! UP TO THIS POINT, dz is already defined from function GetDZ
+      ! from ModpathCellData, so in case the cell is dried, then 
+      ! this information is already known. 
+
+      ! If particles are not displaced when in dried cells, 
+      ! then this should be a breaking point to move forward
+      ! to next particle
+
+      !! DEBUGGING
+      !if ( (cellNumber .eq. 242) .or. (cellNumber .eq. 244) ) then
+      !    print *, '########### CONVERTIBLE CELL PRINTING PARAMETERS', cellNumber
+      !    print *, ' ** dx, dy, dz'
+      !    print *, dx,dy,dz
+      !    print *, this%SubCellData%DX, this%SubCellData%DY, this%SubCellData%DZ
+      !    print *, ' ** vx, vy, vz'
+      !    print *, this%SubCellData%vx1, this%SubCellData%vx2
+      !    print *, this%SubCellData%vy1, this%SubCellData%vy2
+      !    print *, this%SubCellData%vz1, this%SubCellData%vz2
+      !    print *, ' ** initialX, initialY, initialZ'
+      !    print *, initialX, initialY, initialZ
+      !    call exit(0)
+      !end if
+
 
       ! Initialize positions
       x  = initialLocation%LocalX
@@ -601,6 +710,8 @@ contains
               dtLoopCounter = dtLoopCounter + 1
               dtxyz(:) = 0d0
 
+              !print *, '*** TRACKSUBCELL: dtLoopCounter', dtLoopCounter
+
               ! Recompute dt for exact interface
               call this%ExitFaceAndUpdateTimeStep( x, y, z, nx, ny, nz, &
                                        vx, vy, vz, divDx, divDy, divDz, &
@@ -645,10 +756,10 @@ contains
               else
                   ! Restart nx, ny, nz and try again
                   ! if not a valid time step and exitFace
-                  !print *, 'RESTARTING...', dtLoopCounter
-                  !print *, nx,ny,nz
-                  !print *, x,y,z
-                  !print *, dtold,dt,exitFace
+                  print *, 'RESTARTING...', dtLoopCounter
+                  print *, nx,ny,nz
+                  print *, x,y,z
+                  print *, dtold,dt,exitFace
                   nx = x
                   ny = y
                   nz = z
@@ -664,14 +775,35 @@ contains
               ! Boundary conditions
               ! Logic should be: 
               ! Is there an interface and which kind
+              ! Logic for this while loop is REBOUND specific
+              reboundCounter = 0
+              do while(                                            & 
+                  ( exitFace .gt. 0 ) .and.                        &
+                  ( this%SubCellData%Connection(exitFace) .eq. 0 ) &
+              ) 
+              !if( this%SubCellData%Connection(exitFace) .eq. 0 ) then
+                      reboundCounter = reboundCounter + 1
+                      !! Is zero, a boundary, inactive
+                      !print *, '      ** FOUND A REBOUND BOUNDARY: cellNumber, exitFace, reboundCounter', &
+                      !    cellNumber, exitFace, reboundCounter
+                      !print *, '      ** PARTICLE COORDINATES THAT DETERMINE REBOUND ARE: ', nx,ny,nz
+                      !print *, '      ** PARTICLE COORDINATES PREBOUND ARE: ', x,y,z
+                      !print *, '      ** RWPT DISPLACEMENTS THAT LEAD TO REBOUND ARE : ', dxrw/dx,dyrw/dy,dzrw/dz
+                      !!print *, '         ** Connection(exitFace)', this%SubCellData%Connection(exitFace)
 
-              ! NOT WORKING
-              ! Handle rebound ?
-              if( this%SubCellData%Connection(exitFace) .eq. 0 ) then
-                      ! Is zero, a boundary, inactive
-                      !print *, '      ** BOUNDARY'
-                      !print *, '         ** cellNumber, exitFace', cellNumber, exitFace
-                      !print *, '         ** Connection(exitFace)', this%SubCellData%Connection(exitFace)
+                      if ( reboundCounter .gt. 10 ) then 
+                      print *, '      ** CLOSING REBOUND WITH REBOUND COUNTER'
+                            trackingResult%ExitFace = 0
+                            trackingResult%Status   = trackingResult%Status_Undefined()
+                            trackingResult%FinalLocation%CellNumber = cellNumber
+                            trackingResult%FinalLocation%LocalX = x
+                            trackingResult%FinalLocation%LocalY = y
+                            trackingResult%FinalLocation%LocalZ = z
+                            trackingResult%FinalLocation%TrackingTime = t
+                            return
+                      end if 
+
+
 
                       !! NOTE: ExitFaceConnection from trackingResult is then 
                       !! employed at TrackCell
@@ -728,6 +860,7 @@ contains
                          nz = z
                       end if 
 
+                      !print *, '      ** UPDATED COORDINATES AFTER REBOUND', nx,ny,nz
 
                       ! If after rebound remains within cell
                       if (                                               &
@@ -735,6 +868,9 @@ contains
                           ( ny .le. 1.0d0 ) .and. ( ny .ge. 0d0 )  .and. &
                           ( nz .le. 1.0d0 ) .and. ( nz .ge. 0d0 )        & 
                       ) then 
+
+                      !print *, '      ** PARTICLE REMAINS IN CELL'
+
 
                           ! Update current time with same time step 
                           ! determined for interface 
@@ -763,15 +899,47 @@ contains
 
                           end if 
 
-                          ! And continue displacement within the cell
+                          ! Particle may land in the contrary interface
+                          ! Thin cells
+                          if (                                             &
+                              ( nx .eq. 1.0d0 ) .or. ( nx .eq. 0d0 )  .or. &
+                              ( ny .eq. 1.0d0 ) .or. ( ny .eq. 0d0 )  .or. &
+                              ( nz .eq. 1.0d0 ) .or. ( nz .eq. 0d0 )       & 
+                          ) then 
+                            
+                              !print *, '      *** PARTICLE IS AT ONE OF THE INTERFACES, NO NEED FOR MORE DISPLACEMENTS'
 
-                          ! Restore time step
-                          dt = dtold
+                              ! Compute exitFace
+                              if ( nx .eq. 1.0d0 ) then 
+                                  exitFace  = 2
+                              else 
+                                  exitFace  = 1
+                              end if
+                              if ( ny .eq. 1.0d0 ) then 
+                                  exitFace  = 4
+                              else 
+                                  exitFace  = 3
+                              end if
+                              if ( nz .eq. 1.0d0 ) then 
+                                  exitFace  = 6
+                              else 
+                                  exitFace  = 5
+                              end if
 
-                          ! No exitFace
-                          exitFace = 0
+                          else
+                              ! And continue displacement within the cell
+                              !print *, '      *** PARTICLE IS STRICTLY WITHIN CELL, CONTINUE INTERNAL DISPLACEMENT'
+
+                              ! Restore time step
+                              dt = dtold
+                              ! No exitFace
+                              exitFace = 0
+
+                          end if
+
 
                       else
+                          !print *, '      ** PARTICLE LEAVES CELL'
                           ! If after rebound is leaving cell
 
                           ! However interface displacement should be done 
@@ -854,19 +1022,22 @@ contains
 
                       end if 
 
-              end if ! elasticRebound
+              !end if ! elasticRebound
+              end do ! elasticRebound
               
               ! And let the show continue
 
           end do ! particleLeavingCell
 
 
-          ! Restart loop counter 
-          dtLoopCounter = 0
+          !! Restart loop counter 
+          !dtLoopCounter = 0
 
 
           ! Report and leave
           if ( ( reachedMaximumTime ) .or. ( exitFace .ne. 0 ) ) then
+
+              !print *, '******* TRACKSUBCELL: leaving...'
 
               if (reachedMaximumTime) then
                   ! In this case it is allowed for a particle
@@ -927,11 +1098,16 @@ contains
 
           end if
 
+              !print *, '           **** CURRENT PARTICLE position', x, y ,z, exitFace
+              !print *, '           **** NEW PARTICLE position', x, y ,z, exitFace
+              !print *, '           **** RWPT displacements', dxrw/dx,dyrw/dy,dzrw/dz
+              !print *, '           **** CELL VELOCITIES', vx,vy,vz
+              !print *, '           **** CELL SIZE', dx,dy,dz
+
           ! Update particle positions
           x = nx
           y = ny
           z = nz
-
 
       end do ! continueTimeLoop 
 
