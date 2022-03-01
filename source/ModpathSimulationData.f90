@@ -101,6 +101,7 @@ contains
   !integer :: dispersionUnit = 88
   integer :: iodispersion   = 0
   integer :: ioInUnit       = 0
+<<<<<<< HEAD
 
   ! OBS
   integer :: nObservations  = 0
@@ -111,6 +112,10 @@ contains
   integer :: gpkdeUnit = 89
   integer :: iogpkde   = 0
 
+=======
+  integer :: nObservations  = 0
+  character(len=100) :: tempChar
+>>>>>>> develop-rwpt
 
   !---------------------------------------------
 
@@ -580,11 +585,11 @@ contains
         icol = 1
         call urword(this%DispersionFile,icol,istart,istop,0,n,r,0,0)
         this%DispersionFile = this%DispersionFile(istart:istop)
-        !print *, 'ModpathSimulationData: RWPT DEFINED DISPERSION FILE', this%DispersionFile
 
         ! Initialization and reading of dispersion file data is handled in TransportModelData.f90        
 
     end if
+
 
     ! GPKDE
     ! GPKDE requires timeseries
@@ -632,7 +637,7 @@ contains
                 call urword(line, icol, istart, istop, 3, n, r, 0, 0)
                 this%TrackingOptions%gpkdeDomainSize(3) = r
 
-                print *, 'AT SIMULATION DATA: DOMAINSIZE', this%TrackingOptions%gpkdeDomainSize
+                !print *, 'AT SIMULATION DATA: DOMAINSIZE', this%TrackingOptions%gpkdeDomainSize
 
                 ! Read binSize
                 read(gpkdeUnit, '(a)') line
@@ -643,7 +648,7 @@ contains
                 this%TrackingOptions%gpkdeBinSize(2) = r
                 call urword(line, icol, istart, istop, 3, n, r, 0, 0)
                 this%TrackingOptions%gpkdeBinSize(3) = r
-                print *, 'AT SIMULATION DATA: BINSIZE', this%TrackingOptions%gpkdeDomainSize
+                !print *, 'AT SIMULATION DATA: BINSIZE', this%TrackingOptions%gpkdeDomainSize
 
                 ! Read nOptimizationLoops
                 read(gpkdeUnit, '(a)') line
@@ -661,59 +666,105 @@ contains
     end if
 
 
-    if ( ioInUnit .lt. 0 ) then
-        print *, 'ModpathSimulationData: END OF FILE'
-    else
-        print *, 'ModpathSimulationData: WILL TRY OBSERVATION CELLS'
-
-        ! Now try to read if any observation cells
-        ! limit the number of observations to two, during dev
-        read(inUnit, * , iostat=ioInUnit) line
-        if ( ioInUnit .lt. 0 ) then 
-            ! No obs 
+    ! Now try to read if any observation cells
+    ! limit the number of observations to two, during dev
+    read(inUnit, * , iostat=ioInUnit) line
+    if ( ioInUnit .lt. 0 ) then 
+        ! No obs 
+        write(outUnit,'(A)') 'OBS: No observation cells.'
+        !print *, 'ModpathSimulationData: NO OBSERVATION CELLS'
+    else 
+        !print *, 'ModpathSimulationData: YES OBSERVATION CELLS', ioInUnit
+        ! Yes obs
+        icol = 1
+        call urword(line, icol, istart, istop, 2, n, r, 0, 0)
+        ! number of observations
+        if ( n .gt. 2 ) then 
+            ! out
+            call ustop('OBS: Max allowed observation cells equals 2. Stop.')
+        else if ( n .eq. 0 ) then 
+            ! no obs
             write(outUnit,'(A)') 'OBS: No observation cells.'
-            print *, 'ModpathSimulationData: NO OBSERVATION CELLS'
-        else 
-            print *, 'ModpathSimulationData: YES OBSERVATION CELLS', ioInUnit
-            ! Yes obs
-            icol = 1
-            call urword(line, icol, istart, istop, 2, n, r, 0, 0)
-            ! number of observations
-            if ( n .gt. 2 ) then 
-                ! out
-                call ustop('OBS: Max allowed observation cells equals 2. Stop.')
-            else if ( n .eq. 0 ) then 
-                ! no obs
-                write(outUnit,'(A)') 'OBS: No observation cells.'
-            else
-                ! ok
-                nObservations = n
-                write(outUnit,'(1X,A,I6,A)') 'OBS: ', nObservations, ' observation cells.'
+        else
+            ! ok
+            nObservations = n
+            write(outUnit,'(1X,A,I6,A)') 'OBS: ', nObservations, ' observation cells.'
 
-                ! Allocate observation arrays
-                call this%TrackingOptions%InitializeObservations( nObservations )
+            ! Allocate observation arrays
+            call this%TrackingOptions%InitializeObservations( nObservations )
 
-                ! Read observation cells and assign 
-                ! proper variables
-                do nc = 1, nObservations
-                    read(inUnit, '(a)', iostat=ioInUnit) line
-                    icol = 1
-                    call urword(line, icol, istart, istop, 2, n, r, 0, 0)
-                    this%TrackingOptions%observationCells( nc ) = n
-                    ! 5500 is just to move to a known place of id units, improve
-                    this%TrackingOptions%observationUnits( nc ) = 5500 + nc
-                    ! Write the cell ID
-                    write( unit=tempChar, fmt=* )this%TrackingOptions%observationCells( nc )
-                    ! Write the output file name
-                    write( unit=this%TrackingOptions%observationFiles( nc ), fmt='(a)' )'cell_'//trim(adjustl(tempChar))//'.obs'
-                end do 
+            ! Read observation cells and assign 
+            ! proper variables
+            do nc = 1, nObservations
+                read(inUnit, '(a)', iostat=ioInUnit) line
+                icol = 1
+                call urword(line, icol, istart, istop, 2, n, r, 0, 0)
+                this%TrackingOptions%observationCells( nc ) = n
+                ! 5500 is just to move to a known place of id units, improve
+                this%TrackingOptions%observationUnits( nc ) = 5500 + nc
+                ! Write the cell ID
+                write( unit=tempChar, fmt=* )this%TrackingOptions%observationCells( nc )
+                ! Write the output file name
+                write( unit=this%TrackingOptions%observationFiles( nc ), fmt='(a)' )'cell_'//trim(adjustl(tempChar))//'.obs'
+            end do 
 
-            end if  
-        end if 
+        end if  
+    end if 
 
-    end if  
 
-    print *, 'ModpathSimulationData: LEAVING '
+    !if ( ioInUnit .lt. 0 ) then
+    !    print *, 'ModpathSimulationData: END OF FILE'
+    !else
+    !    print *, 'ModpathSimulationData: WILL TRY OBSERVATION CELLS'
+
+    !    ! Now try to read if any observation cells
+    !    ! limit the number of observations to two, during dev
+    !    read(inUnit, * , iostat=ioInUnit) line
+    !    if ( ioInUnit .lt. 0 ) then 
+    !        ! No obs 
+    !        write(outUnit,'(A)') 'OBS: No observation cells.'
+    !        print *, 'ModpathSimulationData: NO OBSERVATION CELLS'
+    !    else 
+    !        print *, 'ModpathSimulationData: YES OBSERVATION CELLS', ioInUnit
+    !        ! Yes obs
+    !        icol = 1
+    !        call urword(line, icol, istart, istop, 2, n, r, 0, 0)
+    !        ! number of observations
+    !        if ( n .gt. 2 ) then 
+    !            ! out
+    !            call ustop('OBS: Max allowed observation cells equals 2. Stop.')
+    !        else if ( n .eq. 0 ) then 
+    !            ! no obs
+    !            write(outUnit,'(A)') 'OBS: No observation cells.'
+    !        else
+    !            ! ok
+    !            nObservations = n
+    !            write(outUnit,'(1X,A,I6,A)') 'OBS: ', nObservations, ' observation cells.'
+
+    !            ! Allocate observation arrays
+    !            call this%TrackingOptions%InitializeObservations( nObservations )
+
+    !            ! Read observation cells and assign 
+    !            ! proper variables
+    !            do nc = 1, nObservations
+    !                read(inUnit, '(a)', iostat=ioInUnit) line
+    !                icol = 1
+    !                call urword(line, icol, istart, istop, 2, n, r, 0, 0)
+    !                this%TrackingOptions%observationCells( nc ) = n
+    !                ! 5500 is just to move to a known place of id units, improve
+    !                this%TrackingOptions%observationUnits( nc ) = 5500 + nc
+    !                ! Write the cell ID
+    !                write( unit=tempChar, fmt=* )this%TrackingOptions%observationCells( nc )
+    !                ! Write the output file name
+    !                write( unit=this%TrackingOptions%observationFiles( nc ), fmt='(a)' )'cell_'//trim(adjustl(tempChar))//'.obs'
+    !            end do 
+
+    !        end if  
+    !    end if 
+
+    !end if  
+
+    !print *, 'ModpathSimulationData: LEAVING '
 
   end subroutine pr_ReadData
 

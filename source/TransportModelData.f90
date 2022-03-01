@@ -177,45 +177,30 @@ contains
         write(outUnit, '(1x,a)') '----------------------------'
 
 
-        ! Read longitudinal dispersivity string file
-        read( inUnit, '(a)' ) line
-        icol = 1
-        call urword(line,icol,istart,istop,0,n,r,0,0)
-        tempAlphaFile = line(istart:istop)
-        open( tempAlphaUnit, file=tempAlphaFile, status='old', access='sequential' )
-        write(outUnit, '(1x,a)') 'AlphaLong file is ', tempAlphaFile
-        write(outUnit, *)
+        ! Read dispersivity variable, eventually file
+        ! These methods follor OPEN/CLOSE, CONSTANT input format
+        ! and variables are expected to be defined for each layer
 
         ! ALPHALONG
         if((grid%GridType .eq. 1) .or. (grid%GridType .eq. 3)) then
-            call u3ddblmp(tempAlphaUnit, outUnit, grid%LayerCount, grid%RowCount,      &
+            call u3ddblmp(inUnit, outUnit, grid%LayerCount, grid%RowCount,      &
               grid%ColumnCount, grid%CellCount, this%AlphaLong, ANAME(2))                      
         else if((grid%GridType .eq. 2) .or. (grid%GridType .eq. 4)) then
-            call u3ddblmpusg(tempAlphaUnit, outUnit, grid%CellCount, grid%LayerCount,  &
+            call u3ddblmpusg(inUnit, outUnit, grid%CellCount, grid%LayerCount,  &
               this%AlphaLong, aname(2), cellsPerLayer)
         else
-              write(outUnit,*) 'Invalid grid type specified when reading ALPHALONG array data.'
-              write(outUnit,*) 'Stopping.'
-              call ustop(' ')          
+            write(outUnit,*) 'Invalid grid type specified when reading ALPHALONG array data.'
+            write(outUnit,*) 'Stopping.'
+            call ustop(' ')          
         end if
         
-        close( tempAlphaUnit )
-
-        ! Read transverse dispersivity string file
-        read( inUnit, '(a)' ) line
-        icol = 1
-        call urword(line,icol,istart,istop,0,n,r,0,0)
-        tempAlphaFile = line(istart:istop)
-        open( tempAlphaUnit, file=tempAlphaFile, status='old', access='sequential' )
-        write(outUnit, '(1x,a)') 'AlphaTrans file is ', tempAlphaFile
-        write(outUnit, *)
 
         ! ALPHATRANS
         if((grid%GridType .eq. 1) .or. (grid%GridType .eq. 3)) then
-            call u3ddblmp(tempAlphaUnit, outUnit, grid%LayerCount, grid%RowCount,      &
+            call u3ddblmp(inUnit, outUnit, grid%LayerCount, grid%RowCount,      &
               grid%ColumnCount, grid%CellCount, this%AlphaTrans, ANAME(2))                      
         else if((grid%GridType .eq. 2) .or. (grid%GridType .eq. 4)) then
-            call u3ddblmpusg(tempAlphaUnit, outUnit, grid%CellCount, grid%LayerCount,  &
+            call u3ddblmpusg(inUnit, outUnit, grid%CellCount, grid%LayerCount,  &
               this%AlphaTrans, aname(2), cellsPerLayer)
         else
               write(outUnit,*) 'Invalid grid type specified when reading ALPHATRANS array data.'

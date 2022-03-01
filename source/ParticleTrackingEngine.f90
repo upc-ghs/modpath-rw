@@ -950,7 +950,6 @@ contains
     integer   :: idObservationCell
     !---------------------------------------------------------------------------------------------------------------
 
-        print *, 'TrackingEngine: AT RWPTrackPath: cellNumber:', location%CellNumber, ' particleID:', particleID
 
         ! Reset trackPathResult and initialize particleID
         call trackPathResult%Reset()
@@ -977,14 +976,13 @@ contains
         ! RWPT: fill neighbor cells
         call this%FillNeighborCellData( neighborCellData )
 
-        print *, 'TrackingEngine: PASSED FillNeighborCellData'
 
         continueLoop = .true.
         isTimeSeriesPoint = .false.
         isMaximumTime = .false.
         
+        !print *, '****** TrackingEngine: continueLoop particleID', particleID
         do while(continueLoop)
-            print *, '#####################################################', loc%CellNumber
             ! Check to see if the particle has moved to another cell. If so, load the new cell data
             if(loc%CellNumber .ne. this%TrackCell%CellData%CellNumber) then
                 call this%FillCellBuffer(loc%CellNumber, this%TrackCell%CellData)
@@ -1043,14 +1041,12 @@ contains
                           fromLocalZ, loc)
                         loc%TrackingTime = this%TrackCellResult%TrackingPoints%Items(count)%TrackingTime
                     else
-                        !print *, 'INACTIVEEEE', nextCell
                         ! If next cell is inactive, it implies that a boundary face has been reached. 
                         ! Set status and return.
                         continueLoop = .false.
                         trackPathResult%Status = trackPathResult%Status_ReachedBoundaryFace()        
                     end if
                 else
-                    !print *, 'CELLNUMBER ', nextCell 
                     ! If next cell number = 0, the boundary of the grid has been reached. 
                     ! Set status and return.
                     continueLoop = .false.

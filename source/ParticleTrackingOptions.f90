@@ -43,6 +43,7 @@ module ParticleTrackingOptionsModule
   contains
      procedure :: Reset=>pr_Reset
      procedure :: InitializeObservations=>pr_InitializeObservations 
+     !procedure :: IsObservationCell=>pr_IsObservationCell
      procedure :: IdObservationCell=>pr_IdObservationCell
   end type
   

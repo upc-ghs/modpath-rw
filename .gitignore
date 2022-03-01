@@ -39,3 +39,5 @@ msvs/bin
 work
 
 examples/
+
+source/.*sw*
