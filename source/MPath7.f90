@@ -919,7 +919,7 @@
         call gpkde%ComputeDensity(                                              &
            activeParticleCoordinates,                                           &
            outputFileUnit     = simulationData%TrackingOptions%gpkdeOutputUnit, &
-           outputDataId       = nt                                              &
+           outputDataId       = nt,                                             &
            particleGroupId    = groupIndex                                      & 
         )
 

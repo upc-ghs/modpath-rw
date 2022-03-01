@@ -101,7 +101,6 @@ contains
   !integer :: dispersionUnit = 88
   integer :: iodispersion   = 0
   integer :: ioInUnit       = 0
-<<<<<<< HEAD
 
   ! OBS
   integer :: nObservations  = 0
@@ -112,10 +111,6 @@ contains
   integer :: gpkdeUnit = 89
   integer :: iogpkde   = 0
 
-=======
-  integer :: nObservations  = 0
-  character(len=100) :: tempChar
->>>>>>> develop-rwpt
 
   !---------------------------------------------
 
