@@ -899,38 +899,28 @@
         print *, 'ACTIVE: ', activeCount
         if ( allocated( activeParticleCoordinates ) ) deallocate( activeParticleCoordinates )
         allocate( activeParticleCoordinates(activeCount,3) )
-        ! ONLY one groupIndex
-        groupIndex = 1
-        !do groupIndex = 1, simulationData%ParticleGroupCount
-            !!$omp parallel do           &
-            !!$omp default( none )       &
-            !!$omp shared( groupIndex )  &
-            do particleIndex = 1, simulationData%ParticleGroups(groupIndex)%TotalParticleCount
-                p => simulationData%ParticleGroups(groupIndex)%Particles(particleIndex)
-                ! If active, to the array for GPKDE
-                if(p%Status .eq. 1) then
-                    activeCounter = activeCounter + 1
-                    activeParticleCoordinates( activeCounter, 1 ) = p%GlobalX
-                    activeParticleCoordinates( activeCounter, 2 ) = p%GlobalY
-                    activeParticleCoordinates( activeCounter, 3 ) = p%GlobalZ
-                    !print *, activeParticleCoordinates( particleIndex, : )
-                end if
-            end do
-            !!$omp end parallel do
-        !end do
-        !print *, activeParticleCoordinates
-        ! Once all particles have reached a position
-        ! for the same time, reconstruct concentrations
-        print *, '# INTEGRATION TEST: compute density '
-        print *, '# INTEGRATION TEST: outputUnit ', simulationData%TrackingOptions%gpkdeOutputUnit
-        print *, '# INTEGRATION TEST: outputDataId ', nt
 
-        !print *, activeParticleCoordinates
+        ! Note that at this point 
+        ! groupIndex is still valid
 
+        ! Could be parallelized ?
+        do particleIndex = 1, simulationData%ParticleGroups(groupIndex)%TotalParticleCount
+            p => simulationData%ParticleGroups(groupIndex)%Particles(particleIndex)
+            ! If active, to the array for GPKDE
+            ! inactive_cell particles should also be processed
+            if( (p%Status .eq. 1) .or. (p%Status .eq. 7) ) then
+            !if(p%Status .eq. 1) then
+                activeCounter = activeCounter + 1
+                activeParticleCoordinates( activeCounter, 1 ) = p%GlobalX
+                activeParticleCoordinates( activeCounter, 2 ) = p%GlobalY
+                activeParticleCoordinates( activeCounter, 3 ) = p%GlobalZ
+            end if
+        end do
         call gpkde%ComputeDensity(                                              &
            activeParticleCoordinates,                                           &
            outputFileUnit     = simulationData%TrackingOptions%gpkdeOutputUnit, &
            outputDataId       = nt                                              &
+           particleGroupId    = groupIndex                                      & 
         )
 
     end if
