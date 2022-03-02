@@ -95,6 +95,9 @@ contains
   doubleprecision :: dz
   
   dz = this%Top - this%Bottom
+  this%dry = .false.
+  this%partiallyDry = .false.
+
   ! If the layer is convertible, set dz = Head - Bottom if Head < Top
   if(this%LayerType .eq. 1) then
       ! ORIGINAL
@@ -2136,6 +2139,9 @@ contains
   !---------------------------------------------------------
   
   dz = this%Top - this%Bottom
+  this%dry = .false.
+  this%partiallyDry = .false.
+
   ! If the layer is convertible, set dz = Head - Bottom if Head < Top
   if(this%LayerType .eq. 1) then
       ! ORIGINAL

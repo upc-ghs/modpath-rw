@@ -571,7 +571,6 @@
     ! RWPT
     if( (simulationData%SimulationType .ge. 3) .and. & 
         (simulationData%SimulationType .lt. 7) .and. (ktime .eq. kfirst) ) then
-    !if((simulationData%SimulationType .ge.3) .and. (ktime .eq. kfirst)) then
         do groupIndex =1, simulationData%ParticleGroupCount
             do particleIndex = 1, simulationData%ParticleGroups(groupIndex)%TotalParticleCount
                 ! Add code
@@ -714,13 +713,6 @@
                 ! Verify cell not dry anymore
                 if (p%Status .eq. 7 ) then 
                     ! Give me the cell 
-                    pLoc%CellNumber = p%CellNumber
-                    pLoc%Layer = p%Layer
-                    pLoc%LocalX = p%LocalX
-                    pLoc%LocalY = p%LocalY
-                    pLoc%LocalZ = p%LocalZ
-                    pLoc%TrackingTime = p%TrackingTime
-
                     ! Initialize cellBuffer cellNumber
                     call trackingEngine%FillCellBuffer( p%CellNumber, cellDataBuffer )
 
@@ -784,7 +776,6 @@
                     else if(status .eq. trackPathResult%Status_StopZoneCell()) then
                         p%Status = 6
                     else if(status .eq. trackPathResult%Status_InactiveCell()) then
-                        !print *, 'MPATH: INACTIVE CELL STATUS, pid', p%ID
                         p%Status = 7
                     else if(status .eq. trackPathResult%Status_Undefined()) then
                         p%Status = 9
@@ -846,10 +837,6 @@
                         groupIndex, ktime, nt, pCoord, geoRef, p%Status,  timeseriesUnit)
                       !$omp end critical (timeseries)
                 end if
-
-                if (p%Status .eq. 7 ) then 
-                    print *, 'THE SEVEN'
-                end if 
 
             end do
             !$omp end parallel do
