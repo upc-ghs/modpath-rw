@@ -665,6 +665,7 @@
     activeCount = 0
     if(simulationData%ParticleGroupCount .gt. 0) then
         do groupIndex = 1, simulationData%ParticleGroupCount
+            print *, ' ## PARTICLEGROUPINDEX, ', groupIndex
             !$omp parallel do schedule( dynamic,1 )          &
             !$omp default( none )                            &
             !$omp shared( groupIndex )                       &
@@ -742,13 +743,6 @@
                 ! Verify cell not dry anymore
                 if (p%Status .eq. 7 ) then 
                     ! Give me the cell 
-                    pLoc%CellNumber = p%CellNumber
-                    pLoc%Layer = p%Layer
-                    pLoc%LocalX = p%LocalX
-                    pLoc%LocalY = p%LocalY
-                    pLoc%LocalZ = p%LocalZ
-                    pLoc%TrackingTime = p%TrackingTime
-
                     ! Initialize cellBuffer cellNumber
                     call trackingEngine%FillCellBuffer( p%CellNumber, cellDataBuffer )
 
@@ -880,10 +874,6 @@
                         groupIndex, ktime, nt, pCoord, geoRef, p%Status,  timeseriesUnit)
                       !$omp end critical (timeseries)
                 end if
-
-                if (p%Status .eq. 7 ) then 
-                    print *, 'THE SEVEN'
-                end if 
 
             end do
             !$omp end parallel do
