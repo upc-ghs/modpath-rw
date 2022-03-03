@@ -512,6 +512,15 @@ contains
       dy = this%SubCellData%DY
       dz = this%SubCellData%DZ
 
+      ! Initialize positions
+      x  = initialLocation%LocalX
+      y  = initialLocation%LocalY
+      z  = initialLocation%LocalZ
+      nx = initialLocation%LocalX
+      ny = initialLocation%LocalY
+      nz = initialLocation%LocalZ
+
+
       if ( this%SubCellData%dry ) then
           ! If cell is completely dry, then particle is not displaced
 
@@ -523,52 +532,50 @@ contains
           ! is partially dry, particle status is set to active for 
           ! retracking
           trackingResult%Status = trackingResult%Status_InactiveCell()
+          trackingResult%FinalLocation%CellNumber = cellNumber
+          trackingResult%FinalLocation%LocalX = x
+          trackingResult%FinalLocation%LocalY = y
+          trackingResult%FinalLocation%LocalZ = z
+          trackingResult%FinalLocation%TrackingTime = t
           return
-
-          !print *, '########### DRY CELL ', cellNumber
-          !print *, ' ** dx, dy, dz'
-          !print *, dx,dy,dz
-          !print *, this%SubCellData%DX, this%SubCellData%DY, this%SubCellData%DZ
-          !print *, ' ** vx, vy, vz'
-          !print *, this%SubCellData%vx1, this%SubCellData%vx2
-          !print *, this%SubCellData%vy1, this%SubCellData%vy2
-          !print *, this%SubCellData%vz1, this%SubCellData%vz2
-          !print *, ' ** initialX, initialY, initialZ'
-          !print *, initialX, initialY, initialZ
-          !print *, ' ** Top, Bottom, Head: UNDEFINED YET'
-          !print *, this%SubCellData%Top, this%SubCellData%Bottom, this%SubCellData%Head
-          !! call exit(0)
-
 
       end if 
 
 
       if ( this%SubCellData%partiallyDry ) then
 
+          ! If partiallyDry, track always. 
+          ! This understands that localZ remains the 
+          ! same even if the head level decreases or raises
+          ! due to transient flow conditions
+
+
           ! Verify if particle location is within dry zone
           ! Verify with which value this z is initialized
           ! z < ( this%Head - this%Bottom )/( this%Top - this%Bottom )
-          !print *, '## PARTIALLY DRY, particle initialLocation'
-          !print *,  initialLocation%LocalX
-          !print *,  initialLocation%LocalY
-          !print *,  initialLocation%LocalZ
-         
+          !print *, '## PARTIALLY DRY, particle initialLocation',  initialLocation%LocalX, &
+          !    initialLocation%LocalY, initialLocation%LocalZ
+          !print *, '## dz', dz
+
           ! FIRST ATTEMPT: 
           ! assumption: z coordinate is relative respect to cell size ( top - bottom ) 
           ! if cell partially dry head > bottom
-          if ( &
-              z < ( this%SubCellData%Head - this%SubCellData%Bottom )/( this%SubCellData%Top - this%SubCellData%Bottom ) & 
-          ) then 
-              ! Track
-              !print *, '       z Satisfies minor than relative head. TRACK'
-              continue
-          else
-              !print *, '       FAILED z Satisfies minor than relative head z, relhead', &
-              !    z, ( this%SubCellData%Head - this%SubCellData%Bottom )/( this%SubCellData%Top - this%SubCellData%Bottom )
-                
-              trackingResult%Status = trackingResult%Status_InactiveCell()
-              return
-          end if 
+          !if ( &
+          !    z < ( this%SubCellData%Head - this%SubCellData%Bottom )/( this%SubCellData%Top - this%SubCellData%Bottom ) & 
+          !) then 
+          !    ! Track
+          !    print *, '       z Satisfies minor than relative head. TRACK'
+          !    print *, z , ( this%SubCellData%Head - this%SubCellData%Bottom )/( this%SubCellData%Top - this%SubCellData%Bottom )
+
+          !    continue
+
+          !else
+          !    print *, '       FAILED z Satisfies minor than relative head, NO TRACK!', &
+          !        z, ( this%SubCellData%Head - this%SubCellData%Bottom )/( this%SubCellData%Top - this%SubCellData%Bottom )
+          !      
+          !    trackingResult%Status = trackingResult%Status_InactiveCell()
+          !    return
+          !end if 
 
 
           !print *, '########### PARTIALLY DRY CELL ', cellNumber
@@ -592,18 +599,10 @@ contains
           !call exit(0)
           !trackingResult%Status = trackingResult%Status_InactiveCell()
           !return
+
           continue
 
       end if 
-
-
-      ! Initialize positions
-      x  = initialLocation%LocalX
-      y  = initialLocation%LocalY
-      z  = initialLocation%LocalZ
-      nx = initialLocation%LocalX
-      ny = initialLocation%LocalY
-      nz = initialLocation%LocalZ
 
 
       ! Initialize displacements
@@ -651,6 +650,10 @@ contains
       continueTimeLoop = .true.
       reachedMaximumTime = .false.
       do while( continueTimeLoop )
+          !print *, '## START TIME LOOP...'
+
+          ! Time loop counter
+          dtLoopCounter = dtLoopCounter + 1
 
           ! Time loop counter
           dtLoopCounter = dtLoopCounter + 1
@@ -681,6 +684,10 @@ contains
               nz   = z + dzrw/dz
           end if
 
+          ! If by any reason dzrw/dz .gt. 1 then 
+          ! something is making these values blow up
+          ! It will leave the cell immediatelly
+
           ! particleLeavingCell:
           ! Detect if particle leaving the cell
           ! and force the particle into exactly one
@@ -691,10 +698,18 @@ contains
               ( ny .gt. 1.0d0 ) .or. ( ny .lt. 0d0 )  .or. &
               ( nz .gt. 1.0d0 ) .or. ( nz .lt. 0d0 )       & 
           )
-             
+              !print *, '## START INTERFACE LOOP...', intLoopCounter
+              !print *, ' ### INIT', x, y, z 
+              !print *, ' ### END ', nx, ny, nz 
+              !print *, '## Z DISPLACEMENTS: dAdvz, divDz*dt, dBz*sqrt(dt) ', dAdvz, divDz*dt, dBz*sqrt(dt)
+
               intLoopCounter = intLoopCounter + 1
               dtxyz(:) = 0d0
 
+              !if ( intLoopCounter .gt. 100 ) then
+              !    print *, 'REMOVE THIS PRINT INTLOOPCOUNTER' 
+              !    call exit(0)
+              !end if
 
               ! Recompute dt for exact interface
               call this%ExitFaceAndUpdateTimeStep( x, y, z, nx, ny, nz, &
@@ -739,11 +754,12 @@ contains
                   if ( exitFace .eq. 5 ) nz=0d0
               else
                   ! If exitFace .eq. 0
-                  ! Restart nx, ny, nz and try again
-                  ! if not a valid time step and exitFace
-                  nx = x
-                  ny = y
-                  nz = z
+                  !print *, '######### RESTARTING', cellNumber, intLoopCounter
+                  ! Restart new coordinates 
+                  nx = initialLocation%LocalX
+                  ny = initialLocation%LocalY
+                  nz = initialLocation%LocalZ
+                  ! Restart time 
                   t  = t - dt
                   dt = dtold
                   posRestartCounter = posRestartCounter + 1
@@ -753,7 +769,8 @@ contains
                   exit
 
               end if
-
+              
+              print *, '## CONTINUE TO REBOUND LooP. exitFace: ', exitFace
 
               ! Boundary conditions
               ! Logic should be: 
@@ -772,9 +789,19 @@ contains
 
                   ! Is zero, a boundary, inactive
                   reboundCounter = reboundCounter + 1
+                  print *, ' PARTICLE IS REBOUNDING', exitFace, cellNumber, reboundCounter
+                  print *, ' COORDINATES STARTING', x, y, z
+                  print *, ' COORDINATES REBOUND', nx, ny, nz
+                  print *, ' TIME STEP: ', dt
+                  if ( this%SubCellData%partiallyDry ) then 
+                    print *, ' CELL IS PARTIALLY DRY, dz ', dz
+                  else if ( this%SubCellData%dry ) then 
+                    print *, ' CELL IS DRY, dz ', dz
+                  end if 
+                
+
                   if ( reboundCounter .gt. 10 ) then
                       ! If particle has been rebounding for a long time, stop
-
                       ! Note: This will not occur as each output case is already 
                       ! managed finalizing with exitFace .eq. 0 
                       ! print *, '      ** CLOSING REBOUND WITH REBOUND COUNTER'
@@ -788,6 +815,32 @@ contains
                       return
 
                   end if 
+
+                  ! Save interface positions 
+                  xi = nx
+                  yi = ny
+                  zi = nz
+                  
+                  ! If dt .eq. 0d0 then the particle is exactly 
+                  ! at the interface, and is a rebound interface. 
+                  if ( dt .eq. 0d0 ) then
+                      !print *, ' !! MARKED AS INACTIVE'
+                      ! Do something
+                      trackingResult%ExitFace = 0
+                      trackingResult%Status   = trackingResult%Status_InactiveCell()
+                      trackingResult%FinalLocation%CellNumber = cellNumber
+                      trackingResult%FinalLocation%LocalX = x
+                      trackingResult%FinalLocation%LocalY = y
+                      trackingResult%FinalLocation%LocalZ = z
+                      trackingResult%FinalLocation%TrackingTime = t
+                      return
+                  end if
+            
+                  
+                  ! It may be considered an alternative form 
+                  ! in which a random time step between cell dt 
+                  ! and something bigger than zero is determined 
+                  ! and particle is rebounded using said value
 
 
                   ! Update current time with same time step 
@@ -809,9 +862,9 @@ contains
                       reachedMaximumTime = .true.
 
                       ! Set starting position to rebound interface
-                      x = nx
-                      y = ny
-                      z = nz
+                      x = xi
+                      y = yi
+                      z = zi
 
                       ! Compute RWPT displacements
                       call this%LinearInterpolationVelocities( x, y, z, vx, vy, vz )
@@ -838,14 +891,14 @@ contains
                       ! process will continue to particleLeavingCell 
                       ! loop, starting from x,y,z at rebound interface
 
+                      ! By entering interface loop, the reachedMaximumTime
+                      ! variable will be set back to .false.
                       exitFace = 0
 
-                  else 
+                      !print *, '   REBOUND IS SHORTENED ', nx, ny, nz
 
-                      ! Save interface positions 
-                      xi = nx
-                      yi = ny
-                      zi = nz
+
+                  else 
 
                       ! Particle rebounds with elastic reflection,
                       ! same dt as displacement to interface
@@ -868,7 +921,13 @@ contains
                          nx = nx + dxrw/dx
                          ny = ny + dyrw/dy
                          nz = z
-                      end if 
+                         ! IDEA
+                         ! At rebound interface
+                         !call this%DisplacementRandomDischarge( x, y, z, alphaL, alphaT, Dmol, dBx, dBy, dBz )
+
+                      end if
+                      !print *, '   REBOUND IS ELASTIC dt interface', dt
+
                       ! If rebound is elastic and there are no time restrictions, 
                       ! then the particle is placed in elastic rebound position 
                       ! and goes outside rebound loop. 
@@ -897,6 +956,8 @@ contains
                           ! Go to: particleLeavingCell
                           exitFace = 0
 
+                          !print *, '     WHEN OUTSIDE CELL ', nx,ny,nz
+
                       else
                           ! If nx, ny and nz are inside the cell, then no problem
                           ! particleLeavingCell loop is broken and will update 
@@ -904,6 +965,32 @@ contains
                           ! time loop with cell characteristic time step
                           dt =  dtold
                           exitFace = 0
+
+                          !print *, '     REMAINS INSIDE CELL ', nx,ny,nz, intLoopCounter, dtLoopCounter
+
+                          ! If one of the positions is 
+                          ! exactly at one interface, continue particleLeavingCell
+                          ! and solves exitFace ?
+
+                          ! If one of the positions is exactly an interface
+                          if (                                          & 
+                              ( nx .eq. 0d0 ) .or. ( nx .eq. 1d0 ) .or. & 
+                              ( ny .eq. 0d0 ) .or. ( ny .eq. 1d0 ) .or. & 
+                              ( nz .eq. 0d0 ) .or. ( nz .eq. 1d0 )      & 
+                          ) then
+
+                              if ( nx .eq. 0d0 ) exitFace = 1 
+                              if ( nx .eq. 1d0 ) exitFace = 2 
+                              if ( ny .eq. 0d0 ) exitFace = 3
+                              if ( ny .eq. 1d0 ) exitFace = 4
+                              if ( .not. twoDimensions ) then 
+                                if ( nz .eq. 0d0 ) exitFace = 5
+                                if ( nz .eq. 1d0 ) exitFace = 6
+                              end if
+
+                              !print *, '     DETECTED EXACT INTERFACE, COMPUTED exitFace', exitFace
+
+                          end if
 
                       end if 
 
@@ -916,6 +1003,8 @@ contains
 
           ! Report and leave
           if ( ( reachedMaximumTime ) .or. ( exitFace .ne. 0 ) ) then
+
+              !print *, '     ## REPORT AND LEAVE ##'
 
               if (reachedMaximumTime) then
                   ! In this case it is allowed for a particle
@@ -977,6 +1066,7 @@ contains
           end if ! Report and leave
 
 
+          !print *, '     ## UPDATE COORDINATES TO NEW POSITION ##'
           ! Update particle positions
           x = nx
           y = ny
@@ -992,231 +1082,6 @@ contains
   end subroutine pr_ExecuteRandomWalkParticleTracking
 
 
-                  !! If after rebound remains within cell
-                  !if (                                               &
-                  !    ( nx .le. 1.0d0 ) .and. ( nx .ge. 0d0 )  .and. &
-                  !    ( ny .le. 1.0d0 ) .and. ( ny .ge. 0d0 )  .and. &
-                  !    ( nz .le. 1.0d0 ) .and. ( nz .ge. 0d0 )        & 
-                  !) then 
-
-                  !    ! Update current time with same time step 
-                  !    ! determined for interface 
-                  !    t = t + dt
-
-                  !    ! And in case the new time is higher than maximum
-                  !    ! then updates dt and corrects final position
-                  !    ! starting displacement from rebound interface
-                  !    if (maximumTime .lt. t) then
-                  !        ! Note: if maximumTime is reached in second half of 
-                  !        ! rebound, then displacements should be computed 
-                  !        ! taking at starting position the rebound interface
-                  !        t  = t - dt
-                  !        dt = maximumTime - t
-                  !        t  = maximumTime
-                  !        reachedMaximumTime = .true.
-
-                  !        !call this%AdvectionDisplacement( x, y, z, dt, vx, vy, vz, dAdvx, dAdvy, dAdvz )
-
-                  !        !! Compute RWPT movement
-                  !        !dxrw = dAdvx + divDx*dt + dBx*sqrt( dt )
-                  !        !nx   = x + dxrw/dx
-                  !        !dyrw = dAdvy + divDy*dt + dBy*sqrt( dt )
-                  !        !ny   = y + dyrw/dy
-                  !        !if ( .not. twoDimensions ) then 
-                  !        !    dzrw = dAdvz + divDz*dt + dBz*sqrt( dt )
-                  !        !    nz   = z + dzrw/dz
-                  !        !end if
-
-                  !        ! Set new starting position (x,y,z) at cell interface where rebound
-                  !        ! is ocurring
-                  !        if ( ( exitFace .eq. 1 ) .or. ( exitFace .eq. 2 ) ) then 
-                  !           ! x-direction
-                  !           x = 1.0d0
-                  !           if ( exitFace .eq. 1 ) x=0d0
-                  !           y = ny - dyrw/dy
-                  !           if ( y .lt. 0d0 ) y = 0d0
-                  !           if ( y .gt. 1d0 ) y = 1d0
-                  !           if ( .not. twoDimensions ) then
-                  !               z = nz - dzrw/dz
-                  !               if ( z .lt. 0d0 ) z = 0d0
-                  !               if ( z .gt. 1d0 ) z = 1d0
-                  !           end if
-                  !        else if ( ( exitFace .eq. 3 ) .or. ( exitFace .eq. 4 ) ) then 
-                  !           ! y-direction
-                  !           x = nx - dxrw/dx
-                  !           if ( x .lt. 0d0 ) x = 0d0
-                  !           if ( x .gt. 1d0 ) x = 1d0
-                  !           y = 1.0d0
-                  !           if ( exitFace .eq. 3 ) y=0d0
-                  !           if ( .not. twoDimensions ) then
-                  !               z = nz - dzrw/dz
-                  !               if ( z .lt. 0d0 ) z = 0d0
-                  !               if ( z .gt. 1d0 ) z = 1d0
-                  !           end if
-                  !        else
-                  !           ! z-direction
-                  !           x = nx - dxrw/dx
-                  !           if ( x .lt. 0d0 ) x = 0d0
-                  !           if ( x .gt. 1d0 ) x = 1d0
-                  !           y = ny - dyrw/dy
-                  !           if ( y .lt. 0d0 ) y = 0d0
-                  !           if ( y .gt. 1d0 ) y = 1d0
-                  !           z = 1.0d0
-                  !           if ( exitFace .eq. 5 ) z=0d0
-                  !        end if
-
-                  !        !! Compute RWPT movement
-                  !        !call this%LinearInterpolationVelocities( x, y, z, vx, vy, vz )
-                  !        !call this%DispersionDivergenceDischarge( x, y, z, alphaL, alphaT, Dmol, divDx, divDy, divDz )
-                  !        !call this%DisplacementRandomDischarge( x, y, z, alphaL, alphaT, Dmol, dBx, dBy, dBz )
-                  !        !call this%AdvectionDisplacement( x, y, z, dt, vx, vy, vz, dAdvx, dAdvy, dAdvz )
-
-                  !        !dxrw = dAdvx + divDx*dt + dBx*sqrt( dt )
-                  !        !nx   = x + dxrw/dx
-                  !        !dyrw = dAdvy + divDy*dt + dBy*sqrt( dt )
-                  !        !ny   = y + dyrw/dy
-                  !        !if ( .not. twoDimensions ) then 
-                  !        !    dzrw = dAdvz + divDz*dt + dBz*sqrt( dt )
-                  !        !    nz   = z + dzrw/dz
-                  !        !end if
-
-                  !        !call this%AdvectionDisplacement( x, y, z, dt, vx, vy, vz, dAdvx, dAdvy, dAdvz )
-
-                  !        !! Compute RWPT movement
-                  !        !dxrw = dAdvx + divDx*dt + dBx*sqrt( dt )
-                  !        !nx   = x + dxrw/dx
-                  !        !dyrw = dAdvy + divDy*dt + dBy*sqrt( dt )
-                  !        !ny   = y + dyrw/dy
-                  !        !if ( .not. twoDimensions ) then 
-                  !        !    dzrw = dAdvz + divDz*dt + dBz*sqrt( dt )
-                  !        !    nz   = z + dzrw/dz
-                  !        !end if
-
-                  !    end if ! maximumTime 
-
-                  !    ! Restore time step
-                  !    dt = dtold
-
-                  !    ! No exitFace
-                  !    exitFace = 0
-
-                  !    !!! Particle may land in the contrary interface
-                  !    !!! Thin cells
-                  !    !!if (                                             &
-                  !    !!    ( nx .eq. 1.0d0 ) .or. ( nx .eq. 0d0 )  .or. &
-                  !    !!    ( ny .eq. 1.0d0 ) .or. ( ny .eq. 0d0 )  .or. &
-                  !    !!    ( nz .eq. 1.0d0 ) .or. ( nz .eq. 0d0 )       & 
-                  !    !!) then 
-                  !    !!  
-                  !    !!    !print *, '      *** PARTICLE IS AT ONE OF THE INTERFACES, NO NEED FOR MORE DISPLACEMENTS'
-
-                  !    !!    ! Compute exitFace
-                  !    !!    if ( nx .eq. 1.0d0 ) then 
-                  !    !!        exitFace  = 2
-                  !    !!    else 
-                  !    !!        exitFace  = 1
-                  !    !!    end if
-                  !    !!    if ( ny .eq. 1.0d0 ) then 
-                  !    !!        exitFace  = 4
-                  !    !!    else 
-                  !    !!        exitFace  = 3
-                  !    !!    end if
-                  !    !!    if ( nz .eq. 1.0d0 ) then 
-                  !    !!        exitFace  = 6
-                  !    !!    else
-                  !    !!       print *, 'THIS SHIT WAS', nx, ny, nz 
-                  !    !!        exitFace  = 5
-                  !    !!    end if
-
-                  !    !!else
-                  !    !    ! And continue displacement within the cell
-                  !    !    !print *, '      *** PARTICLE IS STRICTLY WITHIN CELL, CONTINUE INTERNAL DISPLACEMENT'
-
-                  !    !    ! Restore time step
-                  !    !    dt = dtold
-                  !    !    ! No exitFace
-                  !    !    exitFace = 0
-
-                  !    !!end if
-
-
-                  !else
-                  !    ! If after rebound is leaving cell
-
-                  !    ! Set new position at cell interface where rebound
-                  !    ! is ocurring
-                  !    if ( ( exitFace .eq. 1 ) .or. ( exitFace .eq. 2 ) ) then 
-                  !       ! x-direction
-                  !       nx = 1.0d0
-                  !       if ( exitFace .eq. 1 ) nx=0d0
-                  !       ny = ny - dyrw/dy
-                  !       if ( ny .lt. 0d0 ) ny = 0d0
-                  !       if ( ny .gt. 1d0 ) ny = 1d0
-                  !       if ( .not. twoDimensions ) then
-                  !           nz = nz - dzrw/dz
-                  !           if ( nz .lt. 0d0 ) nz = 0d0
-                  !           if ( nz .gt. 1d0 ) nz = 1d0
-                  !       end if
-                  !    else if ( ( exitFace .eq. 3 ) .or. ( exitFace .eq. 4 ) ) then 
-                  !       ! y-direction
-                  !       nx = nx - dxrw/dx
-                  !       if ( nx .lt. 0d0 ) nx = 0d0
-                  !       if ( nx .gt. 1d0 ) nx = 1d0
-                  !       ny = 1.0d0
-                  !       if ( exitFace .eq. 3 ) y=0d0
-                  !       if ( .not. twoDimensions ) then
-                  !           nz = nz - dzrw/dz
-                  !           if ( nz .lt. 0d0 ) nz = 0d0
-                  !           if ( nz .gt. 1d0 ) nz = 1d0
-                  !       end if
-                  !    else
-                  !       ! z-direction
-                  !       nx = nx - dxrw/dx
-                  !       if ( nx .lt. 0d0 ) nx = 0d0
-                  !       if ( nx .gt. 1d0 ) nx = 1d0
-                  !       ny = ny - dyrw/dy
-                  !       if ( ny .lt. 0d0 ) ny = 0d0
-                  !       if ( ny .gt. 1d0 ) ny = 1d0
-                  !       nz = 1.0d0
-                  !       if ( exitFace .eq. 5 ) nz=0d0
-                  !    end if 
-                  !    
-
-                  !    ! And update dispersion values to position 
-                  !    ! given by rebound interface
-                  !    call this%LinearInterpolationVelocities( x, y, z, vx, vy, vz )
-                  !    call this%DispersionDivergenceDischarge( x, y, z, alphaL, alphaT, Dmol, divDx, divDy, divDz )
-                  !    call this%DisplacementRandomDischarge(   x, y, z, alphaL, alphaT, Dmol, dBx, dBy, dBz )
-
-                  !    !! Update current time
-                  !    !t = t + dt
-
-                  !    !! Recompute dt for maximumTime 
-                  !    !if (maximumTime .lt. t) then
-                  !    !    t  = t - dt
-                  !    !    dt = maximumTime - t
-                  !    !    t  = maximumTime
-                  !    !    reachedMaximumTime = .true.
-
-                  !    !    call this%AdvectionDisplacement( x, y, z, dt, vx, vy, vz, dAdvx, dAdvy, dAdvz )
-
-                  !    !    ! Compute RWPT movement
-                  !    !    dxrw = dAdvx + divDx*dt + dBx*sqrt( dt )
-                  !    !    nx   = x + dxrw/dx
-                  !    !    dyrw = dAdvy + divDy*dt + dBy*sqrt( dt )
-                  !    !    ny   = y + dyrw/dy
-                  !    !    if ( .not. twoDimensions ) then 
-                  !    !        dzrw = dAdvz + divDz*dt + dBz*sqrt( dt )
-                  !    !        nz   = z + dzrw/dz
-                  !    !    end if
-
-                  !    !end if 
-
-                  !    ! Leave elastic rebound and continue new 
-                  !    ! interface loop
-                  !    exitFace = 0
-
-                  !end if 
 
   ! RWPT
   subroutine pr_LinearInterpolationVelocities( this, x, y, z, vx, vy, vz )
@@ -1511,11 +1376,11 @@ contains
               z2    = (-BFace - zsqrt )/( 2*AFace )
 
               ! Compute new dt
-              if ( ( z1 .gt. 0d0 ) .and. ( z2 .gt. 0d0 ) ) then
+              if ( ( abs(z1) .gt. 0d0 ) .and. ( abs(z2) .gt. 0d0 ) ) then
                   dtxyz(1) = min( z1**2, z2**2 )
-              else if ( z1 .gt. 0d0 ) then
+              else if ( abs(z1) .gt. 0d0 ) then
                   dtxyz(1) = z1**2
-              else if ( z2 .gt. 0d0 ) then
+              else if ( abs(z2) .gt. 0d0 ) then
                   dtxyz(1) = z2**2
               end if
 
@@ -1527,7 +1392,7 @@ contains
 
       end if
 
-
+      dInterface = 0d0
       ! Leaving through y face
       if ( ( ny .gt. 1.0d0 ) .or. ( ny .lt. 0d0 )  ) then
 
@@ -1560,11 +1425,11 @@ contains
               z2    = (-BFace - zsqrt )/( 2*AFace )
 
               ! Determine new dt
-              if ( ( z1 .gt. 0d0 ) .and. ( z2 .gt. 0d0 ) ) then
+              if ( ( abs(z1) .gt. 0d0 ) .and. ( abs(z2) .gt. 0d0 ) ) then
                   dtxyz(2) = min( z1**2, z2**2 )
-              else if ( z1 .gt. 0d0 ) then
+              else if ( abs(z1) .gt. 0d0 ) then
                   dtxyz(2) = z1**2
-              else if ( z2 .gt. 0d0 ) then
+              else if ( abs(z2) .gt. 0d0 ) then
                   dtxyz(2) = z2**2
               end if
 
@@ -1576,7 +1441,7 @@ contains
 
       end if
 
-
+      dInterface = 0d0
       ! Leaving through z face
       if ( ( nz .gt. 1.0d0 ) .or. ( nz .lt. 0d0 )  ) then
 
@@ -1608,11 +1473,11 @@ contains
               z1    = (-BFace + zsqrt )/( 2*AFace )
               z2    = (-BFace - zsqrt )/( 2*AFace )
 
-              if ( ( z1 .gt. 0d0 ) .and. ( z2 .gt. 0d0 ) ) then
+              if ( ( abs(z1) .gt. 0d0 ) .and. ( abs(z2) .gt. 0d0 ) ) then
                   dtxyz(3) = min( z1**2, z2**2 )
-              else if ( z1 .gt. 0d0 ) then
+              else if ( abs(z1) .gt. 0d0 ) then
                   dtxyz(3) = z1**2
-              else if ( z2 .gt. 0d0 ) then
+              else if ( abs(z2) .gt. 0d0 ) then
                   dtxyz(3) = z2**2
               end if
 

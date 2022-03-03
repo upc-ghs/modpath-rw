@@ -399,9 +399,6 @@ contains
           print *, '* TRACKCELL: IBOUNDTS.eq.0, CELL NUMBER', this%CellData%CellNumber
           trackCellResult%Status = trackCellResult%Status_InactiveCell()
           return
-      ! else !(?)
-      ! Can I verify is cell is dry ?
-      ! 
       end if
       
       ! Add the initial location to the TrackingPoints list
@@ -494,8 +491,6 @@ contains
       ! The loop count is set to 100. If it goes through the loop 100 times then something is wrong. 
       ! In that case, trackCellResult%Status will be set to Undefined and the result will be returned.
       do count = 1, 100
-
-          !print *, 'TrackCell: Tracking loop count', count
 
           ! RWPT
           call this%TrackSubCell%ExecuteRandomWalkParticleTracking( stopIfNoSubCellExit,subLoc, &
@@ -620,9 +615,6 @@ contains
           ! RWPT
           ! If particle is in a dry cell 
           else if(subCellResult%Status .eq. subCellResult%Status_InactiveCell()) then
-              !pLoc = this%TrackSubCell%SubCellData%ConvertToLocalParentCoordinate(subCellResult%FinalLocation)
-              !pLoc%Layer = layer
-              !call trackCellResult%TrackingPoints%AddItem(pLoc)
               trackCellResult%Status = trackCellResult%Status_InactiveCell()
               trackCellResult%ExitFace       = 0
               trackCellResult%NextCellNumber = 0
