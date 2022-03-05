@@ -530,7 +530,6 @@ contains
       else
           call ustop('Invalid starting locations file name. stop.')
       end if
-      print *, 'READ AND PREPARE LOCATIONS, PARTICLES'
       call ReadAndPrepareLocations(slocUnit, outUnit, this%ParticleGroups(n),   &
         ibound, grid%CellCount, grid, seqNumber)
       write(outUnit, '(a,i4,a,i10,a)') 'Particle group ', n, ' contains ',      &

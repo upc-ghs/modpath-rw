@@ -660,11 +660,14 @@
     end if
     
     print *, 'MPATH: WILL ENTER PARTICLE LOOP '
-    ! Track particles
+    !! Track particles
     pendingCount = 0
     activeCount = 0
     if(simulationData%ParticleGroupCount .gt. 0) then
         do groupIndex = 1, simulationData%ParticleGroupCount
+            ! Track particles
+            !pendingCount = 0
+            !activeCount = 0
             print *, ' ## PARTICLEGROUPINDEX, ', groupIndex
             !$omp parallel do schedule( dynamic,1 )          &
             !$omp default( none )                            &
@@ -877,44 +880,62 @@
 
             end do
             !$omp end parallel do
-        end do
-    end if
-    print *, 'MPATH: LEAVING PARTICLE LOOP '
-   
+            print *, 'MPATH: LEAVING PARTICLE LOOP '
 
-    ! GPKDE
-    if ( simulationData%TrackingOptions%GPKDEReconstruction ) then
-        activeCounter = 0
-        ! Get active particles coordinates
-        print *, 'ACTIVE: ', activeCount
-        if ( allocated( activeParticleCoordinates ) ) deallocate( activeParticleCoordinates )
-        allocate( activeParticleCoordinates(activeCount,3) )
 
-        ! Note that at this point 
-        ! groupIndex is still valid
+            ! GPKDE for the current groupIndex
+            ! Note that at this point 
+            ! groupIndex is still valid
+            if ( simulationData%TrackingOptions%GPKDEReconstruction ) then
 
-        ! Could be parallelized ?
-        do particleIndex = 1, simulationData%ParticleGroups(groupIndex)%TotalParticleCount
-            p => simulationData%ParticleGroups(groupIndex)%Particles(particleIndex)
-            ! If active, to the array for GPKDE
-            ! inactive_cell particles should also be processed
-            if( (p%Status .eq. 1) .or. (p%Status .eq. 7) ) then
-            !if(p%Status .eq. 1) then
-                activeCounter = activeCounter + 1
-                activeParticleCoordinates( activeCounter, 1 ) = p%GlobalX
-                activeParticleCoordinates( activeCounter, 2 ) = p%GlobalY
-                activeParticleCoordinates( activeCounter, 3 ) = p%GlobalZ
+                print *, 'GPKDE: STARTING CONCENTRATION RECONSTRUCTION '
+
+                ! Count how many active after trackpath, not necessarilly the same 
+                ! as activeCount
+                activeCounter = 0
+                do particleIndex = 1, simulationData%ParticleGroups(groupIndex)%TotalParticleCount
+                    p => simulationData%ParticleGroups(groupIndex)%Particles(particleIndex)
+                    ! If active, to the array for GPKDE
+                    if( (p%Status .eq. 1) ) then
+                        activeCounter = activeCounter + 1
+                    end if
+                end do
+
+                ! Allocate active particles coordinates
+                if ( allocated( activeParticleCoordinates ) ) deallocate( activeParticleCoordinates )
+                allocate( activeParticleCoordinates(activeCounter,3) )
+
+                ! Could be parallelized ?
+                print *, 'TIME INDEX: ', nt, ' PARTICLE GROUPINDEX ', groupIndex
+
+                ! Restart active counter and fill coordinates array
+                activeCounter = 0 
+                do particleIndex = 1, simulationData%ParticleGroups(groupIndex)%TotalParticleCount
+                    p => simulationData%ParticleGroups(groupIndex)%Particles(particleIndex)
+                    ! If active, to the array for GPKDE
+                    if( (p%Status .eq. 1) ) then
+                        activeCounter = activeCounter + 1
+                        activeParticleCoordinates( activeCounter, 1 ) = p%GlobalX
+                        activeParticleCoordinates( activeCounter, 2 ) = p%GlobalY
+                        activeParticleCoordinates( activeCounter, 3 ) = p%GlobalZ
+                    end if
+                end do
+
+                call gpkde%ComputeDensity(                                              &
+                   activeParticleCoordinates,                                           &
+                   outputFileUnit     = simulationData%TrackingOptions%gpkdeOutputUnit, &
+                   outputDataId       = nt,                                             &
+                   particleGroupId    = groupIndex                                      & 
+                )
+
             end if
+            !call exit(0)
+
+
         end do
-        call gpkde%ComputeDensity(                                              &
-           activeParticleCoordinates,                                           &
-           outputFileUnit     = simulationData%TrackingOptions%gpkdeOutputUnit, &
-           outputDataId       = nt,                                             &
-           particleGroupId    = groupIndex                                      & 
-        )
+
 
     end if
-    !call exit(0)
 
     ! Update tracking time
     time = maxTime
