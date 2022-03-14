@@ -659,16 +659,12 @@
         end if
     end if
     
-    print *, 'MPATH: WILL ENTER PARTICLE LOOP '
-    !! Track particles
+    ! Track particles
     pendingCount = 0
     activeCount = 0
     if(simulationData%ParticleGroupCount .gt. 0) then
         do groupIndex = 1, simulationData%ParticleGroupCount
-            ! Track particles
-            !pendingCount = 0
-            !activeCount = 0
-            print *, ' ## PARTICLEGROUPINDEX, ', groupIndex
+            print *, ' -- groupIndex: ', groupIndex
             !$omp parallel do schedule( dynamic,1 )          &
             !$omp default( none )                            &
             !$omp shared( groupIndex )                       &
@@ -880,7 +876,6 @@
 
             end do
             !$omp end parallel do
-            print *, 'MPATH: LEAVING PARTICLE LOOP '
 
 
             ! GPKDE for the current groupIndex
@@ -906,7 +901,7 @@
                 allocate( activeParticleCoordinates(activeCounter,3) )
 
                 ! Could be parallelized ?
-                print *, 'TIME INDEX: ', nt, ' PARTICLE GROUPINDEX ', groupIndex
+                !print *, 'TIME INDEX: ', nt, ' PARTICLE GROUPINDEX ', groupIndex
 
                 ! Restart active counter and fill coordinates array
                 activeCounter = 0 
