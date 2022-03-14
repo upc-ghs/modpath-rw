@@ -666,11 +666,13 @@ contains
               reachedMaximumTime = .true.
           end if 
 
+
           ! Compute RWPT movement
           call this%LinearInterpolationVelocities( x, y, z, vx, vy, vz )
           call this%DispersionDivergenceDischarge( x, y, z, alphaL, alphaT, Dmol, divDx, divDy, divDz )
           call this%DisplacementRandomDischarge( x, y, z, alphaL, alphaT, Dmol, dBx, dBy, dBz )
           call this%AdvectionDisplacement( x, y, z, dt, vx, vy, vz, dAdvx, dAdvy, dAdvz )
+
 
           dxrw = dAdvx + divDx*dt + dBx*sqrt( dt )
           nx   = x + dxrw/dx
@@ -681,9 +683,11 @@ contains
               nz   = z + dzrw/dz
           end if
 
+
           ! If by any reason dzrw/dz .gt. 1 then 
           ! something is making these values blow up
           ! It will leave the cell immediatelly
+
 
           ! particleLeavingCell:
           ! Detect if particle leaving the cell
@@ -701,6 +705,10 @@ contains
 
               intLoopCounter = intLoopCounter + 1
               dtxyz(:) = 0d0
+
+              if( intLoopCounter .gt. 10 ) then 
+                  call exit(0)
+              end if
 
               ! Recompute dt for exact interface
               call this%ExitFaceAndUpdateTimeStep( x, y, z, nx, ny, nz, &
@@ -748,7 +756,7 @@ contains
                   if ( exitFace .eq. 5 ) nz=0d0
               else
                   ! If exitFace .eq. 0
-                  !print *, '######### RESTARTING', cellNumber, intLoopCounter
+                  print *, '######### RESTARTING', cellNumber, intLoopCounter
                   ! Restart new coordinates 
                   nx = initialLocation%LocalX
                   ny = initialLocation%LocalY
@@ -758,265 +766,323 @@ contains
                   dt = dtold
                   posRestartCounter = posRestartCounter + 1
 
+                  if ( posRestartCounter .gt. 5 ) then 
+                    ! Something wrong, leave
+                    trackingResult%ExitFace = 0
+                    trackingResult%Status = trackingResult%Status_Undefined()
+                    trackingResult%FinalLocation%CellNumber = cellNumber
+                    trackingResult%FinalLocation%LocalX = x
+                    trackingResult%FinalLocation%LocalY = y
+                    trackingResult%FinalLocation%LocalZ = z
+                    trackingResult%FinalLocation%TrackingTime = t
+                    return
+                  end if
+                  
                   ! Exit interface loop and try again,
                   ! new random displacements
                   exit
-
               end if
-              
+             
 
-              ! Boundary conditions
-              ! Logic should be: 
-              ! Is there an interface and which kind
+              ! Think how to integrate these conditions into single 
+              ! interface loop.  
 
-              ! elasticRebound:
-              ! Verify if particle has to rebound 
-              ! against boundary face 
-              reboundCounter = 0
-              do while( ( exitFace .gt. 0 ) )
+              ! Found proper interface ?
+              !
+              ! It is possible that nx,ny,nz are not consistent
+              ! values after previous displacement "to the interface".
+              ! This effect is originated due to changing direction of displacement vector 
+              ! for different dts. So even after finding time step for exitFace,
+              ! this new timestep may lead to landing outside the cell from an orthogonal 
+              ! direction, typical case of cell corners. If that is the case, then 
+              ! interface loop continues but now finding a smaller timestep for the "new" crossing.
+              ! 
+              if (                                       &
+                    ( nx .gt. 1.0d0 ) .or. ( nx .lt. 0d0 )  .or. &
+                    ( ny .gt. 1.0d0 ) .or. ( ny .lt. 0d0 )  .or. &
+                    ( nz .gt. 1.0d0 ) .or. ( nz .lt. 0d0 )       & 
+                ) then 
+                  ! Continue looking exact interface
+                  continue
+              else
+                  ! Once the interface is consistent, 
+                  ! apply boundary conditions
 
-                  ! If not connected to rebound boundary cell, leave
-                  if ( this%SubCellData%Connection(exitFace) .ne. 0 ) then 
-                      !print *, '## NO REBOUND LOOP ## '
-                      exit
-                  end if 
+                  ! Boundary conditions
+                  ! Logic should be: 
+                  ! Is there an interface and which kind
 
+                  ! elasticRebound:
+                  !
+                  ! Verify if particle has to rebound 
+                  ! against boundary face 
+                  !
+                  ! note: one of the possible outputs
+                  ! from a reboundBoundary relies on 
+                  ! the interface processing 
+                  ! being inside the interface detection loop
+                  reboundCounter = 0
 
-                  ! Is zero, a boundary, inactive
-                  reboundCounter = reboundCounter + 1
-                  !print *, '## REBOUND LOOP. exitFace: ', exitFace, dtxyz
-                  !print *, ' COORDINATES STARTING POINT', x, y, z
-                  !print *, ' COORDINATES REBOUND, INTERFACE:', nx, ny, nz
-                  !print *, ' TIME STEP: ', dt
-                  !if ( this%SubCellData%partiallyDry ) then 
-                  !  print *, ' CELL IS PARTIALLY DRY, dz ', dz
-                  !else if ( this%SubCellData%dry ) then 
-                  !  print *, ' CELL IS DRY, dz ', dz
-                  !end if 
-                
+                  ! could be redundant 
+                  do while( ( exitFace .gt. 0 ) )
 
-                  if ( reboundCounter .gt. 10 ) then
-                      ! If particle has been rebounding for a long time, stop
-                      ! Note: This will not occur as each output case is already 
-                      ! managed finalizing with exitFace .eq. 0 
-                      ! print *, '      ** CLOSING REBOUND WITH REBOUND COUNTER'
-                      trackingResult%ExitFace = 0
-                      trackingResult%Status   = trackingResult%Status_Undefined()
-                      trackingResult%FinalLocation%CellNumber = cellNumber
-                      trackingResult%FinalLocation%LocalX = x
-                      trackingResult%FinalLocation%LocalY = y
-                      trackingResult%FinalLocation%LocalZ = z
-                      trackingResult%FinalLocation%TrackingTime = t
-                      return
-
-                  end if 
-
-
-                  ! Save interface positions 
-                  xi = nx
-                  yi = ny
-                  zi = nz
-                 
-
-                  ! If dt .eq. 0d0 then the particle is exactly 
-                  ! at the interface, and is a rebound interface. 
-                  if ( dt .eq. 0d0 ) then
-                      !print *, '################################################ !! MARKED AS INACTIVE'
-                      !! Do something
-                      !! More elegant maybe
-                      !trackingResult%ExitFace = 0
-                      !trackingResult%Status   = trackingResult%Status_InactiveCell()
-                      !trackingResult%FinalLocation%CellNumber = cellNumber
-                      !trackingResult%FinalLocation%LocalX = x
-                      !trackingResult%FinalLocation%LocalY = y
-                      !trackingResult%FinalLocation%LocalZ = z
-                      !trackingResult%FinalLocation%TrackingTime = t
-                      !return
-
-                      !print *, '######### RESTARTING FROM REBOUND', cellNumber, intLoopCounter
-                      ! Restart new coordinates 
-                      nx = initialLocation%LocalX
-                      ny = initialLocation%LocalY
-                      nz = initialLocation%LocalZ
-                      !x  = initialLocation%LocalX
-                      !y  = initialLocation%LocalY
-                      !z  = initialLocation%LocalZ
-                      ! Restart time 
-                      t  = t - dt
-                      dt = dtold
-                      exitFace = 0
-                      posRestartCounter = posRestartCounter + 1
-
-                      ! With nx, ny, nz adopting the starting values, 
-                      ! interface loop is also broken
-                      !print *, '######### RESTARTING FROM REBOUND, x, y, z', x, y, z 
-                      !print *, '######### RESTARTING FROM REBOUND, nx, ny, nz', nx, ny,nz 
-
-                      ! Exit rebound loop 
-                      exit
-
-
-                  end if
-                  
-
-                  ! Update current time with same time step 
-                  ! determined for interface displacement 
-                  t = t + dt
-
-                  ! Remember that dt to interface is smaller
-                  ! than cell base time step
-
-                  ! In case the new time for an elastic rebound 
-                  ! is higher than maximum time, updates dt
-                  if (maximumTime .lt. t) then
-                      ! Note: if maximumTime is reached in second half of 
-                      ! rebound, rebound is shortened
-
-                      ! Recompute time step 
-                      t  = t - dt
-                      dt = maximumTime - t
-                      t  = maximumTime
-                      reachedMaximumTime = .true.
-
-                      ! Recompute advection displacement for new time step, 
-                      ! as if starting from original position
-                      call this%AdvectionDisplacement( x, y, z, dt, vx, vy, vz, dAdvx, dAdvy, dAdvz )
-
-                      ! Recompute RWPT displacements for new dt
-                      dxrw = dAdvx + divDx*dt + dBx*sqrt( dt )
-                      dyrw = dAdvy + divDy*dt + dBy*sqrt( dt )
-                      if ( .not. twoDimensions ) then 
-                          dzrw = dAdvz + divDz*dt + dBz*sqrt( dt )
-                      end if
-
-                      ! If particle lands outside cell, 
-                      ! entering interface loop will modify
-                      ! reachedMaximumTime back to .false.
-                      !exitFace = 0
-
-                      print *, '    TIME STEP IS SHORTENED', dt
-
-                  end if ! maximumTime 
-
-
-                  ! Particle rebounds with elastic reflection
-                  if ( ( exitFace .eq. 1 ) .or. ( exitFace .eq. 2 ) ) then 
-                     ! x-direction
-                     nx = nx - dxrw/dx
-                     print *, '      VERIFY INTERFACE, nx', x + dxrw/dx
-                     !nx = x
-                     ny = ny + dyrw/dy
-                     if ( .not. twoDimensions ) then
-                         nz = nz + dzrw/dz
-                     end if
-                  else if ( ( exitFace .eq. 3 ) .or. ( exitFace .eq. 4 ) ) then 
-                     ! y-direction
-                     nx = nx + dxrw/dx
-                     ny = ny - dyrw/dy
-                     !ny = y
-                     if ( .not. twoDimensions ) then
-                         nz = nz + dzrw/dz
-                     end if
-                     print *, '      VERIFY INTERFACE, ny', y + dyrw/dy
-                  else
-                     ! z-direction
-                     nx = nx + dxrw/dx
-                     ny = ny + dyrw/dy
-                     nz = nz - dzrw/dz
-                     !nz = z
-                     print *, '      VERIFY INTERFACE, nz', z + dzrw/dz
-                  end if
-
-
-                  ! If nx, ny or nz are outside cell interfaces, 
-                  ! then the interface loop will continue.
-                  ! Set initial particle position to rebound interface
-                  if (                                             &
-                      ( nx .gt. 1.0d0 ) .or. ( nx .lt. 0d0 )  .or. &
-                      ( ny .gt. 1.0d0 ) .or. ( ny .lt. 0d0 )  .or. &
-                      ( nz .gt. 1.0d0 ) .or. ( nz .lt. 0d0 )       & 
-                  ) then
-
-                      print *, '    ELASTICREBOUND: PARTICLE LEAVES CELL', nx,ny,nz
-
-                      ! Set starting position to rebound interface
-                      x = xi
-                      y = yi
-                      z = zi
-
-                      ! As particle is at the rebound interface, reverts
-                      ! displacements of the rebound direction. 
-                      ! These are going to be used in determining 
-                      ! time step and exact exit position at interface loop
-                      if ( ( exitFace .eq. 1 ) .or. ( exitFace .eq. 2 ) ) then 
-                          vx    = -vx
-                          divDx = -divDx
-                          dBx   = -dBx
-                      end if 
-                      if ( ( exitFace .eq. 3 ) .or. ( exitFace .eq. 4 ) ) then 
-                          vy    = -vy
-                          divDy = -divDy
-                          dBy   = -dBy
-                      end if
-                      if ( .not. twoDimensions ) then  
-                          if ( ( exitFace .eq. 5 ) .or. ( exitFace .eq. 6 ) ) then 
-                              vz    = -vz
-                              divDz = -divDz
-                              dBz   = -dBz
-                          end if 
+                      ! If not connected to rebound boundary cell, leave
+                      if ( this%SubCellData%Connection(exitFace) .ne. 0 ) then 
+                          exit
                       end if 
 
-                      ! Go to: particleLeavingCell
-                      exitFace = 0
 
-                  else
-                      print *, '    ELASTICREBOUND: PARTICLE INSIDE CELL', nx,ny,nz
-                      ! If nx, ny and nz are inside the cell, then no problem
-                      ! particleLeavingCell loop is broken and will update 
-                      ! particle position to rebound position and continue
-                      ! time loop with cell characteristic time step
-                      dt =  dtold
-                      exitFace = 0
+                      ! Is zero, a boundary, inactive
+                      reboundCounter = reboundCounter + 1
+                      !print *, '## REBOUND LOOP. exitFace: ', exitFace, dtxyz
+                      !print *, ' COORDINATES STARTING POINT', x, y, z
+                      !print *, ' COORDINATES REBOUND, INTERFACE:', nx, ny, nz
+                      !print *, ' TIME STEP: ', dt
+                      !if ( this%SubCellData%partiallyDry ) then 
+                      !  print *, ' CELL IS PARTIALLY DRY, dz ', dz
+                      !else if ( this%SubCellData%dry ) then 
+                      !  print *, ' CELL IS DRY, dz ', dz
+                      !end if 
+                    
 
-                      ! If one of the positions is exactly an interface
-                      if (                                          & 
-                          ( nx .eq. 0d0 ) .or. ( nx .eq. 1d0 ) .or. & 
-                          ( ny .eq. 0d0 ) .or. ( ny .eq. 1d0 ) .or. & 
-                          ( nz .eq. 0d0 ) .or. ( nz .eq. 1d0 )      & 
-                      ) then
+                      if ( reboundCounter .gt. 10 ) then
+                          ! If particle has been rebounding for a long time, stop
+                          ! Note: This will not occur as each output case is already 
+                          ! managed finalizing with exitFace .eq. 0 
+                          ! print *, '      ** CLOSING REBOUND WITH REBOUND COUNTER'
+                          trackingResult%ExitFace = 0
+                          trackingResult%Status   = trackingResult%Status_Undefined()
+                          trackingResult%FinalLocation%CellNumber = cellNumber
+                          trackingResult%FinalLocation%LocalX = x
+                          trackingResult%FinalLocation%LocalY = y
+                          trackingResult%FinalLocation%LocalZ = z
+                          trackingResult%FinalLocation%TrackingTime = t
+                          return
 
-                          if ( nx .eq. 0d0 ) exitFace = 1 
-                          if ( nx .eq. 1d0 ) exitFace = 2 
-                          if ( ny .eq. 0d0 ) exitFace = 3
-                          if ( ny .eq. 1d0 ) exitFace = 4
+                      end if 
+
+
+                      ! Save interface positions 
+                      xi = nx
+                      yi = ny
+                      zi = nz
+                     
+
+                      ! If dt .eq. 0d0 then the particle is exactly 
+                      ! at the interface, and is a rebound interface. 
+                      if ( dt .eq. 0d0 ) then
+                          !print *, '################################################ !! MARKED AS INACTIVE'
+                          !! Do something
+                          !! More elegant maybe
+                          !trackingResult%ExitFace = 0
+                          !trackingResult%Status   = trackingResult%Status_InactiveCell()
+                          !trackingResult%FinalLocation%CellNumber = cellNumber
+                          !trackingResult%FinalLocation%LocalX = x
+                          !trackingResult%FinalLocation%LocalY = y
+                          !trackingResult%FinalLocation%LocalZ = z
+                          !trackingResult%FinalLocation%TrackingTime = t
+                          !return
+
+                          !print *, '######### RESTARTING FROM REBOUND', cellNumber, intLoopCounter
+                          ! Restart new coordinates 
+                          nx = initialLocation%LocalX
+                          ny = initialLocation%LocalY
+                          nz = initialLocation%LocalZ
+                          !x  = initialLocation%LocalX
+                          !y  = initialLocation%LocalY
+                          !z  = initialLocation%LocalZ
+                          ! Restart time 
+                          t  = t - dt
+                          dt = dtold
+                          exitFace = 0
+                          posRestartCounter = posRestartCounter + 1
+
+                          !! With nx, ny, nz adopting the starting values, 
+                          !! interface loop is also broken
+                          !print *, '######### RESTARTING FROM REBOUND, x, y, z', x, y, z 
+                          !print *, '######### RESTARTING FROM REBOUND, nx, ny, nz', nx, ny,nz 
+
+                          ! Exit rebound loop 
+                          exit
+
+
+                      end if
+                      
+
+                      ! Update current time with same time step 
+                      ! determined for interface displacement 
+                      t = t + dt
+
+                      ! Remember that dt to interface is smaller
+                      ! than cell base time step
+
+                      ! In case the new time for an elastic rebound 
+                      ! is higher than maximum time, updates dt
+                      if (maximumTime .lt. t) then
+                          ! Note: if maximumTime is reached in second half of 
+                          ! rebound, rebound is shortened
+
+                          ! Recompute time step 
+                          t  = t - dt
+                          dt = maximumTime - t
+                          t  = maximumTime
+                          reachedMaximumTime = .true.
+
+                          ! Recompute advection displacement for new time step, 
+                          ! as if starting from original position
+                          call this%AdvectionDisplacement( x, y, z, dt, vx, vy, vz, dAdvx, dAdvy, dAdvz )
+
+                          ! Recompute RWPT displacements for new dt
+                          dxrw = dAdvx + divDx*dt + dBx*sqrt( dt )
+                          dyrw = dAdvy + divDy*dt + dBy*sqrt( dt )
                           if ( .not. twoDimensions ) then 
-                            if ( nz .eq. 0d0 ) exitFace = 5
-                            if ( nz .eq. 1d0 ) exitFace = 6
+                              dzrw = dAdvz + divDz*dt + dBz*sqrt( dt )
                           end if
 
+                          ! If particle lands outside cell, 
+                          ! entering interface loop will modify
+                          ! reachedMaximumTime back to .false.
+                          !exitFace = 0 ! It is used later so dont' reset yet
+
+                          !print *, '    TIME STEP IS SHORTENED', dt
+
+                      end if ! maximumTime 
+
+
+                      ! Particle rebounds with elastic reflection
+                      if ( ( exitFace .eq. 1 ) .or. ( exitFace .eq. 2 ) ) then 
+                         ! x-direction
+                         nx = nx - dxrw/dx
+                         !print *, '      VERIFY INTERFACE, nx', x + dxrw/dx
+                         !nx = x
+                         ny = ny + dyrw/dy
+                         if ( .not. twoDimensions ) then
+                             nz = nz + dzrw/dz
+                         end if
+                      else if ( ( exitFace .eq. 3 ) .or. ( exitFace .eq. 4 ) ) then 
+                         ! y-direction
+                         nx = nx + dxrw/dx
+                         ny = ny - dyrw/dy
+                         !ny = y
+                         if ( .not. twoDimensions ) then
+                             nz = nz + dzrw/dz
+                         end if
+                         !print *, '      VERIFY INTERFACE, ny', y + dyrw/dy
+                      else
+                         ! z-direction
+                         nx = nx + dxrw/dx
+                         ny = ny + dyrw/dy
+                         nz = nz - dzrw/dz
+                         !nz = z
+                         !print *, '      VERIFY INTERFACE, nz', z + dzrw/dz
                       end if
 
-                  end if ! outsideInterfaces  
 
-              end do ! elasticRebound
-             
-              !print *, '########## END OF INTERFACE LOOP START x,y,z ', x,y,z
-              !print *, '########## END OF INTERFACE LOOP nx,ny,nz,exitFace ', nx,ny,nz,exitFace 
-              !print *, '########## END OF INTERFACE LOOP VERIFICATION nx,ny,nz ', x+dxrw/dx,y+dyrw/dy,z+dzrw/dz
-              !print *, '########## END OF INTERFACE LOOP dtxyz ', dtxyz 
+                      ! If nx, ny or nz are outside cell interfaces, 
+                      ! then the interface loop will continue.
+                      ! Set initial particle position to rebound interface
+                      if (                                             &
+                          ( nx .gt. 1.0d0 ) .or. ( nx .lt. 0d0 )  .or. &
+                          ( ny .gt. 1.0d0 ) .or. ( ny .lt. 0d0 )  .or. &
+                          ( nz .gt. 1.0d0 ) .or. ( nz .lt. 0d0 )       & 
+                      ) then
+
+                          !print *, '    ELASTICREBOUND: PARTICLE LEAVES CELL', nx,ny,nz, exitFace
+                          !print *, '    ELASTICREBOUND: INTERFACE', xi,yi,zi
+
+                          ! Set starting position to rebound interface
+                          x = xi
+                          y = yi
+                          z = zi
+
+                          ! As particle is at the rebound interface, reverts
+                          ! displacements of the rebound direction. 
+                          ! These are going to be used in determining 
+                          ! time step and exact exit position at interface loop
+                          if ( ( exitFace .eq. 1 ) .or. ( exitFace .eq. 2 ) ) then 
+                              vx    = -vx
+                              divDx = -divDx
+                              dBx   = -dBx
+                          end if 
+                          if ( ( exitFace .eq. 3 ) .or. ( exitFace .eq. 4 ) ) then 
+                              vy    = -vy
+                              divDy = -divDy
+                              dBy   = -dBy
+                          end if
+                          if ( .not. twoDimensions ) then  
+                              if ( ( exitFace .eq. 5 ) .or. ( exitFace .eq. 6 ) ) then 
+                                  vz    = -vz
+                                  divDz = -divDz
+                                  dBz   = -dBz
+                              end if 
+                          end if 
+
+                          ! Go to: particleLeavingCell
+                          exitFace = 0
+
+                      else
+                          !print *, '    ELASTICREBOUND: PARTICLE INSIDE CELL', nx,ny,nz
+                          ! If nx, ny and nz are inside the cell, then no problem
+                          ! particleLeavingCell loop is broken and will update 
+                          ! particle position to rebound position and continue
+                          ! time loop with cell characteristic time step
+                          dt =  dtold
+                          exitFace = 0
+
+                          ! If one of the positions is exactly an interface
+                          if (                                          & 
+                              ( nx .eq. 0d0 ) .or. ( nx .eq. 1d0 ) .or. & 
+                              ( ny .eq. 0d0 ) .or. ( ny .eq. 1d0 ) .or. & 
+                              ( nz .eq. 0d0 ) .or. ( nz .eq. 1d0 )      & 
+                          ) then
+
+                              if ( nx .eq. 0d0 ) exitFace = 1 
+                              if ( nx .eq. 1d0 ) exitFace = 2 
+                              if ( ny .eq. 0d0 ) exitFace = 3
+                              if ( ny .eq. 1d0 ) exitFace = 4
+                              if ( .not. twoDimensions ) then 
+                                if ( nz .eq. 0d0 ) exitFace = 5
+                                if ( nz .eq. 1d0 ) exitFace = 6
+                              end if
+
+                          end if
+
+                      end if ! outsideInterfaces  
+
+                  end do ! elasticRebound
+
+                end if ! If found proper interface
+
           end do ! particleLeavingCell
 
 
           ! Report and leave
-          if ( ( reachedMaximumTime ) .or. ( exitFace .ne. 0 ) ) then
 
-              !print *, '     ## REPORT AND LEAVE ##'
+          ! Time is up
+          if (reachedMaximumTime) then
+              ! In this case it is allowed for a particle
+              ! to reach the maximum time and eventually have an exit face
+              trackingResult%Status = trackingResult%Status_ReachedMaximumTime()
+              trackingResult%ExitFace = exitFace
+              trackingResult%FinalLocation%CellNumber = cellNumber
+              trackingResult%FinalLocation%LocalX = nx
+              trackingResult%FinalLocation%LocalY = ny
+              trackingResult%FinalLocation%LocalZ = nz
+              trackingResult%FinalLocation%TrackingTime = t
+              continueTimeLoop = .false.
 
-              if (reachedMaximumTime) then
-                  ! In this case it is allowed for a particle
-                  ! to reach the maximum time and eventually have an exit face
-                  trackingResult%Status = trackingResult%Status_ReachedMaximumTime()
+              ! Done
+              return
+          end if
 
+          ! Particle left cell
+          if( exitFace .gt. 0 ) then 
+              ! Depending connected cell id, it is determined 
+              ! what happens to particle 
+              if( this%SubCellData%Connection(exitFace) .lt. 0 ) then
+                  ! Internal transfer. This is the case for unstructured grid
+                  trackingResult%Status = trackingResult%Status_ExitAtInternalFace()
+                  trackingResult%ExitFaceConnection = this%SubCellData%Connection(exitFace)
                   trackingResult%ExitFace = exitFace
                   trackingResult%FinalLocation%CellNumber = cellNumber
                   trackingResult%FinalLocation%LocalX = nx
@@ -1028,51 +1094,26 @@ contains
                   ! Done
                   return
 
-              else
+              else if( this%SubCellData%Connection(exitFace) .gt. 0 ) then
+                  ! Is another active cell
+                  trackingResult%Status = trackingResult%Status_ExitAtCellFace()
+                  trackingResult%ExitFaceConnection = this%SubCellData%Connection(exitFace)
+                  trackingResult%ExitFace = exitFace
+                  trackingResult%FinalLocation%CellNumber = cellNumber
+                  trackingResult%FinalLocation%LocalX = nx
+                  trackingResult%FinalLocation%LocalY = ny
+                  trackingResult%FinalLocation%LocalZ = nz
+                  trackingResult%FinalLocation%TrackingTime = t
+                  continueTimeLoop = .false.
 
-                  ! Depending on status for cell 
-                  ! in ExitFaceConnection determine what happens to 
-                  ! the particle 
-                  if( this%SubCellData%Connection(exitFace) .lt. 0 ) then
-                      ! Internal transfer. This is the case for unstructured grid
-                      trackingResult%Status = trackingResult%Status_ExitAtInternalFace()
-                      trackingResult%ExitFaceConnection = this%SubCellData%Connection(exitFace)
-
-                      trackingResult%ExitFace = exitFace
-                      trackingResult%FinalLocation%CellNumber = cellNumber
-                      trackingResult%FinalLocation%LocalX = nx
-                      trackingResult%FinalLocation%LocalY = ny
-                      trackingResult%FinalLocation%LocalZ = nz
-                      trackingResult%FinalLocation%TrackingTime = t
-                      continueTimeLoop = .false.
-
-                      ! Done
-                      return
-
-                  else if( this%SubCellData%Connection(exitFace) .gt. 0 ) then
-                      ! Is another active cell
-                      trackingResult%Status = trackingResult%Status_ExitAtCellFace()
-                      trackingResult%ExitFaceConnection = this%SubCellData%Connection(exitFace)
-
-                      trackingResult%ExitFace = exitFace
-                      trackingResult%FinalLocation%CellNumber = cellNumber
-                      trackingResult%FinalLocation%LocalX = nx
-                      trackingResult%FinalLocation%LocalY = ny
-                      trackingResult%FinalLocation%LocalZ = nz
-                      trackingResult%FinalLocation%TrackingTime = t
-                      continueTimeLoop = .false.
-
-                      ! Done
-                      return
-
-                  end if
+                  ! Done
+                  return
 
               end if
 
-          end if ! Report and leave
+          end if 
 
 
-          !print *, '     ## UPDATE COORDINATES TO NEW POSITION ##'
           ! Update particle positions
           x = nx
           y = ny
