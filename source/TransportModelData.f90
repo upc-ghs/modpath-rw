@@ -13,12 +13,6 @@ module TransportModelDataModule
       doubleprecision,dimension(:),allocatable :: AlphaLong
       doubleprecision,dimension(:),allocatable :: AlphaTrans
       doubleprecision :: DMol
-
-      !logical :: SteadyState = .true.
-      !doubleprecision,dimension(:),pointer :: AlphaLong
-      !doubleprecision,dimension(:),pointer :: AlphaTrans
-      !doubleprecision,dimension(:),allocatable :: Porosity
-
       class(ModflowRectangularGridType),pointer :: Grid => null()
 
     contains
@@ -26,13 +20,11 @@ module TransportModelDataModule
       procedure :: Initialize=>pr_Initialize
       procedure :: Reset=>pr_Reset
       procedure :: ReadData=>pr_ReadData
-      !procedure :: SetDispersivities=>pr_SetDispersivities
 
     end type
 
 
 contains
-
 
 
     subroutine pr_Initialize( this, grid )
@@ -47,7 +39,6 @@ contains
     integer :: cellCount, gridType
     !---------------------------------------------------------------------------------------------------------------
 
-
         this%Initialized = .false.
         
         ! Call Reset to make sure that all arrays are initially unallocated
@@ -59,65 +50,9 @@ contains
         
         ! Check budget reader and grid data for compatibility and allocate appropriate cell-by-cell flow arrays
         gridType = grid%GridType
-        !select case (gridType)
-        !    case (1)
-        !        if((budgetReader%GetBudgetType() .ne. 1)) return
-        !        if((headReader%GridStyle .ne. 1) .or. (headReader%CellCount .ne. cellCount)) return
-        !        flowArraySize = budgetReader%GetTransportArraySize()
-        !        if(flowArraySize .ne. cellCount) return
-        !        allocate(this%TransportsRightFace(flowArraySize))
-        !        allocate(this%TransportsFrontFace(flowArraySize))
-        !        allocate(this%TransportsLowerFace(flowArraySize))
-        !        allocate(this%TransportsJA(0))
-        !    case (2)
-        !        if((budgetReader%GetBudgetType() .ne. 2)) return
-        !        if((headReader%GridStyle .ne. 2) .or. (headReader%CellCount .ne. cellCount)) return
-        !        flowArraySize = budgetReader%GetTransportArraySize()
-        !        if(flowArraySize .ne. grid%JaCount) return
-        !        allocate(this%TransportsJA(flowArraySize))
-        !        allocate(this%TransportsRightFace(0))
-        !        allocate(this%TransportsFrontFace(0))
-        !        allocate(this%TransportsLowerFace(0))
-        !    case (3, 4)
-        !        if((budgetReader%GetBudgetType() .ne. 2)) return
-        !        if((headReader%GridStyle .ne. 1) .or. (headReader%CellCount .ne. cellCount)) return
-        !        flowArraySize = budgetReader%GetTransportArraySize()
-        !        if(flowArraySize .ne. grid%JaCount) return
-        !        allocate(this%TransportsJA(flowArraySize))
-        !        allocate(this%TransportsRightFace(0))
-        !        allocate(this%TransportsFrontFace(0))
-        !        allocate(this%TransportsLowerFace(0))          
-        !    !case (4)
-        !    !    ! Not implemented
-        !    !    return
-        !    case default
-        !        return
-        !end select
-        !
-        !! Set pointers to budgetReader and grid. Assign tracking options.
-        !this%HeadReader => headReader
-        !this%BudgetReader => budgetReader
         this%Grid => grid
-        !this%HNoTransport = hNoTransport
-        !this%HDry = hDry
-        !
-        !! Allocate the rest of the arrays
-        !allocate(this%IBoundTS(cellCount))
-        !allocate(this%Heads(cellCount))
-        !allocate(this%SourceTransports(cellCount))
-        !allocate(this%SinkTransports(cellCount))
-        !allocate(this%StorageTransports(cellCount))
-        !allocate(this%SubFaceTransportsComputed(cellCount))
-        !allocate(this%BoundaryTransports(cellCount * 6))
-        !allocate(this%SubFaceTransports(cellCount * 4))
-        !
-        !! Allocate buffers for reading array and list data
-        !allocate(this%ListItemBuffer(this%BudgetReader%GetMaximumListItemCount()))
-        !allocate(this%ArrayBufferDbl(this%BudgetReader%GetMaximumArrayItemCount()))  
-        !allocate(this%ArrayBufferInt(this%BudgetReader%GetMaximumArrayItemCount()))
-        
+
         this%Initialized = .true.
-  
 
 
     end subroutine pr_Initialize
@@ -306,7 +241,6 @@ contains
     end subroutine pr_ReadData
 
 
-
     subroutine pr_Reset(this)
     !***************************************************************************************************************
     !
@@ -321,8 +255,6 @@ contains
         this%DMol = 0
         if(allocated(this%AlphaLong)) deallocate( this%AlphaLong )
         if(allocated(this%AlphaTrans)) deallocate( this%AlphaTrans )
-
-
 
     end subroutine pr_Reset
 
