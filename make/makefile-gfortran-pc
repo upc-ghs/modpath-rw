@@ -19,7 +19,7 @@ ${SOURCEDIR2}
 
 # Define the Fortran compile flags
 FC = gfortran
-FFLAGS = -fbacktrace -fopenmp -Wall -fbounds-check 
+FFLAGS = -g -fbacktrace -fopenmp -Wall -fbounds-check -fcheck=all -ffpe-trap=invalid,zero,overflow
 #FFLAGS = -O2 -fbacktrace -fopenmp 
 
 # Define the C compile flags
