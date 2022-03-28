@@ -6,7 +6,7 @@
 # the executable, and the executable name and path.
 OBJDIR = ./obj_temp
 BINDIR = .
-PROGRAM = mpath7rwpt
+PROGRAM = mpathrwpt
 
 SOURCEDIR1=../source
 SOURCEDIR2=../gpkde/src
