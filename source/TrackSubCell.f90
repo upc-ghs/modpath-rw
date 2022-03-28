@@ -659,7 +659,7 @@ contains
           ! Recompute dt for maximumTime 
           if (maximumTime .lt. t) then
               t  = t - dt
-              dt = maximumTime - t
+              dt = max( maximumTime - t, 0d0 )
               t  = maximumTime
               reachedMaximumTime = .true.
           end if 
@@ -892,7 +892,7 @@ contains
 
                           ! Recompute time step 
                           t  = t - dt
-                          dt = maximumTime - t
+                          dt = max( maximumTime - t, 0d0 )
                           t  = maximumTime
                           reachedMaximumTime = .true.
 
