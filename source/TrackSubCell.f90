@@ -2731,20 +2731,37 @@ contains
                            vBz )
       vBnorm   = sqrt( vBx**2 + vBy**2 + vBz**2 )
       vBnormxy = sqrt( vBx**2 + vBy**2 )
-    
+   
+
       ! Displacement matrix terms
       ! Refs: Fernàndez-García et al. 2005; Salamon et al. 2006
-      ! Requires some kind of handling for the case 
-      ! of zero vBnorm
-      B11 =       vBx*sqrt( 2*( alphaL*vBnorm + Dmol ) )/vBnorm
-      B12 =  -vBx*vBz*sqrt( 2*( alphaT*vBnorm + Dmol ) )/vBnorm/vBnormxy
-      B13 =      -vBy*sqrt( 2*( alphaT*vBnorm + Dmol ) )/vBnormxy
-      B21 =       vBy*sqrt( 2*( alphaL*vBnorm + Dmol ) )/vBnorm
-      B22 =  -vBy*vBz*sqrt( 2*( alphaT*vBnorm + Dmol ) )/vBnorm/vBnormxy
-      B23 =       vBx*sqrt( 2*( alphaT*vBnorm + Dmol ) )/vBnormxy
-      B31 =       vBz*sqrt( 2*( alphaL*vBnorm + Dmol ) )/vBnorm
-      B32 =  vBnormxy*sqrt( 2*( alphaT*vBnorm + Dmol ) )/vBnorm
-   
+      ! Handles the case of zero vBnorm
+      B11 = 0d0 
+      B12 = 0d0
+      B13 = 0d0
+      B21 = 0d0
+      B22 = 0d0
+      B23 = 0d0
+      B31 = 0d0
+      B32 = 0d0
+
+      if ( vBnorm .gt. 0d0 ) then
+
+          B11 =       vBx*sqrt( 2*( alphaL*vBnorm + Dmol ) )/vBnorm
+          B21 =       vBy*sqrt( 2*( alphaL*vBnorm + Dmol ) )/vBnorm
+          B31 =       vBz*sqrt( 2*( alphaL*vBnorm + Dmol ) )/vBnorm
+          B32 =  vBnormxy*sqrt( 2*( alphaT*vBnorm + Dmol ) )/vBnorm
+
+          if ( vBnormxy .gt. 0d0 ) then
+
+            B12 =  -vBx*vBz*sqrt( 2*( alphaT*vBnorm + Dmol ) )/vBnorm/vBnormxy
+            B13 =      -vBy*sqrt( 2*( alphaT*vBnorm + Dmol ) )/vBnormxy
+            B22 =  -vBy*vBz*sqrt( 2*( alphaT*vBnorm + Dmol ) )/vBnorm/vBnormxy
+            B23 =       vBx*sqrt( 2*( alphaT*vBnorm + Dmol ) )/vBnormxy
+
+          end if
+
+      end if 
 
       ! Compute random numbers
       call this%GenerateStandardNormalRandom( rdmx ) 
