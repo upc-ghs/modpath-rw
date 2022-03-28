@@ -628,7 +628,7 @@ contains
       dtold = dt
 
       ! Something wrong, leave
-      if ( dt .eq. 0 ) then 
+      if ( dt .le. 0 ) then 
           trackingResult%ExitFace = exitFace
           trackingResult%Status = trackingResult%Status_Undefined()
           trackingResult%FinalLocation%CellNumber = cellNumber
@@ -650,7 +650,6 @@ contains
       continueTimeLoop = .true.
       reachedMaximumTime = .false.
       do while( continueTimeLoop )
-          !print *, '## START TIME LOOP...'
 
           ! Time loop counter
           dtLoopCounter = dtLoopCounter + 1
@@ -661,7 +660,7 @@ contains
           ! Recompute dt for maximumTime 
           if (maximumTime .lt. t) then
               t  = t - dt
-              dt = maximumTime - t
+              dt = max( maximumTime - t, 0d0 ) ! avoids numerical error effects
               t  = maximumTime
               reachedMaximumTime = .true.
           end if 
@@ -673,7 +672,7 @@ contains
           call this%DisplacementRandomDischarge( x, y, z, alphaL, alphaT, Dmol, dBx, dBy, dBz )
           call this%AdvectionDisplacement( x, y, z, dt, vx, vy, vz, dAdvx, dAdvy, dAdvz )
 
-
+          print *, dAdvx, divDx , dBz, dt
           dxrw = dAdvx + divDx*dt + dBx*sqrt( dt )
           nx   = x + dxrw/dx
           dyrw = dAdvy + divDy*dt + dBy*sqrt( dt )
@@ -924,7 +923,7 @@ contains
 
                           ! Recompute time step 
                           t  = t - dt
-                          dt = maximumTime - t
+                          dt = max( maximumTime - t, 0d0 ) ! avoids numerical error effects
                           t  = maximumTime
                           reachedMaximumTime = .true.
 
