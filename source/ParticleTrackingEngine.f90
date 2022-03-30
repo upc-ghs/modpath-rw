@@ -1169,8 +1169,6 @@ subroutine pr_FillNeighborCellDataUnstructured( this, neighborCellData )
     logical :: forceCellRefinement
     !------------------------------------------------------------------
     
-    !print *, 'TrackingEngine: FillNeighborCellDataUnstructured'
-
     ! Reset all buffers
     do m = 1, 18 
         call neighborCellData( 1, m )%Reset() 
@@ -1225,9 +1223,11 @@ subroutine pr_FillNeighborCellsSubBuffer( this, &
     !
     ! Objective of this function is to fill portion of neighborCellsDataBuffer,
     ! related to cells connected to centerCellDataBuffer through faceNumber.
+    !
     ! In order to build a complete neighborhood for interpolation purposes, 
     ! it is necessary to request information about the cell connected through faceNumber
-    ! and then from this cell build two additional neighbors, for each faceNumber. 
+    ! and then, from this cell build two additional neighbors.
+    ! 
     ! The latter yields a method to get information from indirect connections 
     ! like those cells diagonally connected to the centerCellDataBuffer.
     !
@@ -1245,7 +1245,7 @@ subroutine pr_FillNeighborCellsSubBuffer( this, &
     !       - centerCellDataBuffer has a single connection through faceNumber
     !
     !           - Is this connection shared with another cell ? (connected to a bigger cell)
-    !           - Is this connection unique (same size cells)
+    !           - Is this connection unique ? (same size cells)
     !
     !   - If faceNumber is vertical (z axis)
     !       
@@ -1278,11 +1278,7 @@ subroutine pr_FillNeighborCellsSubBuffer( this, &
     integer :: directionId
     !---------------------------------------------------------------------
 
-    !print *, 'TrackingEngine: FillNeighborCellsSubBuffer, centerCell: ', centerCellDataBuffer%cellNumber, & 
-    !         ' faceNumber:', faceNumber
-
-
-    ! Handle the case of a z-axis faceNumber
+    ! Vertical axis faceNumber
     if ( faceNumber .ge. 5 ) then
         ! Consider skipping this if simulation is 2D
         
@@ -1315,7 +1311,6 @@ subroutine pr_FillNeighborCellsSubBuffer( this, &
 
 
     ! Horizontal axis faceNumber
-
     ! Connected to one or more cells ?
     if ( centerCellDataBuffer%SubFaceCounts( faceNumber ) .gt. 1 ) then
         ! Connected to more than one cell
@@ -1326,7 +1321,6 @@ subroutine pr_FillNeighborCellsSubBuffer( this, &
                                                                        forceCellRefinement )
 
         ! Fill indirect connection buffers
-
         ! Vertical face request
         if ( firstNeighborFaceNumber .ge. 5 ) then 
             ! Consider skipping this if simulation is 2D
@@ -1399,21 +1393,17 @@ subroutine pr_FillNeighborCellsSubBuffer( this, &
 
     else if ( centerCellDataBuffer%GetFaceConnection( faceNumber, 1 ) .gt. 0 ) then
         ! Connected to one cell
-        !print *, 'TrackingEngine: FillNeighborCellsSubBuffer: Connected to One Cell'
 
         ! Fill direct connection buffer 
         call pr_FillNeighborCellsConnectionFromHorizontalFace( this, centerCellDataBuffer, &
                     faceNumber, neighborCellsDataBuffer( :, directConnectionBufferIndex ), &
                                                                        forceCellRefinement )
 
-        !print *, 'TrackingEngine: FillNeighborCellsSubBuffer: PASSED FillNeighborCellsConnectionFromHorizontalFace'
-
         ! If the buffer was filled with one of the subcells
         ! from a bigger cell
         if ( neighborCellsDataBuffer( 1, directConnectionBufferIndex )%fromSubCell ) then 
 
             ! Fill indirect connection buffers
-
             ! Vertical face request
             if ( firstNeighborFaceNumber .ge. 5 ) then 
 
@@ -1564,7 +1554,6 @@ subroutine pr_FillNeighborCellsSubBuffer( this, &
 
     else
         ! No connection 
-        !print *, 'TrackingEngine: FillNeighborCellsSubBuffer: No Connection'
 
         ! Done
         return
@@ -1664,12 +1653,8 @@ subroutine pr_FillNeighborCellsConnectionFromHorizontalFace(this, centerCellData
         return
 
     else if ( centerCellDataBuffer%GetFaceConnection( faceNumber, 1 ) .gt. 0 ) then
-
         ! Only one connection, verify if 
         ! same size or bigger size cell
-
-        ! Debug
-        !print *, 'TrackingEngine: FillNeighborCellsConnectionFromHorizontalFace: One Connection'
 
         ! Info for verification
         select case ( faceNumber )
@@ -1695,15 +1680,6 @@ subroutine pr_FillNeighborCellsConnectionFromHorizontalFace(this, centerCellData
                 subCellIndexes(2,:)        = (/2,1/) 
         end select
 
-        ! Debug
-        !! Note: when compiler flags include fbounds-check then GetFaceConnection of a cellNumber equal zero will
-        !! throw an exception 
-        !print *, 'TrackingEngine: FillNeighborCellsConnectionFromHorizontalFace: One Connection: before if block'
-        !print *, 'TrackingEngine: FillNeighborCellsConnectionFromHorizontalFace: One Connection: centerCell: ', & 
-        !   centerCellDataBuffer%CellNumber
-        !print *, centerCellDataBuffer%GetFaceConnection( faceNumber, 1 )
-        !print *, centerCellDataBuffer%GetFaceConnection( orthogonalFaceNumbers(1), 1 )
-        !print *, 'TrackingEngine: FillNeighborCellsConnectionFromHorizontalFace: One Connection: before if block, after call'
 
         ! Detect connection state
         ! Verify response when no connection 
@@ -1716,9 +1692,6 @@ subroutine pr_FillNeighborCellsConnectionFromHorizontalFace(this, centerCellData
               this%Grid%GetFaceConnection(                                                                 & 
                   centerCellDataBuffer%GetFaceConnection( orthogonalFaceNumbers(2), 1 ), faceNumber, 1 ) ) &
         ) then 
-
-            ! Debug
-            !print *, 'TrackingEngine: FillNeighborCellsConnectionFromHorizontalFace: One Connection: if block'
 
             ! If bigger cell
             ! Fill the parentCellDataBuffer
@@ -1770,8 +1743,6 @@ subroutine pr_FillNeighborCellsConnectionFromHorizontalFace(this, centerCellData
             end if
 
         else
-            ! Debug
-            !print *, 'TrackingEngine: FillNeighborCellsConnectionFromHorizontalFace: One Connection: else block'
 
             if ( .not. centerCellDataBuffer%isParentCell ) then
 
@@ -1820,8 +1791,6 @@ subroutine pr_FillNeighborCellsConnectionFromHorizontalFace(this, centerCellData
 
     else
         ! No connection
-        ! Debug
-        !print *, 'TrackingEngine: FillNeighborCellsConnectionFromHorizontalFace: No Connection'
 
         ! Done
         return
@@ -1944,7 +1913,6 @@ end subroutine pr_FillCellFromRealData
 
 
 
-! RWPT
 subroutine pr_FillNeighborCellDataStructured( this, neighborCellData )
     !------------------------------------------------------------------
     ! 
@@ -1954,7 +1922,9 @@ subroutine pr_FillNeighborCellDataStructured( this, neighborCellData )
     implicit none
     class(ParticleTrackingEngineType) :: this
     type(ModpathCellDataType), dimension(2, 18), intent(inout) :: neighborCellData
-    integer :: n, m, cellCounter, subCount
+    integer :: n, m
+    integer :: cellCounter, subCount
+    integer :: firstNeighborFaceNumber
     !------------------------------------------------------------------
 
 
@@ -2054,6 +2024,62 @@ subroutine pr_FillNeighborCellDataStructured( this, neighborCellData )
             cellCounter = cellCounter + 2
         endif
     end do
+
+    ! Prototype (SLOWER)
+    !! Reset all buffers
+    !do m = 1, 18 
+    !    call neighborcelldata( 1, m )%reset() 
+    !end do 
+
+    !! Loop through cell faces and fill neighborhood
+    !cellCounter = 0
+    !do n = 1, 6
+
+    !    ! Each cell face gives three neighbor cells. 
+    !    ! Itself, and two other orthogonal connections
+    !    cellCounter = ( n - 1 )*3 + 1
+
+    !    ! If connection exists
+    !    if ( this%TrackCell%CellData%GetFaceConnection(n,1) .gt. 0) then
+
+
+    !        ! From the cell connected at face n,
+    !        ! create TrackCells from two connections 
+    !        ! starting from firstNeighborFaceNumber  
+    !        if ( n .le. 2 ) then
+    !            firstNeighborFaceNumber = 3
+    !        else if ( n .le. 4 ) then
+    !            firstNeighborFaceNumber = 5
+    !        else
+    !            firstNeighborFaceNumber = 1
+    !        end if
+
+    !        ! Fill the data buffer
+    !        call this%FillCellBuffer( this%TrackCell%CellData%GetFaceConnection(n,1) , neighborCellData( 1, cellCounter ) )
+
+    !        if ( neighborCellData( 1, cellCounter )%GetFaceConnection(firstNeighborFaceNumber,1) .gt. 0 ) then
+    !            call this%FillCellBuffer( &
+    !                neighborCellData( 1, cellCounter )%GetFaceConnection( firstNeighborFaceNumber, 1 ), & 
+    !                                                             neighborCellData( 1, cellCounter + 1 ) )
+    !        else
+    !            call neighborcelldata( 1, cellCounter + 1 )%reset() 
+    !        end if
+
+    !        if ( neighborCellData( 1, cellCounter )%GetFaceConnection(firstNeighborFaceNumber+1,1) .gt. 0 ) then
+    !            call this%FillCellBuffer( &
+    !                neighborCellData( 1, cellCounter )%GetFaceConnection( firstNeighborFaceNumber+1, 1 ), & 
+    !                                                               neighborCellData( 1, cellCounter + 2 ) )
+    !        else
+    !            call neighborcelldata( 1, cellCounter + 2 )%reset() 
+    !        end if
+    !    else
+    !        ! If no connection reset buffers
+    !        call neighborcelldata( 1, cellCounter     )%reset() 
+    !        call neighborcelldata( 1, cellCounter + 1 )%reset() 
+    !        call neighborcelldata( 1, cellCounter + 2 )%reset() 
+    !    end if
+
+    !end do
 
 
 end subroutine pr_FillNeighborCellDataStructured

@@ -1616,37 +1616,55 @@ contains
   doubleprecision :: flow
   
   flow = 0d0
+  !select case (faceNumber)
+  !  case (1)
+  !    arraySize = size(this%Q1)
+  !    do n = 1, arraySize
+  !      flow = flow + this%Q1(n)
+  !    end do
+  !  case (2)
+  !    arraySize = size(this%Q2)
+  !    do n = 1, arraySize
+  !      flow = flow + this%Q2(n)
+  !    end do
+  !  case (3)
+  !    arraySize = size(this%Q3)
+  !    do n = 1, arraySize
+  !      flow = flow + this%Q3(n)
+  !    end do
+  !  case (4)
+  !    arraySize = size(this%Q4)
+  !    do n = 1, arraySize
+  !      flow = flow + this%Q4(n)
+  !    end do
+  !  case (5)
+  !    arraySize = size(this%Q5)
+  !    do n = 1, arraySize
+  !      flow = flow + this%Q5(n)
+  !    end do
+  !  case (6)
+  !    arraySize = size(this%Q6)
+  !    do n = 1, arraySize
+  !      flow = flow + this%Q6(n)
+  !    end do
+  !  case default
+  !    ! do nothing
+  !end select
+
+  ! RWPT: faster
   select case (faceNumber)
     case (1)
-      arraySize = size(this%Q1)
-      do n = 1, arraySize
-        flow = flow + this%Q1(n)
-      end do
+      flow = sum( this%Q1 )
     case (2)
-      arraySize = size(this%Q2)
-      do n = 1, arraySize
-        flow = flow + this%Q2(n)
-      end do
+      flow = sum( this%Q2 )
     case (3)
-      arraySize = size(this%Q3)
-      do n = 1, arraySize
-        flow = flow + this%Q3(n)
-      end do
+      flow = sum( this%Q3 )
     case (4)
-      arraySize = size(this%Q4)
-      do n = 1, arraySize
-        flow = flow + this%Q4(n)
-      end do
+      flow = sum( this%Q4 )
     case (5)
-      arraySize = size(this%Q5)
-      do n = 1, arraySize
-        flow = flow + this%Q5(n)
-      end do
+      flow = sum( this%Q5 )
     case (6)
-      arraySize = size(this%Q6)
-      do n = 1, arraySize
-        flow = flow + this%Q6(n)
-      end do
+      flow = sum( this%Q6 )
     case default
       ! do nothing
   end select
