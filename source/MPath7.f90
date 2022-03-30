@@ -664,7 +664,6 @@
     activeCount = 0
     if(simulationData%ParticleGroupCount .gt. 0) then
         do groupIndex = 1, simulationData%ParticleGroupCount
-            !print *, ' -- groupIndex: ', groupIndex
             !$omp parallel do schedule( dynamic,1 )          &
             !$omp default( none )                            &
             !$omp shared( groupIndex )                       &
@@ -741,18 +740,14 @@
                 ! RWPT
                 ! Verify cell not dry anymore
                 if (p%Status .eq. 7 ) then 
-                    ! Give me the cell 
                     ! Initialize cellBuffer cellNumber
                     call trackingEngine%FillCellBuffer( p%CellNumber, cellDataBuffer )
 
                     ! Verify dry/partially dried cells
                     call cellDataBuffer%VerifyDryCell()
 
-                    !print *, 'PARTICLE ID', p%ID , '; Inactive cell', p%CellNumber
                     ! If partially dried restore active/track status, otherwise keep Status = 7
                     if ( cellDataBuffer%partiallyDry ) p%Status = 1 ! Track particle
-                    !print *, 'PARTICLE STATUS IS ', p%Status
-                    !call exit(0)
 
                 end if 
 
@@ -772,8 +767,6 @@
                     pLoc%LocalZ = p%LocalZ
                     pLoc%TrackingTime = p%TrackingTime
                    
-                    !print *, 'MPATH: CALL TRACKPATH ACTIVE PARTICLES', activeCount
-
                     ! Call TrackPath
                     call trackingEngine%TrackPath(trackPathResult, traceModeOn, &
                       traceModeUnit, p%Group, p%ID, p%SequenceNumber, pLoc,     &
@@ -878,12 +871,9 @@
             !$omp end parallel do
 
 
-            ! GPKDE for the current groupIndex
-            ! Note that at this point 
-            ! groupIndex is still valid
-            if ( simulationData%TrackingOptions%GPKDEReconstruction ) then
 
-                !print *, 'GPKDE: STARTING CONCENTRATION RECONSTRUCTION '
+            ! GPKDE for the current groupIndex
+            if ( simulationData%TrackingOptions%GPKDEReconstruction ) then
 
                 ! Count how many active after trackpath, not necessarilly the same 
                 ! as activeCount
@@ -901,8 +891,6 @@
                 allocate( activeParticleCoordinates(activeCounter,3) )
 
                 ! Could be parallelized ?
-                !print *, 'TIME INDEX: ', nt, ' PARTICLE GROUPINDEX ', groupIndex
-
                 ! Restart active counter and fill coordinates array
                 activeCounter = 0 
                 do particleIndex = 1, simulationData%ParticleGroups(groupIndex)%TotalParticleCount
@@ -924,7 +912,6 @@
                 )
 
             end if
-            !call exit(0)
 
 
         end do
