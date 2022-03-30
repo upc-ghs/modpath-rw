@@ -638,7 +638,7 @@
     call ulog('Begin TRACKING_INTERVAL_LOOP', logUnit)
     TRACKING_INTERVAL_LOOP: do while (itend .eq. 0)
 
-    print *, '-----------------------------------------------------------------------------------'
+    !print *, '-----------------------------------------------------------------------------------'
 
     itend = 1
     maxTime = tsMax
@@ -664,7 +664,7 @@
     activeCount = 0
     if(simulationData%ParticleGroupCount .gt. 0) then
         do groupIndex = 1, simulationData%ParticleGroupCount
-            print *, ' -- groupIndex: ', groupIndex
+            !print *, ' -- groupIndex: ', groupIndex
             !$omp parallel do schedule( dynamic,1 )          &
             !$omp default( none )                            &
             !$omp shared( groupIndex )                       &
@@ -883,7 +883,7 @@
             ! groupIndex is still valid
             if ( simulationData%TrackingOptions%GPKDEReconstruction ) then
 
-                print *, 'GPKDE: STARTING CONCENTRATION RECONSTRUCTION '
+                !print *, 'GPKDE: STARTING CONCENTRATION RECONSTRUCTION '
 
                 ! Count how many active after trackpath, not necessarilly the same 
                 ! as activeCount
