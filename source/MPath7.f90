@@ -712,18 +712,14 @@
                 ! RWPT
                 ! Verify cell not dry anymore
                 if (p%Status .eq. 7 ) then 
-                    ! Give me the cell 
                     ! Initialize cellBuffer cellNumber
                     call trackingEngine%FillCellBuffer( p%CellNumber, cellDataBuffer )
 
                     ! Verify dry/partially dried cells
                     call cellDataBuffer%VerifyDryCell()
 
-                    !print *, 'PARTICLE ID', p%ID , '; Inactive cell', p%CellNumber
                     ! If partially dried restore active/track status, otherwise keep Status = 7
                     if ( cellDataBuffer%partiallyDry ) p%Status = 1 ! Track particle
-                    !print *, 'PARTICLE STATUS IS ', p%Status
-                    !call exit(0)
 
                 end if 
 
@@ -743,8 +739,6 @@
                     pLoc%LocalZ = p%LocalZ
                     pLoc%TrackingTime = p%TrackingTime
                    
-                    !print *, 'MPATH: CALL TRACKPATH ACTIVE PARTICLES', activeCount
-
                     ! Call TrackPath
                     call trackingEngine%TrackPath(trackPathResult, traceModeOn, &
                       traceModeUnit, p%Group, p%ID, p%SequenceNumber, pLoc,     &
