@@ -875,9 +875,11 @@ contains
                 ! Default is -999
                 idObservationCell = this%TrackingOptions%IdObservationCell( this%TrackCell%CellData%CellNumber ) 
                 if ( idObservationCell .ge. 0 ) then
+                    !$omp critical (observation)
                     call WriteObservationCellRecord( this, group, particleID,      &
                          this%TrackCell,                                           &
                          this%TrackingOptions%observationUnits( idObservationCell ))
+                    !$omp end critical (observation)
                 end if
             end if
 
@@ -971,17 +973,13 @@ contains
         this%TrackCell%TrackingOptions = this%TrackingOptions
         call this%FillCellBuffer(loc%CellNumber,  this%TrackCell%CellData)
 
-        !print *, 'TrackingEngine: FillNeighborCellData'
-
         ! RWPT: fill neighbor cells
         call this%FillNeighborCellData( neighborCellData )
-
 
         continueLoop = .true.
         isTimeSeriesPoint = .false.
         isMaximumTime = .false.
         
-        !print *, '****** TrackingEngine: continueLoop particleID', particleID
         do while(continueLoop)
             ! Check to see if the particle has moved to another cell. If so, load the new cell data
             if(loc%CellNumber .ne. this%TrackCell%CellData%CellNumber) then
@@ -1013,7 +1011,6 @@ contains
             
             ! Check the status flag of the result to find out what to do next
             if(this%TrackCellResult%Status .eq. this%TrackCellResult%Status_Undefined()) then
-                print *, '*TRACKINGENGINE: UNDEFINED'
                 continueLoop = .false.
                 trackPathResult%Status = this%TrackCellResult%Status
             else if(this%TrackCellResult%Status .eq. this%TrackCellResult%Status_ExitAtCellFace()) then
@@ -1024,8 +1021,6 @@ contains
                     end do 
                 end if
                
-                !! SOMEWHERE AROUND THIS BLOCK SHOULD SOLVE THE RWPT PARTICLE REBOUND
-
                 ! If NextCellNumber is > 0, it means the particle has moved to another cell. 
                 ! If so, convert loc from the current cell coordinates to the equivalent location in the new cell.
                 nextCell = this%TrackCellResult%NextCellNumber
@@ -1102,7 +1097,8 @@ contains
                  this%FlowModelData%GetCurrentTimeStep())
                !$omp end critical (tracedata)
             end if
-        
+       
+
             ! If there are observation cells
             if ( this%TrackingOptions%observationSimulation ) then
                 ! Determine if the current TrackCell is on 
@@ -1113,11 +1109,14 @@ contains
                 ! Default is -999
                 idObservationCell = this%TrackingOptions%IdObservationCell( this%TrackCell%CellData%CellNumber ) 
                 if ( idObservationCell .ge. 0 ) then
+                    !$omp critical (observation)
                     call WriteObservationCellRecord( this, group, particleID,      &
                          this%TrackCell,                                           &
                          this%TrackingOptions%observationUnits( idObservationCell ))
+                    !$omp end critical (observation)
                 end if
             end if
+
 
             ! If continueLoop is still set to true, go through the loop again. If set to false, exit the loop now.
         end do
