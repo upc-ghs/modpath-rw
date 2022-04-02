@@ -405,10 +405,11 @@ contains
         this%TrackingOptions = trackingOptions
        
         if (this%TrackingOptions%RandomWalkParticleTracking) then
+
             ! RWPT
             if ( .not. present( transportModelData ) ) then
+                ! REQUIRES Proper error handling
                 print *, 'Error: ParticleTrackingEngine:Initialize: RWPT requires transportModelData, not given.'
-                call exit(0)
             end if 
 
             ! Define transport data pointer 
