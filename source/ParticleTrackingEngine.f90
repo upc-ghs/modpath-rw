@@ -1048,6 +1048,7 @@ contains
                     trackPathResult%Status = trackPathResult%Status_ReachedBoundaryFace()
                 end if
                 
+
             else if(this%TrackCellResult%Status .eq. this%TrackCellResult%Status_ReachedStoppingTime()) then
                 count = this%TrackCellResult%TrackingPoints%GetItemCount()
                 if(count .gt. 1) then
@@ -2084,7 +2085,7 @@ end subroutine pr_FillNeighborCellDataStructured
 
 
 ! OBS
-subroutine WriteObservationCellRecord( this, groupIndex, particleID, trackCell, outUnit)
+subroutine WriteObservationCellRecord( this, groupIndex, particleID, trackCell, outUnit )
     !--------
     ! Write observation cell record
     ! Doc me
@@ -2116,10 +2117,11 @@ subroutine WriteObservationCellRecord( this, groupIndex, particleID, trackCell, 
         trackCell%TrackSubCell%TrackSubCellResult%FinalLocation%LocalZ, &
         finalGlobalX, finalGlobalY, finalGlobalZ )
 
-    write(outUnit, '(2I8,es18.9e3,8es18.9e3)')                      &
-      groupIndex, particleID,                                       & 
-      initialTime, initialGlobalX, initialGlobalY, initialGlobalZ,  &
-      finalTime, finalGlobalX, finalGlobalY, finalGlobalZ                        
+    write(outUnit, '(2I8,8es18.9e3,2I8)')                              &
+      groupIndex, particleID,                                          & 
+      initialTime, initialGlobalX, initialGlobalY, initialGlobalZ,     &
+      finalTime, finalGlobalX, finalGlobalY, finalGlobalZ,             & 
+      this%TrackCellResult%ExitFace, this%TrackCellResult%Status
 
 end subroutine WriteObservationCellRecord
 
