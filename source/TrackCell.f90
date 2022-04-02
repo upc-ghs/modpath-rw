@@ -396,7 +396,6 @@ contains
       
       ! If the initial location cell is inactive for this time step, set status to InactiveCell
       if(this%CellData%IboundTS .eq. 0) then
-          print *, '* TRACKCELL: IBOUNDTS.eq.0, CELL NUMBER', this%CellData%CellNumber
           trackCellResult%Status = trackCellResult%Status_InactiveCell()
           return
       end if

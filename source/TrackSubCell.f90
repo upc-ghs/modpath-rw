@@ -985,7 +985,6 @@ contains
                           exitFace = 0
 
                       else
-                          !print *, '    ELASTICREBOUND: PARTICLE INSIDE CELL', nx,ny,nz
                           ! If nx, ny and nz are inside the cell, then no problem
                           ! particleLeavingCell loop is broken and will update 
                           ! particle position to rebound position and continue
