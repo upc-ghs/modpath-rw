@@ -823,7 +823,8 @@ contains
 
 
                       ! If not connected to rebound boundary cell, leave
-                      if ( this%SubCellData%Connection(exitFace) .ne. 0 ) then 
+                      if ( this%SubCellData%MassBoundary(exitFace) .ne. 1 ) then 
+                      !if ( this%SubCellData%Connection(exitFace) .ne. 0 ) then 
                           exit
                       end if 
 

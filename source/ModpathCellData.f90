@@ -733,38 +733,15 @@ contains
           if(conn .eq. 0) then
               i = i + 1
 
-              ! If domain boundary, some predefined for mass
-              this%MassBoundarySubFace1(n) = 0
-
-              ! If self icbound .eq. 1 then mark face
-              ! to exterior (no-flow-cell) as rebound
-              if ( this%ICBoundTS .eq. 1 ) then 
-                  this%MassBoundarySubFace1(n) = 1
-              end if
+              ! If domain boundary, set cell value
+              this%MassBoundarySubFace1(n) = this%ICBoundTS 
 
           else
               ! Flow boundary, increase i
               if(iboundTS(conn) .eq. 0) i = i + 1
 
               ! Mass boundary
-              if ( this%ICBoundTS .ne. 1 ) then 
-                  this%MassBoundarySubFace1(n) = icboundTS(conn)
-              else
-                  ! if icboundts .eq. 1 
-                  this%MassBoundarySubFace1(n) = 0 ! THIS IS NOT EXTERIOR CELL CASE, so 0
-              end if
-
-              !! This would be useful for the case that there is some
-              !! additional processing before assigning boundary but for 
-              !! first iteration seems unnecessary
-              !select case( icboundTS(conn) )
-              !  case (0)
-              !      this%MassBoundarySubFace1(n) = 0 
-              !  case (1)
-              !      this%MassBoundarySubFace1(n) = 1 
-              !  case default
-              !      this%MassBoundarySubFace1(n) = 0 
-              !end select
+              this%MassBoundarySubFace1(n) = icboundTS(conn)
 
           end if
 
@@ -788,26 +765,15 @@ contains
           if(conn .eq. 0) then
               i = i + 1
 
-              ! If domain boundary, some predefined for mass
-              this%MassBoundarySubFace2(n) = 0
-
-              ! If self icbound .eq. 1 then mark face
-              ! to exterior (no-flow-cell) as rebound
-              if ( this%ICBoundTS .eq. 1 ) then 
-                  this%MassBoundarySubFace2(n) = 1
-              end if
+              ! If domain boundary, set cell value
+              this%MassBoundarySubFace2(n) = this%ICBoundTS 
 
           else
               ! Flow boundary, increase i
               if(iboundTS(conn) .eq. 0) i = i + 1
 
               ! Mass boundary
-              if ( this%ICBoundTS .ne. 1 ) then 
-                  this%MassBoundarySubFace2(n) = icboundTS(conn)
-              else
-                  ! if icboundts .eq. 1 
-                  this%MassBoundarySubFace2(n) = 0 ! THIS IS NOT EXTERIOR CELL CASE, so 0
-              end if
+              this%MassBoundarySubFace2(n) = icboundTS(conn)
 
           end if
         end do
@@ -826,25 +792,14 @@ contains
           if(conn .eq. 0) then
               i = i + 1
 
-              ! If domain boundary, some predefined for mass
-              this%MassBoundarySubFace3(n) = 0
-
-              ! If self icbound .eq. 1 then mark face
-              ! to exterior (no-flow-cell) as rebound
-              if ( this%ICBoundTS .eq. 1 ) then 
-                  this%MassBoundarySubFace3(n) = 1
-              end if
+              ! If domain boundary, set cell value
+              this%MassBoundarySubFace3(n) = this%ICBoundTS 
 
           else
               if(iboundTS(conn) .eq. 0) i = i + 1
 
               ! Mass boundary
-              if ( this%ICBoundTS .ne. 1 ) then 
-                  this%MassBoundarySubFace3(n) = icboundTS(conn)
-              else
-                  ! if icboundts .eq. 1 
-                  this%MassBoundarySubFace3(n) = 0 ! THIS IS NOT EXTERIOR CELL CASE, so 0
-              end if
+              this%MassBoundarySubFace3(n) = icboundTS(conn)
 
           end if
         end do
@@ -863,25 +818,14 @@ contains
           if(conn .eq. 0) then
               i = i + 1
 
-              ! If domain boundary, some predefined for mass
-              this%MassBoundarySubFace4(n) = 0
-
-              ! If self icbound .eq. 1 then mark face
-              ! to exterior (no-flow-cell) as rebound
-              if ( this%ICBoundTS .eq. 1 ) then 
-                  this%MassBoundarySubFace4(n) = 1
-              end if
+              ! If domain boundary, set cell value
+              this%MassBoundarySubFace4(n) = this%ICBoundTS 
 
           else
               if(iboundTS(conn) .eq. 0) i = i + 1
 
               ! Mass boundary
-              if ( this%ICBoundTS .ne. 1 ) then 
-                  this%MassBoundarySubFace4(n) = icboundTS(conn)
-              else
-                  ! if icboundts .eq. 1 
-                  this%MassBoundarySubFace4(n) = 0 ! THIS IS NOT EXTERIOR CELL CASE, so 0
-              end if
+              this%MassBoundarySubFace4(n) = icboundTS(conn)
 
           end if
         end do
@@ -900,25 +844,14 @@ contains
           if(conn .eq. 0) then
               i = i + 1
 
-              ! If domain boundary, some predefined for mass
-              this%MassBoundarySubFace5(n) = 0
-
-              ! If self icbound .eq. 1 then mark face
-              ! to exterior (no-flow-cell) as rebound
-              if ( this%ICBoundTS .eq. 1 ) then 
-                  this%MassBoundarySubFace5(n) = 1
-              end if
+              ! If domain boundary, set cell value
+              this%MassBoundarySubFace5(n) = this%ICBoundTS 
 
           else
               if(iboundTS(conn) .eq. 0) i = i + 1
 
               ! Mass boundary
-              if ( this%ICBoundTS .ne. 1 ) then 
-                  this%MassBoundarySubFace5(n) = icboundTS(conn)
-              else
-                  ! if icboundts .eq. 1 
-                  this%MassBoundarySubFace5(n) = 0 ! THIS IS NOT EXTERIOR CELL CASE, so 0
-              end if
+              this%MassBoundarySubFace5(n) = icboundTS(conn)
 
           end if
         end do
@@ -937,26 +870,14 @@ contains
           if(conn .eq. 0) then
               i = i + 1
 
-              ! If domain boundary, some predefined for mass
-              this%MassBoundarySubFace6(n) = 0
-
-              ! If self icbound .eq. 1 then mark face
-              ! to exterior (no-flow-cell) as rebound
-              if ( this%ICBoundTS .eq. 1 ) then 
-                  this%MassBoundarySubFace6(n) = 1
-              end if
+              ! If domain boundary, set cell value
+              this%MassBoundarySubFace6(n) = this%ICBoundTS 
 
           else
               if(iboundTS(conn) .eq. 0) i = i + 1
 
               ! Mass boundary
-              if ( this%ICBoundTS .ne. 1 ) then 
-                  this%MassBoundarySubFace6(n) = icboundTS(conn)
-              else
-                  ! if icboundts .eq. 1 
-                  this%MassBoundarySubFace6(n) = 0 ! THIS IS NOT EXTERIOR CELL CASE, so 0
-              end if
-
+              this%MassBoundarySubFace6(n) = icboundTS(conn)
 
           end if
         end do
