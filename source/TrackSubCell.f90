@@ -651,7 +651,6 @@ contains
       continueTimeLoop = .true.
       reachedMaximumTime = .false.
       do while( continueTimeLoop )
-          !print *, '## START TIME LOOP...'
 
           ! Update current time
           t = t + dt
@@ -697,16 +696,9 @@ contains
               ( ny .gt. 1.0d0 ) .or. ( ny .lt. 0d0 )  .or. &
               ( nz .gt. 1.0d0 ) .or. ( nz .lt. 0d0 )       & 
           )
-              !print *, '## START INTERFACE LOOP...', intLoopCounter
-              !print *, ' ### INIT', x, y, z 
-              !print *, ' ### END ', nx, ny, nz 
 
               intLoopCounter = intLoopCounter + 1
               dtxyz(:) = 0d0
-
-              if( intLoopCounter .gt. 10 ) then 
-                  call exit(0)
-              end if
 
               ! Recompute dt for exact interface
               call this%ExitFaceAndUpdateTimeStep( x, y, z, nx, ny, nz, &
@@ -805,6 +797,15 @@ contains
                   ! Boundary conditions
                   ! Logic should be: 
                   ! Is there an interface and which kind
+
+
+                  ! At this point, program already 
+                  ! found an exitFace
+
+                  ! By default, if a cell is not active from 
+                  ! the flow model data, 
+                  
+
 
                   ! elasticRebound:
                   !
@@ -1033,43 +1034,35 @@ contains
 
               ! Done
               return
+
           end if
+
 
           ! Particle left cell
           if( exitFace .gt. 0 ) then 
-              ! Depending connected cell id, it is determined 
-              ! what happens to particle 
-              if( this%SubCellData%Connection(exitFace) .lt. 0 ) then
+              ! Based on connected cell id, it is determined 
+              ! what happens to the particle (see: source/ModpathCellData.f90:FillSubCellDataBuffer ) 
+              ! if ExitFaceConnection = 0, domainBoundary
+              ! if ExitFaceConnection > 0, anotherCell
+              ! if ExitFaceConnection < 0, subCell, usg-grid
+              trackingResult%ExitFaceConnection = this%SubCellData%Connection(exitFace)
+              if( trackingResult%ExitFaceConnection .lt. 0 ) then
                   ! Internal transfer. This is the case for unstructured grid
                   trackingResult%Status = trackingResult%Status_ExitAtInternalFace()
-                  trackingResult%ExitFaceConnection = this%SubCellData%Connection(exitFace)
-                  trackingResult%ExitFace = exitFace
-                  trackingResult%FinalLocation%CellNumber = cellNumber
-                  trackingResult%FinalLocation%LocalX = nx
-                  trackingResult%FinalLocation%LocalY = ny
-                  trackingResult%FinalLocation%LocalZ = nz
-                  trackingResult%FinalLocation%TrackingTime = t
-                  continueTimeLoop = .false.
-
-                  ! Done
-                  return
-
-              else if( this%SubCellData%Connection(exitFace) .gt. 0 ) then
-                  ! Is another active cell
+              else
+                  ! Transfer to another cell
                   trackingResult%Status = trackingResult%Status_ExitAtCellFace()
-                  trackingResult%ExitFaceConnection = this%SubCellData%Connection(exitFace)
-                  trackingResult%ExitFace = exitFace
-                  trackingResult%FinalLocation%CellNumber = cellNumber
-                  trackingResult%FinalLocation%LocalX = nx
-                  trackingResult%FinalLocation%LocalY = ny
-                  trackingResult%FinalLocation%LocalZ = nz
-                  trackingResult%FinalLocation%TrackingTime = t
-                  continueTimeLoop = .false.
-
-                  ! Done
-                  return
-
               end if
+              trackingResult%ExitFace                   = exitFace
+              trackingResult%FinalLocation%CellNumber   = cellNumber
+              trackingResult%FinalLocation%LocalX       = nx
+              trackingResult%FinalLocation%LocalY       = ny
+              trackingResult%FinalLocation%LocalZ       = nz
+              trackingResult%FinalLocation%TrackingTime = t
+              continueTimeLoop = .false.
+
+              ! Done
+              return
 
           end if 
 

@@ -19,6 +19,9 @@ module ModpathCellDataModule
     ! public data
     integer :: CellNumber, Layer, Ibound, IboundTS, Zone, LayerType
     doubleprecision :: DX, DY, MinX, MinY, Bottom, Top, Head, Porosity,Retardation,SourceFlow,SinkFlow,StorageFlow
+    ! RWPT: more info for mass transport models could be considered 
+    doubleprecision :: ICBound, ICBoundTS 
+
     
     ! private data
     ! RWPT: remove privates 
@@ -26,6 +29,8 @@ module ModpathCellDataModule
     integer,dimension(6) :: SubFaceCounts,PotentialConnectionsCount,SubFaceBoundaryCounts
     integer,dimension(2) :: SubFaceConn1,SubFaceConn2,SubFaceConn3,SubFaceConn4
     integer,dimension(4) :: SubFaceConn5,SubFaceConn6
+    integer,dimension(2) :: MassBoundarySubFace1,MassBoundarySubFace2,MassBoundarySubFace3,MassBoundarySubFace4
+    integer,dimension(4) :: MassBoundarySubFace5,MassBoundarySubFace6
     doubleprecision,dimension(4) :: SubCellFlows,Q5,Q6
     doubleprecision,dimension(2) :: Q1,Q2,Q3,Q4
     integer :: ArraySizeMode = 1
@@ -74,6 +79,7 @@ module ModpathCellDataModule
     procedure,private :: pr_SetDataUnstructured
     procedure,private :: pr_SetDataStructured
     procedure :: SetDataUnstructured=>pr_SetDataUnstructured
+    procedure :: SetMassTransportDataUnstructured=>pr_SetMassTransportDataUnstructured
     procedure :: SetDataStructured=>pr_SetDataStructured
     generic :: SetData=>pr_SetDataUnstructured
 
@@ -656,6 +662,514 @@ contains
   
   end subroutine pr_SetFlowAndPropertyData
 
+  ! DEV RWPT
+  !---------------------------------------------------------------------------------------
+  subroutine pr_SetMassTransportDataUnstructured(this,cellNumber,cellCount, &
+          reducedConnectionCount,grid, ibound,iboundTS,porosity,retardation,& 
+          storageFlow,sourceFlow,sinkFlow,faceFlows,boundaryFlows,head,     & 
+                                        layerType, zone, icbound, icboundTS )
+    !---------------------------------------------------------------------------------------
+    implicit none
+    class(ModpathCellDataType) :: this
+    class(ModflowRectangularGridType),intent(in) :: grid
+    integer,intent(in) :: cellNumber,cellCount
+    integer,intent(in) :: reducedConnectionCount
+    integer,intent(in) :: layerType, zone
+    integer,intent(in),dimension(cellCount) :: ibound, iboundTS
+    integer,intent(in),dimension(cellCount) :: icbound, icboundTS
+    doubleprecision,intent(in) :: porosity, retardation, storageFlow, sourceFlow, sinkFlow
+    doubleprecision,intent(in),dimension(6) :: boundaryFlows
+    doubleprecision,intent(in),dimension(reducedConnectionCount) :: faceFlows
+    doubleprecision,intent(in) :: head
+    integer :: n,index,count,i,conn
+    doubleprecision :: flow
+    !---------------------------------------------------------------------------------------
+    
+    call this%Reset()
+
+    this%CellNumber = cellNumber
+    this%Layer = grid%GetLayer(cellNumber)
+    this%DX = grid%DelX(cellNumber)
+    this%DY = grid%DelY(cellNumber)
+    this%MinX = grid%GetLeft(cellNumber)
+    this%MinY = grid%GetFront(cellNumber)
+    this%Bottom = grid%Bottom(cellNumber)
+    this%Top = grid%Top(cellNumber)
+    this%ReducedConnectionCount = grid%GetJaCellConnectionsCount(cellNumber)
+    !this%ReducedConnectionCount = grid%GetReducedCellConnectionCount(cellNumber)
+    
+    ! Assign property data
+    this%Zone = zone
+    this%LayerType = layerType
+    this%Head = head
+    this%Ibound = ibound(cellNumber)
+    this%IboundTS = iboundTS(cellNumber)
+    this%Porosity = porosity
+    this%Retardation = retardation
+    this%SourceFlow = sourceFlow
+    this%SinkFlow = sinkFlow
+    this%StorageFlow = storageFlow
+  
+    ! RWPT 
+    this%ICBound   = icbound(cellNumber)
+    this%ICBoundTS = icboundTS(cellNumber)
+
+
+
+    ! Process face flow data
+    ! Face 1
+    count = grid%GetPotentialFaceConnectionCount(cellNumber, 1)
+    this%PotentialConnectionsCount(1) = count
+    if(count .gt. 0) then
+        this%SubFaceCounts(1) = count
+        ! i: is a counter of boundary faces
+        i = 0
+        do n = 1, count
+          conn = grid%GetFaceConnection(cellNumber,1,n)
+          this%SubFaceConn1(n) = conn
+
+          ! RWPT: it also includes processing of mass boundaries
+          ! To avoid repeating if block
+          if(conn .eq. 0) then
+              i = i + 1
+
+              ! If domain boundary, some predefined for mass
+              this%MassBoundarySubFace1(n) = 0
+
+              ! If self icbound .eq. 1 then mark face
+              ! to exterior (no-flow-cell) as rebound
+              if ( this%ICBoundTS .eq. 1 ) then 
+                  this%MassBoundarySubFace1(n) = 1
+              end if
+
+          else
+              ! Flow boundary, increase i
+              if(iboundTS(conn) .eq. 0) i = i + 1
+
+              ! Mass boundary
+              if ( this%ICBoundTS .ne. 1 ) then 
+                  this%MassBoundarySubFace1(n) = icboundTS(conn)
+              else
+                  ! if icboundts .eq. 1 
+                  this%MassBoundarySubFace1(n) = 0 ! THIS IS NOT EXTERIOR CELL CASE, so 0
+              end if
+
+              !! This would be useful for the case that there is some
+              !! additional processing before assigning boundary but for 
+              !! first iteration seems unnecessary
+              !select case( icboundTS(conn) )
+              !  case (0)
+              !      this%MassBoundarySubFace1(n) = 0 
+              !  case (1)
+              !      this%MassBoundarySubFace1(n) = 1 
+              !  case default
+              !      this%MassBoundarySubFace1(n) = 0 
+              !end select
+
+          end if
+
+        end do
+        this%SubFaceBoundaryCounts(1) = i
+    end if
+    
+    
+    ! Face 2
+    count = grid%GetPotentialFaceConnectionCount(cellNumber, 2)
+    this%PotentialConnectionsCount(2) = count
+    if(count .gt. 0) then
+        this%SubFaceCounts(2) = count
+        i = 0
+        do n = 1, count
+          conn = grid%GetFaceConnection(cellNumber,2,n)
+          this%SubFaceConn2(n) = conn
+
+          ! RWPT: it also includes processing of mass boundaries
+          ! To avoid repeating if block
+          if(conn .eq. 0) then
+              i = i + 1
+
+              ! If domain boundary, some predefined for mass
+              this%MassBoundarySubFace2(n) = 0
+
+              ! If self icbound .eq. 1 then mark face
+              ! to exterior (no-flow-cell) as rebound
+              if ( this%ICBoundTS .eq. 1 ) then 
+                  this%MassBoundarySubFace2(n) = 1
+              end if
+
+          else
+              ! Flow boundary, increase i
+              if(iboundTS(conn) .eq. 0) i = i + 1
+
+              ! Mass boundary
+              if ( this%ICBoundTS .ne. 1 ) then 
+                  this%MassBoundarySubFace2(n) = icboundTS(conn)
+              else
+                  ! if icboundts .eq. 1 
+                  this%MassBoundarySubFace2(n) = 0 ! THIS IS NOT EXTERIOR CELL CASE, so 0
+              end if
+
+          end if
+        end do
+        this%SubFaceBoundaryCounts(2) = i
+    end if
+    
+    ! Face 3
+    count = grid%GetPotentialFaceConnectionCount(cellNumber, 3)
+    this%PotentialConnectionsCount(3) = count
+    if(count .gt. 0) then
+       this%SubFaceCounts(3) = count
+        i = 0
+        do n = 1, count
+          conn = grid%GetFaceConnection(cellNumber,3,n)
+          this%SubFaceConn3(n) = conn
+          if(conn .eq. 0) then
+              i = i + 1
+
+              ! If domain boundary, some predefined for mass
+              this%MassBoundarySubFace3(n) = 0
+
+              ! If self icbound .eq. 1 then mark face
+              ! to exterior (no-flow-cell) as rebound
+              if ( this%ICBoundTS .eq. 1 ) then 
+                  this%MassBoundarySubFace3(n) = 1
+              end if
+
+          else
+              if(iboundTS(conn) .eq. 0) i = i + 1
+
+              ! Mass boundary
+              if ( this%ICBoundTS .ne. 1 ) then 
+                  this%MassBoundarySubFace3(n) = icboundTS(conn)
+              else
+                  ! if icboundts .eq. 1 
+                  this%MassBoundarySubFace3(n) = 0 ! THIS IS NOT EXTERIOR CELL CASE, so 0
+              end if
+
+          end if
+        end do
+        this%SubFaceBoundaryCounts(3) = i
+    end if
+    
+    ! Face 4
+    count = grid%GetPotentialFaceConnectionCount(cellNumber, 4)
+    this%PotentialConnectionsCount(4) = count
+    if(count .gt. 0) then
+        this%SubFaceCounts(4) = count
+        i = 0
+        do n = 1, count
+          conn = grid%GetFaceConnection(cellNumber,4,n)
+          this%SubFaceConn4(n) = conn
+          if(conn .eq. 0) then
+              i = i + 1
+
+              ! If domain boundary, some predefined for mass
+              this%MassBoundarySubFace4(n) = 0
+
+              ! If self icbound .eq. 1 then mark face
+              ! to exterior (no-flow-cell) as rebound
+              if ( this%ICBoundTS .eq. 1 ) then 
+                  this%MassBoundarySubFace4(n) = 1
+              end if
+
+          else
+              if(iboundTS(conn) .eq. 0) i = i + 1
+
+              ! Mass boundary
+              if ( this%ICBoundTS .ne. 1 ) then 
+                  this%MassBoundarySubFace4(n) = icboundTS(conn)
+              else
+                  ! if icboundts .eq. 1 
+                  this%MassBoundarySubFace4(n) = 0 ! THIS IS NOT EXTERIOR CELL CASE, so 0
+              end if
+
+          end if
+        end do
+        this%SubFaceBoundaryCounts(4) = i
+    end if
+    
+    ! Face 5
+    count = grid%GetPotentialFaceConnectionCount(cellNumber, 5)
+    this%PotentialConnectionsCount(5) = count
+    if(count .gt. 0) then
+        this%SubFaceCounts(5) = count
+        i = 0
+        do n = 1, count
+          conn = grid%GetFaceConnection(cellNumber,5,n)
+          this%SubFaceConn5(n) = conn
+          if(conn .eq. 0) then
+              i = i + 1
+
+              ! If domain boundary, some predefined for mass
+              this%MassBoundarySubFace5(n) = 0
+
+              ! If self icbound .eq. 1 then mark face
+              ! to exterior (no-flow-cell) as rebound
+              if ( this%ICBoundTS .eq. 1 ) then 
+                  this%MassBoundarySubFace5(n) = 1
+              end if
+
+          else
+              if(iboundTS(conn) .eq. 0) i = i + 1
+
+              ! Mass boundary
+              if ( this%ICBoundTS .ne. 1 ) then 
+                  this%MassBoundarySubFace5(n) = icboundTS(conn)
+              else
+                  ! if icboundts .eq. 1 
+                  this%MassBoundarySubFace5(n) = 0 ! THIS IS NOT EXTERIOR CELL CASE, so 0
+              end if
+
+          end if
+        end do
+        this%SubFaceBoundaryCounts(5) = i
+    end if
+    
+    ! Face 6
+    count = grid%GetPotentialFaceConnectionCount(cellNumber, 6)
+    this%PotentialConnectionsCount(6) = count
+    if(count .gt. 0) then
+        this%SubFaceCounts(6) = count
+        i = 0
+        do n = 1, count
+          conn = grid%GetFaceConnection(cellNumber,6,n)
+          this%SubFaceConn6(n) = conn
+          if(conn .eq. 0) then
+              i = i + 1
+
+              ! If domain boundary, some predefined for mass
+              this%MassBoundarySubFace6(n) = 0
+
+              ! If self icbound .eq. 1 then mark face
+              ! to exterior (no-flow-cell) as rebound
+              if ( this%ICBoundTS .eq. 1 ) then 
+                  this%MassBoundarySubFace6(n) = 1
+              end if
+
+          else
+              if(iboundTS(conn) .eq. 0) i = i + 1
+
+              ! Mass boundary
+              if ( this%ICBoundTS .ne. 1 ) then 
+                  this%MassBoundarySubFace6(n) = icboundTS(conn)
+              else
+                  ! if icboundts .eq. 1 
+                  this%MassBoundarySubFace6(n) = 0 ! THIS IS NOT EXTERIOR CELL CASE, so 0
+              end if
+
+
+          end if
+        end do
+        this%SubFaceBoundaryCounts(6) = i
+    end if
+    
+
+    ! Process face data
+    ! Face 1
+    count = this%SubFaceCounts(1)
+    do n = 1, count
+      conn = this%SubFaceConn1(n)
+      if(conn .gt. 0) then
+        index = grid%FindConnectionIndex(cellNumber, conn)
+        this%Q1(n) = faceFlows(index)
+      end if
+    end do
+    
+    ! Face 2
+    count = this%SubFaceCounts(2)
+    do n = 1, count
+      conn = this%SubFaceConn2(n)
+      if(conn .gt. 0) then
+        index = grid%FindConnectionIndex(cellNumber, conn)
+        this%Q2(n) = -faceFlows(index)
+      end if
+    end do
+    
+    ! Face 3
+    count = this%SubFaceCounts(3)
+    do n = 1, count
+      conn = this%SubFaceConn3(n)
+      if(conn .gt. 0) then
+        index = grid%FindConnectionIndex(cellNumber, conn)
+        this%Q3(n) = faceFlows(index)
+      end if
+    end do
+    
+    ! Face 4
+    count = this%SubFaceCounts(4)
+    do n = 1, count
+      conn = this%SubFaceConn4(n)
+      if(conn .gt. 0) then
+        index = grid%FindConnectionIndex(cellNumber, conn)
+        this%Q4(n) = -faceFlows(index)
+      end if
+    end do
+    
+    ! Face 5
+    count = this%SubFaceCounts(5)
+    do n = 1, count
+      conn = this%SubFaceConn5(n)
+      if(conn .gt. 0) then
+        index = grid%FindConnectionIndex(cellNumber, conn)
+        this%Q5(n) = faceFlows(index)
+      end if
+    end do
+    
+    ! Face 6
+    count = this%SubFaceCounts(6)
+    do n = 1, count
+      conn = this%SubFaceConn6(n)
+      if(conn .gt. 0) then
+        index = grid%FindConnectionIndex(cellNumber, conn)
+        this%Q6(n) = -faceFlows(index)
+      end if
+    end do
+    
+    ! Process boundary flow data
+    ! RWPT: similar thing could be done for processing mass boundaries
+    ! Face 1
+    if(boundaryFlows(1) .ne. 0.0d0) then
+        if(this%SubFaceBoundaryCounts(1) .gt. 0) then
+          flow = boundaryFlows(1)/this%SubFaceBoundaryCounts(1)
+          do n = 1, this%SubFaceCounts(1)
+            conn = this%SubFaceConn1(n)
+            if (conn .eq. 0) then
+              this%Q1(n) = flow
+            else if (iboundTS(conn) .eq. 0) then
+              this%Q1(n) = flow
+            end if
+          end do
+        else
+          if(boundaryFlows(1) .gt. 0d0) then
+            this%SourceFlow = this%SourceFlow + boundaryFlows(1)
+          else
+            this%SinkFlow = this%SinkFlow + boundaryFlows(1)
+          end if
+        end if
+    end if
+
+    ! Face 2
+    if(boundaryFlows(2) .ne. 0.0d0) then
+        if(this%SubFaceBoundaryCounts(2) .gt. 0) then
+          flow = boundaryFlows(2)/this%SubFaceBoundaryCounts(2)
+          do n = 1, this%SubFaceCounts(2)
+            conn = this%SubFaceConn2(n)
+            if (conn .eq. 0) then
+              this%Q2(n) = -flow
+            else if (iboundTS(conn) .eq. 0) then
+              this%Q2(n) = -flow
+            end if
+          end do
+        else
+          if(boundaryFlows(2) .gt. 0d0) then
+            this%SourceFlow = this%SourceFlow + boundaryFlows(2)
+          else
+            this%SinkFlow = this%SinkFlow + boundaryFlows(2)
+          end if
+        end if
+    end if
+    
+    ! Face 3
+    if(boundaryFlows(3) .ne. 0.0d0) then
+        if(this%SubFaceBoundaryCounts(3) .gt. 0) then
+          flow = boundaryFlows(3)/this%SubFaceBoundaryCounts(3)
+          do n = 1, this%SubFaceCounts(3)
+            conn = this%SubFaceConn3(n)
+            if (conn .eq. 0) then
+              this%Q3(n) = flow
+            else if (iboundTS(conn) .eq. 0) then
+              this%Q3(n) = flow
+            end if
+          end do
+        else
+          if(boundaryFlows(3) .gt. 0d0) then
+            this%SourceFlow = this%SourceFlow + boundaryFlows(3)
+          else
+            this%SinkFlow = this%SinkFlow + boundaryFlows(3)
+          end if
+        end if
+    end if
+
+    ! Face 4
+    if(boundaryFlows(4) .ne. 0.0d0) then
+        if(this%SubFaceBoundaryCounts(4) .gt. 0) then
+          flow = boundaryFlows(4)/this%SubFaceBoundaryCounts(4)
+          do n = 1, this%SubFaceCounts(4)
+            conn = this%SubFaceConn4(n)
+            if (conn .eq. 0) then
+              this%Q4(n) = -flow
+            else if (iboundTS(conn) .eq. 0) then
+              this%Q4(n) = -flow
+            end if
+          end do
+        else
+          if(boundaryFlows(4) .gt. 0d0) then
+            this%SourceFlow = this%SourceFlow + boundaryFlows(4)
+          else
+            this%SinkFlow = this%SinkFlow + boundaryFlows(4)
+          end if
+        end if
+    end if
+    
+    ! Face 5
+    if(boundaryFlows(5) .ne. 0.0d0) then
+        if(this%SubFaceBoundaryCounts(5) .gt. 0) then
+          flow = boundaryFlows(5)/this%SubFaceBoundaryCounts(5)
+          do n = 1, this%SubFaceCounts(5)
+            conn = this%SubFaceConn5(n)
+            if (conn .eq. 0) then
+              this%Q5(n) = flow
+            else if (iboundTS(conn) .eq. 0) then
+              this%Q5(n) = flow
+            end if
+          end do
+        else
+          if(boundaryFlows(5) .gt. 0d0) then
+            this%SourceFlow = this%SourceFlow + boundaryFlows(5)
+          else
+            this%SinkFlow = this%SinkFlow + boundaryFlows(5)
+          end if
+        end if
+    end if
+
+    ! Face 6
+    if(boundaryFlows(6) .ne. 0.0d0) then
+        if(this%SubFaceBoundaryCounts(6) .gt. 0) then
+          flow = boundaryFlows(6)/this%SubFaceBoundaryCounts(6)
+          do n = 1, this%SubFaceCounts(6)
+            conn = this%SubFaceConn6(n)
+            if (conn .eq. 0) then
+              this%Q6(n) = -flow
+            else if (iboundTS(conn) .eq. 0) then
+              this%Q6(n) = -flow
+            end if
+          end do
+        else
+          if(boundaryFlows(6) .gt. 0d0) then
+            this%SourceFlow = this%SourceFlow + boundaryFlows(6)
+          else
+            this%SinkFlow = this%SinkFlow + boundaryFlows(6)
+          end if
+        end if
+    end if
+    
+    ! Set sub-cell row and column count
+    this%SubCellRowCount = 1
+    this%SubCellColumnCount = 1
+    do n = 1, 6
+        if(this%SubFaceCounts(n) .gt. 1) then
+            this%SubCellRowCount = 2
+            this%SubCellColumnCount = 2
+            ! Compute internal sub-cell face flows for cells with multiple sub-cell
+            call this%ComputeSubCellFlows()
+            return
+        end if
+    end do
+
+  end subroutine pr_SetMassTransportDataUnstructured
+
+
+! ORIGINAL
 !------------------------------------------
   subroutine pr_SetDataUnstructured(this,cellNumber,cellCount,reducedConnectionCount,grid,&
     ibound,iboundTS,porosity,retardation,storageFlow,sourceFlow,sinkFlow,       &
@@ -1748,9 +2262,13 @@ contains
   ! Boundary cells are set to the node number of the neighbor cell.
   ! Boundary faces that do not have adjacent neighbors are set to 0.
   
-  ! Start by initializing all face connections to -1. 
   do n = 1, 6
+    ! Start by initializing all face connections to -1. 
     subCellData%Connection(n) = -1
+
+    ! Start by initializing mass boundaries to zero
+    subCellData%MassBoundary(n) = 0
+
   end do
   
   ! Assign the actual connection values to all of the faces that are not internal faces.
@@ -1759,18 +2277,24 @@ contains
     subCellData%Connection(4) = 0
     if(count .eq. 1) then
       subCellData%Connection(4) = this%SubFaceConn4(1)
+      subCellData%MassBoundary(4) = this%MassBoundarySubFace4(1)
     else if(count .gt. 1) then
       subCellData%Connection(4) = this%SubFaceConn4(subCellData%Column)
+      subCellData%MassBoundary(4) = this%MassBoundarySubFace4(subCellData%Column)
     end if
   end if
   
   if(subCellData%Row .eq. this%SubCellRowCount) then
     count = this%GetSubFaceCount(3)
     subCellData%Connection(3) = 0
+    ! maybe needed
+    ! subCellData%MassBoundary(3) = 0
     if(count .eq. 1) then
       subCellData%Connection(3) = this%SubFaceConn3(1)
+      subCellData%MassBoundary(3) = this%MassBoundarySubFace3(1)
     else if(count .gt. 1) then
       subCellData%Connection(3) = this%SubFaceConn3(subCellData%Column)
+      subCellData%MassBoundary(3) = this%MassBoundarySubFace3(subCellData%Column)
     end if
   end if
   
@@ -1779,8 +2303,10 @@ contains
     subCellData%Connection(1) = 0
     if(count .eq. 1) then
       subCellData%Connection(1) = this%SubFaceConn1(1)
+      subCellData%MassBoundary(1) = this%MassBoundarySubFace1(1)
     else if(count .gt. 1) then
       subCellData%Connection(1) = this%SubFaceConn1(subCellData%Row)
+      subCellData%MassBoundary(1) = this%MassBoundarySubFace1(subCellData%Row)
     end if
   end if
   
@@ -1789,24 +2315,30 @@ contains
     subCellData%Connection(2) = 0
     if(count .eq. 1) then
       subCellData%Connection(2) = this%SubFaceConn2(1)
+      subCellData%MassBoundary(2) = this%MassBoundarySubFace2(1)
     else if(count .gt. 1) then
       subCellData%Connection(2) = this%SubFaceConn2(subCellData%Row)
+      subCellData%MassBoundary(2) = this%MassBoundarySubFace2(subCellData%Row)
     end if
   end if
   
   rowcolumn = this%SubCellRowCount * this%SubCellColumnCount
   if(this%GetSubFaceCount(5) .eq. 1) then
     subCellData%Connection(5) = this%SubFaceConn5(1)
+    subCellData%MassBoundary(5) = this%MassBoundarySubFace5(1)
   else if(this%GetSubFaceCount(5) .eq. rowcolumn) then
     n = ((subCellData%Row - 1) * this%SubCellColumnCount) + subCellData%Column
     subCellData%Connection(5) = this%SubFaceConn5(n)
+    subCellData%MassBoundary(5) = this%MassBoundarySubFace5(n)
   end if
   
   if(this%GetSubFaceCount(6) .eq. 1) then
     subCellData%Connection(6) = this%SubFaceConn6(1)
+    subCellData%MassBoundary(6) = this%MassBoundarySubFace6(1)
   else if(this%GetSubFaceCount(6) .eq. rowcolumn) then
     n = ((subCellData%Row - 1) * this%SubCellColumnCount) + subCellData%Column
     subCellData%Connection(6) = this%SubFaceConn6(n)
+    subCellData%MassBoundary(6) = this%MassBoundarySubFace6(n)
   end if
 
 

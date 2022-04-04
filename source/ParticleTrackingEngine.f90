@@ -578,11 +578,29 @@ contains
     integer,intent(in) :: cellNumber
     type(ModpathCellDataType),intent(inout) :: cellBuffer
     doubleprecision,dimension(6) :: boundaryFlows
-    !integer :: n, layer, boundaryFlowsOffset, gridType, cellType
+    integer :: n, layer, boundaryFlowsOffset, gridType, cellType
     !---------------------------------------------------------------------------------------------------------------
    
 
-        call pr_FillCellBufferUnstructured(this, cellNumber, cellBuffer)
+        !call pr_FillCellBufferUnstructured(this, cellNumber, cellBuffer)
+        boundaryFlowsOffset = 6 * (cellNumber - 1)
+        do n = 1, 6
+            boundaryFlows(n) = this%FlowModelData%BoundaryFlows(boundaryFlowsOffset + n)
+        end do
+        
+        cellType = this%Grid%CellType(cellNumber)
+
+        ! Set cell buffer data for a MODFLOW-USG unstructured grid
+        ! Set cell buffer data for a MODFLOW-6 structured grid (DIS)
+        ! Set cell buffer data for a MODFLOW-6 unstructured grid (DISV)
+        call cellBuffer%SetMassTransportDataUnstructured(cellNumber,this%Grid%CellCount,          &
+          this%Grid%JaCount,this%Grid,                                                            &
+          this%FlowModelData%IBound,this%FlowModelData%IBoundTS,                                  &
+          this%FlowModelData%Porosity(cellNumber),this%FlowModelData%Retardation(cellNumber),     &
+          this%FlowModelData%StorageFlows(cellNumber),this%FlowModelData%SourceFlows(cellNumber), &
+          this%FlowModelData%SinkFlows(cellNumber), this%FlowModelData%FlowsJA, boundaryFlows,    &
+          this%FlowModelData%Heads(cellNumber), cellType, this%FlowModelData%Zones(cellNumber),   &
+                              this%TransportModelData%ICBound, this%TransportModelData%ICBoundTS  ) 
 
         ! If AlphaLong or AlphaTrans are constants, then 
         ! it should handle said scenario to avoid unnecessary memory usage

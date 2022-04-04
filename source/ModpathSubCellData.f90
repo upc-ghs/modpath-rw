@@ -9,6 +9,7 @@ module ModpathSubCellDataModule
     ! public data
     integer :: Row, Column
     integer,dimension(6) :: Connection
+    integer,dimension(6) :: MassBoundary
     doubleprecision :: VX1,VX2,VY1,VY2,VZ1,VZ2,DX,DY,DZ
     doubleprecision,dimension(2) :: OffsetX,OffsetY,OffsetZ
 
@@ -52,6 +53,10 @@ contains
   
   do n = 1, 6
     this%Connection(n) = 0
+  end do
+
+  do n = 1, 6
+    this%MassBoundary(n) = 0
   end do
   
   do n = 1, 2
