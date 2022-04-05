@@ -437,6 +437,11 @@ contains
             ! Assign tracking function with RWPT
             this%TrackPath => pr_RWPTrackPath
 
+            !! Assign methods for RWPT tracking in tracksubcell
+            call this%TrackCell%TrackSubCell%InitializeRandomWalk( &
+                this%TrackingOptions )
+
+
         else 
             ! MODPATH
 

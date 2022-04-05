@@ -72,6 +72,7 @@ module TrackSubCellModule
     procedure :: ExecuteTracking=>pr_ExecuteTracking
 
     ! RWPT
+    procedure :: InitializeRandomWalk=>pr_InitializeRandomWalk
     procedure :: ExecuteRandomWalkParticleTracking=>pr_ExecuteRandomWalkParticleTracking
     procedure :: LinearInterpolationVelocities=>pr_LinearInterpolationVelocities
     procedure :: ComputeRandomWalkTimeStep=>pr_ComputeRandomWalkTimeStep
@@ -415,6 +416,44 @@ contains
 
 ! RWPT
 !-------------------------------------------------------------------
+  subroutine pr_InitializeRandomWalk(this, trackingOptions)
+      !------------------------------------------------------------
+      ! In the meantime:
+      !
+      ! Link pointers for advection model related methods
+      ! 
+      ! called in trackingEngine%Initialize
+      !------------------------------------------------------------
+      implicit none
+      class(TrackSubCellType) :: this
+      type(ParticleTrackingOptionsType),intent(in) :: trackingOptions
+      !------------------------------------------------------------
+      ! Specifications
+      !------------------------------------------------------------
+
+
+      ! Assign displacement pointers
+      if ( trackingOptions%advectionKind .eq. 1 ) then 
+          this%AdvectionDisplacement=>pr_AdvectionDisplacementExponential
+          this%ExitFaceAndUpdateTimeStep=>pr_DetectExitFaceAndUpdateTimeStepNewton
+      else if ( trackingOptions%advectionKind .eq. 2 ) then 
+          this%AdvectionDisplacement=>pr_AdvectionDisplacementEulerian
+          this%ExitFaceAndUpdateTimeStep=>pr_DetectExitFaceAndUpdateTimeStepQuadratic
+      end if
+
+
+      ! Done
+      return
+
+
+  end subroutine pr_InitializeRandomWalk
+
+
+
+
+
+
+!-------------------------------------------------------------------
   subroutine pr_ExecuteRandomWalkParticleTracking(this,stopIfNoExit, &
           initialLocation,maximumTime,trackingResult,trackingOptions)
       !------------------------------------------------------------
@@ -497,15 +536,8 @@ contains
         end if
       end if
 
-      ! Assign pointers
-      ! This should be done only once
-      if ( trackingOptions%advectionKind .eq. 1 ) then 
-          this%AdvectionDisplacement=>pr_AdvectionDisplacementExponential
-          this%ExitFaceAndUpdateTimeStep=>pr_DetectExitFaceAndUpdateTimeStepNewton
-      else if ( trackingOptions%advectionKind .eq. 2 ) then 
-          this%AdvectionDisplacement=>pr_AdvectionDisplacementEulerian
-          this%ExitFaceAndUpdateTimeStep=>pr_DetectExitFaceAndUpdateTimeStepQuadratic
-      end if
+      ! Advection model pointer are assigned in InitializeRandomWalk 
+      ! called at initialize tracking engine
     
       ! Local copies of cell size
       dx = this%SubCellData%DX
