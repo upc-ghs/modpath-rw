@@ -52,6 +52,7 @@ module ModpathCellDataModule
 
   contains
     procedure :: GetDZ=>pr_GetDZ
+    procedure :: GetDZRW=>pr_GetDZRW
     procedure :: GetArraySizeMode=>pr_GetArraySizeMode
     procedure :: SetArraySizeMode=>pr_SetArraySizeMode
     procedure :: SetFlowAndPropertyData=>pr_SetFlowAndPropertyData
@@ -67,7 +68,8 @@ module ModpathCellDataModule
     procedure :: SetSubCellFlows=>pr_SetSubCellFlows
     procedure :: GetSubCellFlow=>pr_GetSubCellFlow
     procedure :: GetAveragedFaceFlow=>pr_GetAveragedFaceFlow
-    procedure :: FillSubCellDataBuffer=>pr_FillSubCellDataBuffer
+    procedure :: FillSubCellDataBuffer=>pr_FillMassSubCellDataBuffer ! Note the missname
+    !procedure :: FillSubCellDataBuffer=>pr_FillSubCellDataBuffer
     procedure :: GetSubCellData=>pr_GetSubCellData
     procedure :: FillSubCellFaceFlowsBuffer=>pr_FillSubCellFaceFlowsBuffer
     procedure :: AssignAveragedFaceFlowArray=>pr_AssignAveragedFaceFlowArray
@@ -101,35 +103,60 @@ contains
   doubleprecision :: dz
   
   dz = this%Top - this%Bottom
+
+  ! If the layer is convertible, set dz = Head - Bottom if Head < Top
+  if(this%LayerType .eq. 1) then
+      if(this%Head .lt. this%Top) dz = this%Head - this%Bottom
+      ! If dz < 0, set dz to an arbitrary, small positive value
+      if(dz .lt. 0.0d0) dz = 1.0d-4
+  end if
+  
+  end function pr_GetDZ
+
+
+  function pr_GetDZRW(this) result(dz)
+  implicit none
+  class(ModpathCellDataType) :: this
+  doubleprecision :: dz, dzc
+  !-----------------------------------------------
+  ! Return dz as domain size when dry
+  !-----------------------------------------------
+
+
+  dz  = this%Top - this%Bottom
+  dzc = this%Top - this%Bottom
   this%dry = .false.
   this%partiallyDry = .false.
 
   ! If the layer is convertible, set dz = Head - Bottom if Head < Top
   if(this%LayerType .eq. 1) then
-      ! ORIGINAL
-      !if(this%Head .lt. this%Top) dz = this%Head - this%Bottom
-      !! If dz < 0, set dz to an arbitrary, small positive value
-      !if(dz .lt. 0.0d0) dz = 1.0d-4
-      ! END ORIGINAL
 
       if(this%Head .lt. this%Top) then 
-          ! DEV RWPT: if dz < 0, means that the cell is completely dry
-          ! DEV RWPT: if dz > 0, but Head < Top, cell is partially dry
+          ! if dz < 0, means that the cell is completely dry
+          ! if dz > 0, but Head < Top, cell is partially dry
           ! this second case can be used for displacing particles by RWPT in 
           ! that are within the region that is partially saturated.
           dz = this%Head - this%Bottom
           this%dry = .false.
           this%partiallyDry = .true.
           ! If dz < 0, set dz to an arbitrary, small positive value (MODPATH default)
-          if(dz .lt. 0.0d0) then 
-              dz = 1.0d-4
+          ! RWPT: tighthen the leash
+          if ( &
+              ( dz .lt. 0d0 ) .or. &
+              ( (this%Head - this%Bottom)/dzc .lt. 0.01d0) ) then 
+              dz = this%Top - this%Bottom ! to avoid blow up dzrw/dz
               this%dry = .true.
               this%partiallyDry = .false.
           end if 
       end if 
   end if
   
-  end function pr_GetDZ
+  end function pr_GetDZRW
+
+
+
+
+
 
   function pr_GetVolumetricBalance(this) result(balance)
   implicit none
@@ -2120,7 +2147,173 @@ contains
   
   end subroutine pr_AssignAveragedFaceFlowArray
 
+
 !------------------------------------------
+  subroutine pr_FillMassSubCellDataBuffer(this, subCellData, subRow, subColumn, backwardTracking)
+  implicit none 
+  class(ModpathCellDataType) :: this
+  type(ModpathSubCellDataType),intent(inout) :: subCellData
+  integer,intent(in) :: subRow,subColumn
+  logical,intent(in) :: backwardTracking
+  doubleprecision,dimension(6) :: flows
+  doubleprecision :: sign,xinc,yinc
+  integer :: n,rowcolumn,count
+  
+  ! Reset the data in subCellData (Not strictly necessary, but useful for debugging purposes)
+  call subCellData%Reset()
+  
+  call this%FillSubCellFaceFlowsBuffer(subRow, subColumn, flows)
+  
+  subCellData%DX = this%DX / dble(this%SubCellColumnCount)
+  subCellData%DY = this%DY / dble(this%SubCellRowCount)
+  ! For RWPT and drying cells generate blow up due to
+  ! default value 1e-4 for dry cells.
+  !subCellData%DZ = this%GetDZ()
+  ! This form returns cell vertical size, 
+  ! given by the grid, regardless of 
+  ! saturation status. The latter is stored 
+  ! as a cell variable for later use.
+  subCellData%DZ = this%GetDZRW()
+
+  ! RWPT
+  ! dry and partiallyDry properties where defined when calling GetDZ()
+  subCellData%dry          = this%dry
+  subCellData%partiallyDry = this%partiallyDry
+  subCellData%Head         = this%Head
+  subCellData%Top          = this%Top
+  subCellData%Bottom       = this%Bottom
+  ! END RWPT
+  
+  sign = 1.0d0
+  if(backwardTracking) sign = -sign
+  subCellData%VX1 = sign * flows(1) / subCellData%DY /subCellData%DZ / this%Porosity / this%Retardation
+  subCellData%VX2 = sign * flows(2) / subCellData%DY /subCellData%DZ / this%Porosity / this%Retardation
+  subCellData%VY1 = sign * flows(3) / subCellData%DX /subCellData%DZ / this%Porosity / this%Retardation
+  subCellData%VY2 = sign * flows(4) / subCellData%DX /subCellData%DZ / this%Porosity / this%Retardation
+  subCellData%VZ1 = sign * flows(5) / subCellData%DX /subCellData%DY / this%Porosity / this%Retardation
+  subCellData%VZ2 = sign * flows(6) / subCellData%DX /subCellData%DY / this%Porosity / this%Retardation
+  
+  subCellData%Row = subRow
+  subCellData%Column = subColumn
+  
+  xinc = 1.0d0 / dble(this%SubCellColumnCount)
+  subCellData%OffsetX(1) = (subColumn - 1) * xinc
+  subCellData%OffsetX(2) = 1.0d0
+  if(subColumn .lt. this%SubCellColumnCount) then
+    subCellData%OffsetX(2) = subColumn * xinc
+  end if
+  
+  yinc = 1.0d0 / dble(this%SubCellRowCount)
+  subCellData%OffsetY(1) = (this%SubCellRowCount - subRow) * yinc
+  subCellData%OffsetY(2) = 1.0d0
+  if(subRow .gt. 1.0d0) then
+    subCellData%OffsetY(2) = (this%SubCellRowCount - subRow + 1) * yinc
+  end if
+  
+  subCellData%OffsetZ(1) = 0d0
+  subCellData%OffsetZ(2) = 1.0d0
+  
+  ! Assign the connections for the 6 faces.
+  ! All internal connections are set to -1.
+  ! Boundary cells are set to the node number of the neighbor cell.
+  ! Boundary faces that do not have adjacent neighbors are set to 0.
+  
+  do n = 1, 6
+    ! Start by initializing all face connections to -1. 
+    subCellData%Connection(n) = -1
+
+    ! Start by initializing mass boundaries to zero
+    subCellData%MassBoundary(n) = 0
+
+  end do
+  
+  ! Assign the actual connection values to all of the faces that are not internal faces.
+  if(subCellData%Row .eq. 1) then
+    count = this%GetSubFaceCount(4)
+    subCellData%Connection(4) = 0
+    if(count .eq. 1) then
+      subCellData%Connection(4) = this%SubFaceConn4(1)
+      subCellData%MassBoundary(4) = this%MassBoundarySubFace4(1)
+    else if(count .gt. 1) then
+      subCellData%Connection(4) = this%SubFaceConn4(subCellData%Column)
+      subCellData%MassBoundary(4) = this%MassBoundarySubFace4(subCellData%Column)
+    end if
+  end if
+  
+  if(subCellData%Row .eq. this%SubCellRowCount) then
+    count = this%GetSubFaceCount(3)
+    subCellData%Connection(3) = 0
+    ! maybe needed
+    ! subCellData%MassBoundary(3) = 0
+    if(count .eq. 1) then
+      subCellData%Connection(3) = this%SubFaceConn3(1)
+      subCellData%MassBoundary(3) = this%MassBoundarySubFace3(1)
+    else if(count .gt. 1) then
+      subCellData%Connection(3) = this%SubFaceConn3(subCellData%Column)
+      subCellData%MassBoundary(3) = this%MassBoundarySubFace3(subCellData%Column)
+    end if
+  end if
+  
+  if(subCellData%Column .eq. 1) then
+    count = this%GetSubFaceCount(1)
+    subCellData%Connection(1) = 0
+    if(count .eq. 1) then
+      subCellData%Connection(1) = this%SubFaceConn1(1)
+      subCellData%MassBoundary(1) = this%MassBoundarySubFace1(1)
+    else if(count .gt. 1) then
+      subCellData%Connection(1) = this%SubFaceConn1(subCellData%Row)
+      subCellData%MassBoundary(1) = this%MassBoundarySubFace1(subCellData%Row)
+    end if
+  end if
+  
+  if(subCellData%Column .eq. this%SubCellColumnCount) then
+    count = this%GetSubFaceCount(2)
+    subCellData%Connection(2) = 0
+    if(count .eq. 1) then
+      subCellData%Connection(2) = this%SubFaceConn2(1)
+      subCellData%MassBoundary(2) = this%MassBoundarySubFace2(1)
+    else if(count .gt. 1) then
+      subCellData%Connection(2) = this%SubFaceConn2(subCellData%Row)
+      subCellData%MassBoundary(2) = this%MassBoundarySubFace2(subCellData%Row)
+    end if
+  end if
+  
+  rowcolumn = this%SubCellRowCount * this%SubCellColumnCount
+  if(this%GetSubFaceCount(5) .eq. 1) then
+    subCellData%Connection(5) = this%SubFaceConn5(1)
+    subCellData%MassBoundary(5) = this%MassBoundarySubFace5(1)
+  else if(this%GetSubFaceCount(5) .eq. rowcolumn) then
+    n = ((subCellData%Row - 1) * this%SubCellColumnCount) + subCellData%Column
+    subCellData%Connection(5) = this%SubFaceConn5(n)
+    subCellData%MassBoundary(5) = this%MassBoundarySubFace5(n)
+  end if
+  
+  if(this%GetSubFaceCount(6) .eq. 1) then
+    subCellData%Connection(6) = this%SubFaceConn6(1)
+    subCellData%MassBoundary(6) = this%MassBoundarySubFace6(1)
+  else if(this%GetSubFaceCount(6) .eq. rowcolumn) then
+    n = ((subCellData%Row - 1) * this%SubCellColumnCount) + subCellData%Column
+    subCellData%Connection(6) = this%SubFaceConn6(n)
+    subCellData%MassBoundary(6) = this%MassBoundarySubFace6(n)
+  end if
+
+
+  ! RWPT
+  ! Assign additional properties to sub cell buffer
+  ! need it ?
+  subCellData%Porosity    = this%Porosity 
+  subCellData%Retardation = this%Retardation 
+
+
+  ! Necessary for distributed dispersivities
+  subCellData%alphaL = this%alphaL
+  subCellData%alphaT = this%alphaT
+
+
+  end subroutine pr_FillMassSubCellDataBuffer
+
+
+  !---- NEEDS RESTORATION TO PREVIOUS FORMULATION WITHOUT MASS
   subroutine pr_FillSubCellDataBuffer(this, subCellData, subRow, subColumn, backwardTracking)
   implicit none 
   class(ModpathCellDataType) :: this
@@ -2276,6 +2469,17 @@ contains
 
 
   end subroutine pr_FillSubCellDataBuffer
+
+
+
+
+
+
+
+
+
+
+
 
 !------------------------------------------
   function pr_GetSubCellData(this, subRow, subColumn, backwardTracking) result(subCellData)
@@ -2525,9 +2729,15 @@ contains
           dx = this%DX
           dy = this%DY
       end if
-      dz = this%GetDZ()
+      ! areas are used for flow purposes so 
+      ! this function is not a problem in RWPT.
+      ! Verify that it does not defines cell properties...
 
-      areas(1) = dy*dz
+      ! If dry cell, this value is really small 1e-4
+      !dz = this%GetDZ() 
+      dz = this%GetDZRW() 
+
+      areas(1) = dy*dz ! These areas are intended for balances in corners 
       areas(2) = dx*dz
       areas(3) = dx*dy
         
@@ -2590,7 +2800,8 @@ contains
           dx = this%DX
           dy = this%DY
       end if
-      dz = this%GetDZ()
+      !dz = this%GetDZ()
+      dz = this%GetDZRW()
 
       volume = dx*dy*dz
         

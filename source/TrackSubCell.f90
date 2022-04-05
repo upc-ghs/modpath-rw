@@ -544,62 +544,6 @@ contains
 
       if ( this%SubCellData%partiallyDry ) then
 
-          ! If partiallyDry, track always. 
-          ! This understands that localZ remains the 
-          ! same even if the head level decreases or raises
-          ! due to transient flow conditions
-
-
-          ! Verify if particle location is within dry zone
-          ! Verify with which value this z is initialized
-          ! z < ( this%Head - this%Bottom )/( this%Top - this%Bottom )
-          !print *, '## PARTIALLY DRY, particle initialLocation',  initialLocation%LocalX, &
-          !    initialLocation%LocalY, initialLocation%LocalZ
-          !print *, '## dz', dz
-
-          ! FIRST ATTEMPT: 
-          ! assumption: z coordinate is relative respect to cell size ( top - bottom ) 
-          ! if cell partially dry head > bottom
-          !if ( &
-          !    z < ( this%SubCellData%Head - this%SubCellData%Bottom )/( this%SubCellData%Top - this%SubCellData%Bottom ) & 
-          !) then 
-          !    ! Track
-          !    print *, '       z Satisfies minor than relative head. TRACK'
-          !    print *, z , ( this%SubCellData%Head - this%SubCellData%Bottom )/( this%SubCellData%Top - this%SubCellData%Bottom )
-
-          !    continue
-
-          !else
-          !    print *, '       FAILED z Satisfies minor than relative head, NO TRACK!', &
-          !        z, ( this%SubCellData%Head - this%SubCellData%Bottom )/( this%SubCellData%Top - this%SubCellData%Bottom )
-          !      
-          !    trackingResult%Status = trackingResult%Status_InactiveCell()
-          !    return
-          !end if 
-
-
-          !print *, '########### PARTIALLY DRY CELL ', cellNumber
-          !print *, ' ** z, head, top, bottom,  (head - bottom)/(top-bottom), top-bottom, head-bottom '
-          !print *,  z, this%SubCellData%Head, this%SubCellData%Top, this%SubCellData%Bottom, &
-          !    ( this%SubCellData%Head - this%SubCellData%Bottom )/( this%SubCellData%Top - this%SubCellData%Bottom ), &
-          !    ( this%SubCellData%Top - this%SubCellData%Bottom ),   ( this%SubCellData%Head - this%SubCellData%Bottom )
-          !print *, ' ** dx, dy, dz'
-          !print *, dx,dy,dz
-          !print *, this%SubCellData%DX, this%SubCellData%DY, this%SubCellData%DZ
-          !print *, ' ** vx, vy, vz'
-          !print *, this%SubCellData%vx1, this%SubCellData%vx2
-          !print *, this%SubCellData%vy1, this%SubCellData%vy2
-          !print *, this%SubCellData%vz1, this%SubCellData%vz2
-          !print *, ' ** initialX, initialY, initialZ'
-          !print *, initialX, initialY, initialZ
-          !print *, ' ** Top, Bottom, Head, Head-Bottom'
-          !print *, this%SubCellData%Top, this%SubCellData%Bottom, this%SubCellData%Head, & 
-          !    this%SubCellData%Head - this%SubCellData%Bottom
-          !print *, '########### Will TRACK ', cellNumber
-          !call exit(0)
-          !trackingResult%Status = trackingResult%Status_InactiveCell()
-          !return
-
           continue
 
       end if 
@@ -746,7 +690,7 @@ contains
                   if ( exitFace .eq. 5 ) nz=0d0
               else
                   ! If exitFace .eq. 0
-                  print *, '######### RESTARTING', cellNumber, intLoopCounter
+                  !print *, '######### RESTARTING', cellNumber, intLoopCounter
                   ! Restart new coordinates 
                   nx = initialLocation%LocalX
                   ny = initialLocation%LocalY
@@ -1260,6 +1204,9 @@ contains
                    alphaT*max(abs(vy1), abs(vy2))/( dy**2 ) + &
                    alphaT*max(abs(vz1), abs(vz2))/( dz**2 ) ) )
           case (3)
+
+              ! NEEDS REVIEW
+
               ! Courant condition
               dts(1) = trackingOptions%timeStepParameters(1)/( & 
                   max(abs(vx1), abs(vx2))/dx +                 &
@@ -3025,6 +2972,7 @@ contains
       call this%SetCornerComponentsIndexes() 
 
       ! For each dimension
+      ! dimension mask ?
        do n = 1, 3
            this%qCorner000(n) = this%GetInterpolatedCornerDischarge( & 
                 centerSubCellFaceFlows, neighborSubCellFaceFlows, neighborSubCellFaceAreas, 1, n ) 
