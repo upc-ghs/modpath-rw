@@ -12,14 +12,23 @@ module TransportModelDataModule
       logical :: Initialized = .false.
       doubleprecision,dimension(:),allocatable :: AlphaLong
       doubleprecision,dimension(:),allocatable :: AlphaTrans
+      integer,allocatable,dimension(:)         :: ICBound
+      integer,allocatable,dimension(:)         :: ICBoundTS
       doubleprecision :: DMol
+
+      ! grid
       class(ModflowRectangularGridType),pointer :: Grid => null()
+
+      ! Private variables
+      integer,private :: CurrentStressPeriod = 0
+      integer,private :: CurrentTimeStep = 0
 
     contains
 
       procedure :: Initialize=>pr_Initialize
       procedure :: Reset=>pr_Reset
       procedure :: ReadData=>pr_ReadData
+      procedure :: LoadTimeStep=>pr_LoadTimeStep
 
     end type
 
@@ -52,6 +61,16 @@ contains
         gridType = grid%GridType
         this%Grid => grid
 
+        if(allocated(this%AlphaLong)) deallocate(this%AlphaLong)
+        if(allocated(this%AlphaTrans)) deallocate(this%AlphaTrans)
+        if(allocated(this%ICBoundTS)) deallocate(this%ICBoundTS)
+        if(allocated(this%ICBound)) deallocate(this%ICBound)
+        allocate(this%AlphaTrans(grid%CellCount))
+        allocate(this%AlphaLong(grid%CellCount))
+        allocate(this%ICBoundTS(grid%CellCount))
+        allocate(this%ICBound(grid%CellCount))
+
+
         this%Initialized = .true.
 
 
@@ -82,9 +101,10 @@ contains
     integer :: icol, istart, istop
     integer :: iodispersion = 0
     doubleprecision :: r
-    character(len=24),dimension(2) :: aname
+    character(len=24),dimension(3) :: aname
     data aname(1) /'          BOUNDARY ARRAY'/
     data aname(2) /'            DISPERSIVITY'/
+    data aname(3) /'            ICBOUND'/
     integer :: tempAlphaUnit = 666
     character(len=200) :: tempAlphaFile
     !---------------------------------------------------------------------------------------------------------------
@@ -97,10 +117,6 @@ contains
         grid => null() 
         grid => this%Grid
 
-        if(allocated(this%AlphaLong)) deallocate(this%AlphaLong)
-        if(allocated(this%AlphaTrans)) deallocate(this%AlphaTrans)
-        allocate(this%AlphaTrans(grid%CellCount))
-        allocate(this%AlphaLong(grid%CellCount))
         allocate(cellsPerLayer(grid%LayerCount))
         do n = 1, grid%LayerCount
             cellsPerLayer(n) = grid%GetLayerCellCount(n)
@@ -234,6 +250,20 @@ contains
         end if 
 
 
+        ! ICBOUND
+        if((grid%GridType .eq. 1) .or. (grid%GridType .eq. 3)) then
+            call u3dintmp(inUnit, outUnit, grid%LayerCount, grid%RowCount,      &
+              grid%ColumnCount, grid%CellCount, this%ICBound, ANAME(3))
+        else if((grid%GridType .eq. 2) .or. (grid%GridType .eq. 4)) then
+            call u3dintmpusg(inUnit, outUnit, grid%CellCount, grid%LayerCount,  &
+              this%ICBound, aname(3), cellsPerLayer)
+        else
+              write(outUnit,*) 'Invalid grid type specified when reading ICBOUND array data.'
+              write(outUnit,*) 'Stopping.'
+              call ustop(' ')          
+        end if
+
+
         ! Close dispersion data file
         close( inUnit )
 
@@ -255,9 +285,408 @@ contains
         this%DMol = 0
         if(allocated(this%AlphaLong)) deallocate( this%AlphaLong )
         if(allocated(this%AlphaTrans)) deallocate( this%AlphaTrans )
+        if(allocated(this%ICBoundTS)) deallocate( this%ICBoundTS )
+        if(allocated(this%ICBound)) deallocate( this%ICBound )
 
     end subroutine pr_Reset
 
+
+
+    subroutine pr_LoadTimeStep(this, stressPeriod, timeStep)
+    !***************************************************************************************************************
+    !
+    !***************************************************************************************************************
+    ! Specifications
+    !---------------------------------------------------------------------------------------------------------------
+    implicit none
+    class(TransportModelDataType) :: this
+    integer,intent(in) :: stressPeriod, timeStep
+    integer :: firstRecord, lastRecord, n, m, firstNonBlank, lastNonBlank, &
+      trimmedLength
+    integer :: spaceAssigned, status,cellCount, iface, index,              &
+      boundaryFlowsOffset, listItemBufferSize, cellNumber, layer
+    !type(BudgetRecordHeaderType) :: header
+    character(len=16) :: textLabel
+    doubleprecision :: top 
+    real :: HDryTol, HDryDiff
+    !---------------------------------------------------------------------------------------------------------------
+     
+
+        !! Readers of time variable data 
+        !call this%ClearTimeStepBudgetData()
+        !call this%BudgetReader%GetRecordHeaderRange(stressPeriod, timeStep, firstRecord, lastRecord)
+        !if(firstRecord .eq. 0) return
+    
+        cellCount = this%Grid%CellCount
+        !listItemBufferSize = size(this%ListItemBuffer)
+        
+        ! Set steady state = true, then change it if the budget file contains storage
+        !this%SteadyState = .true.
+        
+        ! MASS TRANSPORT; RWPT: could be recycled for changes in boundary conditions
+        ! Load heads for this time step
+        !call this%HeadReader%FillTimeStepHeadBuffer(stressPeriod, timeStep, &
+        !  this%Heads, cellCount, spaceAssigned)
+        
+        ! Fill ICBoundTS array and set the SaturatedTop array for the Grid.
+        ! The saturated top is set equal to the top for confined cells and water table cells 
+        ! where the head is above the top or below the bottom.
+        !HDryTol = abs(epsilon(HDryTol)*sngl(this%HDry))
+        if(this%Grid%GridType .gt. 2) then
+            do n = 1, cellCount
+                this%ICBoundTS(n) = this%ICBound(n)
+                ! DO SOMETHING WITH IBOUNDTS 
+                ! DEPENDNING ON HEADS OR OTHERS
+                !layer = this%Grid%GetLayer(n)
+                !if(this%Grid%CellType(n) .eq. 1) then
+                !    HDryDiff = sngl(this%Heads(n)) - sngl(this%HDry)
+                !    if(abs(HDryDiff) .lt. HDryTol) then
+                !        this%IBoundTS(n) = 0
+                !        if(this%Heads(n) .lt. this%Grid%Bottom(n)) then
+                !            this%IBoundTS(n) = 0
+                !            this%Grid%SaturatedTop(n) = this%Grid%Bottom(n)
+                !        end if
+                !    end if
+                !    if(this%IBoundTS(n) .ne. 0) then
+                !        if((this%Heads(n) .le. this%Grid%Top(n)) .and. &
+                !          (this%Heads(n) .ge. this%Grid%Bottom(n))) then
+                !            this%Grid%SaturatedTop(n) = this%Heads(n)
+                !        end if
+                !    end if
+                !end if
+            end do
+            
+        else
+            do n = 1, cellCount
+                this%ICBoundTS(n) = this%ICBound(n)
+                !this%Grid%SaturatedTop(n) = this%Grid%Top(n)
+                !this%StorageFlows(n) = 0.0
+                !this%IBoundTS(n) = this%IBound(n)
+                !layer = this%Grid%GetLayer(n)
+                !if(this%Grid%CellType(n) .eq. 1) then
+                !    HDryDiff = sngl(this%Heads(n)) - sngl(this%HDry)
+                !    if((abs(HDryDiff) .lt. HDryTol) .or. (this%Heads(n) .gt. 1.0d+6)) then
+                !        this%IBoundTS(n) = 0
+                !    end if
+                !    if(this%IBoundTS(n) .ne. 0) then
+                !        if((this%Heads(n) .le. this%Grid%Top(n)) .and. &
+                !          (this%Heads(n) .ge. this%Grid%Bottom(n))) then
+                !            this%Grid%SaturatedTop(n) = this%Heads(n)
+                !        end if
+                !    end if
+                !end if
+            end do
+        end if
+       
+
+        !! MASS TRANSPORT, RWPT: COULD BE USEFUL FOR READING SOMETHING FROM EXTERNAL FILE 
+        !! Loop through record headers
+        !do n = firstRecord, lastRecord
+        !     header = this%BudgetReader%GetRecordHeader(n)
+        !     textLabel = header%TextLabel
+        !     call TrimAll(textLabel, firstNonBlank, lastNonBlank, trimmedLength)
+        !     
+        !     select case(textLabel(firstNonBlank:lastNonBlank))
+        !     case('CONSTANT HEAD', 'CHD')
+        !          ! Read constant head flows into the sinkFlows and sourceFlows arrays.
+        !          ! For a standard budget file, Method = 0. For a compact budget file,
+        !          ! Method = 2.
+        !          if(header%Method .eq. 0) then
+        !              call this%BudgetReader%FillRecordDataBuffer(header,             &
+        !                this%ArrayBufferDbl, cellCount, spaceAssigned, status)
+        !              if(cellCount .eq. spaceAssigned) then
+        !                  do m = 1, spaceAssigned
+        !                      if(this%ArrayBufferDbl(m) .gt. 0.0d0) then
+        !                          this%SourceFlows(m) = this%SourceFlows(m) +         &
+        !                            this%ArrayBufferDbl(m)
+        !                      else if(this%ArrayBufferDbl(m) .lt. 0.0d0) then
+        !                          this%SinkFlows(m) = this%SinkFlows(m) +             &
+        !                            this%ArrayBufferDbl(m)
+        !                      end if
+        !                  end do
+        !              end if
+        !          else if(header%Method .eq. 2) then
+        !              call this%BudgetReader%FillRecordDataBuffer(header,             &
+        !                this%ListItemBuffer, listItemBufferSize, spaceAssigned, status)
+        !              if(spaceAssigned .gt. 0) then
+        !                  do m = 1, spaceAssigned
+        !                      cellNumber = this%ListItemBuffer(m)%CellNumber
+        !                      if(this%ListItemBuffer(m)%BudgetValue .gt. 0.0d0) then
+        !                          this%SourceFlows(cellNumber) =                      &
+        !                            this%SourceFlows(cellNumber) + this%ListItemBuffer(m)%BudgetValue
+        !                      else if(this%ListItemBuffer(m)%BudgetValue .lt. 0.0d0) then
+        !                          this%SinkFlows(cellNumber) =                        &
+        !                            this%SinkFlows(cellNumber) + this%ListItemBuffer(m)%BudgetValue
+        !                      end if
+        !                  end do
+        !              end if
+        !          else if((header%Method .eq. 5) .or. (header%Method .eq. 6)) then
+        !              call this%BudgetReader%FillRecordDataBuffer(header,             &
+        !                this%ListItemBuffer, listItemBufferSize, spaceAssigned,       &
+        !                status)
+        !              if(spaceAssigned .gt. 0) then
+        !                  do m = 1, spaceAssigned
+        !                      call this%CheckForDefaultIface(header%TextLabel, iface)
+        !                      index = header%FindAuxiliaryNameIndex('IFACE')
+        !                      if(index .gt. 0) then
+        !                          iface = int(this%ListItemBuffer(m)%AuxiliaryValues(index))
+        !                      end if
+        !                      
+        !                      cellNumber = this%ListItemBuffer(m)%CellNumber
+        !                      if(iface .gt. 0) then
+        !                          boundaryFlowsOffset = 6 * (cellNumber - 1)
+        !                          this%BoundaryFlows(boundaryFlowsOffset + iface) =   &
+        !                            this%BoundaryFlows(boundaryFlowsOffset + iface) + &
+        !                            this%ListItemBuffer(m)%BudgetValue
+        !                      else
+        !                          if(this%ListItemBuffer(m)%BudgetValue .gt. 0.0d0) then
+        !                              this%SourceFlows(cellNumber) =                  &
+        !                                this%SourceFlows(cellNumber) +                &
+        !                                this%ListItemBuffer(m)%BudgetValue
+        !                          else if(this%ListItemBuffer(m)%BudgetValue .lt. 0.0d0) then
+        !                              this%SinkFlows(cellNumber) =                    &
+        !                                this%SinkFlows(cellNumber) +                  &
+        !                                this%ListItemBuffer(m)%BudgetValue
+        !                          end if
+        !                      end if
+        !                  end do
+        !              end if
+        !          end if
+        !         
+        !     case('STORAGE', 'STO-SS', 'STO-SY')
+        !          ! Read storage for all cells into the StorageFlows array.
+        !          ! Method should always be 0 or 1, but check anyway to be sure.
+        !          if((header%Method .eq. 0) .or. (header%Method .eq. 1)) then
+        !              if(header%ArrayItemCount .eq. cellCount) then
+        !                  call this%BudgetReader%FillRecordDataBuffer(header,         &
+        !                    this%ArrayBufferDbl, cellCount, spaceAssigned, status)
+        !                  if(cellCount .eq. spaceAssigned) then
+        !                      do m = 1, spaceAssigned
+        !                          this%StorageFlows(m) = this%StorageFlows(m) + this%ArrayBufferDbl(m)
+        !                          if(this%StorageFlows(m) .ne. 0.0) this%SteadyState = .false.
+        !                      end do
+        !                  end if
+        !              end if
+        !          end if
+        !         
+        !     case('FLOW JA FACE', 'FLOW-JA-FACE')
+        !          ! Read connected face flows into the FlowsJA array for unstructured grids.
+        !          if((header%Method .eq. 0) .or. (header%Method .eq. 1)) then
+        !              ! Method should always be 0 or 1 for flow between grid cells. 
+        !              if(header%ArrayItemCount .eq. this%BudgetReader%GetFlowArraySize()) then
+        !                  call this%BudgetReader%FillRecordDataBuffer(header,         &
+        !                    this%FlowsJA, header%ArrayItemCount, spaceAssigned,       &
+        !                    status)
+        !              end if
+        !          else if(header%Method .eq. 6) then
+        !              ! Method code 6 indicates flow to or from cells in the current model grid
+        !              ! and another connected model grid in a multi-model MODFLOW-6 simulation. 
+        !              ! Treat flows to or from connected model grids as distributed source/sink flows 
+        !              ! for the current grid.
+        !              call this%BudgetReader%FillRecordDataBuffer(header,             &
+        !                this%ListItemBuffer, listItemBufferSize, spaceAssigned,       &
+        !                status)
+        !              if(spaceAssigned .gt. 0) then
+        !                  do m = 1, spaceAssigned
+        !                      cellNumber = this%ListItemBuffer(m)%CellNumber
+        !                      if(this%ListItemBuffer(m)%BudgetValue .gt. 0.0d0) then
+        !                          this%SourceFlows(cellNumber) =                  &
+        !                              this%SourceFlows(cellNumber) +                &
+        !                              this%ListItemBuffer(m)%BudgetValue
+        !                      else if(this%ListItemBuffer(m)%BudgetValue .lt. 0.0d0) then
+        !                          this%SinkFlows(cellNumber) =                    &
+        !                              this%SinkFlows(cellNumber) +                  &
+        !                              this%ListItemBuffer(m)%BudgetValue
+        !                      end if
+        !                  end do
+        !              end if
+        !          end if
+        !         
+        !     case('FLOW RIGHT FACE')
+        !          ! Read flows across the right face for structured grids.
+        !          ! Method should always be 0 or 1, but check anyway to be sure.
+        !          if((header%Method .eq. 0) .or. (header%Method .eq. 1)) then
+        !              if(header%ArrayItemCount .eq. this%BudgetReader%GetFlowArraySize()) then
+        !                  call this%BudgetReader%FillRecordDataBuffer(header,         &
+        !                    this%FlowsRightFace, header%ArrayItemCount, spaceAssigned,&
+        !                    status)
+        !              end if
+        !          end if
+        !         
+        !     case('FLOW FRONT FACE')
+        !          ! Read flows across the front face for structured grids.
+        !          ! Method should always be 0 or 1, but check anyway to be sure.
+        !          if((header%Method .eq. 0) .or. (header%Method .eq. 1)) then
+        !              if(header%ArrayItemCount .eq. this%BudgetReader%GetFlowArraySize()) then
+        !                  call this%BudgetReader%FillRecordDataBuffer(header,         &
+        !                    this%FlowsFrontFace, header%ArrayItemCount, spaceAssigned,&
+        !                    status)
+        !              end if
+        !          end if
+        !         
+        !     case('FLOW LOWER FACE')
+        !          ! Read flows across the lower face for structured grids.
+        !          ! Method should always be 0 or 1, but check anyway to be sure.
+        !          if((header%Method .eq. 0) .or. (header%Method .eq. 1)) then
+        !              if(header%ArrayItemCount .eq. this%BudgetReader%GetFlowArraySize()) then
+        !                  call this%BudgetReader%FillRecordDataBuffer(header,         &
+        !                    this%FlowsLowerFace, header%ArrayItemCount, spaceAssigned,&
+        !                    status)
+        !              end if
+        !          end if
+        !     
+        !      case default
+        !          ! Now handle any other records in the budget file.
+        !           if((header%Method .eq. 0) .or. (header%Method .eq. 1)) then
+        !              if(header%ArrayItemCount .eq. cellCount) then
+        !                  call this%BudgetReader%FillRecordDataBuffer(header,         &
+        !                    this%ArrayBufferDbl, cellCount, spaceAssigned, status)
+        !                  if(cellCount .eq. spaceAssigned) then
+        !                      call this%CheckForDefaultIface(header%TextLabel, iface)
+        !                      if(iface .gt. 0) then
+        !                          do m = 1, spaceAssigned
+        !                              boundaryFlowsOffset = 6 * (m - 1)
+        !                              this%BoundaryFlows(boundaryFlowsOffset + iface) =   &
+        !                                this%BoundaryFlows(boundaryFlowsOffset + iface) + &
+        !                                this%ArrayBufferDbl(m)
+        !                          end do
+        !                      else
+        !                          do m = 1, spaceAssigned
+        !                              if(this%ArrayBufferDbl(m) .gt. 0.0d0) then
+        !                                  this%SourceFlows(m) = this%SourceFlows(m) +     &
+        !                                    this%ArrayBufferDbl(m)
+        !                              else if(this%ArrayBufferDbl(m) .lt. 0.0d0) then
+        !                                  this%SinkFlows(m) = this%SinkFlows(m) +         &
+        !                                    this%ArrayBufferDbl(m)
+        !                              end if
+        !                          end do
+        !                      end if
+        !                  end if
+        !              end if
+        !           else if(header%Method .eq. 3) then
+        !              call this%BudgetReader%FillRecordDataBuffer(header,             &
+        !                this%ArrayBufferDbl, this%ArrayBufferInt,                     &
+        !                header%ArrayItemCount, spaceAssigned, status)
+        !              if(header%ArrayItemCount .eq. spaceAssigned) then
+        !                  call this%CheckForDefaultIface(header%TextLabel, iface)
+        !                  if(iface .gt. 0) then
+        !                      do m = 1, spaceAssigned
+        !                          cellNumber = this%ArrayBufferInt(m)
+        !                          boundaryFlowsOffset = 6 * (cellNumber - 1)
+        !                          this%BoundaryFlows(boundaryFlowsOffset + iface) =   &
+        !                            this%BoundaryFlows(boundaryFlowsOffset + iface) + &
+        !                            this%ArrayBufferDbl(m)
+        !                      end do
+        !                  else            
+        !                      do m = 1, spaceAssigned
+        !                          cellNumber = this%ArrayBufferInt(m)
+        !                          if(this%ArrayBufferDbl(m) .gt. 0.0d0) then
+        !                              this%SourceFlows(cellNumber) =                  &
+        !                                this%SourceFlows(cellNumber) +                &
+        !                                this%ArrayBufferDbl(m)
+        !                          else if(this%ArrayBufferDbl(m) .lt. 0.0d0) then
+        !                              this%SinkFlows(cellNumber) =                    &
+        !                                this%SinkFlows(cellNumber) +                  &
+        !                                this%ArrayBufferDbl(m)
+        !                          end if
+        !                      end do
+        !                  end if
+        !              end if
+        !           else if(header%Method .eq. 4) then
+        !              call this%BudgetReader%FillRecordDataBuffer(header,             &
+        !                this%ArrayBufferDbl, header%ArrayItemCount, spaceAssigned,    &
+        !                status)
+        !              if(header%ArrayItemCount .eq. spaceAssigned) then
+        !                  call this%CheckForDefaultIface(header%TextLabel, iface)
+        !                  if(iface .gt. 0) then
+        !                      do m = 1, spaceAssigned
+        !                          boundaryFlowsOffset = 6 * (m - 1)
+        !                          this%BoundaryFlows(boundaryFlowsOffset + iface) =   &
+        !                            this%BoundaryFlows(boundaryFlowsOffset + iface) + &
+        !                            this%ArrayBufferDbl(m)
+        !                      end do
+        !                  else            
+        !                      do m = 1, spaceAssigned
+        !                          if(this%ArrayBufferDbl(m) .gt. 0.0d0) then
+        !                              this%SourceFlows(m) = this%SourceFlows(m) +     &
+        !                                this%ArrayBufferDbl(m)
+        !                          else if(this%ArrayBufferDbl(m) .lt. 0.0d0) then
+        !                              this%SinkFlows(m) = this%SinkFlows(m) +         &
+        !                                this%ArrayBufferDbl(m)
+        !                          end if
+        !                      end do
+        !                  end if
+        !              end if
+        !          else if(header%Method .eq. 2) then
+        !              call this%BudgetReader%FillRecordDataBuffer(header,             &
+        !                this%ListItemBuffer, listItemBufferSize, spaceAssigned,       &
+        !                status)
+        !              if(spaceAssigned .gt. 0) then
+        !                  call this%CheckForDefaultIface(header%TextLabel, iface)
+        !                  if(iface .gt. 0) then
+        !                      do m = 1, spaceAssigned
+        !                          cellNumber = this%ListItemBuffer(m)%CellNumber
+        !                          boundaryFlowsOffset = 6 * (cellNumber - 1)
+        !                          this%BoundaryFlows(boundaryFlowsOffset + iface) =   &
+        !                            this%BoundaryFlows(boundaryFlowsOffset + iface) + &
+        !                            this%ListItemBuffer(m)%BudgetValue
+        !                      end do
+        !                  else            
+        !                      do m = 1, spaceAssigned
+        !                          cellNumber = this%ListItemBuffer(m)%CellNumber
+        !                          if(this%ListItemBuffer(m)%BudgetValue .gt. 0.0d0) then
+        !                              this%SourceFlows(cellNumber) =                  &
+        !                                this%SourceFlows(cellNumber) +                &
+        !                                this%ListItemBuffer(m)%BudgetValue
+        !                          else if(this%ListItemBuffer(m)%BudgetValue .lt. 0.0d0) then
+        !                              this%SinkFlows(cellNumber) =                    &
+        !                                this%SinkFlows(cellNumber) +                  &
+        !                                this%ListItemBuffer(m)%BudgetValue
+        !                          end if
+        !                      end do
+        !                  end if
+        !              end if
+        !          else if((header%Method .eq. 5) .or. (header%Method .eq. 6)) then
+        !              call this%BudgetReader%FillRecordDataBuffer(header,             &
+        !                this%ListItemBuffer, listItemBufferSize, spaceAssigned,       &
+        !                status)
+        !              if(spaceAssigned .gt. 0) then
+        !                  do m = 1, spaceAssigned
+        !                      call this%CheckForDefaultIface(header%TextLabel, iface)
+        !                      index = header%FindAuxiliaryNameIndex('IFACE')
+        !                      if(index .gt. 0) then
+        !                          iface = int(this%ListItemBuffer(m)%AuxiliaryValues(index))
+        !                      end if
+        !                      
+        !                      cellNumber = this%ListItemBuffer(m)%CellNumber
+        !                      if(iface .gt. 0) then
+        !                          boundaryFlowsOffset = 6 * (cellNumber - 1)
+        !                          this%BoundaryFlows(boundaryFlowsOffset + iface) =   &
+        !                            this%BoundaryFlows(boundaryFlowsOffset + iface) + &
+        !                            this%ListItemBuffer(m)%BudgetValue
+        !                      else
+        !                          if(this%ListItemBuffer(m)%BudgetValue .gt. 0.0d0) then
+        !                              this%SourceFlows(cellNumber) =                  &
+        !                                this%SourceFlows(cellNumber) +                &
+        !                                this%ListItemBuffer(m)%BudgetValue
+        !                          else if(this%ListItemBuffer(m)%BudgetValue .lt. 0.0d0) then
+        !                              this%SinkFlows(cellNumber) =                    &
+        !                                this%SinkFlows(cellNumber) +                  &
+        !                                this%ListItemBuffer(m)%BudgetValue
+        !                          end if
+        !                      end if
+        !                  end do
+        !              end if
+        !          end if
+        !     
+        !     end select
+        !     
+        !end do
+    
+        this%CurrentStressPeriod = stressPeriod
+        this%CurrentTimeStep = timeStep
+    
+    end subroutine pr_LoadTimeStep
 
 
 end module TransportModelDataModule

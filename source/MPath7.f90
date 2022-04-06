@@ -425,10 +425,16 @@
         call tdisData%GetPeriodAndStep(tdisData%CumulativeTimeStepCount, period, step)
         call tdisData%GetPeriodAndStep(tdisData%CumulativeTimeStepCount, period, step)
         call flowModelData%LoadTimeStep(period, step)
+        if ( simulationData%TrackingOptions%RandomWalkParticleTracking ) then 
+            call transportModelData%LoadTimeStep(period, step)
+        end if
     else
         stoptime = simulationData%ReferenceTime
         call tdisData%GetPeriodAndStep(tdisData%CumulativeTimeStepCount, period, step)
         call flowModelData%LoadTimeStep(1, 1)
+        if ( simulationData%TrackingOptions%RandomWalkParticleTracking ) then 
+            call transportModelData%LoadTimeStep(1, 1)
+        end if
     end if
     !
     if(simulationData%StoppingTimeOption .eq. 2) then
@@ -542,6 +548,11 @@
     
     ! Load data for the current time step
     call flowModelData%LoadTimeStep(period, step)
+
+    ! Load mass transport data for current time step
+    if ( simulationData%TrackingOptions%RandomWalkParticleTracking ) then 
+        call transportModelData%LoadTimeStep(period, step)
+    end if 
     
     if(flowModelData%SteadyState) then
       write(message,'(A,I5,A,I5,A,1PE12.5,A)') 'Processing Time Step ',step,        &
@@ -888,7 +899,6 @@
 
             end do
             !$omp end parallel do
-
 
 
             ! GPKDE for the current groupIndex

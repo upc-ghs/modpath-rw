@@ -690,7 +690,7 @@ contains
     end function pr_GetCurrentTimeStep
 
 
-    subroutine pr_SetIbound(this, ibound, arraySize)
+    subroutine pr_SetIBound(this, ibound, arraySize)
     !***************************************************************************************************************
     !
     !***************************************************************************************************************
@@ -717,7 +717,7 @@ contains
         end do
   
 
-    end subroutine pr_SetIbound
+    end subroutine pr_SetIBound
 
 
     subroutine pr_SetZones(this, zones, arraySize)

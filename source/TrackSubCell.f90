@@ -72,6 +72,7 @@ module TrackSubCellModule
     procedure :: ExecuteTracking=>pr_ExecuteTracking
 
     ! RWPT
+    procedure :: InitializeRandomWalk=>pr_InitializeRandomWalk
     procedure :: ExecuteRandomWalkParticleTracking=>pr_ExecuteRandomWalkParticleTracking
     procedure :: LinearInterpolationVelocities=>pr_LinearInterpolationVelocities
     procedure :: ComputeRandomWalkTimeStep=>pr_ComputeRandomWalkTimeStep
@@ -415,6 +416,44 @@ contains
 
 ! RWPT
 !-------------------------------------------------------------------
+  subroutine pr_InitializeRandomWalk(this, trackingOptions)
+      !------------------------------------------------------------
+      ! In the meantime:
+      !
+      ! Link pointers for advection model related methods
+      ! 
+      ! called in trackingEngine%Initialize
+      !------------------------------------------------------------
+      implicit none
+      class(TrackSubCellType) :: this
+      type(ParticleTrackingOptionsType),intent(in) :: trackingOptions
+      !------------------------------------------------------------
+      ! Specifications
+      !------------------------------------------------------------
+
+
+      ! Assign displacement pointers
+      if ( trackingOptions%advectionKind .eq. 1 ) then 
+          this%AdvectionDisplacement=>pr_AdvectionDisplacementExponential
+          this%ExitFaceAndUpdateTimeStep=>pr_DetectExitFaceAndUpdateTimeStepNewton
+      else if ( trackingOptions%advectionKind .eq. 2 ) then 
+          this%AdvectionDisplacement=>pr_AdvectionDisplacementEulerian
+          this%ExitFaceAndUpdateTimeStep=>pr_DetectExitFaceAndUpdateTimeStepQuadratic
+      end if
+
+
+      ! Done
+      return
+
+
+  end subroutine pr_InitializeRandomWalk
+
+
+
+
+
+
+!-------------------------------------------------------------------
   subroutine pr_ExecuteRandomWalkParticleTracking(this,stopIfNoExit, &
           initialLocation,maximumTime,trackingResult,trackingOptions)
       !------------------------------------------------------------
@@ -497,15 +536,8 @@ contains
         end if
       end if
 
-      ! Assign pointers
-      ! This should be done only once
-      if ( trackingOptions%advectionKind .eq. 1 ) then 
-          this%AdvectionDisplacement=>pr_AdvectionDisplacementExponential
-          this%ExitFaceAndUpdateTimeStep=>pr_DetectExitFaceAndUpdateTimeStepNewton
-      else if ( trackingOptions%advectionKind .eq. 2 ) then 
-          this%AdvectionDisplacement=>pr_AdvectionDisplacementEulerian
-          this%ExitFaceAndUpdateTimeStep=>pr_DetectExitFaceAndUpdateTimeStepQuadratic
-      end if
+      ! Advection model pointer are assigned in InitializeRandomWalk 
+      ! called at initialize tracking engine
     
       ! Local copies of cell size
       dx = this%SubCellData%DX
@@ -543,62 +575,6 @@ contains
 
 
       if ( this%SubCellData%partiallyDry ) then
-
-          ! If partiallyDry, track always. 
-          ! This understands that localZ remains the 
-          ! same even if the head level decreases or raises
-          ! due to transient flow conditions
-
-
-          ! Verify if particle location is within dry zone
-          ! Verify with which value this z is initialized
-          ! z < ( this%Head - this%Bottom )/( this%Top - this%Bottom )
-          !print *, '## PARTIALLY DRY, particle initialLocation',  initialLocation%LocalX, &
-          !    initialLocation%LocalY, initialLocation%LocalZ
-          !print *, '## dz', dz
-
-          ! FIRST ATTEMPT: 
-          ! assumption: z coordinate is relative respect to cell size ( top - bottom ) 
-          ! if cell partially dry head > bottom
-          !if ( &
-          !    z < ( this%SubCellData%Head - this%SubCellData%Bottom )/( this%SubCellData%Top - this%SubCellData%Bottom ) & 
-          !) then 
-          !    ! Track
-          !    print *, '       z Satisfies minor than relative head. TRACK'
-          !    print *, z , ( this%SubCellData%Head - this%SubCellData%Bottom )/( this%SubCellData%Top - this%SubCellData%Bottom )
-
-          !    continue
-
-          !else
-          !    print *, '       FAILED z Satisfies minor than relative head, NO TRACK!', &
-          !        z, ( this%SubCellData%Head - this%SubCellData%Bottom )/( this%SubCellData%Top - this%SubCellData%Bottom )
-          !      
-          !    trackingResult%Status = trackingResult%Status_InactiveCell()
-          !    return
-          !end if 
-
-
-          !print *, '########### PARTIALLY DRY CELL ', cellNumber
-          !print *, ' ** z, head, top, bottom,  (head - bottom)/(top-bottom), top-bottom, head-bottom '
-          !print *,  z, this%SubCellData%Head, this%SubCellData%Top, this%SubCellData%Bottom, &
-          !    ( this%SubCellData%Head - this%SubCellData%Bottom )/( this%SubCellData%Top - this%SubCellData%Bottom ), &
-          !    ( this%SubCellData%Top - this%SubCellData%Bottom ),   ( this%SubCellData%Head - this%SubCellData%Bottom )
-          !print *, ' ** dx, dy, dz'
-          !print *, dx,dy,dz
-          !print *, this%SubCellData%DX, this%SubCellData%DY, this%SubCellData%DZ
-          !print *, ' ** vx, vy, vz'
-          !print *, this%SubCellData%vx1, this%SubCellData%vx2
-          !print *, this%SubCellData%vy1, this%SubCellData%vy2
-          !print *, this%SubCellData%vz1, this%SubCellData%vz2
-          !print *, ' ** initialX, initialY, initialZ'
-          !print *, initialX, initialY, initialZ
-          !print *, ' ** Top, Bottom, Head, Head-Bottom'
-          !print *, this%SubCellData%Top, this%SubCellData%Bottom, this%SubCellData%Head, & 
-          !    this%SubCellData%Head - this%SubCellData%Bottom
-          !print *, '########### Will TRACK ', cellNumber
-          !call exit(0)
-          !trackingResult%Status = trackingResult%Status_InactiveCell()
-          !return
 
           continue
 
@@ -697,16 +673,9 @@ contains
               ( ny .gt. 1.0d0 ) .or. ( ny .lt. 0d0 )  .or. &
               ( nz .gt. 1.0d0 ) .or. ( nz .lt. 0d0 )       & 
           )
-              !print *, '## START INTERFACE LOOP...', intLoopCounter
-              !print *, ' ### INIT', x, y, z 
-              !print *, ' ### END ', nx, ny, nz 
 
               intLoopCounter = intLoopCounter + 1
               dtxyz(:) = 0d0
-
-              if( intLoopCounter .gt. 10 ) then 
-                  call exit(0)
-              end if
 
               ! Recompute dt for exact interface
               call this%ExitFaceAndUpdateTimeStep( x, y, z, nx, ny, nz, &
@@ -754,7 +723,7 @@ contains
                   if ( exitFace .eq. 5 ) nz=0d0
               else
                   ! If exitFace .eq. 0
-                  print *, '######### RESTARTING', cellNumber, intLoopCounter
+                  !print *, '######### RESTARTING', cellNumber, intLoopCounter
                   ! Restart new coordinates 
                   nx = initialLocation%LocalX
                   ny = initialLocation%LocalY
@@ -810,6 +779,15 @@ contains
                   ! Logic should be: 
                   ! Is there an interface and which kind
 
+
+                  ! At this point, program already 
+                  ! found an exitFace
+
+                  ! By default, if a cell is not active from 
+                  ! the flow model data, 
+                  
+
+
                   ! elasticRebound:
                   !
                   ! Verify if particle has to rebound 
@@ -825,7 +803,7 @@ contains
                   do while( ( exitFace .gt. 0 ) )
 
                       ! If not connected to rebound boundary cell, leave
-                      if ( this%SubCellData%Connection(exitFace) .ne. 0 ) then 
+                      if ( this%SubCellData%MassBoundary(exitFace) .ne. 1 ) then 
                           exit
                       end if 
 
@@ -1036,43 +1014,35 @@ contains
 
               ! Done
               return
+
           end if
+
 
           ! Particle left cell
           if( exitFace .gt. 0 ) then 
-              ! Depending connected cell id, it is determined 
-              ! what happens to particle 
-              if( this%SubCellData%Connection(exitFace) .lt. 0 ) then
+              ! Based on connected cell id, it is determined 
+              ! what happens to the particle (see: source/ModpathCellData.f90:FillSubCellDataBuffer ) 
+              ! if ExitFaceConnection = 0, domainBoundary
+              ! if ExitFaceConnection > 0, anotherCell
+              ! if ExitFaceConnection < 0, subCell, usg-grid
+              trackingResult%ExitFaceConnection = this%SubCellData%Connection(exitFace)
+              if( trackingResult%ExitFaceConnection .lt. 0 ) then
                   ! Internal transfer. This is the case for unstructured grid
                   trackingResult%Status = trackingResult%Status_ExitAtInternalFace()
-                  trackingResult%ExitFaceConnection = this%SubCellData%Connection(exitFace)
-                  trackingResult%ExitFace = exitFace
-                  trackingResult%FinalLocation%CellNumber = cellNumber
-                  trackingResult%FinalLocation%LocalX = nx
-                  trackingResult%FinalLocation%LocalY = ny
-                  trackingResult%FinalLocation%LocalZ = nz
-                  trackingResult%FinalLocation%TrackingTime = t
-                  continueTimeLoop = .false.
-
-                  ! Done
-                  return
-
-              else if( this%SubCellData%Connection(exitFace) .gt. 0 ) then
-                  ! Is another active cell
+              else
+                  ! Transfer to another cell
                   trackingResult%Status = trackingResult%Status_ExitAtCellFace()
-                  trackingResult%ExitFaceConnection = this%SubCellData%Connection(exitFace)
-                  trackingResult%ExitFace = exitFace
-                  trackingResult%FinalLocation%CellNumber = cellNumber
-                  trackingResult%FinalLocation%LocalX = nx
-                  trackingResult%FinalLocation%LocalY = ny
-                  trackingResult%FinalLocation%LocalZ = nz
-                  trackingResult%FinalLocation%TrackingTime = t
-                  continueTimeLoop = .false.
-
-                  ! Done
-                  return
-
               end if
+              trackingResult%ExitFace                   = exitFace
+              trackingResult%FinalLocation%CellNumber   = cellNumber
+              trackingResult%FinalLocation%LocalX       = nx
+              trackingResult%FinalLocation%LocalY       = ny
+              trackingResult%FinalLocation%LocalZ       = nz
+              trackingResult%FinalLocation%TrackingTime = t
+              continueTimeLoop = .false.
+
+              ! Done
+              return
 
           end if 
 
@@ -1271,6 +1241,9 @@ contains
                    alphaT*max(abs(vy1), abs(vy2))/( dy**2 ) + &
                    alphaT*max(abs(vz1), abs(vz2))/( dz**2 ) ) )
           case (3)
+
+              ! NEEDS REVIEW
+
               ! Courant condition
               dts(1) = trackingOptions%timeStepParameters(1)/( & 
                   max(abs(vx1), abs(vx2))/dx +                 &
@@ -3036,6 +3009,7 @@ contains
       call this%SetCornerComponentsIndexes() 
 
       ! For each dimension
+      ! dimension mask ?
        do n = 1, 3
            this%qCorner000(n) = this%GetInterpolatedCornerDischarge( & 
                 centerSubCellFaceFlows, neighborSubCellFaceFlows, neighborSubCellFaceAreas, 1, n ) 
