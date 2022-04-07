@@ -1,6 +1,8 @@
 module TransportModelDataModule
   use ModflowRectangularGridModule,only : ModflowRectangularGridType
   use ParticleTrackingOptionsModule,only : ParticleTrackingOptionsType
+  use ParticleGroupModule,only : ParticleGroupType
+  use StartingLocationReaderModule,only : ReadAndPrepareLocations
   implicit none
   !---------------------------------------------------------------------------------------------------------------
 
@@ -77,7 +79,7 @@ contains
     end subroutine pr_Initialize
 
 
-    subroutine pr_ReadData(this, inUnit, inFile, outUnit, trackingOptions )
+    subroutine pr_ReadData(this, inUnit, inFile, outUnit, ibound, grid, trackingOptions )
     !***************************************************************************************************************
     !
     !***************************************************************************************************************
@@ -94,34 +96,44 @@ contains
     integer,dimension(:),allocatable :: cellsPerLayer
     integer,dimension(:),allocatable :: layerTypes
     !class(ModflowRectangularGridType),intent(inout) :: grid
-    class(ModflowRectangularGridType), pointer :: grid => null()
+    class(ModflowRectangularGridType),intent(in) :: grid
+    integer,dimension(grid%CellCount),intent(in) :: ibound
     character(len=200) :: line
     character(len=16) :: txt
     integer :: n, m, nn, length, iface, errorCode, layer
     integer :: icol, istart, istop
     integer :: iodispersion = 0
     doubleprecision :: r
-    character(len=24),dimension(3) :: aname
+    character(len=24),dimension(4) :: aname
     data aname(1) /'          BOUNDARY ARRAY'/
     data aname(2) /'            DISPERSIVITY'/
     data aname(3) /'            ICBOUND'/
+    data aname(4) /'            IC'/
     integer :: tempAlphaUnit = 666
     character(len=200) :: tempAlphaFile
+
+    ! Initial conditions
+    integer :: nInitialConditions, particleCount, seqNumber, slocUnit
+    integer :: releaseOption, releaseTimeCount
+    doubleprecision :: initialReleaseTime, releaseInterval
+    doubleprecision,dimension(:),allocatable :: releaseTimes
+    doubleprecision :: frac, tinc
+    type(ParticleGroupType),dimension(:),allocatable :: particleGroups
+
     !---------------------------------------------------------------------------------------------------------------
 
         
         ! Open dispersion unit 
         open( inUnit, file=inFile, status='old', access='sequential')
 
-        ! Initialize pointer
-        grid => null() 
-        grid => this%Grid
 
+        ! Required for u3d
         allocate(cellsPerLayer(grid%LayerCount))
         do n = 1, grid%LayerCount
             cellsPerLayer(n) = grid%GetLayerCellCount(n)
         end do
     
+
         ! Write header to the listing file
         write(outUnit, *)
         write(outUnit, '(1x,a)') 'MODPATH RWPT dispersion data file'
@@ -131,6 +143,7 @@ contains
         ! Read dispersivity variable, eventually file
         ! These methods follor OPEN/CLOSE, CONSTANT input format
         ! and variables are expected to be defined for each layer
+
 
         ! ALPHALONG
         if((grid%GridType .eq. 1) .or. (grid%GridType .eq. 3)) then
@@ -262,6 +275,103 @@ contains
               write(outUnit,*) 'Stopping.'
               call ustop(' ')          
         end if
+
+
+        ! INITIAL CONDITIONS
+        ! MORE LIKE SPECIES AND EACH WITH AN INITIAL DISTRIBUTION
+        ! THESE ARE TRANSFORMED INTO MASS PARTICLES 
+        read(inUnit, *) nInitialConditions
+        write(outUnit,'(/A,I5)') 'Number of initial conditions = ', nInitialConditions
+        particleCount = 0
+        slocUnit = 0
+        seqNumber = 0
+        ! ADD THEM TO EXISTING PARTICLE GROUPS ?
+        if(nInitialConditions .gt. 0) then
+
+            ! Would be like a realloc to extend 
+            allocate(particleGroups(nInitialConditions))
+
+            ! Loop over initial conditions
+            do n = 1, nInitialConditions
+
+                particleGroups(n)%Group = n
+
+
+                read(inUnit, '(a)') particleGroups(n)%Name
+
+                ! IDEA
+                !read(inUnit, *) initialConditionFormat 1: concentration, 2: particles (classic)
+
+                ! select case ( initialConditionFormat )
+                !   case (1) ! Read concentrations in porosity format + mass parameters and transform to particles 
+                
+                        !! READ AS DENSITY/CONCENTRATION
+                        !if((grid%GridType .eq. 1) .or. (grid%GridType .eq. 3)) then
+                        !    call u3ddblmp(inUnit, outUnit, grid%LayerCount, grid%RowCount,      &
+                        !      grid%ColumnCount, grid%CellCount, this%ICBound, ANAME(3))
+                        !else if((grid%GridType .eq. 2) .or. (grid%GridType .eq. 4)) then
+                        !    call u3ddblmpusg(inUnit, outUnit, grid%CellCount, grid%LayerCount,  &
+                        !      this%ICBound, aname(3), cellsPerLayer)
+                        !else
+                        !      write(outUnit,*) 'Invalid grid type specified when reading ICBOUND array data.'
+                        !      write(outUnit,*) 'Stopping.'
+                        !      call ustop(' ')          
+                        !end if
+
+                !   case (2) ! Read particles, the classical way + mass parameters
+                     
+                        ! releaseOption
+                        read(inUnit, *) releaseOption
+                        select case (releaseOption)
+                            case (1)
+                                read(inUnit, *) initialReleaseTime
+                                call particleGroups(n)%SetReleaseOption1(initialReleaseTime)
+                            case (2)
+                                read(inUnit, *) releaseTimeCount, initialReleaseTime, releaseInterval
+                                call particleGroups(n)%SetReleaseOption2(initialReleaseTime, &
+                                  releaseTimeCount, releaseInterval)
+                            case (3)
+                                read(inUnit, *) releaseTimeCount
+                                if(allocated(releaseTimes)) deallocate(releaseTimes)
+                                allocate(releaseTimes(releaseTimeCount))
+                                read(inUnit, *) (releaseTimes(nn), nn = 1, releaseTimeCount)
+                                call particleGroups(n)%SetReleaseOption3(releaseTimeCount,   &
+                                  releaseTimes)
+                            case default
+                            ! write error message and stop
+                        end select
+                        
+                        read(inUnit, '(a)') line
+                        icol = 1
+                        call urword(line,icol,istart,istop,1,n,r,0,0)
+                        if(line(istart:istop) .eq. 'EXTERNAL') then
+                            call urword(line,icol,istart,istop,0,n,r,0,0)
+                            particleGroups(n)%LocationFile = line(istart:istop)
+                            slocUnit = 0
+                        else if(line(istart:istop) .eq. 'INTERNAL') then
+                            particleGroups(n)%LocationFile = ''
+                            slocUnit = inUnit
+                        else
+                            call ustop('Invalid starting locations file name. stop.')
+                        end if
+
+                ! end select
+
+                ! THE LOCATION FUNCTION/DISTRIBUTION
+                call ReadAndPrepareLocations(slocUnit, outUnit, particleGroups(n),   &
+                  ibound, grid%CellCount, grid, seqNumber)
+
+                ! THE HOLDER OF PARTICLES
+                write(outUnit, '(a,i4,a,i10,a)') 'Initial condition ', n, ' contains ',   &
+                  particleGroups(n)%TotalParticleCount, ' particles.'
+                particleCount = particleCount + particleGroups(n)%TotalParticleCount
+            end do
+
+            write(outUnit, '(a,i10)') 'Total number of particles on initial conditions = ', particleCount
+            write(outUnit, *)
+
+        end if
+
 
 
         ! Close dispersion data file

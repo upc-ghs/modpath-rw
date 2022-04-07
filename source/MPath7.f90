@@ -368,7 +368,7 @@
         allocate( transportModelData ) 
         call transportModelData%Initialize( modelGrid )
         call transportModelData%ReadData( dispersionUnit, simulationData%DispersionFile, mplistUnit, &
-                                                                      simulationData%TrackingOptions )
+                                         basicData%IBound, modelGrid, simulationData%TrackingOptions )
         call trackingEngine%Initialize(modelGrid, simulationData%TrackingOptions, flowModelData, transportModelData)
     else 
         call trackingEngine%Initialize(modelGrid, simulationData%TrackingOptions, flowModelData)
