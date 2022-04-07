@@ -92,10 +92,6 @@ module TrackSubCellModule
     procedure :: AdvectionDisplacementEulerian=>pr_AdvectionDisplacementEulerian
     procedure :: NewtonRaphsonTimeStep=>NewtonRaphsonTimeStepExponentialAdvection
 
-    ! DEPRECATION WARNING
-    procedure :: ComputeCornerVelocities=>pr_ComputeCornerVelocities
-    procedure :: DispersionDivergence=>pr_DispersionDivergence
-    procedure :: DisplacementRandom=>pr_DisplacementRandom
   end type
 
 
@@ -441,6 +437,11 @@ contains
           this%ExitFaceAndUpdateTimeStep=>pr_DetectExitFaceAndUpdateTimeStepQuadratic
       end if
 
+      ! Set indexes for corner x,y,z components
+      call this%SetCornerComponentsIndexes() 
+
+      ! Set indexes for corner porosities
+      call this%SetCornerPorosityIndexes()
 
       ! Done
       return
@@ -2257,6 +2258,7 @@ contains
       doubleprecision :: D011
       doubleprecision :: D111
 
+
       doubleprecision :: dDxxdx, dDxydy, dDxzdz, &
                          dDxydx, dDyydy, dDyzdz, &
                          dDxzdx, dDyzdy, dDzzdz
@@ -2288,7 +2290,7 @@ contains
       p111 = this%porosity111
 
 
-      ! SOMETHING MORE ELEGANT! 
+      ! SOMETHING MORE ELEGANT !
 
 
       ! Direction, coordinates, corner values
@@ -2788,7 +2790,8 @@ contains
   class(TrackSubCellType) :: this
   type(ModpathCellDataType) :: currentCellData
   type(ModpathCellDataType), dimension(2,18) :: neighborCellData
-  integer, dimension(18,3)         :: neighborSubCellIndexes   ! nbcell, subRow, subColumn
+  integer, dimension(3,18)         :: neighborSubCellIndexes   ! nbcell, subRow, subColumn
+  !integer, dimension(18,3)         :: neighborSubCellIndexes   ! nbcell, subRow, subColumn
   doubleprecision, dimension(6,18) :: neighborSubCellFaceFlows ! nbcell, flowFaceNumber
   doubleprecision, dimension(3,18) :: neighborSubCellFaceAreas ! nbcell, faceDirection
   doubleprecision, dimension(18)   :: neighborSubCellVolume   
@@ -2821,6 +2824,7 @@ contains
 
 
   ! RWPT
+  ! Could be differentiated for usg vs structured to avoid getsubcellcount if check 
   subroutine pr_FillNeighborSubCellVariables( this, centerCellData, neighborCellData, &
           neighborSubCellIndexes, neighborSubCellFaceFlows, neighborSubCellFaceAreas, & 
                                       neighborSubCellVolume, neighborSubCellPorosity  )
@@ -2832,7 +2836,8 @@ contains
       class (TrackSubCellType) :: this
       class (ModpathCellDataType), intent(in) :: centerCellData 
       class (ModpathCellDataType), dimension(2,18), intent(in) :: neighborCellData 
-      integer, dimension(18,3), intent(in) ::  neighborSubCellIndexes ! nCellBuffer, subRow, subCol
+      integer, dimension(3,18), intent(in) ::  neighborSubCellIndexes ! nCellBuffer, subRow, subCol
+      !integer, dimension(18,3), intent(in) ::  neighborSubCellIndexes ! nCellBuffer, subRow, subCol
       doubleprecision, dimension(6,18), intent(out) :: neighborSubCellFaceFlows ! faceFlows
       doubleprecision, dimension(3,18), intent(out) :: neighborSubCellFaceAreas ! faceAreas
       doubleprecision, dimension(18)  , intent(out) :: neighborSubCellVolume    ! volumes
@@ -2859,14 +2864,16 @@ contains
           skipSubCells = .true.
           do n = 1,18
 
+              if ( neighborCellData( 1, neighborSubCellIndexes( 1, n ) )%CellNumber .eq. 0 ) cycle
+
               call neighborCellData( &
-                  1, neighborSubCellIndexes( n, 1 ) )%FillSubCellFaceFlows( 1, 1, &
+                  1, neighborSubCellIndexes( 1, n ) )%FillSubCellFaceFlows( 1, 1, &
                                     neighborSubCellFaceFlows( :, n ), skipSubCells )
               call neighborCellData( & 
-                  1, neighborSubCellIndexes( n, 1 ) )%FillSubCellFaceAreas( neighborSubCellFaceAreas( :, n ), skipSubCells ) 
+                  1, neighborSubCellIndexes( 1, n ) )%FillSubCellFaceAreas( neighborSubCellFaceAreas( :, n ), skipSubCells ) 
 
-              neighborSubCellVolume(n)   = neighborCellData( 1, neighborSubCellIndexes( n, 1 ) )%GetVolume( skipSubCells )
-              neighborSubCellPorosity(n) = neighborCellData( 1, neighborSubCellIndexes( n, 1 ) )%Porosity
+              neighborSubCellVolume(n)   = neighborCellData( 1, neighborSubCellIndexes( 1, n ) )%GetVolume( skipSubCells )
+              neighborSubCellPorosity(n) = neighborCellData( 1, neighborSubCellIndexes( 1, n ) )%Porosity
 
           end do
 
@@ -2881,9 +2888,9 @@ contains
           skipSubCells = .false.
 
           ! Fill face flows with one of its own subcells
-          if ( neighborSubCellIndexes( n, 1 ) .eq. 0 ) then
+          if ( neighborSubCellIndexes( 1, n ) .eq. 0 ) then
               call centerCellData%FillSubCellFaceFlowsBuffer( &
-                                neighborSubCellIndexes( n, 2 ), neighborSubCellIndexes( n, 3 ), & 
+                                neighborSubCellIndexes( 2, n ), neighborSubCellIndexes( 3, n ), & 
                                                                neighborSubCellFaceFlows( :, n ) )
 
               call centerCellData%FillSubCellFaceAreas( neighborSubCellFaceAreas( :, n ), skipSubCells )
@@ -2896,27 +2903,27 @@ contains
           end if
 
           ! Fill face flows with data obtained from neighbors
-          if ( neighborCellData( 2, neighborSubCellIndexes( n, 1 ) )%CellNumber .gt. 0 ) then
+          if ( neighborCellData( 2, neighborSubCellIndexes( 1, n ) )%CellNumber .gt. 0 ) then
               ! If double buffer 
 
               ! When the buffer is double, 
               ! these cells are smaller, then skip 
               ! sub cell indexation if refined. 
               if ( & 
-                  ( neighborCellData(1, neighborSubCellIndexes( n, 1 ) )%GetSubCellCount() .gt. 1 ) .or. &
-                  ( neighborCellData(2, neighborSubCellIndexes( n, 1 ) )%GetSubCellCount() .gt. 1 ) ) then 
+                  ( neighborCellData(1, neighborSubCellIndexes( 1, n ) )%GetSubCellCount() .gt. 1 ) .or. &
+                  ( neighborCellData(2, neighborSubCellIndexes( 1, n ) )%GetSubCellCount() .gt. 1 ) ) then 
                   skipSubCells = .true.
               end if 
 
               ! Detect from which direction where requested.
-              if ( neighborCellData( 2, neighborSubCellIndexes( n, 1 ) )%requestedFromDirection .eq. 1 ) then 
+              if ( neighborCellData( 2, neighborSubCellIndexes( 1, n ) )%requestedFromDirection .eq. 1 ) then 
                   ! If x-direction, location in buffer is given by subcell row index 
-                  subConnectionIndex = neighborSubCellIndexes( n, 2 )
+                  subConnectionIndex = neighborSubCellIndexes( 2, n )
                   neighborSubRow     = 1 
                   neighborSubColumn  = 1
-              else if ( neighborCellData( 2, neighborSubCellIndexes( n, 1 ) )%requestedFromDirection .eq. 2 ) then
+              else if ( neighborCellData( 2, neighborSubCellIndexes( 1, n ) )%requestedFromDirection .eq. 2 ) then
                   ! If y-direction, location in buffer is given by subcell column index 
-                  subConnectionIndex = neighborSubCellIndexes( n, 3 )
+                  subConnectionIndex = neighborSubCellIndexes( 3, n )
                   neighborSubRow     = 1 
                   neighborSubColumn  = 1
               else 
@@ -2928,21 +2935,21 @@ contains
                   ! in the current protocol of neighbor cells initialization 
                   ! are only possible after initialization of a direct connection 
                   ! through the y-direction. 
-                  subConnectionIndex = neighborSubCellIndexes( n, 3 )
+                  subConnectionIndex = neighborSubCellIndexes( 3, n )
                   neighborSubRow     = 1 
                   neighborSubColumn  = 1
               end if 
 
           else if ( &
-              ( neighborCellData( 1, neighborSubCellIndexes( n, 1 ) )%CellNumber .gt. 0 ) .or. & 
-              ( neighborCellData( 1, neighborSubCellIndexes( n, 1 ) )%fromSubCell ) ) then
+              ( neighborCellData( 1, neighborSubCellIndexes( 1, n ) )%CellNumber .gt. 0 ) .or. & 
+              ( neighborCellData( 1, neighborSubCellIndexes( 1, n ) )%fromSubCell ) ) then
               ! If single buffer 
 
-              if ( neighborCellData(1, neighborSubCellIndexes( n, 1 ) )%GetSubCellCount() .gt. 1 ) then 
+              if ( neighborCellData(1, neighborSubCellIndexes( 1, n ) )%GetSubCellCount() .gt. 1 ) then 
                   ! If its refined request the sub cell indexes
                   subConnectionIndex = 1
-                  neighborSubRow     = neighborSubCellIndexes( n, 2 )
-                  neighborSubColumn  = neighborSubCellIndexes( n, 3 ) 
+                  neighborSubRow     = neighborSubCellIndexes( 2, n )
+                  neighborSubColumn  = neighborSubCellIndexes( 3, n ) 
               else
                   ! If its not refined, all ones
                   subConnectionIndex = 1
@@ -2956,16 +2963,16 @@ contains
           end if  
 
           ! Fill variables 
-          call neighborCellData( subConnectionIndex, neighborSubCellIndexes( n, 1 ) )%FillSubCellFaceFlows( &
+          call neighborCellData( subConnectionIndex, neighborSubCellIndexes( 1, n ) )%FillSubCellFaceFlows( &
                           neighborSubRow, neighborSubColumn, neighborSubCellFaceFlows( :, n ), skipSubCells )
 
-          call neighborCellData( subConnectionIndex, neighborSubCellIndexes( n, 1 ) )%FillSubCellFaceAreas( &
+          call neighborCellData( subConnectionIndex, neighborSubCellIndexes( 1, n ) )%FillSubCellFaceAreas( &
                                                              neighborSubCellFaceAreas( :, n ), skipSubCells )  
 
           neighborSubCellVolume(n)   = neighborCellData(&
-              subConnectionIndex, neighborSubCellIndexes( n, 1 ) )%GetVolume( skipSubCells )
+              subConnectionIndex, neighborSubCellIndexes( 1, n ) )%GetVolume( skipSubCells )
           neighborSubCellPorosity(n) = neighborCellData(&
-              subConnectionIndex, neighborSubCellIndexes( n, 1 ) )%Porosity
+              subConnectionIndex, neighborSubCellIndexes( 1, n ) )%Porosity
 
       end do
 
@@ -2999,9 +3006,6 @@ contains
       ! Fill faceFlows from current subcell
       call currentCellData%FillSubCellFaceFlowsBuffer( &
           this%SubCellData%Row, this%SubCellData%Column, centerSubCellFaceFlows )
-
-      ! Set indexes for corner x,y,z components
-      call this%SetCornerComponentsIndexes() 
 
       ! For each dimension
       ! dimension mask ?
@@ -3213,9 +3217,6 @@ contains
 
       ! If spatially variable porosity, something to identify ?
 
-      ! Set required indexes
-      call this%SetCornerPorosityIndexes()
-
       ! Assign interpolated values
       this%porosity000 = this%GetInterpolatedCornerPorosity( neighborSubCellVolume, neighborSubCellPorosity, 1 )
       this%porosity100 = this%GetInterpolatedCornerPorosity( neighborSubCellVolume, neighborSubCellPorosity, 2 )
@@ -3332,8 +3333,6 @@ contains
 
 
 
-
-
   ! RWPT
   subroutine pr_TrilinearDerivative( this, direction, x, y, z, v000, v100, v010, v110, v001, v101, v011, v111, output )
       !-----------------------------------------------------------
@@ -3396,6 +3395,7 @@ contains
               return 
       end select
 
+
   end subroutine pr_TrilinearDerivative
 
 
@@ -3434,370 +3434,9 @@ contains
       v1     = ( 1.0d0 - y )*v01  + y*v11
       output = ( 1.0d0 - z )*v0   + z*v1
 
+
   end subroutine pr_Trilinear
 
-
-
-
-  ! RWPT
-  ! DEPRECATION WARNING
-  subroutine pr_ComputeCornerVelocities( this, neighborSubCellData )
-      !----------------------------------------------------------------
-      ! From its subCellData and neighborSubCellData array, 
-      ! computes velocities at cell corners
-      !
-      !----------------------------------------------------------------
-      ! Specifications
-      !----------------------------------------------------------------
-      implicit none
-      class (TrackSubCellType) :: this
-      type(ModpathSubCellDataType), dimension(18) :: neighborSubCellData
-      logical :: twoDimensionsDomain
-      real    :: nominalFactor
-      !----------------------------------------------------------------
-
-      ! Do something more elegant please
-
-      ! Think of a counter or something for dealing with interfaces
-      ! with missing connections, cells
-      ! Remember indexation
-      ! 1: connection 1
-      ! 4: connection 2
-      ! 7: connection 3
-      ! 10: connection 4
-      ! 13: connection 5
-      ! 16: connection 6
-      ! and so on...
-      !
-      ! The 0.25 factor is for the case
-      ! in which there are four cells for computing 
-      ! values at the corner, should be verified 
-      ! and maybe computed by finding the valid cells
-
-      ! In 2D, only corners with third
-      ! index equal 0
-
-      nominalFactor = 0.25 ! 3D
-      !twoDimensionsDomain = .true.
-      !if ( twoDimensionsDomain ) nominalFactor = 0.5 ! 2D
-
-      this%vCorner000(1) = nominalFactor*( this%SubCellData%VX1 + neighborSubCellData(7)%VX1  + &
-          neighborSubCellData(13)%VX1 + neighborSubCellData(8)%VX1 )
-      this%vCorner100(1) = nominalFactor*( this%SubCellData%VX2 + neighborSubCellData(7)%VX2  + &
-          neighborSubCellData(13)%VX2 + neighborSubCellData(8)%VX2 )
-      this%vCorner010(1) = nominalFactor*( this%SubCellData%VX1 + neighborSubCellData(10)%VX1 + &
-          neighborSubCellData(13)%VX1 + neighborSubCellData(11)%VX1 )
-      this%vCorner110(1) = nominalFactor*( this%SubCellData%VX2 + neighborSubCellData(10)%VX2 + &
-          neighborSubCellData(13)%VX2 + neighborSubCellData(11)%VX2 )
-      this%vCorner001(1) = nominalFactor*( this%SubCellData%VX1 + neighborSubCellData(7)%VX1  + &
-          neighborSubCellData(16)%VX1 + neighborSubCellData(9)%VX1 )
-      this%vCorner101(1) = nominalFactor*( this%SubCellData%VX2 + neighborSubCellData(7)%VX2  + &
-          neighborSubCellData(16)%VX2 + neighborSubCellData(9)%VX2 )
-      this%vCorner011(1) = nominalFactor*( this%SubCellData%VX1 + neighborSubCellData(10)%VX1 + &
-          neighborSubCellData(16)%VX1 + neighborSubCellData(12)%VX1 )
-      this%vCorner111(1) = nominalFactor*( this%SubCellData%VX2 + neighborSubCellData(10)%VX2 + &
-          neighborSubCellData(16)%VX2 + neighborSubCellData(12)%VX2 )
-
-
-      this%vCorner000(2) = nominalFactor*( this%SubCellData%VY1 + neighborSubCellData(1)%VY1  + &
-          neighborSubCellData(13)%VY1 + neighborSubCellData(14)%VY1 )
-      this%vCorner010(2) = nominalFactor*( this%SubCellData%VY2 + neighborSubCellData(1)%VY2  + &
-          neighborSubCellData(13)%VY2 + neighborSubCellData(14)%VY2 )
-      this%vCorner100(2) = nominalFactor*( this%SubCellData%VY1 + neighborSubCellData(4)%VY1  + &
-          neighborSubCellData(13)%VY1 + neighborSubCellData(15)%VY1 )
-      this%vCorner110(2) = nominalFactor*( this%SubCellData%VY2 + neighborSubCellData(4)%VY2  + &
-          neighborSubCellData(13)%VY2 + neighborSubCellData(15)%VY2 )
-      this%vCorner001(2) = nominalFactor*( this%SubCellData%VY1 + neighborSubCellData(1)%VY1  + &
-          neighborSubCellData(16)%VY1 + neighborSubCellData(17)%VY1 )
-      this%vCorner011(2) = nominalFactor*( this%SubCellData%VY2 + neighborSubCellData(1)%VY2  + &
-          neighborSubCellData(16)%VY2 + neighborSubCellData(17)%VY2 )
-      this%vCorner101(2) = nominalFactor*( this%SubCellData%VY1 + neighborSubCellData(4)%VY1  + &
-          neighborSubCellData(16)%VY1 + neighborSubCellData(18)%VY1 )
-      this%vCorner111(2) = nominalFactor*( this%SubCellData%VY2 + neighborSubCellData(4)%VY2  + &
-          neighborSubCellData(16)%VY2 + neighborSubCellData(18)%VY2 )
-
-
-      this%vCorner000(3) = nominalFactor*( this%SubCellData%VZ1 + neighborSubCellData(1)%VZ1  + &
-          neighborSubCellData(7)%VZ1 + neighborSubCellData(2)%VZ1 )
-      this%vCorner001(3) = nominalFactor*( this%SubCellData%VZ2 + neighborSubCellData(1)%VZ2  + &
-          neighborSubCellData(7)%VZ2 + neighborSubCellData(2)%VZ2 )
-      this%vCorner100(3) = nominalFactor*( this%SubCellData%VZ1 + neighborSubCellData(4)%VZ1  + &
-          neighborSubCellData(7)%VZ1 + neighborSubCellData(5)%VZ1 )
-      this%vCorner101(3) = nominalFactor*( this%SubCellData%VZ2 + neighborSubCellData(4)%VZ2  + &
-          neighborSubCellData(7)%VZ2 + neighborSubCellData(5)%VZ2 )
-      this%vCorner010(3) = nominalFactor*( this%SubCellData%VZ1 + neighborSubCellData(1)%VZ1  + &
-          neighborSubCellData(10)%VZ1 + neighborSubCellData(3)%VZ1 )
-      this%vCorner011(3) = nominalFactor*( this%SubCellData%VZ2 + neighborSubCellData(1)%VZ2  + &
-          neighborSubCellData(10)%VZ2 + neighborSubCellData(3)%VZ2 )
-      this%vCorner110(3) = nominalFactor*( this%SubCellData%VZ1 + neighborSubCellData(4)%VZ1  + &
-          neighborSubCellData(10)%VZ1 + neighborSubCellData(6)%VZ1 )
-      this%vCorner111(3) = nominalFactor*( this%SubCellData%VZ2 + neighborSubCellData(4)%VZ2  + &
-          neighborSubCellData(10)%VZ2 + neighborSubCellData(6)%VZ2 )
-
-
-      this%vCorner000(4) = sqrt( this%vCorner000(1)**2 + this%vCorner000(2)**2 + this%vCorner000(3)**2 )
-      this%vCorner100(4) = sqrt( this%vCorner100(1)**2 + this%vCorner100(2)**2 + this%vCorner100(3)**2 )
-      this%vCorner010(4) = sqrt( this%vCorner010(1)**2 + this%vCorner010(2)**2 + this%vCorner010(3)**2 )
-      this%vCorner110(4) = sqrt( this%vCorner110(1)**2 + this%vCorner110(2)**2 + this%vCorner110(3)**2 )
-      this%vCorner001(4) = sqrt( this%vCorner001(1)**2 + this%vCorner001(2)**2 + this%vCorner001(3)**2 )
-      this%vCorner101(4) = sqrt( this%vCorner101(1)**2 + this%vCorner101(2)**2 + this%vCorner101(3)**2 )
-      this%vCorner011(4) = sqrt( this%vCorner011(1)**2 + this%vCorner011(2)**2 + this%vCorner011(3)**2 )
-      this%vCorner111(4) = sqrt( this%vCorner111(1)**2 + this%vCorner111(2)**2 + this%vCorner111(3)**2 )
-      
-
-  end subroutine pr_ComputeCornerVelocities
-
-
-
-  ! RWPT
-  ! DEPRECATION WARNING
-  subroutine pr_DisplacementRandom( this, x, y, z, alphaL, alphaT, Dmol, dBx, dBy, dBz ) 
-      !----------------------------------------------------------------
-      ! Computes the product between displacement matrix and random 
-      ! vector
-      !
-      ! Params:
-      !     - x, y, z       : local cell coordinates
-      !     - alphaL        : longidutinal dispersivity
-      !     - alphaT        : transverse dispersivity
-      !     - Dmol          : molecular diffusion
-      !     - dBx, dBy, dBz : random dispersion displacement, output
-      !----------------------------------------------------------------
-      ! Specifications
-      !----------------------------------------------------------------
-      implicit none
-      class (TrackSubCellType) :: this
-      ! input
-      doubleprecision, intent(in)    :: x, y, z
-      doubleprecision, intent(in)    :: alphaL, alphaT, Dmol
-      ! output
-      doubleprecision, intent(inout) :: dBx, dBy, dBz
-      ! local
-      doubleprecision :: vBx, vBy, vBz, vBnorm, vBnormxy
-      doubleprecision :: B11, B12, B13, B21, B22, B23, B31, B32
-      doubleprecision :: rdmx, rdmy, rdmz
-      doubleprecision, dimension(4) :: v000
-      doubleprecision, dimension(4) :: v100
-      doubleprecision, dimension(4) :: v010
-      doubleprecision, dimension(4) :: v110
-      doubleprecision, dimension(4) :: v001
-      doubleprecision, dimension(4) :: v101
-      doubleprecision, dimension(4) :: v011
-      doubleprecision, dimension(4) :: v111
-      !----------------------------------------------------------------
-
-      ! Initialize
-      dBx = 0d0
-      dBy = 0d0
-      dBz = 0d0
-
-      ! Local copies of corner velocities
-      ! pointers ?
-      v000 = this%vCorner000 
-      v100 = this%vCorner100
-      v010 = this%vCorner010
-      v110 = this%vCorner110
-      v001 = this%vCorner001
-      v101 = this%vCorner101
-      v011 = this%vCorner011
-      v111 = this%vCorner111
-
-      ! Trilinear interpolation of velocities and norm
-      call this%Trilinear( x, y, z, &
-                           v000(1), v100(1), v010(1), v110(1), &
-                           v001(1), v101(1), v011(1), v111(1), &
-                           vBx )
-      call this%Trilinear( x, y, z, &
-                           v000(2), v100(2), v010(2), v110(2), &
-                           v001(2), v101(2), v011(2), v111(2), &
-                           vBy )
-      call this%Trilinear( x, y, z, &
-                           v000(3), v100(3), v010(3), v110(3), &
-                           v001(3), v101(3), v011(3), v111(3), &
-                           vBz )
-      vBnorm   = sqrt( vBx**2 + vBy**2 + vBz**2 )
-      vBnormxy = sqrt( vBx**2 + vBy**2 )
-    
-      ! Displacement matrix terms
-      ! Refs: Fernàndez-García et al. 2005; Salamon et al. 2006
-      ! Requires some kind of handling for the case 
-      ! of zero vBnorm
-      B11 =       vBx*sqrt( 2*( alphaL*vBnorm + Dmol ) )/vBnorm
-      B12 =  -vBx*vBz*sqrt( 2*( alphaT*vBnorm + Dmol ) )/vBnorm/vBnormxy
-      B13 =      -vBy*sqrt( 2*( alphaT*vBnorm + Dmol ) )/vBnormxy
-      B21 =       vBy*sqrt( 2*( alphaL*vBnorm + Dmol ) )/vBnorm
-      B22 =  -vBy*vBz*sqrt( 2*( alphaT*vBnorm + Dmol ) )/vBnorm/vBnormxy
-      B23 =       vBx*sqrt( 2*( alphaT*vBnorm + Dmol ) )/vBnormxy
-      B31 =       vBz*sqrt( 2*( alphaL*vBnorm + Dmol ) )/vBnorm
-      B32 =  vBnormxy*sqrt( 2*( alphaT*vBnorm + Dmol ) )/vBnorm
-   
-
-      ! Compute random numbers
-      call this%GenerateStandardNormalRandom( rdmx ) 
-      call this%GenerateStandardNormalRandom( rdmy ) 
-      call this%GenerateStandardNormalRandom( rdmz ) 
-
-
-      ! Compute displacement times random
-      dBx = B11*rdmx + B12*rdmy + B13*rdmz 
-      dBy = B21*rdmx + B22*rdmy + B23*rdmz 
-      dBz = B31*rdmx + B32*rdmy 
-
-
-  end subroutine pr_DisplacementRandom
-
-
-
-  ! RWPT
-  ! DEPRECATION WARNING
-  subroutine pr_DispersionDivergence( this, x, y, z, alphaL, alphaT, Dmol, divDx, divDy, divDz )
-      !----------------------------------------------------------------
-      ! Compute dispersion divergence terms 
-      ! 
-      ! Params:
-      !     - x, y, z             : local cell coordinates
-      !     - alphaL              : longidutinal dispersivity
-      !     - alphaT              : transverse dispersivity
-      !     - Dmol                : molecular diffusion
-      !     - divDx, divDy, divDz : dispersion divergence, output 
-      !----------------------------------------------------------------
-      ! Specifications
-      !----------------------------------------------------------------
-      implicit none
-      class (TrackSubCellType)    :: this
-      ! input
-      doubleprecision, intent(in) :: x, y, z
-      doubleprecision, intent(in) :: alphaL, alphaT, Dmol
-      ! output
-      doubleprecision, intent(inout) :: divDx, divDy, divDz
-      ! local
-      doubleprecision, dimension(4) :: v000
-      doubleprecision, dimension(4) :: v100
-      doubleprecision, dimension(4) :: v010
-      doubleprecision, dimension(4) :: v110
-      doubleprecision, dimension(4) :: v001
-      doubleprecision, dimension(4) :: v101
-      doubleprecision, dimension(4) :: v011
-      doubleprecision, dimension(4) :: v111
-      doubleprecision :: dDxxdx, dDxydy, dDxzdz, &
-                         dDxydx, dDyydy, dDyzdz, &
-                         dDxzdx, dDyzdy, dDzzdz
-      !---------------------------------------------------------------- 
-
-      ! Initialize
-      divDx = 0d0
-      divDy = 0d0
-      divDz = 0d0
-
-      ! Local copies of corner velocities
-      ! pointers ?
-      v000 = this%vCorner000 
-      v100 = this%vCorner100
-      v010 = this%vCorner010
-      v110 = this%vCorner110
-      v001 = this%vCorner001
-      v101 = this%vCorner101
-      v011 = this%vCorner011
-      v111 = this%vCorner111
-    
-      ! Direction, coordinates, corner values
-      call this%TrilinearDerivative( 1, x, y, z, &
-                ( alphaT*v000(4) + Dmol ) + ( alphaL - alphaT )*v000(1)**2/v000(4), & 
-                ( alphaT*v100(4) + Dmol ) + ( alphaL - alphaT )*v100(1)**2/v100(4), &
-                ( alphaT*v010(4) + Dmol ) + ( alphaL - alphaT )*v010(1)**2/v010(4), &
-                ( alphaT*v110(4) + Dmol ) + ( alphaL - alphaT )*v110(1)**2/v110(4), &
-                ( alphaT*v001(4) + Dmol ) + ( alphaL - alphaT )*v001(1)**2/v001(4), &
-                ( alphaT*v101(4) + Dmol ) + ( alphaL - alphaT )*v101(1)**2/v101(4), &
-                ( alphaT*v011(4) + Dmol ) + ( alphaL - alphaT )*v011(1)**2/v011(4), &
-                ( alphaT*v111(4) + Dmol ) + ( alphaL - alphaT )*v111(1)**2/v111(4), &
-                dDxxdx )
-      call this%TrilinearDerivative( 2, x, y, z, &
-                ( alphaT*v000(4) + Dmol ) + ( alphaL - alphaT )*v000(2)**2/v000(4), &
-                ( alphaT*v100(4) + Dmol ) + ( alphaL - alphaT )*v100(2)**2/v100(4), &
-                ( alphaT*v010(4) + Dmol ) + ( alphaL - alphaT )*v010(2)**2/v010(4), &
-                ( alphaT*v110(4) + Dmol ) + ( alphaL - alphaT )*v110(2)**2/v110(4), &
-                ( alphaT*v001(4) + Dmol ) + ( alphaL - alphaT )*v001(2)**2/v001(4), &
-                ( alphaT*v101(4) + Dmol ) + ( alphaL - alphaT )*v101(2)**2/v101(4), &
-                ( alphaT*v011(4) + Dmol ) + ( alphaL - alphaT )*v011(2)**2/v011(4), &
-                ( alphaT*v111(4) + Dmol ) + ( alphaL - alphaT )*v111(2)**2/v111(4), &
-                dDyydy )
-      call this%TrilinearDerivative( 3, x, y, z, &
-                ( alphaT*v000(4) + Dmol ) + ( alphaL - alphaT )*v000(3)**2/v000(4), &
-                ( alphaT*v100(4) + Dmol ) + ( alphaL - alphaT )*v100(3)**2/v100(4), &
-                ( alphaT*v010(4) + Dmol ) + ( alphaL - alphaT )*v010(3)**2/v010(4), &
-                ( alphaT*v110(4) + Dmol ) + ( alphaL - alphaT )*v110(3)**2/v110(4), &
-                ( alphaT*v001(4) + Dmol ) + ( alphaL - alphaT )*v001(3)**2/v001(4), &
-                ( alphaT*v101(4) + Dmol ) + ( alphaL - alphaT )*v101(3)**2/v101(4), &
-                ( alphaT*v011(4) + Dmol ) + ( alphaL - alphaT )*v011(3)**2/v011(4), &
-                ( alphaT*v111(4) + Dmol ) + ( alphaL - alphaT )*v111(3)**2/v111(4), &
-                dDzzdz )
-      call this%TrilinearDerivative( 1, x, y, z, & 
-                ( alphaL - alphaT )*v000(1)*v000(2)/v000(4), & 
-                ( alphaL - alphaT )*v100(1)*v100(2)/v100(4), &
-                ( alphaL - alphaT )*v010(1)*v010(2)/v010(4), &
-                ( alphaL - alphaT )*v110(1)*v110(2)/v110(4), &
-                ( alphaL - alphaT )*v001(1)*v001(2)/v001(4), &
-                ( alphaL - alphaT )*v101(1)*v101(2)/v101(4), &
-                ( alphaL - alphaT )*v011(1)*v011(2)/v011(4), &
-                ( alphaL - alphaT )*v111(1)*v111(2)/v111(4), &
-                dDxydx )
-      call this%TrilinearDerivative( 1, x, y, z, &
-                ( alphaL - alphaT )*v000(1)*v000(3)/v000(4), &
-                ( alphaL - alphaT )*v100(1)*v100(3)/v100(4), &
-                ( alphaL - alphaT )*v010(1)*v010(3)/v010(4), &
-                ( alphaL - alphaT )*v110(1)*v110(3)/v110(4), &
-                ( alphaL - alphaT )*v001(1)*v001(3)/v001(4), &
-                ( alphaL - alphaT )*v101(1)*v101(3)/v101(4), &
-                ( alphaL - alphaT )*v011(1)*v011(3)/v011(4), &
-                ( alphaL - alphaT )*v111(1)*v111(3)/v111(4), &
-                dDxzdx )
-      call this%TrilinearDerivative( 2, x, y, z, &
-                ( alphaL - alphaT )*v000(1)*v000(2)/v000(4), &
-                ( alphaL - alphaT )*v100(1)*v100(2)/v100(4), &
-                ( alphaL - alphaT )*v010(1)*v010(2)/v010(4), &
-                ( alphaL - alphaT )*v110(1)*v110(2)/v110(4), &
-                ( alphaL - alphaT )*v001(1)*v001(2)/v001(4), &
-                ( alphaL - alphaT )*v101(1)*v101(2)/v101(4), &
-                ( alphaL - alphaT )*v011(1)*v011(2)/v011(4), &
-                ( alphaL - alphaT )*v111(1)*v111(2)/v111(4), &
-                dDxydy )
-      call this%TrilinearDerivative( 2, x, y, z, &
-                ( alphaL - alphaT )*v000(2)*v000(3)/v000(4), &
-                ( alphaL - alphaT )*v100(2)*v100(3)/v100(4), &
-                ( alphaL - alphaT )*v010(2)*v010(3)/v010(4), &
-                ( alphaL - alphaT )*v110(2)*v110(3)/v110(4), &
-                ( alphaL - alphaT )*v001(2)*v001(3)/v001(4), &
-                ( alphaL - alphaT )*v101(2)*v101(3)/v101(4), &
-                ( alphaL - alphaT )*v011(2)*v011(3)/v011(4), &
-                ( alphaL - alphaT )*v111(2)*v111(3)/v111(4), &
-                dDyzdy )
-      call this%TrilinearDerivative( 3, x, y, z, &
-                ( alphaL - alphaT )*v000(1)*v000(3)/v000(4), &
-                ( alphaL - alphaT )*v100(1)*v100(3)/v100(4), &
-                ( alphaL - alphaT )*v010(1)*v010(3)/v010(4), &
-                ( alphaL - alphaT )*v110(1)*v110(3)/v110(4), &
-                ( alphaL - alphaT )*v001(1)*v001(3)/v001(4), &
-                ( alphaL - alphaT )*v101(1)*v101(3)/v101(4), &
-                ( alphaL - alphaT )*v011(1)*v011(3)/v011(4), &
-                ( alphaL - alphaT )*v111(1)*v111(3)/v111(4), &
-                dDxzdz )
-      call this%TrilinearDerivative( 3, x, y, z, &
-                ( alphaL - alphaT )*v000(2)*v000(3)/v000(4), &
-                ( alphaL - alphaT )*v100(2)*v100(3)/v100(4), &
-                ( alphaL - alphaT )*v010(2)*v010(3)/v010(4), &
-                ( alphaL - alphaT )*v110(2)*v110(3)/v110(4), &
-                ( alphaL - alphaT )*v001(2)*v001(3)/v001(4), &
-                ( alphaL - alphaT )*v101(2)*v101(3)/v101(4), &
-                ( alphaL - alphaT )*v011(2)*v011(3)/v011(4), &
-                ( alphaL - alphaT )*v111(2)*v111(3)/v111(4), &
-                dDyzdz )
-
-      divDx = dDxxdx + dDxydy + dDxzdz
-      divDy = dDxydx + dDyydy + dDyzdz
-      divDz = dDxzdx + dDyzdy + dDzzdz
-
-
-  end subroutine pr_DispersionDivergence
 
 
 end module TrackSubCellModule
