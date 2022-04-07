@@ -119,6 +119,10 @@ contains
     doubleprecision,dimension(:),allocatable :: releaseTimes
     doubleprecision :: frac, tinc
     type(ParticleGroupType),dimension(:),allocatable :: particleGroups
+    integer :: initialConditionFormat
+    doubleprecision, dimension(:), allocatable :: densityDistribution
+
+    doubleprecision :: particleMass
 
     !---------------------------------------------------------------------------------------------------------------
 
@@ -296,72 +300,80 @@ contains
 
                 particleGroups(n)%Group = n
 
+                ! IDEA
+                read(inUnit, *) initialConditionFormat ! 1: concentration, 2: particles (classic)
 
                 read(inUnit, '(a)') particleGroups(n)%Name
 
-                ! IDEA
-                !read(inUnit, *) initialConditionFormat 1: concentration, 2: particles (classic)
-
-                ! select case ( initialConditionFormat )
-                !   case (1) ! Read concentrations in porosity format + mass parameters and transform to particles 
+                select case ( initialConditionFormat )
+                  case (1) ! Read concentrations in porosity format + mass parameters and transform to particles
                 
-                        !! READ AS DENSITY/CONCENTRATION
-                        !if((grid%GridType .eq. 1) .or. (grid%GridType .eq. 3)) then
-                        !    call u3ddblmp(inUnit, outUnit, grid%LayerCount, grid%RowCount,      &
-                        !      grid%ColumnCount, grid%CellCount, this%ICBound, ANAME(3))
-                        !else if((grid%GridType .eq. 2) .or. (grid%GridType .eq. 4)) then
-                        !    call u3ddblmpusg(inUnit, outUnit, grid%CellCount, grid%LayerCount,  &
-                        !      this%ICBound, aname(3), cellsPerLayer)
-                        !else
-                        !      write(outUnit,*) 'Invalid grid type specified when reading ICBOUND array data.'
-                        !      write(outUnit,*) 'Stopping.'
-                        !      call ustop(' ')          
-                        !end if
+                      if(allocated(densityDistribution)) deallocate(densityDistribution)
+                      allocate(densityDistribution(grid%CellCount))
 
-                !   case (2) ! Read particles, the classical way + mass parameters
-                     
-                        ! releaseOption
-                        read(inUnit, *) releaseOption
-                        select case (releaseOption)
-                            case (1)
-                                read(inUnit, *) initialReleaseTime
-                                call particleGroups(n)%SetReleaseOption1(initialReleaseTime)
-                            case (2)
-                                read(inUnit, *) releaseTimeCount, initialReleaseTime, releaseInterval
-                                call particleGroups(n)%SetReleaseOption2(initialReleaseTime, &
-                                  releaseTimeCount, releaseInterval)
-                            case (3)
-                                read(inUnit, *) releaseTimeCount
-                                if(allocated(releaseTimes)) deallocate(releaseTimes)
-                                allocate(releaseTimes(releaseTimeCount))
-                                read(inUnit, *) (releaseTimes(nn), nn = 1, releaseTimeCount)
-                                call particleGroups(n)%SetReleaseOption3(releaseTimeCount,   &
-                                  releaseTimes)
-                            case default
-                            ! write error message and stop
-                        end select
-                        
-                        read(inUnit, '(a)') line
-                        icol = 1
-                        call urword(line,icol,istart,istop,1,n,r,0,0)
-                        if(line(istart:istop) .eq. 'EXTERNAL') then
-                            call urword(line,icol,istart,istop,0,n,r,0,0)
-                            particleGroups(n)%LocationFile = line(istart:istop)
-                            slocUnit = 0
-                        else if(line(istart:istop) .eq. 'INTERNAL') then
-                            particleGroups(n)%LocationFile = ''
-                            slocUnit = inUnit
-                        else
-                            call ustop('Invalid starting locations file name. stop.')
-                        end if
+                      ! READ AS DENSITY/CONCENTRATION
+                      if((grid%GridType .eq. 1) .or. (grid%GridType .eq. 3)) then
+                          call u3ddblmp(inUnit, outUnit, grid%LayerCount, grid%RowCount,      &
+                            grid%ColumnCount, grid%CellCount, densityDistribution, ANAME(4))
+                      else if((grid%GridType .eq. 2) .or. (grid%GridType .eq. 4)) then
+                          call u3ddblmpusg(inUnit, outUnit, grid%CellCount, grid%LayerCount,  &
+                            densityDistribution, aname(4), cellsPerLayer)
+                      else
+                            write(outUnit,*) 'Invalid grid type specified when reading IC array ', & 
+                                particleGroups(n)%Name, ' name.'
+                            write(outUnit,*) 'Stopping.'
+                            call ustop(' ')          
+                      end if
 
-                ! end select
+                      
+                      ! Now convert to particles using mass
+                      particleMass = 1d0
 
-                ! THE LOCATION FUNCTION/DISTRIBUTION
-                call ReadAndPrepareLocations(slocUnit, outUnit, particleGroups(n),   &
-                  ibound, grid%CellCount, grid, seqNumber)
 
-                ! THE HOLDER OF PARTICLES
+                  case (2) ! Read particles, the classical way + mass parameters
+                   
+                      ! releaseOption
+                      read(inUnit, *) releaseOption
+                      select case (releaseOption)
+                          case (1)
+                              read(inUnit, *) initialReleaseTime
+                              call particleGroups(n)%SetReleaseOption1(initialReleaseTime)
+                          case (2)
+                              read(inUnit, *) releaseTimeCount, initialReleaseTime, releaseInterval
+                              call particleGroups(n)%SetReleaseOption2(initialReleaseTime, &
+                                releaseTimeCount, releaseInterval)
+                          case (3)
+                              read(inUnit, *) releaseTimeCount
+                              if(allocated(releaseTimes)) deallocate(releaseTimes)
+                              allocate(releaseTimes(releaseTimeCount))
+                              read(inUnit, *) (releaseTimes(nn), nn = 1, releaseTimeCount)
+                              call particleGroups(n)%SetReleaseOption3(releaseTimeCount,   &
+                                releaseTimes)
+                          case default
+                          ! write error message and stop
+                      end select
+                      
+                      read(inUnit, '(a)') line
+                      icol = 1
+                      call urword(line,icol,istart,istop,1,n,r,0,0)
+                      if(line(istart:istop) .eq. 'EXTERNAL') then
+                          call urword(line,icol,istart,istop,0,n,r,0,0)
+                          particleGroups(n)%LocationFile = line(istart:istop)
+                          slocUnit = 0
+                      else if(line(istart:istop) .eq. 'INTERNAL') then
+                          particleGroups(n)%LocationFile = ''
+                          slocUnit = inUnit
+                      else
+                          call ustop('Invalid starting locations file name. stop.')
+                      end if
+
+                      ! LOAD LOCATION FILES 
+                      call ReadAndPrepareLocations(slocUnit, outUnit, particleGroups(n),   &
+                        ibound, grid%CellCount, grid, seqNumber)
+
+                end select
+
+                ! REPORT NUMBER OF PARTICLES
                 write(outUnit, '(a,i4,a,i10,a)') 'Initial condition ', n, ' contains ',   &
                   particleGroups(n)%TotalParticleCount, ' particles.'
                 particleCount = particleCount + particleGroups(n)%TotalParticleCount
@@ -372,6 +384,8 @@ contains
 
         end if
 
+
+        call exit(0)
 
 
         ! Close dispersion data file
