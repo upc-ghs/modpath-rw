@@ -9,7 +9,11 @@ implicit none
 private
 
 public ReadAndPrepareLocations
-  
+
+! RWPT
+public pr_CreateParticlesAsInternalArray
+
+
 contains
 
 subroutine ReadAndPrepareLocations(inUnit, outUnit, particleGroup, ibound,      &
@@ -395,8 +399,8 @@ do n = 1, templateCount
         npcell = subDiv(n,1)*subDiv(n,2)*subDiv(n,3)
     else
         call ustop('Invalid subdivision type. Stop.')
-    end if   
-    
+    end if  
+
     read(inUnit, *) (templateCellNumbers(offset + m), m = 1, templateCellCounts(n))
     
     ! Loop through cells and count the number of particles 
@@ -416,7 +420,8 @@ do n = 1, templateCount
     ! Increment the offset
     offset = offset + templateCellCounts(n)
 end do
-  
+
+
 ! Calculate the total number of particles for all release time points.
 totalParticleCount = np*pGroup%GetReleaseTimeCount()
 if(allocated(pGroup%Particles)) deallocate(pGroup%Particles)

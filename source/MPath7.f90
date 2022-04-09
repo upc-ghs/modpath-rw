@@ -338,7 +338,7 @@
     ! Read the remainder of the MODPATH simulation file
     call ulog('Read the remainder of the MODPATH simulation data component.', logUnit)
     call simulationData%ReadData(mpsimUnit, mplistUnit, basicData%IBound, tdisData, modelGrid)
-        
+       
     ! Budget File Data Summary
     ! If budget output option = 2, then write a list of budget record headers.
     call WriteBudgetFileInfo(mplistUnit, budgetReader) 
@@ -368,7 +368,7 @@
         allocate( transportModelData ) 
         call transportModelData%Initialize( modelGrid )
         call transportModelData%ReadData( dispersionUnit, simulationData%DispersionFile, mplistUnit, &
-                                         basicData%IBound, modelGrid, simulationData%TrackingOptions )
+                        simulationData, flowModelData, basicData%IBound, modelGrid, simulationData%TrackingOptions )
         call trackingEngine%Initialize(modelGrid, simulationData%TrackingOptions, flowModelData, transportModelData)
     else 
         call trackingEngine%Initialize(modelGrid, simulationData%TrackingOptions, flowModelData)
