@@ -10,6 +10,7 @@ type,public :: ParticleType
   integer :: InitialCellNumber, InitialFace, Drape, InitialLayer
   doubleprecision :: InitialLocalX, InitialLocalY, InitialLocalZ, InitialGlobalZ, InitialTrackingTime
   doubleprecision,dimension(:),allocatable :: ExitVelocity
+  doubleprecision :: Mass
 end type
 
 

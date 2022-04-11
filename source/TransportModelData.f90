@@ -2,8 +2,9 @@ module TransportModelDataModule
   use ModflowRectangularGridModule,only : ModflowRectangularGridType
   use ParticleTrackingOptionsModule,only : ParticleTrackingOptionsType
   use ParticleGroupModule,only : ParticleGroupType
-  use StartingLocationReaderModule,only : ReadAndPrepareLocations, &
-                                   pr_CreateParticlesAsInternalArray
+  use StartingLocationReaderModule,only : ReadAndPrepareLocations,    &
+                                   pr_CreateParticlesAsInternalArray, &
+                                   CreateMassParticlesAsInternalArray
   use FlowModelDataModule,only : FlowModelDataType
   use ModpathSimulationDataModule, only: ModpathSimulationDataType
   implicit none
@@ -335,7 +336,13 @@ contains
 
                 particleGroups(nic)%Group = nic
 
-                ! IDEA
+                ! Set release time for initial condition.
+                ! In the meantime force 0d0 although it could 
+                ! be extracted from a previuosly defined stage
+                initialReleaseTime = 0d0
+                call particleGroups(nic)%SetReleaseOption1(initialReleaseTime)
+
+                ! Initial condition format 
                 read(inUnit, *) initialConditionFormat ! 1: concentration, 2: particles (classic)
 
                 read(inUnit, '(a)') particleGroups(nic)%Name
@@ -395,45 +402,24 @@ contains
                                     call ustop(' ')          
                               end if
                               
-                              ! use flowModelData to compute number of particles
-                              !read(inUnit, *) cellVolume
-
-                              !! Do it in parallel
-                              !!$omp parallel do   &
-                              !!$omp default(none) &
-                              !!$omp shared(grid) &
-                              !!$omp shared(particleMass) &
-                              !!$omp shared( densityDistribution ) & 
-                              !!$omp shared( rawNParticles ) 
-                              !do nc = 1, grid%CellCount
-                              !     
-                              !   rawNParticles(nc) = densityDistribution(nc)/particleMass
-
-                              !end do
-                              !!$omp end parallel do
    
-                              ! Do it simple (there's a volume involved)
-                              ! Following is the particles density 
-                              rawNParticles = densityDistribution/particleMass
-                              
-                              !print *, '-------------------------------------------------------------------'
-                              !print *, 'PARTICLES MASS: ', particleMass 
-                              !print *, 'MAX MASS DENSITY: ', maxval( densityDistribution ) 
-                              !print *, 'MIN MASS DENSITY: ', minval( densityDistribution ) 
-                              !print *, 'MAX PARTICLES DENSITY: ', maxval( rawNParticles ) 
-                              !print *, 'MIN PARTICLES DENSITY: ', minval( rawNParticles ) 
-                              !print *, 'MAX POROSITY', maxval( flowModelData%Porosity )
-                             
-
-                              ! Could be done at a much upper level
-                              nParticles  = 0
-                              cellVolumes = 0d0
+                              ! Initialize
+                              nParticles   = 0
+                              cellVolumes  = 0d0
                               shapeFactorX = 0
                               shapeFactorY = 0
                               shapeFactorZ = 0
-                              nParticlesX = 0
-                              nParticlesY = 0
-                              nParticlesZ = 0
+                              nParticlesX  = 0
+                              nParticlesY  = 0
+                              nParticlesZ  = 0
+
+
+                              ! Do it simple (there's a volume involved)
+                              ! Following is the particles density 
+                              ! absolute value is required for the case that 
+                              ! densityDsitribution contains negative values
+                              rawNParticles = abs(densityDistribution)/particleMass
+
 
                               ! Simple delZ 
                               delZ      = grid%Top-grid%Bottom
@@ -472,30 +458,15 @@ contains
                               ! notice rawNParticles = mass/volume/mass = 1/volume: particle density
                               nParticles  = rawNParticles*flowModelData%Porosity*cellVolumes
 
-                              !print *, 'N DIMENSIONS: ', nDim
-                              !print *, 'MAX NPARTICLES: ', maxval( nParticles ) 
-                              !print *, 'MIN NPARTICLES: ', minval( nParticles ) 
-                              !print *, 'SUM NPARTICLES: ', sum( nParticles ) 
-
-                              !print *, 'MAX CELLVOLUMES: ', maxval( cellVolumes )
-                              !print *, 'MIN CELLVOLUMES: ', minval( cellVolumes )
-
-                              !print *, 'MIN CONCENTRATION (CMIN): ', minval(particleMass/flowModelData%Porosity/cellVolumes)
+                              ! The minimum measurable absolute concentration/density 
                               minOneParticleDensity = minval(particleMass/flowModelData%Porosity/cellVolumes)
-                              !print *, 'RATIO MAX/MIN CONCENTRATION: ', maxval( densityDistribution )/minOneParticleDensity
 
-                              !print *, 'MAX DELZ: ', maxval( delZ )
-                              !print *, 'MIN DELZ: ', minval( delZ )
+
                           case default
                               continue
+
                       end select
 
-
-                      ! ONCE nParticles is defined, convert to 
-                      ! actual particles with position, cellNumber 
-                      ! and so on
-
-                      ! REQUIRES SDIVS
 
                       !! SIMPLIFIED FROM READLOATIONS3 !!!!!!!!!!!!!!!!!!!!!!!!!!
                       ! Read the number of cells
@@ -565,47 +536,12 @@ contains
                               end do 
                           end if 
 
-                          !! Shape factors
-                          !do m =1, grid%CellCount
-                          !    if ( cellVolumes(m) .le. 0d0 ) cycle
-                          !    shapeFactorX(m) = grid%DelX(m)/(cellVolumes(m)**(1d0/nDim))
-                          !    shapeFactorY(m) = grid%DelY(m)/(cellVolumes(m)**(1d0/nDim))
-                          !    shapeFactorZ(m) = delZ(m)/(cellVolumes(m)**(1d0/nDim))
-                          !    !print *, grid%DelX(m), shapeFactorX(m), cellVolumes(m),cellVolumes(m)**(1d0/nDim)
-                          !    !print *, shapeFactorX(m), shapeFactorY(m), shapeFactorZ(m), cellVolumes(m)
-                          !end do 
-                          ! Need a minimum number of particles ?
-                          ! the following process makes sense only
-                          ! if nParticles > 1
-                          !print *, 'NPARTICLES GT 1 : ',  count( nParticles .gt. 1  )
-                          ! Think about how to treat the zero 
-                          ! or one particles cases
-                          ! And THESE are the subdivisions
-
                           where ( nParticles .lt. 1d0 )
                              nParticles = 0d0 
                           end where 
                           nParticlesX = shapeFactorX*(nParticles)**(1d0/nDim) 
                           nParticlesY = shapeFactorY*(nParticles)**(1d0/nDim)
                           nParticlesZ = shapeFactorZ*(nParticles)**(1d0/nDim)
-
-                          !! SHAPE FACTORS
-                          !print *, 'SHAPE FACTORS: '
-                          !print *, minval( shapeFactorX )
-                          !print *, minval( shapeFactorY )
-                          !print *, minval( shapeFactorZ )
-                          !print *, maxval( shapeFactorX )
-                          !print *, maxval( shapeFactorY )
-                          !print *, maxval( shapeFactorZ )
-
-                          !print *, 'NPARTICLES: '
-                          !print *, minval( nParticles ), maxval( nParticles )
-                          !print *, minval( nParticlesX )
-                          !print *, minval( nParticlesY )
-                          !print *, minval( nParticlesZ )
-                          !print *, maxval( nParticlesX )
-                          !print *, maxval( nParticlesY )
-                          !print *, maxval( nParticlesZ )
 
 
                           ! THESE LINE READS THE CELL IDS THAT NEED TO BE PROCESSED
@@ -630,17 +566,22 @@ contains
 
                       end do
 
-                      !print *, 'NP is : ', np
 
                       ! Calculate the total number of particles for all release time points.
                       totalParticleCount = 0
                       totalParticleCount = np*particleGroups(nic)%GetReleaseTimeCount()
-                      !print *, ' TOTAL PARTICLE COUNT GET RELEASE TIME COUNT:::: ', totalParticleCount, &
-                      !                                           particleGroups(nic)%GetReleaseTimeCount()
                       if(allocated(particleGroups(nic)%Particles)) deallocate(particleGroups(nic)%Particles)
                       allocate(particleGroups(nic)%Particles(totalParticleCount))
                       particleGroups(nic)%TotalParticleCount = totalParticleCount
-                       
+                     
+
+                      ! UPDATE PARTICLES MASS
+                      ! If for a given cell the value of density or concentration 
+                      ! is negative, then assign the number of particles
+                      ! and modify the sign of particles mass for that cell 
+                      ! with a negative sign 
+                      particleMass = sum( abs(densityDistribution)*cellVolumes*flowModelData%Porosity )/totalParticleCount 
+
                       ! Set the data for particles at the first release time point
                       m = 0
                       offset = 0
@@ -652,29 +593,26 @@ contains
                                       sdiv(1) = int( nParticlesX(cell) ) + 1
                                       sdiv(2) = int( nParticlesY(cell) ) + 1
                                       sdiv(3) = int( nParticlesZ(cell) ) + 1
-                                      !sdiv(3) =  1
-                                      !print *, sdiv(1), sdiv(2), sdiv(3), nParticles(cell), sdiv(1)*sdiv(2)*sdiv(3), &
-                                      !shapeFactorX(cell), shapeFactorY(cell), shapeFactorZ(cell)
-                                      call pr_CreateParticlesAsInternalArray(particleGroups(nic), cell, m, &
-                                        sdiv(1), sdiv(2), sdiv(3), drape(n))
+                                      if ( densityDistribution(cell) .gt. 0 ) then 
+                                          particleMass = abs( particleMass ) 
+                                      else 
+                                          particleMass = -1*abs( particleMass )
+                                      end if 
+                                      !call pr_CreateParticlesAsInternalArray(particleGroups(nic), cell, m, &
+                                      !  sdiv(1), sdiv(2), sdiv(3), drape(n))
+                                      call CreateMassParticlesAsInternalArray(particleGroups(nic), cell, m, &
+                                            sdiv(1), sdiv(2), sdiv(3), drape(n), particleMass )
+                                      !print *, 'CELL :', cell, ' -- MASS: ', particleMass, ' -- nx,ny,nz: ', & 
+                                      !    sdiv(1), sdiv(2), Sdiv(3)
                                   end if
                               end do
                               
                               ! Increment the offset
                               offset = offset + templateCellCounts(n)
+
                           end do
                       end if
                       
-
-
-
-                      ! NEEDS TO UPDATE PARTICLE MASS
-                      ! UNIFORM DISTRIBUTION LEAD TO A HIGHER NUMBER OF RELEASED
-                      ! PARTICLES THAN REFERENCE IN nParticles
-
-
-
-                      !print *,' PARTICLE GROUP: ', nic, ' -- NPARTICLES: ', particleGroups(nic)%TotalParticleCount
 
                       ! Deallocate temporary arrays
                       deallocate(subDiv)
@@ -683,11 +621,6 @@ contains
                       deallocate(templateCellCounts)
                       deallocate(templateCellNumbers)
                       !!  END  SIMPLIFIED FROM READLOATIONS3 !!!!!!!!!!!!!!!!!!!!!!!!!!
-
-
-
-
-
 
 
                   case (2) ! Read particles, the classical way + mass parameters
@@ -763,23 +696,96 @@ contains
 
             call move_alloc( newParticleGroups, simulationData%ParticleGroups )
             simulationData%ParticleGroupCount = newParticleGroupCount
-            !deallocate( particleGroups )
+
 
         end if
 
+
+        ! Close dispersion data file
+        close( inUnit )
+
+
+
+
+
+        ! THRASH 
 
         !print *, 'DID SOMETHING'
         !print *, simulationData%ParticleGroupCount
         !do n =1, simulationData%ParticleGroupCount
         !    print *, simulationData%ParticleGroups(n)%Name
         !end do 
-        
-
         !call exit(0)
+                              ! use flowModelData to compute number of particles
+                              !read(inUnit, *) cellVolume
 
+                              !! Do it in parallel
+                              !!$omp parallel do   &
+                              !!$omp default(none) &
+                              !!$omp shared(grid) &
+                              !!$omp shared(particleMass) &
+                              !!$omp shared( densityDistribution ) & 
+                              !!$omp shared( rawNParticles ) 
+                              !do nc = 1, grid%CellCount
+                              !     
+                              !   rawNParticles(nc) = densityDistribution(nc)/particleMass
 
-        ! Close dispersion data file
-        close( inUnit )
+                              !end do
+                              !!$omp end parallel do
+                              
+                              !print *, '-------------------------------------------------------------------'
+                              !print *, 'PARTICLES MASS: ', particleMass 
+                              !print *, 'MAX MASS DENSITY: ', maxval( densityDistribution ) 
+                              !print *, 'MIN MASS DENSITY: ', minval( densityDistribution ) 
+                              !print *, 'MAX PARTICLES DENSITY: ', maxval( rawNParticles ) 
+                              !print *, 'MIN PARTICLES DENSITY: ', minval( rawNParticles ) 
+                              !print *, 'MAX POROSITY', maxval( flowModelData%Porosity )
+
+                              !print *, 'N DIMENSIONS: ', nDim
+                              !print *, 'MAX NPARTICLES: ', maxval( nParticles ) 
+                              !print *, 'MIN NPARTICLES: ', minval( nParticles ) 
+                              !print *, 'SUM NPARTICLES: ', sum( nParticles ) 
+                              !print *, 'MAX CELLVOLUMES: ', maxval( cellVolumes )
+                              !print *, 'MIN CELLVOLUMES: ', minval( cellVolumes )
+                              !print *, 'MIN CONCENTRATION (CMIN): ', minval(particleMass/flowModelData%Porosity/cellVolumes)
+                              !print *, 'RATIO MAX/MIN CONCENTRATION: ', maxval( densityDistribution )/minOneParticleDensity
+                              !print *, 'MAX DELZ: ', maxval( delZ )
+                              !print *, 'MIN DELZ: ', minval( delZ )
+
+                          !! Shape factors
+                          !do m =1, grid%CellCount
+                          !    if ( cellVolumes(m) .le. 0d0 ) cycle
+                          !    shapeFactorX(m) = grid%DelX(m)/(cellVolumes(m)**(1d0/nDim))
+                          !    shapeFactorY(m) = grid%DelY(m)/(cellVolumes(m)**(1d0/nDim))
+                          !    shapeFactorZ(m) = delZ(m)/(cellVolumes(m)**(1d0/nDim))
+                          !    !print *, grid%DelX(m), shapeFactorX(m), cellVolumes(m),cellVolumes(m)**(1d0/nDim)
+                          !    !print *, shapeFactorX(m), shapeFactorY(m), shapeFactorZ(m), cellVolumes(m)
+                          !end do 
+                          ! Need a minimum number of particles ?
+                          ! the following process makes sense only
+                          ! if nParticles > 1
+                          !print *, 'NPARTICLES GT 1 : ',  count( nParticles .gt. 1  )
+                          ! Think about how to treat the zero 
+                          ! or one particles cases
+                          ! And THESE are the subdivisions
+                          !! SHAPE FACTORS
+                          !print *, 'SHAPE FACTORS: '
+                          !print *, minval( shapeFactorX )
+                          !print *, minval( shapeFactorY )
+                          !print *, minval( shapeFactorZ )
+                          !print *, maxval( shapeFactorX )
+                          !print *, maxval( shapeFactorY )
+                          !print *, maxval( shapeFactorZ )
+
+                          !print *, 'NPARTICLES: '
+                          !print *, minval( nParticles ), maxval( nParticles )
+                          !print *, minval( nParticlesX )
+                          !print *, minval( nParticlesY )
+                          !print *, minval( nParticlesZ )
+                          !print *, maxval( nParticlesX )
+                          !print *, maxval( nParticlesY )
+                          !print *, maxval( nParticlesZ )
+
 
 
     end subroutine pr_ReadData
