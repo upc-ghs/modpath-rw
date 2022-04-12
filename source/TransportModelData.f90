@@ -148,15 +148,27 @@ contains
     ! FROM READLOCATIONS3
     type(ParticleGroupType) :: pGroup
     integer :: totalParticleCount,templateCount,templateCellCount,nc,nr,nl,row,column
-    integer :: count,np,face,i,j,k,layerCount,rowCount,columnCount,          &
-      subCellCount,cell,offset,npcell
-    doubleprecision :: dx,dy,dz,x,y,z,faceCoord,rowCoord,columnCoord,dr,dc
-    integer,dimension(:),allocatable :: templateSubDivisionTypes,                   &
+    integer :: count,np,face,i,j,k,layerCount,rowCount,columnCount,       &    
+               subCellCount,cell,offset,npcell
+    doubleprecision :: dx,dy,dz,x,y,z,faceCoord,rowCoord,columnCoord,dr,dc 
+    integer,dimension(:),allocatable :: templateSubDivisionTypes,         &
       templateCellNumbers,templateCellCounts, drape
     integer,dimension(:,:),allocatable :: subDiv
     integer,dimension(12) :: sdiv
+
+    ! DIMENSIONALITY
     integer :: nDim
     integer, dimension(3) :: dimensionMask
+
+    ! INJECTION BC's
+    integer :: nInjectionConditions, nInjectionTimes
+    integer :: injectionFormat
+    integer :: injectionCellNumber
+    doubleprecision, dimension(:), allocatable :: injectionTimes, injectionDensity
+    character(len=200) :: injectionSeriesFile
+    integer :: tempInjectionUnit = 667
+    integer :: it, res
+    doubleprecision :: totalMass, deltaTRelease
 
     !---------------------------------------------------------------------------------------------------------------
 
@@ -313,6 +325,7 @@ contains
               write(outUnit,*) 'Stopping.'
               call ustop(' ')          
         end if
+        ! END ICBOUND
 
 
         ! INITIAL CONDITIONS
@@ -324,8 +337,8 @@ contains
         slocUnit = 0
         seqNumber = 0
 
-        ! ADD THEM TO EXISTING PARTICLE GROUPS ?
-        ! LOOP IN MPATH IS ALL OVER PARTICLEGROUPS STORE IN SIMULATIONDATA
+        ! ADD THEM TO EXISTING PARTICLE GROUPS
+        ! LOOP IN MPATH IS ALL OVER PARTICLEGROUPS STORED IN SIMULATIONDATA
         if(nInitialConditions .gt. 0) then
 
             ! Would be like a realloc to extend 
@@ -424,7 +437,8 @@ contains
                               ! Simple delZ 
                               delZ      = grid%Top-grid%Bottom
                               ! LayerType if .eq. 1 convertible
-                              where( this%Grid%CellType .eq. 1 ) 
+                              where( this%Grid%CellType .eq. 1 )
+                                  ! ONLY IF HEADS .lt. TOP 
                                   delZ = flowModelData%Heads-grid%Bottom
                               end where
                               where ( delZ .le. 0d0 )
@@ -481,24 +495,21 @@ contains
                       allocate(drape(templateCount))
                       allocate(templateCellNumbers(templateCellCount))
 
-
                       ! TEMP
-                      drape = 0
+                      drape = 0 ! SHOULD COME FROM SOMEWHERE
                       templateSubDivisionTypes(1) = 1
                       templateCellCounts(1) = grid%CellCount
 
-
                       ! Read data into temporary arrays and count the number of particles
-                      rowCount = grid%RowCount
+                      rowCount    = grid%RowCount
                       columnCount = grid%ColumnCount
-                      layerCount = grid%LayerCount
+                      layerCount  = grid%LayerCount
                       do n = 1, templateCount
                           do m = 1, 12
                               subDiv(n,m) = 0
                           end do
                       end do
                      
-
                       np = 0
                       npcell = 0
                       offset = 0
@@ -598,12 +609,9 @@ contains
                                       else 
                                           particleMass = -1*abs( particleMass )
                                       end if 
-                                      !call pr_CreateParticlesAsInternalArray(particleGroups(nic), cell, m, &
-                                      !  sdiv(1), sdiv(2), sdiv(3), drape(n))
-                                      call CreateMassParticlesAsInternalArray(particleGroups(nic), cell, m, &
-                                            sdiv(1), sdiv(2), sdiv(3), drape(n), particleMass )
-                                      !print *, 'CELL :', cell, ' -- MASS: ', particleMass, ' -- nx,ny,nz: ', & 
-                                      !    sdiv(1), sdiv(2), Sdiv(3)
+                                      call CreateMassParticlesAsInternalArray(& 
+                                          particleGroups(nic), cell, m, sdiv(1), sdiv(2), sdiv(3), & 
+                                          drape(n), particleMass, particleGroups(nic)%GetReleaseTime(1) )
                                   end if
                               end do
                               
@@ -684,7 +692,6 @@ contains
 
             ! EXTEND SIMULATIONDATA TO INCLUDE THESE PARTICLE GROUPS
             ! OR RETURN THESE PARTICLEGROUPS AND REALLOCATE OUTSIDE
-            
             newParticleGroupCount = simulationData%ParticleGroupCount + nInitialConditions
             allocate(newParticleGroups(newParticleGroupCount))
             do n = 1, simulationData%ParticleGroupCount
@@ -697,95 +704,281 @@ contains
             call move_alloc( newParticleGroups, simulationData%ParticleGroups )
             simulationData%ParticleGroupCount = newParticleGroupCount
 
+            deallocate( particleGroups )
+        
 
-        end if
+        end if ! if nInitialConditions .gt. 0
 
+
+
+        ! INJECTION BOUNDARY CONDITIONS
+        ! SHOULD BE RELATED TO ICBOUND ?
+        read(inUnit, *) nInjectionConditions
+        write(outUnit,'(/A,I5)') 'Number of mass injection cells = ', nInjectionConditions
+        particleCount = 0
+        slocUnit = 0
+        seqNumber = 0
+
+        ! ADD THEM TO EXISTING PARTICLE GROUPS
+        ! LOOP IN MPATH IS ALL OVER PARTICLEGROUPS STORED IN SIMULATIONDATA
+        if(nInjectionConditions .gt. 0) then
+
+            ! Allocate particlegroups  
+            allocate(particleGroups(nInjectionConditions))
+
+            ! Allocate these quantities to single size
+            if(allocated(cellVolumes)) deallocate(cellVolumes)
+            allocate(cellVolumes(1))
+            if(allocated(delZ)) deallocate(delZ)
+            allocate(delZ(1))
+            if(allocated(shapeFactorX)) deallocate(shapeFactorX)
+            allocate(shapeFactorX(1))
+            if(allocated(shapeFactorY)) deallocate(shapeFactorY)
+            allocate(shapeFactorY(1))
+            if(allocated(shapeFactorZ)) deallocate(shapeFactorZ)
+            allocate(shapeFactorZ(1))
+
+            ! Loop over initial conditions
+            do nic = 1, nInjectionConditions
+
+                particleGroups(nic)%Group = nic
+
+                !! Set release time for initial condition.
+                !! In the meantime force 0d0 although it could 
+                !! be extracted from a previuosly defined stage
+                !initialReleaseTime = 0d0
+                !call particleGroups(nic)%SetReleaseOption1(initialReleaseTime)
+
+                ! Initial condition format
+                ! 1: cell, concentration, some relevant times
+                ! 2: cell, injection time series
+                read(inUnit, *) injectionFormat
+
+                read(inUnit, '(a)') particleGroups(nic)%Name
+
+                read(inUnit, *) injectionCellNumber ! SOMETHING TO VERIFY THAT IS VALID (IBOUND!=0)
+
+                read(inUnit, *) particleMass
+
+                read(inUnit, *) nInjectionTimes
+
+                select case ( injectionFormat ) 
+                    case (1)
+                        continue 
+                    case (2)
+                        ! Density/concentration arrays are expected 
+                        ! to be consistent with flow model grid.
+                        if(allocated(injectionTimes)) deallocate(injectionTimes)
+                        allocate(injectionTimes(nInjectionTimes))
+                        if(allocated(injectionDensity)) deallocate(injectionDensity)
+                        allocate(injectionDensity(nInjectionTimes))
+
+                        ! Allocate arrays in time for nparticles
+                        if(allocated(rawNParticles)) deallocate(rawNParticles)
+                        allocate(rawNParticles(nInjectionTimes))
+                        if(allocated(nParticles)) deallocate(nParticles)
+                        allocate(nParticles(nInjectionTimes))
+                        if(allocated(nParticlesX)) deallocate(nParticlesX)
+                        allocate(nParticlesX(nInjectionTimes))
+                        if(allocated(nParticlesY)) deallocate(nParticlesY)
+                        allocate(nParticlesY(nInjectionTimes))
+                        if(allocated(nParticlesZ)) deallocate(nParticlesZ)
+                        allocate(nParticlesZ(nInjectionTimes))
+
+                        ! Read file and load 
+                        read(inUnit, '(a)') injectionSeriesFile 
+                        open(tempInjectionUnit, file=injectionSeriesFile, &
+                            access='sequential', form="formatted", iostat=res) 
+                        do it = 1, nInjectionTimes
+                            read(tempInjectionUnit,*) injectionTimes( it ), injectionDensity( it )
+                        end do
+
+                        call particleGroups(nic)%SetReleaseOption3(nInjectionTimes, injectionTimes)
+
+                        ! Initialize
+                        nParticles   = 0
+                        cellVolumes  = 0d0
+                        shapeFactorX = 0
+                        shapeFactorY = 0
+                        shapeFactorZ = 0
+                        nParticlesX  = 0
+                        nParticlesY  = 0
+                        nParticlesZ  = 0
+
+                        ! Simple delZ 
+                        delZ = grid%Top( injectionCellNumber ) - grid%Bottom(injectionCellNumber )
+                        ! LayerType if .eq. 1 convertible
+                        if( this%Grid%CellType( injectionCellNumber ) .eq. 1 ) then
+                            if( flowModelData%Heads( injectionCellNumber ) .lt. & 
+                                                grid%Top( injectionCellNumber ) ) then 
+                                delZ = flowModelData%Heads( injectionCellNumber ) - grid%Bottom( injectionCellNumber )
+                            end if
+                        end if
+                        if ( delZ(1) .le. 0d0 ) then
+                            delZ(1) = 0d0 
+                        end if
+
+                        ! Compute cell volume
+                        cellVolumes = 1 
+                        do n =1,3
+                            if ( dimensionMask(n) .eq. 1 ) then 
+                                select case( n ) 
+                                    case(1)
+                                        cellVolumes = cellVolumes*grid%DelX( injectionCellNumber )
+                                    case(2)
+                                        cellVolumes = cellVolumes*grid%DelY( injectionCellNumber )
+                                    case(3)
+                                        cellVolumes = cellVolumes*delZ
+                                end select
+                            end if 
+                        end do 
+
+
+                        ! Allocate temporary arrays
+                        allocate(subDiv(templateCount,12))
+                        allocate(templateSubDivisionTypes(templateCount))
+                        allocate(templateCellCounts(templateCount))
+                        allocate(drape(templateCount))
+                        allocate(templateCellNumbers(templateCellCount))
+                        ! TEMP
+                        drape = 0 ! SHOULD COME FROM SOMEWHERE
+                        templateSubDivisionTypes(1) = 1
+                        templateCellCounts(1) = 1
+                        templateCount = 1 
+                        templateCellCount = 1
+
+                        np = 0
+                        npcell = 0
+                        offset = 0
+
+                        ! THINGS THAT REMAIN EQUAL IN TIME
+                        do n = 1, templateCount
+                            do m = 1, 12
+                                subDiv(n,m) = 0
+                            end do
+                        end do
+                     
+                        if ( dimensionMask(1) .eq. 1 ) then 
+                            ! Shape factors
+                            if ( cellVolumes(1) .le. 0d0 ) cycle
+                            shapeFactorX(1) = grid%DelX(injectionCellNumber)/(cellVolumes(1)**(1d0/nDim))
+                        end if 
+
+                        if ( dimensionMask(2) .eq. 1 ) then 
+                            ! Shape factors
+                            if ( cellVolumes(1) .le. 0d0 ) cycle
+                            shapeFactorY(1) = grid%DelY(injectionCellNumber)/(cellVolumes(1)**(1d0/nDim))
+                        end if 
+
+                        if ( dimensionMask(3) .eq. 1 ) then 
+                            ! Shape factors
+                            if ( cellVolumes(1) .le. 0d0 ) cycle
+                            shapeFactorZ(1) = delZ(1)/(cellVolumes(1)**(1d0/nDim))
+                        end if 
+
+                        do it =1, nInjectionTimes
+
+                            ! For each injectionDensity 
+                            rawNParticles(it) = abs(injectionDensity(it))/particleMass
+
+                            ! nParticles
+                            ! notice rawNParticles = mass/volume/mass = 1/volume: particle density
+                            nParticles(it)  = rawNParticles(it)*flowModelData%Porosity( injectionCellNumber )*cellVolumes(1)
+
+                            if ( nParticles(it) .lt. 1d0 ) then
+                               nParticles(it) = 0d0
+                               cycle
+                            end if 
+
+                            nParticlesX(it) = shapeFactorX(1)*(nParticles(it))**(1d0/nDim) 
+                            nParticlesY(it) = shapeFactorY(1)*(nParticles(it))**(1d0/nDim)
+                            nParticlesZ(it) = shapeFactorZ(1)*(nParticles(it))**(1d0/nDim)
+
+                            ! Cell subdivisions
+                            subDiv(1,1) = int( nParticlesX(it) ) + 1
+                            subDiv(1,2) = int( nParticlesY(it) ) + 1
+                            subDiv(1,3) = int( nParticlesZ(it) ) + 1
+                            npcell      = subDiv(1,1)*subDiv(1,2)*subDiv(1,3)
+                            np          = np + npcell
+                            
+                        end do
+
+                        ! AFTER LAST LOOP THE TOTAL NUMBER OF PARTICLES 
+                        ! TO BE USED IN INJECTION TIMESERIES
+                        ! Calculate the total number of particles for all release time points.
+                        totalParticleCount = 0
+                        totalParticleCount = np
+                        if(allocated(particleGroups(nic)%Particles)) deallocate(particleGroups(nic)%Particles)
+                        allocate(particleGroups(nic)%Particles(totalParticleCount))
+                        particleGroups(nic)%TotalParticleCount = totalParticleCount
+
+                        ! INTEGRATE MASS IN TIME
+                        !totalMass = 0d0
+                        !deltaTRelease = 0d0
+                        !do n =2,nInjectionTimes
+                        !    deltaTRelease = injectionTimes( n ) - injectionTimes( n-1 )
+                        !end do
+
+                        ! UPDATE PARTICLES MASS
+                        ! THIS SHOULD BE DONE IN TIME
+                        particleMass = sum( &
+                            abs(injectionDensity)*cellVolumes(1)*flowModelData%Porosity( injectionCellNumber ) &
+                        )/totalParticleCount 
+
+                        m = 0
+                        do it =1, nInjectionTimes
+                            ! Set the data for particles at the first release time point
+                            if ( nParticles(it) .lt. 1d0 ) cycle
+                            sdiv(1) = int( nParticlesX(it) ) + 1
+                            sdiv(2) = int( nParticlesY(it) ) + 1
+                            sdiv(3) = int( nParticlesZ(it) ) + 1
+                            if ( injectionDensity(it) .gt. 0 ) then 
+                                particleMass = abs( particleMass ) 
+                            else 
+                                particleMass = -1*abs( particleMass )
+                            end if 
+                            call CreateMassParticlesAsInternalArray(     & 
+                                particleGroups(nic), injectionCellNumber,&
+                                m, sdiv(1), sdiv(2), sdiv(3),            &
+                                drape(1), particleMass,                  &
+                                injectionTimes( it )                     & 
+                            )
+                        end do 
+
+                        ! Deallocate temporary arrays
+                        deallocate(subDiv)
+                        deallocate(templateSubDivisionTypes)
+                        deallocate(drape)
+                        deallocate(templateCellCounts)
+                        deallocate(templateCellNumbers)
+
+                end select 
+               
+
+            end do ! Loop over nInjectionConditions
+
+
+            ! EXTEND SIMULATIONDATA TO INCLUDE THESE PARTICLE GROUPS
+            ! OR RETURN THESE PARTICLEGROUPS AND REALLOCATE OUTSIDE
+            newParticleGroupCount = simulationData%ParticleGroupCount + nInjectionConditions
+            allocate(newParticleGroups(newParticleGroupCount))
+            do n = 1, simulationData%ParticleGroupCount
+                newParticleGroups(n) = simulationData%ParticleGroups(n)
+            end do 
+            do n = 1, nInjectionConditions
+                newParticleGroups(n+simulationData%ParticleGroupCount) = particleGroups(n)
+            end do 
+
+            call move_alloc( newParticleGroups, simulationData%ParticleGroups )
+            simulationData%ParticleGroupCount = newParticleGroupCount
+
+            deallocate( particleGroups )
+
+
+        end if ! if nInjectionConditions .gt. 0
 
         ! Close dispersion data file
         close( inUnit )
-
-
-
-
-
-        ! THRASH 
-
-        !print *, 'DID SOMETHING'
-        !print *, simulationData%ParticleGroupCount
-        !do n =1, simulationData%ParticleGroupCount
-        !    print *, simulationData%ParticleGroups(n)%Name
-        !end do 
-        !call exit(0)
-                              ! use flowModelData to compute number of particles
-                              !read(inUnit, *) cellVolume
-
-                              !! Do it in parallel
-                              !!$omp parallel do   &
-                              !!$omp default(none) &
-                              !!$omp shared(grid) &
-                              !!$omp shared(particleMass) &
-                              !!$omp shared( densityDistribution ) & 
-                              !!$omp shared( rawNParticles ) 
-                              !do nc = 1, grid%CellCount
-                              !     
-                              !   rawNParticles(nc) = densityDistribution(nc)/particleMass
-
-                              !end do
-                              !!$omp end parallel do
-                              
-                              !print *, '-------------------------------------------------------------------'
-                              !print *, 'PARTICLES MASS: ', particleMass 
-                              !print *, 'MAX MASS DENSITY: ', maxval( densityDistribution ) 
-                              !print *, 'MIN MASS DENSITY: ', minval( densityDistribution ) 
-                              !print *, 'MAX PARTICLES DENSITY: ', maxval( rawNParticles ) 
-                              !print *, 'MIN PARTICLES DENSITY: ', minval( rawNParticles ) 
-                              !print *, 'MAX POROSITY', maxval( flowModelData%Porosity )
-
-                              !print *, 'N DIMENSIONS: ', nDim
-                              !print *, 'MAX NPARTICLES: ', maxval( nParticles ) 
-                              !print *, 'MIN NPARTICLES: ', minval( nParticles ) 
-                              !print *, 'SUM NPARTICLES: ', sum( nParticles ) 
-                              !print *, 'MAX CELLVOLUMES: ', maxval( cellVolumes )
-                              !print *, 'MIN CELLVOLUMES: ', minval( cellVolumes )
-                              !print *, 'MIN CONCENTRATION (CMIN): ', minval(particleMass/flowModelData%Porosity/cellVolumes)
-                              !print *, 'RATIO MAX/MIN CONCENTRATION: ', maxval( densityDistribution )/minOneParticleDensity
-                              !print *, 'MAX DELZ: ', maxval( delZ )
-                              !print *, 'MIN DELZ: ', minval( delZ )
-
-                          !! Shape factors
-                          !do m =1, grid%CellCount
-                          !    if ( cellVolumes(m) .le. 0d0 ) cycle
-                          !    shapeFactorX(m) = grid%DelX(m)/(cellVolumes(m)**(1d0/nDim))
-                          !    shapeFactorY(m) = grid%DelY(m)/(cellVolumes(m)**(1d0/nDim))
-                          !    shapeFactorZ(m) = delZ(m)/(cellVolumes(m)**(1d0/nDim))
-                          !    !print *, grid%DelX(m), shapeFactorX(m), cellVolumes(m),cellVolumes(m)**(1d0/nDim)
-                          !    !print *, shapeFactorX(m), shapeFactorY(m), shapeFactorZ(m), cellVolumes(m)
-                          !end do 
-                          ! Need a minimum number of particles ?
-                          ! the following process makes sense only
-                          ! if nParticles > 1
-                          !print *, 'NPARTICLES GT 1 : ',  count( nParticles .gt. 1  )
-                          ! Think about how to treat the zero 
-                          ! or one particles cases
-                          ! And THESE are the subdivisions
-                          !! SHAPE FACTORS
-                          !print *, 'SHAPE FACTORS: '
-                          !print *, minval( shapeFactorX )
-                          !print *, minval( shapeFactorY )
-                          !print *, minval( shapeFactorZ )
-                          !print *, maxval( shapeFactorX )
-                          !print *, maxval( shapeFactorY )
-                          !print *, maxval( shapeFactorZ )
-
-                          !print *, 'NPARTICLES: '
-                          !print *, minval( nParticles ), maxval( nParticles )
-                          !print *, minval( nParticlesX )
-                          !print *, minval( nParticlesY )
-                          !print *, minval( nParticlesZ )
-                          !print *, maxval( nParticlesX )
-                          !print *, maxval( nParticlesY )
-                          !print *, maxval( nParticlesZ )
-
 
 
     end subroutine pr_ReadData

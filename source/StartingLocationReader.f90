@@ -730,8 +730,8 @@ end subroutine pr_CreateParticlesAsInternalArray
 
 
 
-subroutine CreateMassParticlesAsInternalArray(pGroup, cellNumber, &               
-  currentParticleCount, nx, ny, nz, drape, particlesMass )
+subroutine CreateMassParticlesAsInternalArray(pGroup, cellNumber, currentParticleCount,& 
+                                         nx, ny, nz, drape, particlesMass, releaseTime )
 !***************************************************************************************************************
 ! Same as pr_CreateParticlesAsInternalArray but specifying mass
 !
@@ -745,7 +745,7 @@ type(ParticleGroupType),intent(inout) :: pGroup
 integer,intent(inout) :: currentParticleCount
 integer,intent(in) :: nx, ny, nz, cellNumber, drape
 doubleprecision,intent(in) :: particlesMass
-! integer :: n,m,face,i,j,k
+doubleprecision,intent(in) :: releaseTime
 integer :: m,face,i,j,k
 doubleprecision :: dx,dy,dz,x,y,z,faceCoord,rowCoord,columnCoord
 !---------------------------------------------------------------------------------------------------------------
@@ -770,7 +770,7 @@ do k = 1, nz
             pGroup%Particles(m)%Drape = drape
             pGroup%Particles(m)%Status = 0
             pGroup%Particles(m)%InitialCellNumber = cellNumber
-            pGroup%Particles(m)%InitialTrackingTime = pGroup%GetReleaseTime(1)
+            pGroup%Particles(m)%InitialTrackingTime = releaseTime
             pGroup%Particles(m)%CellNumber = pGroup%Particles(m)%InitialCellNumber
             pGroup%Particles(m)%InitialFace = 0
             pGroup%Particles(m)%Face = 0
@@ -785,8 +785,11 @@ do k = 1, nz
 end do
   
 currentParticleCount = m
-  
+
+
 end subroutine CreateMassParticlesAsInternalArray
+
+
 
 
 end module StartingLocationReaderModule
