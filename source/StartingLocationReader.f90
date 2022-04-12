@@ -780,6 +780,8 @@ do k = 1, nz
             pGroup%Particles(m)%GlobalZ = pGroup%Particles(m)%InitialGlobalZ
             pGroup%Particles(m)%TrackingTime = pGroup%Particles(m)%InitialTrackingTime
             pGroup%Particles(m)%Mass = particlesMass
+            ! NEEDS SOMETHING BETTER/CLEANER
+            pGroup%Particles(m)%SequenceNumber = 0
         end do
     end do
 end do

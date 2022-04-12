@@ -328,6 +328,17 @@ contains
         ! END ICBOUND
 
 
+        ! THIS COULD BE REUSED LATER FOR DIMENSIONALITY ADAPTIVITY
+        ! Determine model dimensions
+        dimensionMask = 0
+        if ( grid%ColumnCount .gt. 1 ) dimensionMask(1) = 1 ! this dimension is active
+        if ( grid%RowCount .gt. 1 )    dimensionMask(2) = 1 ! this dimension is active
+        if ( grid%LayerCount .gt. 1 )  dimensionMask(3) = 1 ! this dimension is active
+        nDim = sum(dimensionMask)
+
+
+
+
         ! INITIAL CONDITIONS
         ! MORE LIKE SPECIES AND EACH WITH AN INITIAL DISTRIBUTION
         ! THESE ARE TRANSFORMED INTO MASS PARTICLES 
@@ -347,7 +358,7 @@ contains
             ! Loop over initial conditions
             do nic = 1, nInitialConditions
 
-                particleGroups(nic)%Group = nic
+                particleGroups(nic)%Group = simulationData%ParticleGroupCount + nic
 
                 ! Set release time for initial condition.
                 ! In the meantime force 0d0 although it could 
@@ -444,13 +455,6 @@ contains
                               where ( delZ .le. 0d0 )
                                   delZ = 0d0 
                               end where
-
-                              ! Determine model dimensions
-                              dimensionMask = 0
-                              if ( grid%ColumnCount .gt. 1 ) dimensionMask(1) = 1 ! this dimension is active
-                              if ( grid%RowCount .gt. 1 )    dimensionMask(2) = 1 ! this dimension is active
-                              if ( grid%LayerCount .gt. 1 )  dimensionMask(3) = 1 ! this dimension is active
-                              nDim = sum(dimensionMask)
 
                               ! Compute cell volumes
                               cellVolumes = 1
@@ -715,9 +719,6 @@ contains
         ! SHOULD BE RELATED TO ICBOUND ?
         read(inUnit, *) nInjectionConditions
         write(outUnit,'(/A,I5)') 'Number of mass injection cells = ', nInjectionConditions
-        particleCount = 0
-        slocUnit = 0
-        seqNumber = 0
 
         ! ADD THEM TO EXISTING PARTICLE GROUPS
         ! LOOP IN MPATH IS ALL OVER PARTICLEGROUPS STORED IN SIMULATIONDATA
@@ -741,7 +742,7 @@ contains
             ! Loop over initial conditions
             do nic = 1, nInjectionConditions
 
-                particleGroups(nic)%Group = nic
+                particleGroups(nic)%Group = simulationData%ParticleGroupCount + nic
 
                 !! Set release time for initial condition.
                 !! In the meantime force 0d0 although it could 
@@ -835,17 +836,15 @@ contains
 
 
                         ! Allocate temporary arrays
+                        ! TEMP
+                        templateCount = 1 
+                        templateCellCount = 1
                         allocate(subDiv(templateCount,12))
                         allocate(templateSubDivisionTypes(templateCount))
                         allocate(templateCellCounts(templateCount))
                         allocate(drape(templateCount))
                         allocate(templateCellNumbers(templateCellCount))
-                        ! TEMP
                         drape = 0 ! SHOULD COME FROM SOMEWHERE
-                        templateSubDivisionTypes(1) = 1
-                        templateCellCounts(1) = 1
-                        templateCount = 1 
-                        templateCellCount = 1
 
                         np = 0
                         npcell = 0
@@ -912,6 +911,8 @@ contains
                         allocate(particleGroups(nic)%Particles(totalParticleCount))
                         particleGroups(nic)%TotalParticleCount = totalParticleCount
 
+                        !print *, 'TOTAL PARTICLE COUNT INJECTION ', totalParticleCount
+
                         ! INTEGRATE MASS IN TIME
                         !totalMass = 0d0
                         !deltaTRelease = 0d0
@@ -953,7 +954,8 @@ contains
                         deallocate(templateCellNumbers)
 
                 end select 
-               
+    
+                !print *, injectionCellNumber, ibound( injectionCellNumber ), totalParticleCount, particleMass 
 
             end do ! Loop over nInjectionConditions
 
@@ -976,6 +978,12 @@ contains
 
 
         end if ! if nInjectionConditions .gt. 0
+
+        do n =1, simulationData%ParticleGroupCount
+            print *, 'PG', simulationData%ParticleGroups(n)%Group
+        end do
+
+
 
         ! Close dispersion data file
         close( inUnit )
