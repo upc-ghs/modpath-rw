@@ -337,8 +337,6 @@ contains
         nDim = sum(dimensionMask)
 
 
-
-
         ! INITIAL CONDITIONS
         ! MORE LIKE SPECIES AND EACH WITH AN INITIAL DISTRIBUTION
         ! THESE ARE TRANSFORMED INTO MASS PARTICLES 
@@ -347,6 +345,7 @@ contains
         particleCount = 0
         slocUnit = 0
         seqNumber = 0
+
 
         ! ADD THEM TO EXISTING PARTICLE GROUPS
         ! LOOP IN MPATH IS ALL OVER PARTICLEGROUPS STORED IN SIMULATIONDATA
@@ -486,9 +485,7 @@ contains
                       end select
 
 
-                      !! SIMPLIFIED FROM READLOATIONS3 !!!!!!!!!!!!!!!!!!!!!!!!!!
                       ! Read the number of cells
-                      !read(inUnit, *) templateCount, templateCellCount
                       templateCount = 1 
                       templateCellCount = grid%CellCount 
 
@@ -744,14 +741,8 @@ contains
 
                 particleGroups(nic)%Group = simulationData%ParticleGroupCount + nic
 
-                !! Set release time for initial condition.
-                !! In the meantime force 0d0 although it could 
-                !! be extracted from a previuosly defined stage
-                !initialReleaseTime = 0d0
-                !call particleGroups(nic)%SetReleaseOption1(initialReleaseTime)
-
-                ! Initial condition format
-                ! 1: cell, concentration, some relevant times
+                ! Injection condition format 
+                ! 1: cell, constant concentration, start-end times
                 ! 2: cell, injection time series
                 read(inUnit, *) injectionFormat
 
@@ -774,6 +765,7 @@ contains
                         if(allocated(injectionDensity)) deallocate(injectionDensity)
                         allocate(injectionDensity(nInjectionTimes))
 
+
                         ! Allocate arrays in time for nparticles
                         if(allocated(rawNParticles)) deallocate(rawNParticles)
                         allocate(rawNParticles(nInjectionTimes))
@@ -786,6 +778,7 @@ contains
                         if(allocated(nParticlesZ)) deallocate(nParticlesZ)
                         allocate(nParticlesZ(nInjectionTimes))
 
+
                         ! Read file and load 
                         read(inUnit, '(a)') injectionSeriesFile 
                         open(tempInjectionUnit, file=injectionSeriesFile, &
@@ -794,7 +787,10 @@ contains
                             read(tempInjectionUnit,*) injectionTimes( it ), injectionDensity( it )
                         end do
 
+
+                        ! Set release option
                         call particleGroups(nic)%SetReleaseOption3(nInjectionTimes, injectionTimes)
+
 
                         ! Initialize
                         nParticles   = 0
@@ -955,7 +951,6 @@ contains
 
                 end select 
     
-                !print *, injectionCellNumber, ibound( injectionCellNumber ), totalParticleCount, particleMass 
 
             end do ! Loop over nInjectionConditions
 
@@ -978,11 +973,6 @@ contains
 
 
         end if ! if nInjectionConditions .gt. 0
-
-        do n =1, simulationData%ParticleGroupCount
-            print *, 'PG', simulationData%ParticleGroups(n)%Group
-        end do
-
 
 
         ! Close dispersion data file
