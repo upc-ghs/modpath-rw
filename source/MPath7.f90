@@ -387,13 +387,13 @@
         ! Moreover, reconstruction can employ a grid different than flow model grid.
         ! So for USG grids, reconstructed information could be obtained in a regular
         ! rectangular grid, given particles position.
-        !print *, 'GPKDESIM: DOMAIN SIZE', simulationData%TrackingOptions%gpkdeDomainSize
-        !print *, 'GPKDESIM: BIN SIZE', simulationData%TrackingOptions%gpkdeBinSize
         call ulog('Initialize GPKDE object and output unit', logUnit)
         call gpkde%Initialize(& 
-            simulationData%TrackingOptions%gpkdeDomainSize,&
-            simulationData%TrackingOptions%gpkdeBinSize,   &
-            nOptimizationLoops=simulationData%TrackingOptions%gpkdeNOptLoops &
+            simulationData%TrackingOptions%gpkdeDomainSize,                   &
+            simulationData%TrackingOptions%gpkdeBinSize,                      &
+            nOptimizationLoops=simulationData%TrackingOptions%gpkdeNOptLoops, &
+            domainOrigin=simulationData%TrackingOptions%gpkdeDomainOrigin     &
+
         )
         ! Initialize output unit/file
         open(unit=simulationData%TrackingOptions%gpkdeOutputUnit, &

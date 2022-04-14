@@ -620,6 +620,18 @@ contains
                 call urword(this%TrackingOptions%gpkdeOutputFile,icol,istart,istop,0,n,r,0,0)
                 this%TrackingOptions%gpkdeOutputFile = this%TrackingOptions%gpkdeOutputFile(istart:istop)
 
+
+                ! Read domainOrigin
+                read(gpkdeUnit, '(a)') line
+                icol = 1
+                call urword(line, icol, istart, istop, 3, n, r, 0, 0)
+                this%TrackingOptions%gpkdeBinSize(1) = r
+                call urword(line, icol, istart, istop, 3, n, r, 0, 0)
+                this%TrackingOptions%gpkdeBinSize(2) = r
+                call urword(line, icol, istart, istop, 3, n, r, 0, 0)
+                this%TrackingOptions%gpkdeDomainOrigin(3) = r
+
+
                 ! Read domainSize
                 read(gpkdeUnit, '(a)') line
                 icol = 1
@@ -630,7 +642,6 @@ contains
                 call urword(line, icol, istart, istop, 3, n, r, 0, 0)
                 this%TrackingOptions%gpkdeDomainSize(3) = r
 
-                !print *, 'AT SIMULATION DATA: DOMAINSIZE', this%TrackingOptions%gpkdeDomainSize
 
                 ! Read binSize
                 read(gpkdeUnit, '(a)') line
@@ -641,13 +652,14 @@ contains
                 this%TrackingOptions%gpkdeBinSize(2) = r
                 call urword(line, icol, istart, istop, 3, n, r, 0, 0)
                 this%TrackingOptions%gpkdeBinSize(3) = r
-                !print *, 'AT SIMULATION DATA: BINSIZE', this%TrackingOptions%gpkdeDomainSize
+
 
                 ! Read nOptimizationLoops
                 read(gpkdeUnit, '(a)') line
                 icol = 1
                 call urword(line, icol, istart, istop, 2, n, r, 0, 0)
                 this%TrackingOptions%gpkdeNOptLoops = n
+
 
                 ! Close gpkde data file
                 close( gpkdeUnit )

@@ -29,6 +29,7 @@ module ParticleTrackingOptionsModule
     logical                       :: GPKDEReconstruction = .false.
     doubleprecision, dimension(3) :: gpkdeDomainSize
     doubleprecision, dimension(3) :: gpkdeBinSize
+    doubleprecision, dimension(3) :: gpkdeDomainOrigin
     integer                       :: gpkdeNOptLoops 
     character(len=200)            :: gpkdeOutputFile
     integer                       :: gpkdeOutputUnit = 125
