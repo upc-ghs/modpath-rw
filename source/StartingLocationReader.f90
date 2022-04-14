@@ -9,7 +9,12 @@ implicit none
 private
 
 public ReadAndPrepareLocations
-  
+
+! RWPT
+public pr_CreateParticlesAsInternalArray
+public CreateMassParticlesAsInternalArray
+
+
 contains
 
 subroutine ReadAndPrepareLocations(inUnit, outUnit, particleGroup, ibound,      &
@@ -395,8 +400,8 @@ do n = 1, templateCount
         npcell = subDiv(n,1)*subDiv(n,2)*subDiv(n,3)
     else
         call ustop('Invalid subdivision type. Stop.')
-    end if   
-    
+    end if  
+
     read(inUnit, *) (templateCellNumbers(offset + m), m = 1, templateCellCounts(n))
     
     ! Loop through cells and count the number of particles 
@@ -416,7 +421,8 @@ do n = 1, templateCount
     ! Increment the offset
     offset = offset + templateCellCounts(n)
 end do
-  
+
+
 ! Calculate the total number of particles for all release time points.
 totalParticleCount = np*pGroup%GetReleaseTimeCount()
 if(allocated(pGroup%Particles)) deallocate(pGroup%Particles)
@@ -667,6 +673,7 @@ currentParticleCount = m
   
 end subroutine pr_CreateParticlesOnFaces
 
+
 subroutine pr_CreateParticlesAsInternalArray(pGroup, cellNumber,                &
   currentParticleCount, nx, ny, nz, drape)
 !***************************************************************************************************************
@@ -720,5 +727,71 @@ end do
 currentParticleCount = m
   
 end subroutine pr_CreateParticlesAsInternalArray
+
+
+
+subroutine CreateMassParticlesAsInternalArray(pGroup, cellNumber, currentParticleCount,& 
+                                         nx, ny, nz, drape, particlesMass, releaseTime )
+!***************************************************************************************************************
+! Same as pr_CreateParticlesAsInternalArray but specifying mass
+!
+!***************************************************************************************************************
+!
+! Specifications
+!---------------------------------------------------------------------------------------------------------------
+use UTL8MODULE,only : ustop
+implicit none
+type(ParticleGroupType),intent(inout) :: pGroup
+integer,intent(inout) :: currentParticleCount
+integer,intent(in) :: nx, ny, nz, cellNumber, drape
+doubleprecision,intent(in) :: particlesMass
+doubleprecision,intent(in) :: releaseTime
+integer :: m,face,i,j,k
+doubleprecision :: dx,dy,dz,x,y,z,faceCoord,rowCoord,columnCoord
+!---------------------------------------------------------------------------------------------------------------
+  
+m = currentParticleCount
+! pGroup%Particles(n)%InitialFace = 0
+dx = 1.0d0 / dble(nx)
+dy = 1.0d0 / dble(ny)
+dz = 1.0d0 / dble(nz)
+do k = 1, nz
+    z = (k - 1)*dz + (dz/2.0d0)
+    do i = 1, ny
+        y = (i - 1)*dy + (dy/2.0d0)
+        do j = 1, nx
+            m = m+ 1
+            x = (j - 1)*dx + (dx/2.0d0)
+            pGroup%Particles(m)%InitialLocalX = x
+            pGroup%Particles(m)%InitialLocalY = y
+            pGroup%Particles(m)%InitialLocalZ = z
+            pGroup%Particles(m)%InitialGlobalZ = 0.0d0
+            pGroup%Particles(m)%Id = m
+            pGroup%Particles(m)%Drape = drape
+            pGroup%Particles(m)%Status = 0
+            pGroup%Particles(m)%InitialCellNumber = cellNumber
+            pGroup%Particles(m)%InitialTrackingTime = releaseTime
+            pGroup%Particles(m)%CellNumber = pGroup%Particles(m)%InitialCellNumber
+            pGroup%Particles(m)%InitialFace = 0
+            pGroup%Particles(m)%Face = 0
+            pGroup%Particles(m)%LocalX = pGroup%Particles(m)%InitialLocalX
+            pGroup%Particles(m)%LocalY = pGroup%Particles(m)%InitialLocalY
+            pGroup%Particles(m)%LocalZ = pGroup%Particles(m)%InitialLocalZ
+            pGroup%Particles(m)%GlobalZ = pGroup%Particles(m)%InitialGlobalZ
+            pGroup%Particles(m)%TrackingTime = pGroup%Particles(m)%InitialTrackingTime
+            pGroup%Particles(m)%Mass = particlesMass
+            ! NEEDS SOMETHING BETTER/CLEANER
+            pGroup%Particles(m)%SequenceNumber = 0
+        end do
+    end do
+end do
+  
+currentParticleCount = m
+
+
+end subroutine CreateMassParticlesAsInternalArray
+
+
+
 
 end module StartingLocationReaderModule

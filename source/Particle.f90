@@ -12,6 +12,8 @@ type,public :: ParticleType
   doubleprecision,dimension(:),allocatable :: ExitVelocity
   ! GPKDE-RECONSTRUCTION
   doubleprecision :: GlobalX, GlobalY
+  ! RWPT
+  doubleprecision :: Mass
 end type
 
 

@@ -57,6 +57,7 @@ module ModpathCellDataModule
     procedure :: SetArraySizeMode=>pr_SetArraySizeMode
     procedure :: SetFlowAndPropertyData=>pr_SetFlowAndPropertyData
     procedure :: Reset=>pr_Reset
+    procedure :: ResetArrays=>pr_ResetArrays
     procedure :: HasExitFace=>pr_HasExitFace
     procedure :: GetSubCellRowCount=>pr_GetSubCellRowCount
     procedure :: GetSubCellColumnCount=>pr_GetSubCellColumnCount
@@ -98,6 +99,9 @@ module ModpathCellDataModule
 
 contains
 
+
+
+
   function pr_GetDZ(this) result(dz)
   implicit none
   class(ModpathCellDataType) :: this
@@ -113,48 +117,6 @@ contains
   end if
   
   end function pr_GetDZ
-
-
-  function pr_GetDZRW(this) result(dz)
-  implicit none
-  class(ModpathCellDataType) :: this
-  doubleprecision :: dz, dzc
-  !-----------------------------------------------
-  ! Return dz as domain size when dry
-  !-----------------------------------------------
-
-
-  dz  = this%Top - this%Bottom
-  dzc = this%Top - this%Bottom
-  this%dry = .false.
-  this%partiallyDry = .false.
-
-  ! If the layer is convertible, set dz = Head - Bottom if Head < Top
-  if(this%LayerType .eq. 1) then
-
-      if(this%Head .lt. this%Top) then 
-          ! if dz < 0, means that the cell is completely dry
-          ! if dz > 0, but Head < Top, cell is partially dry
-          ! this second case can be used for displacing particles by RWPT in 
-          ! that are within the region that is partially saturated.
-          dz = this%Head - this%Bottom
-          this%dry = .false.
-          this%partiallyDry = .true.
-          ! If dz < 0, set dz to an arbitrary, small positive value (MODPATH default)
-          ! RWPT: tighthen the leash
-          if ( &
-              ( dz .lt. 0d0 ) .or. &
-              ( (this%Head - this%Bottom)/dzc .lt. 0.01d0) ) then 
-              dz = this%Top - this%Bottom ! to avoid blow up dzrw/dz
-              this%dry = .true.
-              this%partiallyDry = .false.
-          end if 
-      end if 
-  end if
-  
-  end function pr_GetDZRW
-
-
 
 
 
@@ -445,30 +407,7 @@ contains
   this%SubCellRowCount = 1
   this%SubCellColumnCount = 1
   
-  do n = 1, 6
-      this%SubFaceCounts(n) = 1
-      this%SubFaceBoundaryCounts(n) = 1
-  end do
-  
-  do n = 1, 2
-      this%Q1(n) = 0.0d0
-      this%Q2(n) = 0.0d0
-      this%Q3(n) = 0.0d0
-      this%Q4(n) = 0.0d0
-      this%SubFaceConn1(n) = 0
-      this%SubFaceConn2(n) = 0
-      this%SubFaceConn3(n) = 0
-      this%SubFaceConn4(n) = 0
-  end do
-  
-  do n = 1, 4
-      this%Q5(n) = 0.0d0
-      this%Q6(n) = 0.0d0
-      this%SubFaceConn5(n) = 0
-      this%SubFaceConn6(n) = 0
-      this%SubCellFlows(n) = 0.0d0
-  end do
-
+  call this%ResetArrays()
 
   ! RWPT-USG 
   this%fromSubCell     = .false.
@@ -479,7 +418,42 @@ contains
   this%parentSubColumn  = 0
   this%requestedFromDirection = 0
 
+  this%dry          = .false.
+  this%partiallyDry = .false.
+
   end subroutine pr_Reset
+
+
+  !------------------------------------------
+  subroutine pr_ResetArrays(this)
+  implicit none
+  class(ModpathCellDataType) :: this
+  !------------------------------------------
+  
+  this%SubFaceCounts = 1
+  this%SubFaceBoundaryCounts = 1
+  this%Q1 = 0.0d0
+  this%Q2 = 0.0d0
+  this%Q3 = 0.0d0
+  this%Q4 = 0.0d0
+  this%Q5 = 0.0d0
+  this%Q6 = 0.0d0
+  this%SubFaceConn1 = 0
+  this%SubFaceConn2 = 0
+  this%SubFaceConn3 = 0
+  this%SubFaceConn4 = 0
+  this%SubFaceConn5 = 0
+  this%SubFaceConn6 = 0
+  this%MassBoundarySubFace1 = 0 
+  this%MassBoundarySubFace2 = 0 
+  this%MassBoundarySubFace3 = 0 
+  this%MassBoundarySubFace4 = 0 
+  this%MassBoundarySubFace5 = 0 
+  this%MassBoundarySubFace6 = 0 
+  this%SubCellFlows = 0.0d0
+
+  end subroutine pr_ResetArrays
+
 
 !------------------------------------------
   subroutine pr_SetFlowAndPropertyData(this,ibound,porosity,retardation,        &
@@ -712,8 +686,12 @@ contains
     integer :: n,index,count,i,conn
     doubleprecision :: flow
     !---------------------------------------------------------------------------------------
-    
-    call this%Reset()
+   
+    ! Is this reset necessary ?
+    ! All scalar variables are reassigned
+    ! in the following lines after reset 
+    !call this%Reset()
+    call this%ResetArrays()
 
     this%CellNumber = cellNumber
     this%Layer = grid%GetLayer(cellNumber)
@@ -1114,6 +1092,7 @@ contains
             return
         end if
     end do
+
 
   end subroutine pr_SetMassTransportDataUnstructured
 
@@ -2548,6 +2527,9 @@ contains
   end subroutine pr_FillSubCellFaceFlowsBuffer
 
 
+  !-----------------------------------------------
+  ! RWPT METHODS
+  !-----------------------------------------------
 
   ! RWPT-USG
   function pr_GetNeighborSubCellIndexes( this, subRow, subColumn ) result( neighborSubCellIndexes )
@@ -2579,31 +2561,31 @@ contains
       implicit none
       class( ModpathCellDataType ) :: this
       integer, intent(in) :: subRow, subColumn
-      integer, dimension(18,3) :: neighborSubCellIndexes
+      integer, dimension(3,18) :: neighborSubCellIndexes
+      !integer, dimension(18,3) :: neighborSubCellIndexes
       !---------------------------------------------------------
-
 
       ! If current cell is not refined
       if( this%GetSubCellCount() .eq. 1 ) then 
 
-          neighborSubCellIndexes(1,:)  = [ 1,1,1]
-          neighborSubCellIndexes(2,:)  = [ 2,1,1]
-          neighborSubCellIndexes(3,:)  = [ 3,1,1]
-          neighborSubCellIndexes(4,:)  = [ 4,1,1]
-          neighborSubCellIndexes(5,:)  = [ 5,1,1]
-          neighborSubCellIndexes(6,:)  = [ 6,1,1]
-          neighborSubCellIndexes(7,:)  = [ 7,1,1]
-          neighborSubCellIndexes(8,:)  = [ 8,1,1]
-          neighborSubCellIndexes(9,:)  = [ 9,1,1]
-          neighborSubCellIndexes(10,:) = [10,1,1]
-          neighborSubCellIndexes(11,:) = [11,1,1]
-          neighborSubCellIndexes(12,:) = [12,1,1]
-          neighborSubCellIndexes(13,:) = [13,1,1]
-          neighborSubCellIndexes(14,:) = [14,1,1]
-          neighborSubCellIndexes(15,:) = [15,1,1]
-          neighborSubCellIndexes(16,:) = [16,1,1]
-          neighborSubCellIndexes(17,:) = [17,1,1]
-          neighborSubCellIndexes(18,:) = [18,1,1]
+          neighborSubCellIndexes(:,1)  = [ 1,1,1]
+          neighborSubCellIndexes(:,2)  = [ 2,1,1]
+          neighborSubCellIndexes(:,3)  = [ 3,1,1]
+          neighborSubCellIndexes(:,4)  = [ 4,1,1]
+          neighborSubCellIndexes(:,5)  = [ 5,1,1]
+          neighborSubCellIndexes(:,6)  = [ 6,1,1]
+          neighborSubCellIndexes(:,7)  = [ 7,1,1]
+          neighborSubCellIndexes(:,8)  = [ 8,1,1]
+          neighborSubCellIndexes(:,9)  = [ 9,1,1]
+          neighborSubCellIndexes(:,10) = [10,1,1]
+          neighborSubCellIndexes(:,11) = [11,1,1]
+          neighborSubCellIndexes(:,12) = [12,1,1]
+          neighborSubCellIndexes(:,13) = [13,1,1]
+          neighborSubCellIndexes(:,14) = [14,1,1]
+          neighborSubCellIndexes(:,15) = [15,1,1]
+          neighborSubCellIndexes(:,16) = [16,1,1]
+          neighborSubCellIndexes(:,17) = [17,1,1]
+          neighborSubCellIndexes(:,18) = [18,1,1]
 
           ! Done
           return
@@ -2618,87 +2600,87 @@ contains
           ! If subcell from first subRow 
           if ( subColumn .eq. 1 ) then
               ! If subcell from first subColumn
-              neighborSubCellIndexes(1,:)  = [ 1,1,2]
-              neighborSubCellIndexes(2,:)  = [ 1,2,2]
-              neighborSubCellIndexes(3,:)  = [ 3,2,2]
-              neighborSubCellIndexes(4,:)  = [ 0,1,2]
-              neighborSubCellIndexes(5,:)  = [ 0,2,2]
-              neighborSubCellIndexes(6,:)  = [10,2,2]
-              neighborSubCellIndexes(7,:)  = [ 0,2,1]
-              neighborSubCellIndexes(8,:)  = [13,2,1]
-              neighborSubCellIndexes(9,:)  = [16,2,1]
-              neighborSubCellIndexes(10,:) = [10,2,1]
-              neighborSubCellIndexes(11,:) = [11,2,1]
-              neighborSubCellIndexes(12,:) = [12,2,1]
-              neighborSubCellIndexes(13,:) = [13,1,1]
-              neighborSubCellIndexes(14,:) = [14,1,2]
-              neighborSubCellIndexes(15,:) = [13,1,2]
-              neighborSubCellIndexes(16,:) = [16,1,1]
-              neighborSubCellIndexes(17,:) = [17,1,2]
-              neighborSubCellIndexes(18,:) = [16,1,2]
+              neighborSubCellIndexes(:,1)  = [ 1,1,2]
+              neighborSubCellIndexes(:,2)  = [ 1,2,2]
+              neighborSubCellIndexes(:,3)  = [ 3,2,2]
+              neighborSubCellIndexes(:,4)  = [ 0,1,2]
+              neighborSubCellIndexes(:,5)  = [ 0,2,2]
+              neighborSubCellIndexes(:,6)  = [10,2,2]
+              neighborSubCellIndexes(:,7)  = [ 0,2,1]
+              neighborSubCellIndexes(:,8)  = [13,2,1]
+              neighborSubCellIndexes(:,9)  = [16,2,1]
+              neighborSubCellIndexes(:,10) = [10,2,1]
+              neighborSubCellIndexes(:,11) = [11,2,1]
+              neighborSubCellIndexes(:,12) = [12,2,1]
+              neighborSubCellIndexes(:,13) = [13,1,1]
+              neighborSubCellIndexes(:,14) = [14,1,2]
+              neighborSubCellIndexes(:,15) = [13,1,2]
+              neighborSubCellIndexes(:,16) = [16,1,1]
+              neighborSubCellIndexes(:,17) = [17,1,2]
+              neighborSubCellIndexes(:,18) = [16,1,2]
           else
               ! If subcell from second subColumn
-              neighborSubCellIndexes(1,:)  = [ 0,1,1]
-              neighborSubCellIndexes(2,:)  = [ 0,2,1]
-              neighborSubCellIndexes(3,:)  = [10,2,1]
-              neighborSubCellIndexes(4,:)  = [ 4,1,1]
-              neighborSubCellIndexes(5,:)  = [ 4,2,1]
-              neighborSubCellIndexes(6,:)  = [ 6,2,1]
-              neighborSubCellIndexes(7,:)  = [ 0,2,2]
-              neighborSubCellIndexes(8,:)  = [13,2,2]
-              neighborSubCellIndexes(9,:)  = [16,2,2]
-              neighborSubCellIndexes(10,:) = [10,2,2]
-              neighborSubCellIndexes(11,:) = [11,2,2]
-              neighborSubCellIndexes(12,:) = [12,2,2]
-              neighborSubCellIndexes(13,:) = [13,1,2]
-              neighborSubCellIndexes(14,:) = [13,1,1]
-              neighborSubCellIndexes(15,:) = [15,1,1]
-              neighborSubCellIndexes(16,:) = [16,1,2]
-              neighborSubCellIndexes(17,:) = [16,1,1]
-              neighborSubCellIndexes(18,:) = [18,1,1]
+              neighborSubCellIndexes(:,1)  = [ 0,1,1]
+              neighborSubCellIndexes(:,2)  = [ 0,2,1]
+              neighborSubCellIndexes(:,3)  = [10,2,1]
+              neighborSubCellIndexes(:,4)  = [ 4,1,1]
+              neighborSubCellIndexes(:,5)  = [ 4,2,1]
+              neighborSubCellIndexes(:,6)  = [ 6,2,1]
+              neighborSubCellIndexes(:,7)  = [ 0,2,2]
+              neighborSubCellIndexes(:,8)  = [13,2,2]
+              neighborSubCellIndexes(:,9)  = [16,2,2]
+              neighborSubCellIndexes(:,10) = [10,2,2]
+              neighborSubCellIndexes(:,11) = [11,2,2]
+              neighborSubCellIndexes(:,12) = [12,2,2]
+              neighborSubCellIndexes(:,13) = [13,1,2]
+              neighborSubCellIndexes(:,14) = [13,1,1]
+              neighborSubCellIndexes(:,15) = [15,1,1]
+              neighborSubCellIndexes(:,16) = [16,1,2]
+              neighborSubCellIndexes(:,17) = [16,1,1]
+              neighborSubCellIndexes(:,18) = [18,1,1]
           end if        
       else
           ! If subcell from second subRow 
           if ( subColumn .eq. 1 ) then 
               ! If subcell from first subColumn
-              neighborSubCellIndexes(1,:)  = [ 1,2,2]
-              neighborSubCellIndexes(2,:)  = [ 2,1,2]
-              neighborSubCellIndexes(3,:)  = [ 1,1,2]
-              neighborSubCellIndexes(4,:)  = [ 0,2,2]
-              neighborSubCellIndexes(5,:)  = [ 7,1,2]
-              neighborSubCellIndexes(6,:)  = [ 0,1,2]
-              neighborSubCellIndexes(7,:)  = [ 7,1,1]
-              neighborSubCellIndexes(8,:)  = [ 8,1,1]
-              neighborSubCellIndexes(9,:)  = [ 9,1,1]
-              neighborSubCellIndexes(10,:) = [ 0,1,1]
-              neighborSubCellIndexes(11,:) = [13,1,1]
-              neighborSubCellIndexes(12,:) = [16,1,1]
-              neighborSubCellIndexes(13,:) = [13,2,1]
-              neighborSubCellIndexes(14,:) = [14,2,2]
-              neighborSubCellIndexes(15,:) = [13,2,2]
-              neighborSubCellIndexes(16,:) = [16,2,1]
-              neighborSubCellIndexes(17,:) = [17,2,2]
-              neighborSubCellIndexes(18,:) = [16,2,2]
+              neighborSubCellIndexes(:,1)  = [ 1,2,2]
+              neighborSubCellIndexes(:,2)  = [ 2,1,2]
+              neighborSubCellIndexes(:,3)  = [ 1,1,2]
+              neighborSubCellIndexes(:,4)  = [ 0,2,2]
+              neighborSubCellIndexes(:,5)  = [ 7,1,2]
+              neighborSubCellIndexes(:,6)  = [ 0,1,2]
+              neighborSubCellIndexes(:,7)  = [ 7,1,1]
+              neighborSubCellIndexes(:,8)  = [ 8,1,1]
+              neighborSubCellIndexes(:,9)  = [ 9,1,1]
+              neighborSubCellIndexes(:,10) = [ 0,1,1]
+              neighborSubCellIndexes(:,11) = [13,1,1]
+              neighborSubCellIndexes(:,12) = [16,1,1]
+              neighborSubCellIndexes(:,13) = [13,2,1]
+              neighborSubCellIndexes(:,14) = [14,2,2]
+              neighborSubCellIndexes(:,15) = [13,2,2]
+              neighborSubCellIndexes(:,16) = [16,2,1]
+              neighborSubCellIndexes(:,17) = [17,2,2]
+              neighborSubCellIndexes(:,18) = [16,2,2]
           else
               ! If subcell from second subColumn
-              neighborSubCellIndexes(1,:)  = [ 0,2,1]
-              neighborSubCellIndexes(2,:)  = [ 7,1,1]
-              neighborSubCellIndexes(3,:)  = [ 0,1,1]
-              neighborSubCellIndexes(4,:)  = [ 4,2,1]
-              neighborSubCellIndexes(5,:)  = [ 5,1,1]
-              neighborSubCellIndexes(6,:)  = [ 4,1,1]
-              neighborSubCellIndexes(7,:)  = [ 7,1,2]
-              neighborSubCellIndexes(8,:)  = [ 8,1,2]
-              neighborSubCellIndexes(9,:)  = [ 9,1,2]
-              neighborSubCellIndexes(10,:) = [ 0,1,2]
-              neighborSubCellIndexes(11,:) = [13,1,2]
-              neighborSubCellIndexes(12,:) = [16,1,2]
-              neighborSubCellIndexes(13,:) = [13,2,2]
-              neighborSubCellIndexes(14,:) = [13,2,1]
-              neighborSubCellIndexes(15,:) = [15,2,1]
-              neighborSubCellIndexes(16,:) = [16,2,2]
-              neighborSubCellIndexes(17,:) = [16,2,1]
-              neighborSubCellIndexes(18,:) = [18,2,1]
+              neighborSubCellIndexes(:,1)  = [ 0,2,1]
+              neighborSubCellIndexes(:,2)  = [ 7,1,1]
+              neighborSubCellIndexes(:,3)  = [ 0,1,1]
+              neighborSubCellIndexes(:,4)  = [ 4,2,1]
+              neighborSubCellIndexes(:,5)  = [ 5,1,1]
+              neighborSubCellIndexes(:,6)  = [ 4,1,1]
+              neighborSubCellIndexes(:,7)  = [ 7,1,2]
+              neighborSubCellIndexes(:,8)  = [ 8,1,2]
+              neighborSubCellIndexes(:,9)  = [ 9,1,2]
+              neighborSubCellIndexes(:,10) = [ 0,1,2]
+              neighborSubCellIndexes(:,11) = [13,1,2]
+              neighborSubCellIndexes(:,12) = [16,1,2]
+              neighborSubCellIndexes(:,13) = [13,2,2]
+              neighborSubCellIndexes(:,14) = [13,2,1]
+              neighborSubCellIndexes(:,15) = [15,2,1]
+              neighborSubCellIndexes(:,16) = [16,2,2]
+              neighborSubCellIndexes(:,17) = [16,2,1]
+              neighborSubCellIndexes(:,18) = [18,2,1]
           end if        
       end if 
 
@@ -2852,6 +2834,45 @@ contains
  
   end subroutine pr_VerifyDryCell
 
+
+  function pr_GetDZRW(this) result(dz)
+  implicit none
+  class(ModpathCellDataType) :: this
+  doubleprecision :: dz, dzc
+  !-----------------------------------------------
+  ! Return dz as domain size when dry
+  !-----------------------------------------------
+
+
+  dz  = this%Top - this%Bottom
+  dzc = this%Top - this%Bottom
+  this%dry = .false.
+  this%partiallyDry = .false.
+
+  ! If the layer is convertible, set dz = Head - Bottom if Head < Top
+  if(this%LayerType .eq. 1) then
+
+      if(this%Head .lt. this%Top) then 
+          ! if dz < 0, means that the cell is completely dry
+          ! if dz > 0, but Head < Top, cell is partially dry
+          ! this second case can be used for displacing particles by RWPT in 
+          ! that are within the region that is partially saturated.
+          dz = this%Head - this%Bottom
+          this%dry = .false.
+          this%partiallyDry = .true.
+          ! If dz < 0, set dz to an arbitrary, small positive value (MODPATH default)
+          ! RWPT: tighthen the leash
+          if ( &
+              ( dz .lt. 0d0 ) .or. &
+              ( (this%Head - this%Bottom)/dzc .lt. 0.01d0) ) then 
+              dz = this%Top - this%Bottom ! to avoid blow up dzrw/dz
+              this%dry = .true.
+              this%partiallyDry = .false.
+          end if 
+      end if 
+  end if
+  
+  end function pr_GetDZRW
 
 
 
