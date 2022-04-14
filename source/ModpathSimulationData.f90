@@ -625,9 +625,9 @@ contains
                 read(gpkdeUnit, '(a)') line
                 icol = 1
                 call urword(line, icol, istart, istop, 3, n, r, 0, 0)
-                this%TrackingOptions%gpkdeBinSize(1) = r
+                this%TrackingOptions%gpkdeDomainOrigin(1) = r
                 call urword(line, icol, istart, istop, 3, n, r, 0, 0)
-                this%TrackingOptions%gpkdeBinSize(2) = r
+                this%TrackingOptions%gpkdeDomainOrigin(2) = r
                 call urword(line, icol, istart, istop, 3, n, r, 0, 0)
                 this%TrackingOptions%gpkdeDomainOrigin(3) = r
 
