@@ -515,7 +515,7 @@ contains
                 releaseTimes)
           case default
           ! write error message and stop
-          end select
+      end select
       
       read(inUnit, '(a)') line
       icol = 1
