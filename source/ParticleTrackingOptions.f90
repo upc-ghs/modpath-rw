@@ -24,6 +24,12 @@ module ParticleTrackingOptionsModule
     doubleprecision, dimension(2) :: timeStepParameters = 0
     integer                       :: advectionKind
     logical                       :: twoDimensions = .false.
+    ! TEMPORARY NONLINEAR RWPT
+    integer         :: dispersionModel
+    doubleprecision :: betaTrans, betaLong
+    doubleprecision :: mediumDistance, mediumDelta
+
+ 
 
     ! OBS
     integer :: nObservations

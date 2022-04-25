@@ -975,6 +975,19 @@ contains
         end if ! if nInjectionConditions .gt. 0
 
 
+    
+        ! NONLINEARDISPERSIONDEV
+        trackingOptions%dispersionModel = 2
+        trackingOptions%mediumDistance  = 1
+        trackingOptions%mediumDelta     = 5.5
+        trackingOptions%betaLong        = 1
+        trackingOptions%betaTrans       = 0.5
+
+
+
+
+
+
         ! Close dispersion data file
         close( inUnit )
 
