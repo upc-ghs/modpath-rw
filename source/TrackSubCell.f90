@@ -62,6 +62,7 @@ module TrackSubCellModule
     ! RWPT Pointers
     procedure(Advection), pass, pointer :: AdvectionDisplacement=>null()
     procedure(ExitFaceAndTimeStep), pass, pointer :: ExitFaceAndUpdateTimeStep=>null()
+    procedure(DispersionModel), pass, pointer :: ComputeRWPTDisplacements=>null()
 
     ! OBS
     type(TrackSubCellResultType) :: TrackSubCellResult
@@ -131,6 +132,29 @@ module TrackSubCellModule
           integer, intent(inout)         :: exitFace
           doubleprecision, dimension(3), intent(inout) :: dtxyz
       end subroutine ExitFaceAndTimeStep
+
+      
+      ! Dispersion model 
+      ! Interfaces between linear and nonlinear dispersion
+      subroutine DispersionModel( this, x, y, z, vx, vy, vz, &
+                                       dt, trackingOptions, &
+                                       dAdvx, dAdvy, dAdvz, &
+                                             dBx, dBy, dBz, &
+                                       divDx, divDy, divDz  )
+          import TrackSubCellType
+          import ParticleTrackingOptionsType
+          ! this
+          class(TrackSubCellType) :: this
+          ! input
+          type(ParticleTrackingOptionsType),intent(in) :: trackingOptions
+          doubleprecision, intent(in)    :: x, y, z, dt
+          ! output
+          doubleprecision, intent(inout) :: vx, vy, vz 
+          doubleprecision, intent(inout) :: dAdvx, dAdvy, dAdvz 
+          doubleprecision, intent(inout) :: dBx, dBy, dBz 
+          doubleprecision, intent(inout) :: divDx, divDy, divDz  
+      end subroutine DispersionModel 
+
 
   end interface
 
@@ -443,6 +467,18 @@ contains
       ! Set indexes for corner porosities
       call this%SetCornerPorosityIndexes()
 
+      ! Should set dispersion model (linear vs nonlinear)
+
+      ! Assign displacement pointers
+      if ( trackingOptions%dispersionModel .eq. 1 ) then 
+          !  Linear
+          this%ComputeRWPTDisplacements => pr_RWPTDisplacementsLinear 
+      else if ( trackingOptions%dispersionModel .eq.2 ) then
+          ! Non linear 
+          this%ComputeRWPTDisplacements => pr_RWPTDisplacementsNonlinear
+      end if
+
+
       ! Done
       return
 
@@ -451,6 +487,100 @@ contains
 
 
 
+  subroutine pr_RWPTDisplacementsLinear(this, x, y, z, vx, vy, vz, &
+                                              dt, trackingOptions, &
+                                              dAdvx, dAdvy, dAdvz, &
+                                                    dBx, dBy, dBz, &
+                                              divDx, divDy, divDz  )
+      !------------------------------------------------------------
+      !------------------------------------------------------------
+      implicit none
+      class(TrackSubCellType) :: this
+      type(ParticleTrackingOptionsType),intent(in) :: trackingOptions
+      doubleprecision, intent(in)    :: x, y, z, dt
+      doubleprecision, intent(inout) :: vx, vy, vz 
+      doubleprecision, intent(inout) :: dAdvx, dAdvy, dAdvz 
+      doubleprecision, intent(inout) :: dBx, dBy, dBz 
+      doubleprecision, intent(inout) :: divDx, divDy, divDz  
+      ! local
+      doubleprecision :: Daqueous, Dmol, betaL, betaT
+      doubleprecision :: mediumDistance, mediumDelta
+      doubleprecision :: alphaL, alphaT
+      !------------------------------------------------------------
+      ! Specifications
+      !------------------------------------------------------------
+
+      Daqueous = trackingOptions%Dmol 
+      Dmol     = Daqueous*this%SubCellData%Porosity ! Pore diffusion approx Daq*phi
+      alphaL   = this%SubCellData%alphaL
+      alphaT   = this%SubCellData%alphaT
+
+      call this%LinearInterpolationVelocities( x, y, z, vx, vy, vz )
+      call this%DispersionDivergenceDischarge( x, y, z, alphaL, alphaT, Dmol, divDx, divDy, divDz )
+      call this%DisplacementRandomDischarge( x, y, z, alphaL, alphaT, Dmol, dBx, dBy, dBz )
+      call this%AdvectionDisplacement( x, y, z, dt, vx, vy, vz, dAdvx, dAdvy, dAdvz )
+
+
+      return
+
+
+  end subroutine pr_RWPTDisplacementsLinear
+
+
+
+  subroutine pr_RWPTDisplacementsNonlinear(this, x, y, z, vx, vy, vz, &
+                                                 dt, trackingOptions, &
+                                                 dAdvx, dAdvy, dAdvz, &
+                                                       dBx, dBy, dBz, &
+                                                 divDx, divDy, divDz  )
+      !------------------------------------------------------------
+      !------------------------------------------------------------
+      implicit none
+      class(TrackSubCellType) :: this
+      type(ParticleTrackingOptionsType),intent(in) :: trackingOptions
+      doubleprecision, intent(in)    :: x, y, z, dt
+      doubleprecision, intent(inout) :: vx, vy, vz 
+      doubleprecision, intent(inout) :: dAdvx, dAdvy, dAdvz 
+      doubleprecision, intent(inout) :: dBx, dBy, dBz 
+      doubleprecision, intent(inout) :: divDx, divDy, divDz  
+      ! local
+      doubleprecision :: Daqueous, Dmol, betaL, betaT
+      doubleprecision :: mediumDistance, mediumDelta
+      doubleprecision :: alphaL, alphaT
+      !------------------------------------------------------------
+      ! Specifications
+      !------------------------------------------------------------
+        
+      ! Will consider by convention that molecular diffusion 
+      ! specified at configuration file is the aqueous
+
+      ! THIS IS TEMPORARY: MOLECULAR DIFFUSION IS A PARTICLE PROPERTY
+      Daqueous       = trackingOptions%Dmol 
+      Dmol           = Daqueous*this%SubCellData%Porosity ! Pore diffusion approx Daq*phi
+      mediumDistance = trackingOptions%mediumDistance
+      mediumDelta    = trackingOptions%mediumDelta
+      betaL          = trackingOptions%betaLong 
+      betaT          = trackingOptions%betaTrans
+
+
+      alphaL = 0d0
+      alphaT = 0d0
+
+
+      ! NONLINEAR DISPERSION
+      call this%LinearInterpolationVelocities( x, y, z, vx, vy, vz )
+      ! COMPUTE DISPERSIVITIES
+      call pr_ComputeNonlinearDispersivities( this, vx, vy, vz, Daqueous, &
+                mediumDistance, mediumDelta, betaL, betaT, alphaL, alphaT )
+      call this%DispersionDivergenceDischarge( x, y, z, alphaL, alphaT, Dmol, divDx, divDy, divDz )
+      call this%DisplacementRandomDischarge( x, y, z, alphaL, alphaT, Dmol, dBx, dBy, dBz )
+      call this%AdvectionDisplacement( x, y, z, dt, vx, vy, vz, dAdvx, dAdvy, dAdvz )
+
+
+      return
+
+
+  end subroutine pr_RWPTDisplacementsNonlinear
 
 
 
@@ -597,8 +727,35 @@ contains
       !alphaT = trackingOptions%alphaT
       Dmol   = trackingOptions%Dmol
 
+        
+      ! A nonlinear dispersion model would compute 
+      ! alphaL, alphaT at particle's position
+      ! So in comparison to current implementation, 
+      ! it only requires computation of local dispersivities 
+
+      ! NOTE:
+      ! LINEAR DISPERSION
+      !    call this%LinearInterpolationVelocities( x, y, z, vx, vy, vz )
+      !    call this%DispersionDivergenceDischarge( x, y, z, alphaL, alphaT, Dmol, divDx, divDy, divDz )
+      !    call this%DisplacementRandomDischarge( x, y, z, alphaL, alphaT, Dmol, dBx, dBy, dBz )
+      !    call this%AdvectionDisplacement( x, y, z, dt, vx, vy, vz, dAdvx, dAdvy, dAdvz )
+
+
+      ! NONLINEAR DISPERSION
+      !    call this%LinearInterpolationVelocities( x, y, z, vx, vy, vz )
+      !    ! COMPUTE DISPERSIVITIES
+      !    call pr_ComputeNonlinearDispersivities( vx, vy, vz, Daqueous, distanceMedium, & 
+      !                                 deltaMedium, betaTrans, betaLong, alphaL, alphaT )
+      !    call this%DispersionDivergenceDischarge( x, y, z, alphaL, alphaT, Dmol, divDx, divDy, divDz )
+      !    call this%DisplacementRandomDischarge( x, y, z, alphaL, alphaT, Dmol, dBx, dBy, dBz )
+      !    call this%AdvectionDisplacement( x, y, z, dt, vx, vy, vz, dAdvx, dAdvy, dAdvz )
+
+
       ! Compute time step for RWPT
       call this%ComputeRandomWalkTimeStep( trackingOptions, dt )
+
+
+
 
       ! Initializes current time
       t     = initialTime
@@ -642,12 +799,51 @@ contains
               reachedMaximumTime = .true.
           end if 
 
+          ! NOTE:
+          ! LINEAR DISPERSION
+          !    call this%LinearInterpolationVelocities( x, y, z, vx, vy, vz )
+          !    call this%DispersionDivergenceDischarge( x, y, z, alphaL, alphaT, Dmol, divDx, divDy, divDz )
+          !    call this%DisplacementRandomDischarge( x, y, z, alphaL, alphaT, Dmol, dBx, dBy, dBz )
+          !    call this%AdvectionDisplacement( x, y, z, dt, vx, vy, vz, dAdvx, dAdvy, dAdvz )
 
-          ! Compute RWPT movement
-          call this%LinearInterpolationVelocities( x, y, z, vx, vy, vz )
-          call this%DispersionDivergenceDischarge( x, y, z, alphaL, alphaT, Dmol, divDx, divDy, divDz )
-          call this%DisplacementRandomDischarge( x, y, z, alphaL, alphaT, Dmol, dBx, dBy, dBz )
-          call this%AdvectionDisplacement( x, y, z, dt, vx, vy, vz, dAdvx, dAdvy, dAdvz )
+          ! NONLINEAR DISPERSION
+          !    call this%LinearInterpolationVelocities( x, y, z, vx, vy, vz )
+          !    ! COMPUTE DISPERSIVITIES
+          !    call pr_ComputeNonlinearDispersivities( vx, vy, vz, Daqueous, distanceMedium, & 
+          !                                 deltaMedium, betaTrans, betaLong, alphaL, alphaT )
+          !    call this%DispersionDivergenceDischarge( x, y, z, alphaL, alphaT, Dmol, divDx, divDy, divDz )
+          !    call this%DisplacementRandomDischarge( x, y, z, alphaL, alphaT, Dmol, dBx, dBy, dBz )
+          !    call this%AdvectionDisplacement( x, y, z, dt, vx, vy, vz, dAdvx, dAdvy, dAdvz )
+
+
+
+
+          !!! Compute RWPT movement
+          !call this%LinearInterpolationVelocities( x, y, z, vx, vy, vz )
+          !call this%DispersionDivergenceDischarge( x, y, z, alphaL, alphaT, Dmol, divDx, divDy, divDz )
+          !call this%DisplacementRandomDischarge( x, y, z, alphaL, alphaT, Dmol, dBx, dBy, dBz )
+          !call this%AdvectionDisplacement( x, y, z, dt, vx, vy, vz, dAdvx, dAdvy, dAdvz )
+
+          !! Compute RWPT movement
+          call this%ComputeRWPTDisplacements(       &
+                               x, y, z, vx, vy, vz, &
+                               dt, trackingOptions, &
+                               dAdvx, dAdvy, dAdvz, &
+                                     dBx, dBy, dBz, &
+                               divDx, divDy, divDz  )
+
+
+          !call pr_RWPTDisplacementsNonlinear(this, x, y, z, vx, vy, vz, &
+          !                                         dt, trackingOptions, &
+          !                                         dAdvx, dAdvy, dAdvz, &
+          !                                               dBx, dBy, dBz, &
+          !                                         divDx, divDy, divDz  )
+          !call pr_RWPTDisplacementsLinear(this, x, y, z, vx, vy, vz, &
+          !                                      dt, trackingOptions, &
+          !                                      dAdvx, dAdvy, dAdvz, &
+          !                                            dBx, dBy, dBz, &
+          !                                      divDx, divDy, divDz  )
+
 
           dxrw = dAdvx + divDx*dt + dBx*sqrt( dt )
           nx   = x + dxrw/dx
@@ -3441,6 +3637,46 @@ contains
 
 
   end subroutine pr_Trilinear
+
+
+  ! RWPT
+  subroutine pr_ComputeNonlinearDispersivities( this, vx, vy, vz, Daqueous, distance, &
+                                                  delta, betaL, betaT, alphaL, alphaT )
+      !----------------------------------------------------------------
+      ! Compute nonlinear equivalent dispersivities
+      ! establishing analogy with 
+      ! model from  Chiogna et al. 2010, Rolle et al. 2013
+      !  
+      ! Params:
+      !----------------------------------------------------------------
+      ! Specifications
+      !----------------------------------------------------------------
+      implicit none
+      class (TrackSubCellType)    :: this
+      ! input
+      doubleprecision, intent(in) :: vx, vy, vz, Daqueous
+      doubleprecision, intent(in) :: distance, delta, betaL, betaT
+      ! output
+      doubleprecision, intent(inout) :: alphaL, alphaT
+      ! local
+      doubleprecision :: v, peclet, fbase
+      !---------------------------------------------------------------- 
+        
+      v      = 0d0
+      peclet = 0d0
+      fbase  = 0d0  
+
+
+      v      = sqrt( vx**2 + vy**2 + vz**2 )
+      peclet = v*distance/Daqueous
+      fbase  = peclet**2/( peclet + 2 + 4*delta**2 )
+
+      alphaL = (distance/peclet)*( fbase )**betaL 
+      alphaT = (distance/peclet)*( fbase )**betaT
+
+      return
+
+  end subroutine pr_ComputeNonlinearDispersivities
 
 
 
