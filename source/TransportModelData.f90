@@ -978,13 +978,10 @@ contains
     
         ! NONLINEARDISPERSIONDEV
         trackingOptions%dispersionModel = 2
-        trackingOptions%mediumDistance  = 1
+        trackingOptions%mediumDistance  = 0.2 ! 2mm, 0.2cm
         trackingOptions%mediumDelta     = 5.5
         trackingOptions%betaLong        = 1
         trackingOptions%betaTrans       = 0.5
-
-
-
 
 
 

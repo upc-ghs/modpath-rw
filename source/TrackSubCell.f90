@@ -145,8 +145,10 @@ module TrackSubCellModule
           import ParticleTrackingOptionsType
           ! this
           class(TrackSubCellType) :: this
+          ! input
           type(ParticleTrackingOptionsType),intent(in) :: trackingOptions
           doubleprecision, intent(in)    :: x, y, z, dt
+          ! output
           doubleprecision, intent(inout) :: vx, vy, vz 
           doubleprecision, intent(inout) :: dAdvx, dAdvy, dAdvz 
           doubleprecision, intent(inout) :: dBx, dBy, dBz 
