@@ -520,7 +520,6 @@ contains
       call this%DisplacementRandomDischarge( x, y, z, alphaL, alphaT, Dmol, dBx, dBy, dBz )
       call this%AdvectionDisplacement( x, y, z, dt, vx, vy, vz, dAdvx, dAdvy, dAdvz )
 
-
       return
 
 
@@ -623,7 +622,7 @@ contains
       doubleprecision :: xi, yi, zi
       doubleprecision :: nnx, nny, nnz ! remove
       doubleprecision :: dxrw, dyrw, dzrw
-      doubleprecision :: drwtol = 1.0d-14
+      doubleprecision :: drwtol = 1d-14
       logical         :: continueTimeLoop
       logical         :: reachedMaximumTime
       logical         :: twoDimensions
@@ -720,41 +719,9 @@ contains
       ! Initialize kind of domain solver
       twoDimensions = trackingOptions%twoDimensions
 
-      ! Initialize dispersion
-      alphaL = this%SubCellData%alphaL
-      alphaT = this%SubCellData%alphaT
-      !alphaL = trackingOptions%alphaL
-      !alphaT = trackingOptions%alphaT
-      Dmol   = trackingOptions%Dmol
-
-        
-      ! A nonlinear dispersion model would compute 
-      ! alphaL, alphaT at particle's position
-      ! So in comparison to current implementation, 
-      ! it only requires computation of local dispersivities 
-
-      ! NOTE:
-      ! LINEAR DISPERSION
-      !    call this%LinearInterpolationVelocities( x, y, z, vx, vy, vz )
-      !    call this%DispersionDivergenceDischarge( x, y, z, alphaL, alphaT, Dmol, divDx, divDy, divDz )
-      !    call this%DisplacementRandomDischarge( x, y, z, alphaL, alphaT, Dmol, dBx, dBy, dBz )
-      !    call this%AdvectionDisplacement( x, y, z, dt, vx, vy, vz, dAdvx, dAdvy, dAdvz )
-
-
-      ! NONLINEAR DISPERSION
-      !    call this%LinearInterpolationVelocities( x, y, z, vx, vy, vz )
-      !    ! COMPUTE DISPERSIVITIES
-      !    call pr_ComputeNonlinearDispersivities( vx, vy, vz, Daqueous, distanceMedium, & 
-      !                                 deltaMedium, betaTrans, betaLong, alphaL, alphaT )
-      !    call this%DispersionDivergenceDischarge( x, y, z, alphaL, alphaT, Dmol, divDx, divDy, divDz )
-      !    call this%DisplacementRandomDischarge( x, y, z, alphaL, alphaT, Dmol, dBx, dBy, dBz )
-      !    call this%AdvectionDisplacement( x, y, z, dt, vx, vy, vz, dAdvx, dAdvy, dAdvz )
-
 
       ! Compute time step for RWPT
       call this%ComputeRandomWalkTimeStep( trackingOptions, dt )
-
-
 
 
       ! Initializes current time
@@ -799,30 +766,6 @@ contains
               reachedMaximumTime = .true.
           end if 
 
-          ! NOTE:
-          ! LINEAR DISPERSION
-          !    call this%LinearInterpolationVelocities( x, y, z, vx, vy, vz )
-          !    call this%DispersionDivergenceDischarge( x, y, z, alphaL, alphaT, Dmol, divDx, divDy, divDz )
-          !    call this%DisplacementRandomDischarge( x, y, z, alphaL, alphaT, Dmol, dBx, dBy, dBz )
-          !    call this%AdvectionDisplacement( x, y, z, dt, vx, vy, vz, dAdvx, dAdvy, dAdvz )
-
-          ! NONLINEAR DISPERSION
-          !    call this%LinearInterpolationVelocities( x, y, z, vx, vy, vz )
-          !    ! COMPUTE DISPERSIVITIES
-          !    call pr_ComputeNonlinearDispersivities( vx, vy, vz, Daqueous, distanceMedium, & 
-          !                                 deltaMedium, betaTrans, betaLong, alphaL, alphaT )
-          !    call this%DispersionDivergenceDischarge( x, y, z, alphaL, alphaT, Dmol, divDx, divDy, divDz )
-          !    call this%DisplacementRandomDischarge( x, y, z, alphaL, alphaT, Dmol, dBx, dBy, dBz )
-          !    call this%AdvectionDisplacement( x, y, z, dt, vx, vy, vz, dAdvx, dAdvy, dAdvz )
-
-
-
-
-          !!! Compute RWPT movement
-          !call this%LinearInterpolationVelocities( x, y, z, vx, vy, vz )
-          !call this%DispersionDivergenceDischarge( x, y, z, alphaL, alphaT, Dmol, divDx, divDy, divDz )
-          !call this%DisplacementRandomDischarge( x, y, z, alphaL, alphaT, Dmol, dBx, dBy, dBz )
-          !call this%AdvectionDisplacement( x, y, z, dt, vx, vy, vz, dAdvx, dAdvy, dAdvz )
 
           !! Compute RWPT movement
           call this%ComputeRWPTDisplacements(       &
@@ -833,18 +776,6 @@ contains
                                divDx, divDy, divDz  )
 
 
-          !call pr_RWPTDisplacementsNonlinear(this, x, y, z, vx, vy, vz, &
-          !                                         dt, trackingOptions, &
-          !                                         dAdvx, dAdvy, dAdvz, &
-          !                                               dBx, dBy, dBz, &
-          !                                         divDx, divDy, divDz  )
-          !call pr_RWPTDisplacementsLinear(this, x, y, z, vx, vy, vz, &
-          !                                      dt, trackingOptions, &
-          !                                      dAdvx, dAdvy, dAdvz, &
-          !                                            dBx, dBy, dBz, &
-          !                                      divDx, divDy, divDz  )
-
-
           dxrw = dAdvx + divDx*dt + dBx*sqrt( dt )
           nx   = x + dxrw/dx
           dyrw = dAdvy + divDy*dt + dBy*sqrt( dt )
@@ -853,6 +784,11 @@ contains
               dzrw = dAdvz + divDz*dt + dBz*sqrt( dt )
               nz   = z + dzrw/dz
           end if
+
+            
+          !print *, '####   dtLoopCounter: ', dtLoopCounter
+          !print *, x,y,z, nx,ny,nz
+
 
 
           ! If by any reason dzrw/dz .gt. 1 then 
@@ -879,6 +815,35 @@ contains
                                        vx, vy, vz, divDx, divDy, divDz, &
                                        dBx, dBy, dBz, t, dt, dtxyz, exitFace )
 
+
+              if ( intLoopCounter .gt. 3 ) then
+                  !print *, '######### RESTARTING', cellNumber, intLoopCounter
+                  !! Restart new coordinates 
+                  nx = initialLocation%LocalX
+                  ny = initialLocation%LocalY
+                  nz = initialLocation%LocalZ
+
+                  ! Restart time 
+                  t  = t - dt
+                  dt = dtold
+
+                  posRestartCounter = posRestartCounter + 1
+
+                  if ( posRestartCounter .gt. 5 ) then 
+                    ! Something wrong, leave
+                    trackingResult%ExitFace = 0
+                    trackingResult%Status = trackingResult%Status_Undefined()
+                    trackingResult%FinalLocation%CellNumber = cellNumber
+                    trackingResult%FinalLocation%LocalX = x
+                    trackingResult%FinalLocation%LocalY = y
+                    trackingResult%FinalLocation%LocalZ = z
+                    trackingResult%FinalLocation%TrackingTime = t
+                    return
+                  end if
+
+              end if
+
+
               ! Given new dt, recompute advection displacements
               call this%AdvectionDisplacement( x, y, z, dt, vx, vy, vz, & 
                                                     dAdvx, dAdvy, dAdvz )
@@ -892,6 +857,12 @@ contains
               ! Find new RWPT displacements
               if ( ( exitFace .eq. 1 ) .or. ( exitFace .eq. 2 ) ) then
                   dxrw = dAdvx + divDx*dt + dBx*sqrt( dt )
+                  !nx   = x + dxrw/dx
+                  !if ( exitFace .eq. 1 ) then 
+                  !    if ( abs( nx ) .lt. drwtol ) nx = 0d0 
+                  !else
+                  !    if ( abs( nx - 1d0 ) .lt. drwtol ) nx = 1d0 
+                  !end if 
                   nx   = 1.0d0
                   if ( exitFace .eq. 1 ) nx=0d0
                   dyrw = dAdvy + divDy*dt + dBy*sqrt( dt )
@@ -904,6 +875,12 @@ contains
                   dxrw = dAdvx + divDx*dt + dBx*sqrt( dt )
                   nx   = x + dxrw/dx
                   dyrw = dAdvy + divDy*dt + dBy*sqrt( dt )
+                  !ny   = y + dyrw/dy
+                  !if ( exitFace .eq. 3 ) then 
+                  !    if ( abs( ny ) .lt. drwtol ) ny = 0d0 
+                  !else
+                  !    if ( abs( ny - 1d0 ) .lt. drwtol ) ny = 1d0 
+                  !end if 
                   ny   = 1.0d0
                   if ( exitFace .eq. 3 ) ny=0d0
                   if ( .not. twoDimensions ) then 
@@ -916,6 +893,12 @@ contains
                   dyrw = dAdvy + divDy*dt + dBy*sqrt( dt )
                   ny   = y + dyrw/dy
                   dzrw = dAdvz + divDz*dt + dBz*sqrt( dt )
+                  !nz   = z + dzrw/dz
+                  !if ( exitFace .eq. 5 ) then 
+                  !    if ( abs( nz ) .lt. drwtol ) nz = 0d0 
+                  !else
+                  !    if ( abs( nz - 1d0 ) .lt. drwtol ) nz = 1d0 
+                  !end if 
                   nz   = 1.0d0
                   if ( exitFace .eq. 5 ) nz=0d0
               else
@@ -1007,7 +990,7 @@ contains
 
                       ! Is zero, a boundary, inactive
                       reboundCounter = reboundCounter + 1
-                    
+                      !print *, 'AT REBOUND REBOUNCOUNTER', reboundCounter      
 
                       if ( reboundCounter .gt. 10 ) then
                           ! If particle has been rebounding for a long time, stop
@@ -1503,14 +1486,8 @@ contains
       doubleprecision :: AFace, BFace, z1, z2, zsqrt, zsqrtarg
       !----------------------------------------------------------------
         
-      !print*,'DETECTING EULERIAN...'
 
       ! Initialize
-      AFace      = 0d0
-      BFace      = 0d0
-      z1         = 0d0
-      z2         = 0d0
-      zsqrt      = 0d0 
       exitFaceX  = 0
       exitFaceY  = 0
       exitFaceZ  = 0
@@ -1523,8 +1500,14 @@ contains
       !Reset t, dt will be replaced
       t = t - dt
 
-      dInterface = 0d0
       ! Leaving through x face
+      dInterface = 0d0
+      AFace      = 0d0
+      BFace      = 0d0
+      z1         = 0d0
+      z2         = 0d0
+      zsqrt      = 0d0 
+      zsqrtarg   = 0d0 
       if ( ( nx .gt. 1.0d0 ) .or. ( nx .lt. 0d0 )  ) then
 
           ! Compute dInterface
@@ -1539,7 +1522,7 @@ contains
           ! Exactly at interface, force new cell
           if ( dInterface .eq. 0.0 ) then
               exitFace = exitFaceX
-              dt = 0.0
+              dt = 0d0
               return
           end if
 
@@ -1549,25 +1532,39 @@ contains
 
           ! Given dInterface, compute new dt
           zsqrtarg = BFace**2 + 4*dInterface*AFace
-          if ( zsqrtarg .ge. 0 ) then 
+
+          if ( ( zsqrtarg .ge. 0d0 ) .and. ( AFace .ne. 0d0 ) ) then 
 
               zsqrt = sqrt( zsqrtarg )
               z1    = (-BFace + zsqrt )/( 2*AFace )
               z2    = (-BFace - zsqrt )/( 2*AFace )
 
-              ! Compute new dt
-              dtxyz(1) = minval( (/z1, z2/), mask=(/z1, z2/)>0d0 )**2
-               
-              ! If computed dt is higher than current
-              ! is not valid, set to zero
-              if ( dtxyz(1) .gt. dt ) dtxyz(1) = 0d0
+              if ( any( (/ z1, z2 /) .gt. 0d0) ) then 
+                  ! Compute new dt
+                  dtxyz(1) = minval( (/z1, z2/), mask=(/z1, z2/)>0d0 )**2
+              end if
 
+          else if ( AFace .eq. 0d0 ) then 
+              ! If A is zero, then the equation is linear
+              ! At this point, it is important to note
+              ! that dInterface is non zero
+              if ( BFace .ne. 0d0 ) dtxyz(1) = ( dInterface/BFace )**2
           end if
+
+          ! If computed dt is higher than current
+          ! is not valid, set to zero
+          if ( dtxyz(1) .gt. dt ) dtxyz(1) = 0d0
 
       end if
 
-      dInterface = 0d0
       ! Leaving through y face
+      dInterface = 0d0
+      AFace      = 0d0
+      BFace      = 0d0
+      z1         = 0d0
+      z2         = 0d0
+      zsqrt      = 0d0 
+      zsqrtarg   = 0d0 
       if ( ( ny .gt. 1.0d0 ) .or. ( ny .lt. 0d0 )  ) then
 
           ! Compute dInterface
@@ -1592,24 +1589,39 @@ contains
 
           ! Given dInterface, compute new dt
           zsqrtarg = BFace**2 + 4*dInterface*AFace
-          if ( zsqrtarg .ge. 0 ) then
+
+          if ( ( zsqrtarg .ge. 0d0 ) .and. ( AFace .ne. 0d0 ) ) then
 
               zsqrt = sqrt( zsqrtarg )
               z1    = (-BFace + zsqrt )/( 2*AFace )
               z2    = (-BFace - zsqrt )/( 2*AFace )
 
-              dtxyz(2) = minval( (/z1, z2/), mask=(/z1, z2/)>0d0 )**2
+              if ( any( (/ z1, z2 /) .gt. 0d0) ) then 
+                  ! Compute new dt
+                  dtxyz(2) = minval( (/z1, z2/), mask=(/z1, z2/)>0d0 )**2
+              end if
 
-              ! If computed dt is higher than current
-              ! is not valid, set to zero
-              if ( dtxyz(2) .gt. dt ) dtxyz(2) = 0d0 
-
+          else if ( AFace .eq. 0d0 ) then 
+              ! If A is zero, then the equation is linear
+              ! At this point, it is important to note
+              ! that dInterface is non zero
+              if ( BFace .ne. 0d0 ) dtxyz(2) = ( dInterface/BFace )**2
           end if
+
+          ! If computed dt is higher than current
+          ! is not valid, set to zero
+          if ( dtxyz(2) .gt. dt ) dtxyz(2) = 0d0
 
       end if
 
-      dInterface = 0d0
       ! Leaving through z face
+      dInterface = 0d0
+      AFace      = 0d0
+      BFace      = 0d0
+      z1         = 0d0
+      z2         = 0d0
+      zsqrt      = 0d0 
+      zsqrtarg   = 0d0 
       if ( ( nz .gt. 1.0d0 ) .or. ( nz .lt. 0d0 )  ) then
 
           ! Compute dInterface
@@ -1634,19 +1646,28 @@ contains
 
           ! Given dInterface, compute new dt
           zsqrtarg = BFace**2 + 4*dInterface*AFace
-          if ( zsqrtarg .ge. 0 ) then
+
+          if ( ( zsqrtarg .ge. 0d0 ) .and. ( AFace .ne. 0d0 ) )  then
 
               zsqrt = sqrt( zsqrtarg )
               z1    = (-BFace + zsqrt )/( 2*AFace )
               z2    = (-BFace - zsqrt )/( 2*AFace )
 
-              dtxyz(3) = minval( (/z1, z2/), mask=(/z1, z2/)>0d0 )**2
+              if ( any( (/ z1, z2 /) .gt. 0d0 ) ) then 
+                  ! Compute new dt
+                  dtxyz(3) = minval( (/z1, z2/), mask=(/z1, z2/)>0d0 )**2
+              end if
 
-              ! If computed dt is higher than current
-              ! is not valid, set to zero
-              if ( dtxyz(3) .gt. dt ) dtxyz(3) = 0d0 
-           
+          else if ( AFace .eq. 0d0 ) then 
+              ! If A is zero, then the equation is linear
+              ! At this point, it is important to note
+              ! that dInterface is non zero
+              if ( BFace .ne. 0d0 ) dtxyz(3) = ( dInterface/BFace )**2
           end if
+
+          ! If computed dt is higher than current
+          ! is not valid, set to zero
+          if ( dtxyz(3) .gt. dt ) dtxyz(3) = 0d0 
 
       end if
 
