@@ -388,13 +388,27 @@
         ! So for USG grids, reconstructed information could be obtained in a regular
         ! rectangular grid, given particles position.
         call ulog('Initialize GPKDE object and output unit', logUnit)
-        call gpkde%Initialize(& 
-            simulationData%TrackingOptions%gpkdeDomainSize,                   &
-            simulationData%TrackingOptions%gpkdeBinSize,                      &
-            nOptimizationLoops=simulationData%TrackingOptions%gpkdeNOptLoops, &
-            domainOrigin=simulationData%TrackingOptions%gpkdeDomainOrigin     &
+        if ( simulationData%TrackingOptions%gpkdeKernelDatabase ) then 
+            call gpkde%Initialize(& 
+                simulationData%TrackingOptions%gpkdeDomainSize,                  &
+                simulationData%TrackingOptions%gpkdeBinSize,                     &
+                nOptimizationLoops=simulationData%TrackingOptions%gpkdeNOptLoops,&
+                domainOrigin=simulationData%TrackingOptions%gpkdeDomainOrigin,   &
+                databaseOptimization=simulationData%TrackingOptions%gpkdeKernelDatabase,&
+                minHOverLambda=simulationData%TrackingOptions%gpkdeMinHOverLambda,   &
+                maxHOverLambda=simulationData%TrackingOptions%gpkdeMaxHOverLambda,   & 
+                deltaHOverLambda=simulationData%TrackingOptions%gpkdeDeltaHOverLambda&
+            )
+        else
+            ! Will initialize with default parameters at gpkde module
+            call gpkde%Initialize(& 
+                simulationData%TrackingOptions%gpkdeDomainSize,                   &
+                simulationData%TrackingOptions%gpkdeBinSize,                      &
+                nOptimizationLoops=simulationData%TrackingOptions%gpkdeNOptLoops, &
+                domainOrigin=simulationData%TrackingOptions%gpkdeDomainOrigin     &
+            )
 
-        )
+        end if 
         ! Initialize output unit/file
         open(unit=simulationData%TrackingOptions%gpkdeOutputUnit, &
              file=simulationData%TrackingOptions%gpkdeOutputFile, &
@@ -668,7 +682,7 @@
     call ulog('Begin TRACKING_INTERVAL_LOOP', logUnit)
     TRACKING_INTERVAL_LOOP: do while (itend .eq. 0)
 
-    !print *, '-----------------------------------------------------------------------------------'
+    print *, '-----------------------------------------------------------------------------------'
 
     itend = 1
     maxTime = tsMax
@@ -944,7 +958,6 @@
 
 
         end do
-
 
     end if
 

@@ -19,7 +19,6 @@ module ParticleTrackingOptionsModule
     ! RWPT
     logical                       :: RandomWalkParticleTracking = .false.
     doubleprecision               :: Dmol = 0
-    !doubleprecision               :: alphaL, alphaT, Dmol = 0
     integer                       :: timeStepKind
     doubleprecision, dimension(2) :: timeStepParameters = 0
     integer                       :: advectionKind
@@ -33,6 +32,11 @@ module ParticleTrackingOptionsModule
     integer                       :: gpkdeNOptLoops 
     character(len=200)            :: gpkdeOutputFile
     integer                       :: gpkdeOutputUnit = 125
+    logical                       :: gpkdeKernelDatabase  
+    doubleprecision               :: gpkdeMinHOverLambda  
+    doubleprecision               :: gpkdeMaxHOverLambda  
+    doubleprecision               :: gpkdeDeltaHOverLambda
+
 
     ! TEMPORARY NONLINEAR RWPT
     integer         :: dispersionModel

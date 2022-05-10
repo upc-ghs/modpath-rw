@@ -593,7 +593,6 @@ contains
         if ( (ioInUnit .lt. 0) ) then 
             ! No gpkde 
             write(outUnit,'(A)') 'GPKDE Reconstruction: disabled density reconstruction stage'
-            print *, 'ModpathSimulationData: GPKDE NO', ioInUnit
         else
             icol = 1
             call urword(line, icol, istart, istop, 2, n, r, 0, 0)
@@ -601,7 +600,6 @@ contains
             if (n .eq. 0) then
                 ! No gpkde 
                 write(outUnit,'(A)') 'GPKDE Reconstruction: disabled density reconstruction stage'
-                print *, 'ModpathSimulationData: GPKDE NO'
             else if (n .eq. 1) then
                 ! Yes gpkde 
                 write(outUnit,'(A)') 'GPKDE Reconstruction: enabled density reconstruction stage'
@@ -659,6 +657,34 @@ contains
                 icol = 1
                 call urword(line, icol, istart, istop, 2, n, r, 0, 0)
                 this%TrackingOptions%gpkdeNOptLoops = n
+
+
+                ! Read if reconstruct with kernel database 
+                ! or brute force 
+                read(gpkdeUnit, '(a)') line
+                icol = 1
+                call urword(line, icol, istart, istop, 2, n, r, 0, 0)
+
+                ! If kernel database
+                if (n .eq. 1) then
+                
+                   this%TrackingOptions%gpkdeKernelDatabase = .true.
+
+                   ! Read kernel database parameters 
+                   read(gpkdeUnit, '(a)') line
+                   icol = 1
+                   call urword(line, icol, istart, istop, 3, n, r, 0, 0)
+                   this%TrackingOptions%gpkdeMinHOverLambda = r
+                   call urword(line, icol, istart, istop, 3, n, r, 0, 0)
+                   this%TrackingOptions%gpkdeMaxHOverLambda = r
+                   call urword(line, icol, istart, istop, 3, n, r, 0, 0)
+                   this%TrackingOptions%gpkdeDeltaHOverLambda = r
+
+                else
+
+                   this%TrackingOptions%gpkdeKernelDatabase = .false.
+
+                end if
 
 
                 ! Close gpkde data file
