@@ -686,7 +686,7 @@ contains
     integer :: n,index,count,i,conn
     doubleprecision :: flow
     !---------------------------------------------------------------------------------------
-   
+  
     ! Is this reset necessary ?
     ! All scalar variables are reassigned
     ! in the following lines after reset 
@@ -739,7 +739,7 @@ contains
           if(conn .eq. 0) then
               i = i + 1
 
-              ! If domain boundary, set cell value
+              ! Set cell value for mass boundary
               this%MassBoundarySubFace1(n) = this%ICBoundTS 
 
           else
@@ -753,6 +753,9 @@ contains
 
         end do
         this%SubFaceBoundaryCounts(1) = i
+    else
+        ! If no connections, is boundary, force rebound
+        this%MassBoundarySubFace1 = 1
     end if
     
     
@@ -771,7 +774,7 @@ contains
           if(conn .eq. 0) then
               i = i + 1
 
-              ! If domain boundary, set cell value
+              ! Set cell value for mass boundary
               this%MassBoundarySubFace2(n) = this%ICBoundTS 
 
           else
@@ -784,6 +787,9 @@ contains
           end if
         end do
         this%SubFaceBoundaryCounts(2) = i
+    else
+        ! If no connections, is boundary, force rebound
+        this%MassBoundarySubFace2 = 1
     end if
     
     ! Face 3
@@ -798,7 +804,7 @@ contains
           if(conn .eq. 0) then
               i = i + 1
 
-              ! If domain boundary, set cell value
+              ! Set cell value for mass boundary
               this%MassBoundarySubFace3(n) = this%ICBoundTS 
 
           else
@@ -810,6 +816,9 @@ contains
           end if
         end do
         this%SubFaceBoundaryCounts(3) = i
+    else
+        ! If no connections, is boundary, force rebound
+        this%MassBoundarySubFace3 = 1
     end if
     
     ! Face 4
@@ -824,7 +833,7 @@ contains
           if(conn .eq. 0) then
               i = i + 1
 
-              ! If domain boundary, set cell value
+              ! Set cell value for mass boundary
               this%MassBoundarySubFace4(n) = this%ICBoundTS 
 
           else
@@ -836,6 +845,9 @@ contains
           end if
         end do
         this%SubFaceBoundaryCounts(4) = i
+    else
+        ! If no connections, is boundary, force rebound
+        this%MassBoundarySubFace4 = 1
     end if
     
     ! Face 5
@@ -850,7 +862,7 @@ contains
           if(conn .eq. 0) then
               i = i + 1
 
-              ! If domain boundary, set cell value
+              ! Set cell value for mass boundary
               this%MassBoundarySubFace5(n) = this%ICBoundTS 
 
           else
@@ -862,6 +874,9 @@ contains
           end if
         end do
         this%SubFaceBoundaryCounts(5) = i
+    else
+        ! If no connections, is boundary, force rebound
+        this%MassBoundarySubFace5 = 1
     end if
     
     ! Face 6
@@ -876,7 +891,7 @@ contains
           if(conn .eq. 0) then
               i = i + 1
 
-              ! If domain boundary, set cell value
+              ! Set cell value for mass boundary
               this%MassBoundarySubFace6(n) = this%ICBoundTS 
 
           else
@@ -888,6 +903,9 @@ contains
           end if
         end do
         this%SubFaceBoundaryCounts(6) = i
+    else
+        ! If no connections, is boundary, force rebound
+        this%MassBoundarySubFace6 = 1
     end if
     
 
