@@ -6,7 +6,7 @@
 # the executable, and the executable name and path.
 OBJDIR = ./obj_temp
 BINDIR = .
-PROGRAM = mpath7gf.mac
+PROGRAM = mpath7omp.mac
 
 SOURCEDIR1=../source
 
@@ -17,7 +17,7 @@ ${SOURCEDIR1}
 
 # Define the Fortran compile flags
 FC = gfortran
-FFLAGS = -O2 -fbacktrace -ffpe-summary=overflow -ffpe-trap=overflow,zero,invalid 
+FFLAGS = -O2 -fbacktrace -fopenmp -ffpe-summary=overflow -ffpe-trap=overflow,zero,invalid 
 
 # Define the C compile flags
 CC = gcc

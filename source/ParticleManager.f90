@@ -315,7 +315,7 @@ module ParticleManagerModule
   !$omp parallel do                                             &
   !$omp default( none )                                         &
   !$omp shared( inUnits, recordCounts, outUnit, lastRecord )    &
-  !$omp shared( startFromRecord )                               &
+  !$omp shared( startFromRecord, nThreads )                     &
   !$omp private( timePointIndex, timeStep, pCoord )             &
   !$omp private( sequenceNumber, groupIndex, particleID )       &
   !$omp private( modelX, modelY, recordID, reclen, reclencumm )
