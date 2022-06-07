@@ -1,8 +1,10 @@
 # modpath-omp
 MODPATH version 7 with parallel processing of particles implemented with the OpenMP library. 
 
+Configuration input files are the same that for a normal ``modpath-v7`` simulation, so integration of the parallel version is straightforward.
+
 ## Compilation
-Download source code and access the `make` folder. Here execute any of the makefiles with
+Download source code and access the `make` folder. Here execute one of the makefiles with
 
 ```
 make -f makefile-gfortran-pc
