@@ -7,25 +7,25 @@ Download the code and access the `make` folder. Here execute the `makefile` with
 ```
 make -f makefile-gfortran-pc
 ```
-This will compile source files and will output a binary, by default with name `mpath7gf.exe`.
+This will compile source files and will output a binary, by default with name `mpath7omp.exe`.
 
 
 ## Running parallel simulations
 ``modpath`` interface has been extended to simplify execution of parallel runs via the command line. 
 Some alternatives are:
 
-    - Use the `np` argument to specify the number of processes:
+    - Use the ``np`` argument to specify the number of processes:
     ```
     mpath7omp -np 4 example.mpsim
     ```
 
-    - Use the `parallel` argument to run in parallel employing the maximum number of available processors
+    - Use the ``parallel`` argument to run in parallel employing the maximum number of available processors
 
     ```
     mpath7omp -parallel example.mpsim
     ```
 
-    - Specify the `OMP_NUM_THREADS` environment variable.
+    - Specify the ``OMP_NUM_THREADS`` environment variable.
     ```
     OMP_NUM_THREADS=4 mpath7omp example.mpsim
     ```
