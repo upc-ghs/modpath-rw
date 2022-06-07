@@ -2,31 +2,32 @@
 MODPATH version 7 with parallel processing of particles implemented with the OpenMP library. 
 
 ## Compilation
-Download the code and access the `make` folder. Here execute the `makefile` with
+Download source code and access the `make` folder. Here execute any of the makefiles with
 
 ```
 make -f makefile-gfortran-pc
 ```
+
 This will compile source files and will output a binary, by default with name `mpath7omp.exe`. 
-Compilation has been verified with ``gfortran@9.2.1`` and with ``ifort`` from Intel oneApi ``2021.3.0``.
+Compilation has been verified with ``gfortran@9.2.1`` and with ``ifort`` from Intel ``oneAPI@2021.3.0``.
 
 
 ## Running parallel simulations
 ``modpath`` interface has been extended to simplify execution of parallel runs via the command line. 
 Some alternatives are:
 
-- Use the ``np`` argument to specify the number of processes:
+- Use the ``-np`` argument to specify the number of processes:
 ```
 mpath7omp -np 4 example.mpsim
 ```
 
-- Use the ``parallel`` argument to run in parallel employing the maximum number of available processors
+- Use the ``-parallel`` argument to run in parallel employing the maximum number of available processors:
 
 ```
 mpath7omp -parallel example.mpsim
 ```
 
-- Specify the ``OMP_NUM_THREADS`` environment variable.
+- Specify the ``OMP_NUM_THREADS`` environment variable:
 ```
 OMP_NUM_THREADS=4 mpath7omp example.mpsim
 ```
@@ -36,9 +37,9 @@ In this last case, if the variable is defined at a system level, it will be empl
 ## Parallel output for timeseries
 Three different output protocols for timeseries running in parallel have been implemented. The protocol can be selected via the command line argument ``-tsoutput``:
 
-- ``-tsoutput 1``: is the default format, output is performed in a single output unit with OpenMP thread exclusive clause (critical)
-- ``-tsoutput 2``: timeseries records are written into thread specific binary units and then consolidated in a single file after each timeseries output time.
-- ``-tsoutput 3``: timeseries records are written into thread specific output units.
+- ``-tsoutput 1``: is the default format, output is performed into a single output unit with OpenMP thread exclusive clause (critical). Only difference versus a serial run is that the output file contains non-sorted particle indexes.
+- ``-tsoutput 2``: timeseries records are written into thread specific binary units and then consolidated into a single file after each timeseries output time. Timeseries file generated with this format does not contains a file header.
+- ``-tsoutput 3``: timeseries records are written into thread specific output units. Timeseries file header is only written to output unit related to the first thread ``1_example.timeseries``. Initial particle positions are also written to the file of the first thread.
 
 
 ## Resources
