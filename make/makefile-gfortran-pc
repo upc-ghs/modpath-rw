@@ -6,7 +6,7 @@
 # the executable, and the executable name and path.
 OBJDIR = ./obj_temp
 BINDIR = .
-PROGRAM = mpath7gf.exe
+PROGRAM = mpath7omp.exe
 
 SOURCEDIR1=../source
 
