@@ -43,6 +43,8 @@ Three different output protocols for timeseries running in parallel have been im
 - ``-tsoutput 2``: timeseries records are written into thread specific binary units and then consolidated into a single file after each timeseries output time. Timeseries file generated with this format does not contains a file header.
 - ``-tsoutput 3``: timeseries records are written into thread specific output units. Timeseries file header is only written to output unit related to the first thread ``1_example.timeseries``. Initial particle positions are also written to the file of the first thread.
 
+## License
+MIT License
 
 ## Resources
 
@@ -51,3 +53,4 @@ Three different output protocols for timeseries running in parallel have been im
 * [gfortran](https://gcc.gnu.org/wiki/GFortran)
 * [OpenMP](https://www.openmp.org/)
 * [Intel oneApi HPC toolkit](https://www.intel.com/content/www/us/en/developer/tools/oneapi/hpc-toolkit.html)
+* [MIT License](https://mit-license.org/)
