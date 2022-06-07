@@ -10,6 +10,11 @@ module ParticleTrackingEngineModule
   use ModpathSubCellDataModule,only : ModpathSubCellDataType
   use ParticleTrackingOptionsModule,only : ParticleTrackingOptionsType
   use FlowModelDataModule,only : FlowModelDataType
+  use BudgetRecordHeaderModule,only : BudgetRecordHeaderType
+  use UtilMiscModule,only : TrimAll
+  use UTL8MODULE,only : ustop
+
+!  use ModpathUnstructuredBasicDataModule,only : ModpathUnstructuredBasicDataType
   implicit none
   
   ! Set default access status to private
