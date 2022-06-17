@@ -20,13 +20,13 @@ Some alternatives are:
 
 - Use the ``-np`` argument to specify the number of processes:
 ```
-mpath7omp -np 4 example.mpsim
+mpath7omp example.mpsim -np 4 
 ```
 
 - Use the ``-parallel`` argument to run in parallel employing the maximum number of available processors:
 
 ```
-mpath7omp -parallel example.mpsim
+mpath7omp example.mpsim -parallel 
 ```
 
 - Specify the ``OMP_NUM_THREADS`` environment variable:
