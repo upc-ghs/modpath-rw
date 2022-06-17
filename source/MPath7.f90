@@ -1075,6 +1075,7 @@
                 ! -parallel option
                 parallel = .true.
             case ("-np")
+                ! -np option
                 call get_command_argument(na, comlin, length, status)
                 na = na + 1
                 if ((status /= 0) .or. (comlin(1:1) == "-")) then
@@ -1082,8 +1083,10 @@
                 else
                     nprocschar = comlin(1:length)
                     read(nprocschar,*) nprocs
+                    if( nprocs .gt. 1 ) parallel = .true.
                 end if
             case ("-tsoutput")
+                ! -tsoutput option
                 call get_command_argument(na, comlin, length, status)
                 na = na + 1
                 if ((status /= 0) .or. (comlin(1:1) == "-")) then
