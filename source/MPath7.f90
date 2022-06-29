@@ -905,21 +905,22 @@
 
 
     ! If timeseries simulation and parallel and consolidated output
-    ! Consolidation should be done at this stage if the order 
-    ! of appearance of data is relevant. That is, at this point 
-    ! timeseries data points will be ordered in time 
+    ! Consolidation should be done at this stage to preserve
+    ! sorting of time indexes
     if( ((simulationData%SimulationType .eq. 3)  .or. (simulationData%SimulationType .eq. 4) ) .and. & 
         parallel .and. (tsOutputType .eq. 2) ) then
-        call ConsolidateParallelTimeseriesRecords( timeseriesTempUnits, timeseriesUnit, timeseriesRecordCounts, lastRecord )
-        ! Restart temporal binary units and record counters
-        do m = 1, ompNumThreads
-            if ( timeseriesRecordCounts(m) .gt. 0 ) then
-                close( timeseriesTempUnits( m ) )
-                open(unit=timeseriesTempUnits( m ), status='scratch', form='unformatted', &
-                                                    access='stream', action='readwrite'   )
-            end if
-        end do
-        timeseriesRecordCounts = 0 
+        if ( .not. all( timeseriesRecordCounts .eq. 0 ) ) then
+            call ConsolidateParallelTimeseriesRecords( timeseriesTempUnits, timeseriesUnit, timeseriesRecordCounts, lastRecord )
+            ! Restart temporal binary units and record counters
+            do m = 1, ompNumThreads
+                if ( timeseriesRecordCounts(m) .gt. 0 ) then
+                    close( timeseriesTempUnits( m ) )
+                    open(unit=timeseriesTempUnits( m ), status='scratch', form='unformatted', &
+                                                        access='stream', action='readwrite'   )
+                end if
+            end do
+            timeseriesRecordCounts = 0 
+        end if
     end if
 
 
