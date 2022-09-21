@@ -189,7 +189,7 @@ module ParticleManagerModule
   subroutine WriteTimeseriesRecordCritical(sequenceNumber, particleID, groupIndex, timeStep, &
                         timePointIndex, pCoord, geoRef, outUnit, tsRecordCounts, tsTempUnits )
     !--------------------------------------------------------------------------------
-    ! WriteTimeseriesRecord with critical directive
+    ! WriteTimeseriesRecord with OpenMP critical directive
     !--------------------------------------------------------------------------------
     implicit none
     type(ParticleCoordinateType),intent(in) :: pCoord
@@ -238,7 +238,7 @@ module ParticleManagerModule
   subroutine WriteTimeseriesRecordThread(sequenceNumber, particleID, groupIndex, timeStep, & 
                       timePointIndex, pCoord, geoRef, outUnit, tsRecordCounts, tsTempUnits )
     !--------------------------------------------------------------------------------
-    ! WriteBinaryTimeseriesRecordId for each parallel unit 
+    ! WriteBinaryTimeseriesRecord for each parallel unit 
     !--------------------------------------------------------------------------------
     implicit none
     type(ParticleCoordinateType),intent(in) :: pCoord

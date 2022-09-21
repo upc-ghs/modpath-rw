@@ -50,7 +50,8 @@
     use BudgetRecordHeaderModule,only : BudgetRecordHeaderType
     use GeoReferenceModule,only : GeoReferenceType
     use CompilerVersion,only : get_compiler
-    use omp_lib
+
+    use omp_lib ! OpenMP
     implicit none
     
     ! Variables declarations
@@ -369,7 +370,7 @@
    
 
     ! Initialize the particle tracking engine:
-    call ulog('Allocate particle tracking engine component.', logUnit)
+    call ulog('Allocate flow model data component.', logUnit)
     allocate(flowModelData)
     call flowModelData%Initialize(headReader, budgetReader, modelGrid,&
                                     basicData%HNoFlow, basicData%HDry )
@@ -379,6 +380,7 @@
     call flowModelData%SetRetardation(simulationData%Retardation, modelGrid%CellCount)
     call flowModelData%SetDefaultIface(basicData%DefaultIfaceLabels, &
             basicData%DefaultIfaceValues, basicData%DefaultIfaceCount)
+    call ulog('Initialize particle tracking engine component.', logUnit)
     call trackingEngine%Initialize(modelGrid, simulationData%TrackingOptions, flowModelData)
     ! The trackingEngine initialization is complete
    
@@ -401,7 +403,6 @@
     if(simulationData%TrackingDirection .eq. 1) then
         stoptime = tdisData%TotalTimes(tdisData%CumulativeTimeStepCount) -      &
           simulationData%ReferenceTime
-        call tdisData%GetPeriodAndStep(tdisData%CumulativeTimeStepCount, period, step)
         call tdisData%GetPeriodAndStep(tdisData%CumulativeTimeStepCount, period, step)
         call flowModelData%LoadTimeStep(period, step)
     else
@@ -449,13 +450,16 @@
     allocate(tPoint(tPointCount))
     
     ! Open particle output files
+
+    ! Endpoint
     open(unit=endpointUnit, file=simulationData%EndpointFile, status='replace', &
       form='formatted', access='sequential')
+
+    ! Pathline
     if((simulationData%SimulationType .eq. 2) .or.                              &
       (simulationData%SimulationType .eq. 4)) then
         open(unit=pathlineUnit, file=simulationData%PathlineFile,               &
           status='replace', form='formatted', access='sequential')
-!        open(unit=consolidatedPathlineUnit, file='consolidated.pathline7', status='replace', form='formatted', access='sequential')
         open(unit=binPathlineUnit, status='scratch', form='unformatted',        &
           access='stream', action='readwrite')
         call WritePathlineHeader(pathlineUnit, simulationData%TrackingDirection,&
@@ -463,14 +467,14 @@
           modelGrid%RotationAngle)
     end if
 
+    ! Timeseries
     if((simulationData%SimulationType .eq. 3)  .or.                             &
        (simulationData%SimulationType .eq. 4)) then
 
-        ! Allocate arrays of parallel output
+        ! Allocate arrays for parallel output
         ! In serial will be allocated with 
-        ! ompNumThreads = 1 but are not used in 
-        ! writing outputs, only should be present 
-        ! for consistency with TimeseriesWriter interface
+        ! ompNumThreads = 1, but is not used for writing outputs,
+        ! it should be present only for consistency with TimeseriesWriter interface
         allocate( timeseriesTempUnits(ompNumThreads) )
         allocate( timeseriesRecordCounts(ompNumThreads) )
 
@@ -482,10 +486,11 @@
             call WriteTimeseriesHeader(timeseriesUnit,                              &
               simulationData%TrackingDirection, simulationData%ReferenceTime,       &
               modelGrid%OriginX, modelGrid%OriginY, modelGrid%RotationAngle)
+            ! Assign writing interface
             WriteTimeseries => WriteTimeseriesRecordSerial
         else
 
-            ! If parallel with critical directive
+            ! Select parallel output protocol
             select case( tsOutputType ) 
                 case (1)
                     ! Default critical output 
@@ -494,9 +499,11 @@
                     call WriteTimeseriesHeader(timeseriesUnit,                              &
                       simulationData%TrackingDirection, simulationData%ReferenceTime,       &
                       modelGrid%OriginX, modelGrid%OriginY, modelGrid%RotationAngle)
+                    ! Assign writing interface
                     WriteTimeseries => WriteTimeseriesRecordCritical 
                 case (2) 
                     ! Parallel consolidated
+
                     ! Open consolidated direct access output unit
                     ! This case does not allow file header
                     ! reclen = 2I8+es18.9e3+i10+i5+2i10+6es18.9e3+i10+jumpchar
@@ -512,11 +519,10 @@
                                                             access='stream', action='readwrite'   )
                     end do
                     timeseriesRecordCounts = 0
-                    ! Assign writer pointer
+                    ! Assign writing interface
                     WriteTimeseries => WriteTimeseriesRecordConsolidate 
                 case (3) 
                     ! Parallel not consolidated
-                    ! Write header to file of first thread 
                     allocate( timeseriesTempFiles(ompNumThreads) )
                     
                     ! Initialize formatted parallel units 
@@ -529,15 +535,19 @@
                               file=timeseriesTempFiles( m ),     & 
                               status='replace', form='formatted', access='sequential')
                     end do
+                    ! Write header to file of first thread 
                     call WriteTimeseriesHeader(timeseriesTempUnits(1),                      &
                       simulationData%TrackingDirection, simulationData%ReferenceTime,       &
                       modelGrid%OriginX, modelGrid%OriginY, modelGrid%RotationAngle)
+                    ! Assign writing interface
                     WriteTimeseries => WriteTimeseriesRecordThread
+                case default 
+                    call ustop('Invalid timeseries output protocol on commmand line. Stop.')
                 end select
         end if 
 
-
     end if
+
     if(simulationData%TraceMode .gt. 0) then
         open(unit=traceModeUnit, file=simulationData%TraceFile,                 &
           status='replace', form='formatted', access='sequential')
@@ -607,7 +617,7 @@
     message = 'Compute TSMAX'
     call ulog(message, logUnit)
     if(simulationData%TrackingDirection .eq. 1) then
-      ! Forward trackine
+      ! Forward tracking
       tsMax = tdisData%TotalTimes(ktime) - simulationData%ReferenceTime
       if(simulationData%StoppingTimeOption .eq. 2) then
           if(ktime .eq. tdisData%CumulativeTimeStepCount) tsMax = stoptime
@@ -905,7 +915,7 @@
 
 
     ! If timeseries simulation and parallel and consolidated output
-    ! Consolidation should be done at this stage to preserve
+    ! Consolidation is done at this stage to preserve
     ! sorting of time indexes
     if( ((simulationData%SimulationType .eq. 3)  .or. (simulationData%SimulationType .eq. 4) ) .and. & 
         parallel .and. (tsOutputType .eq. 2) ) then
@@ -922,7 +932,6 @@
             timeseriesRecordCounts = 0 
         end if
     end if
-
 
     ! Update tracking time
     time = maxTime
