@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 !  MPath7.f90 
 !  PROGRAM: MPath7
 
@@ -158,14 +157,21 @@
     baseTimeseriesUnit = 6600 ! OpenMP
 
     ! Parse the command line for simulation file name, log file name, and options
-    call ParseCommandLine(mpsimFile, mplogFile, logType)
+    call ParseCommandLine(mpsimFile, mplogFile, logType, parallel, tsOutputType)
     ! Open the log file (unless -nolog option)
     if (logType /= 0) then
         open(unit=logUnit, file=mplogFile, status='replace', form='formatted', access='sequential')
     else
         logUnit = -logUnit
     end if
+    ! Get the number of threads for the parallel region
+    if ( parallel ) then
+        ompNumThreads = omp_get_max_threads()
+    else
+        ompNumThreads = 1
+    end if
     call ulog('Command line parsed.', logUnit)
+
     ! If simulation file name not on command line, prompt user for name
     if (mpsimFile == "") then
         call ulog('Prompt for the name of the MODPATH simulation file.', logUnit)
