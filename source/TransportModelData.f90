@@ -191,7 +191,7 @@ contains
 
 
         ! Read dispersivity variable, eventually file
-        ! These methods follor OPEN/CLOSE, CONSTANT input format
+        ! These methods follow OPEN/CLOSE, CONSTANT input format
         ! and variables are expected to be defined for each layer
 
 
