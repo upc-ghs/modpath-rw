@@ -18,6 +18,7 @@ module TransportModelDataModule
       logical :: Initialized = .false.
       doubleprecision,dimension(:),allocatable :: AlphaLong
       doubleprecision,dimension(:),allocatable :: AlphaTrans
+      doubleprecision,dimension(:),allocatable :: MediumDistance ! Nonlinear model
       integer,allocatable,dimension(:)         :: ICBound
       integer,allocatable,dimension(:)         :: ICBoundTS
       doubleprecision :: DMol
@@ -110,11 +111,12 @@ contains
     integer :: icol, istart, istop
     integer :: iodispersion = 0
     doubleprecision :: r
-    character(len=24),dimension(4) :: aname
+    character(len=24),dimension(5) :: aname
     data aname(1) /'          BOUNDARY ARRAY'/
     data aname(2) /'            DISPERSIVITY'/
     data aname(3) /'            ICBOUND'/
     data aname(4) /'            IC'/
+    data aname(5) /'          MEDIUMDISTANCE'/
     integer :: tempAlphaUnit = 666
     character(len=200) :: tempAlphaFile
 
@@ -190,37 +192,87 @@ contains
         write(outUnit, '(1x,a)') '----------------------------'
 
 
-        ! Read dispersivity variable, eventually file
-        ! These methods follow OPEN/CLOSE, CONSTANT input format
-        ! and variables are expected to be defined for each layer
+        ! Read dispersion model kind
+        read(inUnit, *) trackingOptions%dispersionModel
+
+        select case( trackingOptions%dispersionModel ) 
+            case( 1 ) ! Linear
+                ! Read dispersivity variable, eventually file
+                ! These methods follor OPEN/CLOSE, CONSTANT input format
+                ! and variables are expected to be defined for each layer
+
+                ! ALPHALONG
+                if((grid%GridType .eq. 1) .or. (grid%GridType .eq. 3)) then
+                    call u3ddblmp(inUnit, outUnit, grid%LayerCount, grid%RowCount,      &
+                      grid%ColumnCount, grid%CellCount, this%AlphaLong, ANAME(2))                      
+                else if((grid%GridType .eq. 2) .or. (grid%GridType .eq. 4)) then
+                    call u3ddblmpusg(inUnit, outUnit, grid%CellCount, grid%LayerCount,  &
+                      this%AlphaLong, aname(2), cellsPerLayer)
+                else
+                    write(outUnit,*) 'Invalid grid type specified when reading ALPHALONG array data.'
+                    write(outUnit,*) 'Stopping.'
+                    call ustop(' ')          
+                end if
+               
+
+                ! ALPHATRANS
+                if((grid%GridType .eq. 1) .or. (grid%GridType .eq. 3)) then
+                    call u3ddblmp(inUnit, outUnit, grid%LayerCount, grid%RowCount,      &
+                      grid%ColumnCount, grid%CellCount, this%AlphaTrans, ANAME(2))                      
+                else if((grid%GridType .eq. 2) .or. (grid%GridType .eq. 4)) then
+                    call u3ddblmpusg(inUnit, outUnit, grid%CellCount, grid%LayerCount,  &
+                      this%AlphaTrans, aname(2), cellsPerLayer)
+                else
+                      write(outUnit,*) 'Invalid grid type specified when reading ALPHATRANS array data.'
+                      write(outUnit,*) 'Stopping.'
+                      call ustop(' ')          
+                end if
 
 
-        ! ALPHALONG
-        if((grid%GridType .eq. 1) .or. (grid%GridType .eq. 3)) then
-            call u3ddblmp(inUnit, outUnit, grid%LayerCount, grid%RowCount,      &
-              grid%ColumnCount, grid%CellCount, this%AlphaLong, ANAME(2))                      
-        else if((grid%GridType .eq. 2) .or. (grid%GridType .eq. 4)) then
-            call u3ddblmpusg(inUnit, outUnit, grid%CellCount, grid%LayerCount,  &
-              this%AlphaLong, aname(2), cellsPerLayer)
-        else
-            write(outUnit,*) 'Invalid grid type specified when reading ALPHALONG array data.'
-            write(outUnit,*) 'Stopping.'
-            call ustop(' ')          
-        end if
-        
+            case( 2 ) ! Nonlinear
+                ! NONLINEAR
 
-        ! ALPHATRANS
-        if((grid%GridType .eq. 1) .or. (grid%GridType .eq. 3)) then
-            call u3ddblmp(inUnit, outUnit, grid%LayerCount, grid%RowCount,      &
-              grid%ColumnCount, grid%CellCount, this%AlphaTrans, ANAME(2))                      
-        else if((grid%GridType .eq. 2) .or. (grid%GridType .eq. 4)) then
-            call u3ddblmpusg(inUnit, outUnit, grid%CellCount, grid%LayerCount,  &
-              this%AlphaTrans, aname(2), cellsPerLayer)
-        else
-              write(outUnit,*) 'Invalid grid type specified when reading ALPHATRANS array data.'
-              write(outUnit,*) 'Stopping.'
-              call ustop(' ')          
-        end if
+                ! Nonlinear model
+                if(allocated(this%MediumDistance)) deallocate(this%MediumDistance)
+                allocate(this%MediumDistance(grid%CellCount))
+
+                ! betaLong
+                read( inUnit, * ) line
+                icol = 1
+                call urword(line,icol,istart,istop,3,n,r,0,0)
+                trackingOptions%betaLong  = r
+
+                ! betaTrans
+                read( inUnit, * ) line
+                icol = 1
+                call urword(line,icol,istart,istop,3,n,r,0,0)
+                trackingOptions%betaTrans = r
+
+                ! mediumDelta
+                read( inUnit, * ) line
+                icol = 1
+                call urword(line,icol,istart,istop,3,n,r,0,0)
+                trackingOptions%mediumDelta = r
+
+                ! MEDIUMDISTANCE
+                if((grid%GridType .eq. 1) .or. (grid%GridType .eq. 3)) then
+                    call u3ddblmp(inUnit, outUnit, grid%LayerCount, grid%RowCount,      &
+                      grid%ColumnCount, grid%CellCount, this%MediumDistance, aname(5)) 
+                else if((grid%GridType .eq. 2) .or. (grid%GridType .eq. 4)) then
+                    call u3ddblmpusg(inUnit, outUnit, grid%CellCount, grid%LayerCount,  &
+                      this%MediumDistance, aname(5), cellsPerLayer)
+                else
+                    write(outUnit,*) 'Invalid grid type specified when reading MEDIUMDISTANCE array data.'
+                    write(outUnit,*) 'Stopping.'
+                    call ustop(' ')          
+                end if
+
+                ! TEMPORAL 
+                trackingOptions%mediumDistance = this%MediumDistance(1)
+
+                ! END NONLINEAR
+
+        end select
 
 
         ! Dmol
@@ -371,7 +423,7 @@ contains
                 read(inUnit, '(a)') particleGroups(nic)%Name
 
                 select case ( initialConditionFormat )
-                  case (1) 
+                  case (1) ! Read initial conditions as concentration 
                            
                       read(inUnit, *) massProcessingFormat ! 1:
 
@@ -408,8 +460,13 @@ contains
                               if(allocated(nParticlesZ)) deallocate(nParticlesZ)
                               allocate(nParticlesZ(grid%CellCount))
 
+
                               ! Now convert to particles using mass
                               read(inUnit, *) particleMass
+
+                              ! Read diffusion ?
+                              !read(inUnit, *) particleDiffusion
+
 
                               ! READ AS DENSITY/CONCENTRATION
                               if((grid%GridType .eq. 1) .or. (grid%GridType .eq. 3)) then
@@ -477,6 +534,9 @@ contains
 
                               ! The minimum measurable absolute concentration/density 
                               minOneParticleDensity = minval(particleMass/flowModelData%Porosity/cellVolumes)
+
+
+                          !case (2) ! Read as cell number - concentration
 
 
                           case default
@@ -675,6 +735,8 @@ contains
 
                       ! Read particles mass
                       read(inUnit, *) particleMass
+
+                      ! Read diffusion ?
 
 
                 end select
@@ -976,14 +1038,6 @@ contains
 
 
     
-        ! NONLINEARDISPERSIONDEV
-        trackingOptions%dispersionModel = 2
-        trackingOptions%mediumDistance  = 0.2 ! 2mm, 0.2cm
-        trackingOptions%mediumDelta     = 5.5
-        trackingOptions%betaLong        = 1
-        trackingOptions%betaTrans       = 0.5
-
-
 
         ! Close dispersion data file
         close( inUnit )
