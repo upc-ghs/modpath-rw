@@ -33,6 +33,9 @@ module ParticleTrackingOptionsModule
     integer                       :: gpkdeNOptLoops 
     character(len=200)            :: gpkdeOutputFile
     integer                       :: gpkdeOutputUnit = 125
+    logical                       :: gpkdeKernelDatabase
+    doubleprecision, dimension(3) :: gpkdeKDBParams
+
 
     ! TEMPORARY NONLINEAR RWPT
     integer         :: dispersionModel

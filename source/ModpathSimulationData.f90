@@ -593,7 +593,6 @@ contains
         if ( (ioInUnit .lt. 0) ) then 
             ! No gpkde 
             write(outUnit,'(A)') 'GPKDE Reconstruction: disabled density reconstruction stage'
-            print *, 'ModpathSimulationData: GPKDE NO', ioInUnit
         else
             icol = 1
             call urword(line, icol, istart, istop, 2, n, r, 0, 0)
@@ -601,7 +600,6 @@ contains
             if (n .eq. 0) then
                 ! No gpkde 
                 write(outUnit,'(A)') 'GPKDE Reconstruction: disabled density reconstruction stage'
-                print *, 'ModpathSimulationData: GPKDE NO'
             else if (n .eq. 1) then
                 ! Yes gpkde 
                 write(outUnit,'(A)') 'GPKDE Reconstruction: enabled density reconstruction stage'
@@ -660,6 +658,38 @@ contains
                 call urword(line, icol, istart, istop, 2, n, r, 0, 0)
                 this%TrackingOptions%gpkdeNOptLoops = n
 
+
+                ! Read reconstruction method
+                ! 0: without kernel database, brute force
+                ! 1: with kernel database and read parameters
+                read(gpkdeUnit, '(a)') line
+                icol = 1
+                call urword(line, icol, istart, istop, 2, n, r, 0, 0)
+                if (n.eq.0) then 
+                  this%TrackingOptions%gpkdeKernelDatabase = .false.
+                else
+                  this%TrackingOptions%gpkdeKernelDatabase = .true.
+                end if
+
+                if ( this%TrackingOptions%gpkdeKernelDatabase ) then 
+                    write(outUnit,'(A)') 'GPKDE Reconstruction: reconstruction with kernel database'
+                    ! Read kernel database params
+                    ! - min   h/lambda
+                    ! - delta h/lambda
+                    ! - max   h/lambda
+                    read(gpkdeUnit, '(a)') line
+                    icol = 1
+                    call urword(line, icol, istart, istop, 3, n, r, 0, 0)
+                    this%TrackingOptions%gpkdeKDBParams(1) = r
+                    call urword(line, icol, istart, istop, 3, n, r, 0, 0)
+                    this%TrackingOptions%gpkdeKDBParams(2) = r
+                    call urword(line, icol, istart, istop, 3, n, r, 0, 0)
+                    this%TrackingOptions%gpkdeKDBParams(3) = r
+                else
+                    write(outUnit,'(A)') 'GPKDE Reconstruction: brute force reconstruction, no kernel database'
+                    ! Defaults to brute force
+                    this%TrackingOptions%gpkdeKernelDatabase = .false.
+                end if 
 
                 ! Close gpkde data file
                 close( gpkdeUnit )

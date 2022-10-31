@@ -414,11 +414,14 @@
         ! rectangular grid, given particles position.
         call ulog('Initialize GPKDE object and output unit', logUnit)
         call gpkde%Initialize(& 
-            simulationData%TrackingOptions%gpkdeDomainSize,                   &
-            simulationData%TrackingOptions%gpkdeBinSize,                      &
-            nOptimizationLoops=simulationData%TrackingOptions%gpkdeNOptLoops, &
-            domainOrigin=simulationData%TrackingOptions%gpkdeDomainOrigin     &
-
+            simulationData%TrackingOptions%gpkdeDomainSize,                          &
+            simulationData%TrackingOptions%gpkdeBinSize,                             &
+            domainOrigin=simulationData%TrackingOptions%gpkdeDomainOrigin,           &
+            nOptimizationLoops=simulationData%TrackingOptions%gpkdeNOptLoops,        &
+            databaseOptimization=simulationData%TrackingOptions%gpkdeKernelDatabase, &
+            minHOverLambda=simulationData%TrackingOptions%gpkdeKDBParams(1),         &
+            deltaHOverLambda=simulationData%TrackingOptions%gpkdeKDBParams(2),       &
+            maxHOverLambda=simulationData%TrackingOptions%gpkdeKDBParams(3)          &
         )
         ! Initialize output unit/file
         open(unit=simulationData%TrackingOptions%gpkdeOutputUnit, &
