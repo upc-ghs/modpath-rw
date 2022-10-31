@@ -4,8 +4,26 @@ module ParticleManagerModule
   use ParticleCoordinateModule,only : ParticleCoordinateType
   use ModpathSimulationDataModule,only : ModpathSimulationDataType
   use GeoReferenceModule,only : GeoReferenceType
+  use omp_lib
   implicit none
-  
+ 
+  ! For parallel output in timeseries
+  abstract interface
+      subroutine TimeseriesWriter( sequenceNumber, particleID, groupIndex, timeStep, & 
+                 timePointIndex, pCoord, geoRef, outUnit, tsRecordCounts, tsTempUnits)
+          !-------------------------------------------------------------
+          import ParticleCoordinateType
+          import GeoReferenceType
+          !-------------------------------------------------------------
+          type(ParticleCoordinateType),intent(in) :: pCoord
+          type(GeoReferenceType),intent(in) :: geoRef
+          integer,intent(in) :: outUnit, particleID, timePointIndex, & 
+                                groupIndex, timeStep, sequenceNumber
+          integer, dimension(:), intent(inout) :: tsRecordCounts
+          integer, dimension(:) :: tsTempUnits
+      end subroutine TimeseriesWriter
+  end interface
+
   contains
 
   
@@ -98,7 +116,8 @@ module ParticleManagerModule
   write(outUnit, '(a)') 'END HEADER'
   
   end subroutine WriteTimeseriesHeader
-  
+ 
+
   subroutine WriteTimeseriesRecord(sequenceNumber, particleID, groupIndex,      &
     timeStep, timePointIndex, pCoord, geoRef, outUnit)
   implicit none
@@ -111,11 +130,11 @@ module ParticleManagerModule
   modelX = pCoord%GlobalX
   modelY = pCoord%GlobalY
   
-  write(outUnit, '(2I8,es18.9e3,i10,i5,2i10,6es18.9e3,i10)')                  &
+  write(outUnit, '(2I8,es18.9e3,i10,i5,2i10,6es18.9e3,i10)')                    &
     timePointIndex, timeStep, pCoord%TrackingTime, sequenceNumber, groupIndex,  &
     particleID, pCoord%CellNumber, pCoord%LocalX, pCoord%LocalY, pCoord%LocalZ, &
     modelX, modelY, pCoord%GlobalZ, pCoord%Layer
-  
+
   end subroutine WriteTimeseriesRecord
 
 
@@ -137,6 +156,211 @@ module ParticleManagerModule
     modelX, modelY, pCoord%GlobalZ, pCoord%Layer, particleStatus
   
   end subroutine WriteTimeseriesRecordStatus
+
+
+  subroutine WriteBinaryTimeseriesRecordId(sequenceNumber, particleID, groupIndex,      &
+    timeStep, timePointIndex, pCoord, geoRef, recordID, outUnit)
+    !--------------------------------------------------------------------------------
+    ! Write timeseries record plus recordID for consolidation 
+    !--------------------------------------------------------------------------------
+    implicit none
+    type(ParticleCoordinateType),intent(in) :: pCoord
+    type(GeoReferenceType),intent(in) :: geoRef
+    integer,intent(in) :: outUnit, particleID, timePointIndex, groupIndex,        &
+      timeStep, sequenceNumber
+    integer, intent(in) :: recordID
+    integer :: currentPosition
+    doubleprecision :: modelX, modelY, globalX, globalY
+    !--------------------------------------------------------------------------------
+    
+    modelX = pCoord%GlobalX
+    modelY = pCoord%GlobalY
+    
+    !'(2I8,es18.9e3,i10,i5,2i10,6es18.9e3,i10)+recordID'
+    write(outUnit) &
+      timePointIndex, timeStep, pCoord%TrackingTime, sequenceNumber, groupIndex,  &
+      particleID, pCoord%CellNumber, pCoord%LocalX, pCoord%LocalY, pCoord%LocalZ, &
+      modelX, modelY, pCoord%GlobalZ, pCoord%Layer, recordID
+  
+  end subroutine WriteBinaryTimeseriesRecordId
+
+
+  subroutine WriteTimeseriesRecordSerial(sequenceNumber, particleID, groupIndex, timeStep, &
+                      timePointIndex, pCoord, geoRef, outUnit, tsRecordCounts, tsTempUnits )
+    !--------------------------------------------------------------------------------
+    ! WriteTimeseriesRecord classical, this method is only for interface consistency
+    !--------------------------------------------------------------------------------
+    implicit none
+    type(ParticleCoordinateType),intent(in) :: pCoord
+    type(GeoReferenceType),intent(in) :: geoRef
+    integer,intent(in) :: outUnit, particleID, timePointIndex, groupIndex,        &
+      timeStep, sequenceNumber
+    integer, dimension(:), intent(inout) :: tsRecordCounts
+    integer, dimension(:) :: tsTempUnits
+    !--------------------------------------------------------------------------------
+
+    call WriteTimeseriesRecord(sequenceNumber, particleID, groupIndex, &
+                      timeStep, timePointIndex, pCoord, geoRef, outUnit)
+
+
+  end subroutine WriteTimeseriesRecordSerial
+
+
+  subroutine WriteTimeseriesRecordCritical(sequenceNumber, particleID, groupIndex, timeStep, &
+                        timePointIndex, pCoord, geoRef, outUnit, tsRecordCounts, tsTempUnits )
+    !--------------------------------------------------------------------------------
+    ! WriteTimeseriesRecord with OpenMP critical directive
+    !--------------------------------------------------------------------------------
+    implicit none
+    type(ParticleCoordinateType),intent(in) :: pCoord
+    type(GeoReferenceType),intent(in) :: geoRef
+    integer,intent(in) :: outUnit, particleID, timePointIndex, groupIndex,        &
+      timeStep, sequenceNumber
+    integer, dimension(:), intent(inout) :: tsRecordCounts
+    integer, dimension(:) :: tsTempUnits
+    !--------------------------------------------------------------------------------
+
+
+    !$omp critical( timeseries )
+    call WriteTimeseriesRecord(sequenceNumber, particleID, groupIndex, &
+                      timeStep, timePointIndex, pCoord, geoRef, outUnit)
+    !$omp end critical( timeseries )
+
+
+  end subroutine WriteTimeseriesRecordCritical
+
+
+  subroutine WriteTimeseriesRecordConsolidate(sequenceNumber, particleID, groupIndex, timeStep, & 
+                           timePointIndex, pCoord, geoRef, outUnit, tsRecordCounts, tsTempUnits )
+    !--------------------------------------------------------------------------------
+    ! WriteBinaryTimeseriesRecordId for each parallel unit 
+    !--------------------------------------------------------------------------------
+    implicit none
+    type(ParticleCoordinateType),intent(in) :: pCoord
+    type(GeoReferenceType),intent(in) :: geoRef
+    integer,intent(in) :: outUnit, particleID, timePointIndex, groupIndex,        &
+      timeStep, sequenceNumber
+    integer, dimension(:), intent(inout) :: tsRecordCounts
+    integer, dimension(:) :: tsTempUnits
+    integer :: ompThreadId
+    !--------------------------------------------------------------------------------
+
+    ompThreadId = omp_get_thread_num() + 1 ! Starts at zero
+
+    tsRecordCounts( ompThreadId ) = tsRecordCounts( ompThreadId ) + 1
+    call WriteBinaryTimeseriesRecordId(sequenceNumber, particleID, groupIndex, & 
+      timeStep, timePointIndex, pCoord, geoRef, tsRecordCounts( ompThreadId ), &
+      tsTempUnits( ompThreadId ))
+
+  end subroutine WriteTimeseriesRecordConsolidate
+
+
+  subroutine WriteTimeseriesRecordThread(sequenceNumber, particleID, groupIndex, timeStep, & 
+                      timePointIndex, pCoord, geoRef, outUnit, tsRecordCounts, tsTempUnits )
+    !--------------------------------------------------------------------------------
+    ! WriteBinaryTimeseriesRecord for each parallel unit 
+    !--------------------------------------------------------------------------------
+    implicit none
+    type(ParticleCoordinateType),intent(in) :: pCoord
+    type(GeoReferenceType),intent(in) :: geoRef
+    integer,intent(in) :: outUnit, particleID, timePointIndex, groupIndex,        &
+      timeStep, sequenceNumber
+    integer, dimension(:), intent(inout) :: tsRecordCounts
+    integer, dimension(:) :: tsTempUnits
+    integer :: ompThreadId
+    !--------------------------------------------------------------------------------
+
+    ompThreadId = omp_get_thread_num() + 1 ! Starts at zero
+
+    call WriteTimeseriesRecord(sequenceNumber, particleID, groupIndex, timeStep, &
+                      timePointIndex, pCoord, geoRef, tsTempUnits( ompThreadId ) )
+
+
+  end subroutine WriteTimeseriesRecordThread
+
+
+  subroutine ConsolidateParallelTimeseriesRecords(inUnits, outUnit, recordCounts, lastRecord)
+  !--------------------------------------------------------------------------------------
+  ! Read data from binary temporal inUnits and consolidate timeseries into outUnit
+  !--------------------------------------------------------------------------------------
+  implicit none
+  integer, dimension(:), intent(in) :: inUnits, recordCounts
+  integer, intent(in)    :: outUnit
+  integer, intent(inout) :: lastRecord
+  type(ParticleCoordinateType) :: pCoord
+  type(GeoReferenceType) :: geoRef
+  integer :: timePointIndex, timeStep, sequenceNumber,  groupIndex, particleID
+  doubleprecision :: modelX, modelY
+  integer :: n, m, i
+  integer :: nThreads, recordID
+  integer :: reclen, reclencumm
+  integer :: startFromRecord(size(recordCounts)+1)
+  !--------------------------------------------------------------------------------------
+
+  nThreads = size( inUnits ) 
+
+  !! ALL THREADS PROCESS THE SAME UNIT 
+  !! Read from temporal units and dump
+  !do n = 1, nThreads
+  !  if( recordCounts(n) .ge. 1 ) then
+  !      rewind( inUnits(n) )
+  !      !$omp parallel do schedule(dynamic,1)                         &
+  !      !$omp default( none )                                         &
+  !      !$omp shared( n, inUnits, recordCounts, outUnit, lastRecord ) &
+  !      !$omp private( timePointIndex, timeStep, pCoord )             &
+  !      !$omp private( sequenceNumber, groupIndex, particleID )       &
+  !      !$omp private( modelX, modelY, recordID, reclen, reclencumm )
+  !      do i = 1, recordCounts(n)
+  !          ! Read from temporal binary
+  !          read( inUnits(n) ) &
+  !            timePointIndex, timeStep, pCoord%TrackingTime, sequenceNumber, groupIndex,   &
+  !            particleID, pCoord%CellNumber, pCoord%LocalX, pCoord%LocalY, pCoord%LocalZ,  &
+  !            modelX, modelY, pCoord%GlobalZ, pCoord%Layer, recordID
+  !          ! Write to consolidated direct access unit
+  !          write(outUnit, rec=lastRecord+recordID, fmt='(2I8,es18.9e3,i10,i5,2i10,6es18.9e3,i10,a1)') & 
+  !            timePointIndex, timeStep, pCoord%TrackingTime, sequenceNumber, groupIndex,               &
+  !            particleID, pCoord%CellNumber, pCoord%LocalX, pCoord%LocalY, pCoord%LocalZ,              &
+  !            modelX, modelY, pCoord%GlobalZ, pCoord%Layer, char(10)
+  !      end do
+  !      !$omp end parallel do
+  !      lastRecord = lastRecord + recordCounts(n)
+  !  end if
+  !end do
+ 
+  ! EACH THREAD PROCESS ITS OWN UNIT
+  startFromRecord     = 0
+  startFromRecord(2:) = [ (sum(recordCounts(1:i)), i=1, size(recordCounts)) ]
+  startFromRecord     = startFromRecord + lastRecord 
+  ! Read from temporal units and dump
+  !$omp parallel do                                             &
+  !$omp default( none )                                         &
+  !$omp shared( inUnits, recordCounts, outUnit, lastRecord )    &
+  !$omp shared( startFromRecord, nThreads )                     &
+  !$omp private( timePointIndex, timeStep, pCoord )             &
+  !$omp private( sequenceNumber, groupIndex, particleID )       &
+  !$omp private( modelX, modelY, recordID, reclen, reclencumm )
+  do n = 1, nThreads
+    if( recordCounts(n) .ge. 1 ) then
+        rewind( inUnits(n) )
+        do i = 1, recordCounts(n)
+            ! Read from temporal binary
+            read( inUnits(n) ) &
+              timePointIndex, timeStep, pCoord%TrackingTime, sequenceNumber, groupIndex,   &
+              particleID, pCoord%CellNumber, pCoord%LocalX, pCoord%LocalY, pCoord%LocalZ,  &
+              modelX, modelY, pCoord%GlobalZ, pCoord%Layer, recordID
+            ! Write to consolidated direct access unit
+            write(outUnit, rec=startFromRecord(n)+recordID, fmt='(2I8,es18.9e3,i10,i5,2i10,6es18.9e3,i10,a1)') & 
+              timePointIndex, timeStep, pCoord%TrackingTime, sequenceNumber, groupIndex,               &
+              particleID, pCoord%CellNumber, pCoord%LocalX, pCoord%LocalY, pCoord%LocalZ,              &
+              modelX, modelY, pCoord%GlobalZ, pCoord%Layer, char(10)
+        end do
+    end if
+  end do
+  !$omp end parallel do
+
+  lastRecord = startFromRecord(size(recordCounts)+1)
+
+  end subroutine ConsolidateParallelTimeseriesRecords
 
 
   subroutine WritePathlineHeader(outUnit, trackingDirection, referenceTime,     &

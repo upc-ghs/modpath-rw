@@ -34,6 +34,12 @@ module ParticleTrackingOptionsModule
     character(len=200)            :: gpkdeOutputFile
     integer                       :: gpkdeOutputUnit = 125
 
+    ! TEMPORARY NONLINEAR RWPT
+    integer         :: dispersionModel
+    doubleprecision :: betaTrans, betaLong
+    doubleprecision :: mediumDistance, mediumDelta
+
+
     ! OBS
     integer :: nObservations
     logical :: observationSimulation = .false.

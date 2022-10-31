@@ -5,6 +5,8 @@ module FlowModelDataModule
   use ModflowRectangularGridModule,only : ModflowRectangularGridType
   use BudgetRecordHeaderModule,only : BudgetRecordHeaderType
   use UtilMiscModule,only : TrimAll
+  use UTL8MODULE,only : ustop
+
   implicit none
   !---------------------------------------------------------------------------------------------------------------
 
@@ -223,14 +225,20 @@ contains
       boundaryFlowsOffset, listItemBufferSize, cellNumber, layer
     type(BudgetRecordHeaderType) :: header
     character(len=16) :: textLabel
+    character(len=132) message
     doubleprecision :: top 
     real :: HDryTol, HDryDiff
     !---------------------------------------------------------------------------------------------------------------
       
         call this%ClearTimeStepBudgetData()
         call this%BudgetReader%GetRecordHeaderRange(stressPeriod, timeStep, firstRecord, lastRecord)
-        if(firstRecord .eq. 0) return
-    
+        if(firstRecord .eq. 0) then
+          write(message,'(A,I5,A,I5,A)') ' Error loading Time Step ', timeStep, ' Period ', stressPeriod, '.'
+          message = trim(message)
+          write(*,'(A)') message
+          call ustop('Missing budget information. Budget file must have output for every time step. Stop.')
+        end if
+
         cellCount = this%Grid%CellCount
         listItemBufferSize = size(this%ListItemBuffer)
         
@@ -481,7 +489,14 @@ contains
                           call this%CheckForDefaultIface(header%TextLabel, iface)
                           if(iface .gt. 0) then
                               do m = 1, spaceAssigned
-                                  cellNumber = this%ArrayBufferInt(m)
+                                  if(this%Grid%GridType .ne. 2) then
+                                    ! structured
+                                    layer = this%ArrayBufferInt(m)
+                                    cellNumber = (layer - 1) * spaceAssigned + m
+                                  else
+                                    ! mfusg unstructured
+                                    cellNumber = this%ArrayBufferInt(m)
+                                  end if
                                   boundaryFlowsOffset = 6 * (cellNumber - 1)
                                   this%BoundaryFlows(boundaryFlowsOffset + iface) =   &
                                     this%BoundaryFlows(boundaryFlowsOffset + iface) + &
