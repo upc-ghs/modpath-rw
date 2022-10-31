@@ -302,7 +302,7 @@ contains
             call urword(line,icol,istart,istop,3,n,r,0,0)
             trackingOptions%timeStepParameters(2) = r
         ! Minimum between Courant and Peclet 
-        else if ( line .eq. 'MIN_CU_PE' ) then
+        else if ( line .eq. 'MIN_ADV_DISP' ) then
             trackingOptions%timeStepKind = 3
             read( inUnit, * ) line
             icol = 1

@@ -766,14 +766,13 @@ contains
               reachedMaximumTime = .true.
           end if 
 
-          !! Compute RWPT movement
+          ! Compute RWPT movement
           call this%ComputeRWPTDisplacements(       &
                                x, y, z, vx, vy, vz, &
                                dt, trackingOptions, &
                                dAdvx, dAdvy, dAdvz, &
                                      dBx, dBy, dBz, &
                                divDx, divDy, divDz  )
-
 
           dxrw = dAdvx + divDx*dt + dBx*sqrt( dt )
           nx   = x + dxrw/dx
@@ -783,11 +782,6 @@ contains
               dzrw = dAdvz + divDz*dt + dBz*sqrt( dt )
               nz   = z + dzrw/dz
           end if
-
-
-          ! If by any reason dzrw/dz .gt. 1 then 
-          ! something is making these values blow up
-          ! It will leave the cell immediatelly
 
 
           ! particleLeavingCell:
@@ -1386,25 +1380,25 @@ contains
                   max(abs(vy1), abs(vy2))/dy +             &
                   max(abs(vz1), abs(vz2))/dz )
           case (2)
-              ! Fix Peclet 
-              dt = 1/( trackingOptions%timeStepParameters(2)*(&
-                   alphaL*max(abs(vx1), abs(vx2))/( dx**2 ) + &
-                   alphaT*max(abs(vy1), abs(vy2))/( dy**2 ) + &
-                   alphaT*max(abs(vz1), abs(vz2))/( dz**2 ) ) )
+              ! Dispersion condition 
+              ! dt = c_T dx**2/D
+              dt = trackingOptions%timeStepParameters(2)/(        &
+                       alphaL*max(abs(vx1), abs(vx2))/( dx**2 ) + & 
+                       alphaT*max(abs(vy1), abs(vy2))/( dy**2 ) + &
+                       alphaT*max(abs(vz1), abs(vz2))/( dz**2 ) )
           case (3)
-
-              ! NEEDS REVIEW
-
-              ! Courant condition
+              ! Advection condition
+              ! dt = CFL dx / v 
               dts(1) = trackingOptions%timeStepParameters(1)/( & 
                   max(abs(vx1), abs(vx2))/dx +                 &
                   max(abs(vy1), abs(vy2))/dy +                 &
                   max(abs(vz1), abs(vz2))/dz )
-              ! Peclet condition
-              dts(2) = 1/( trackingOptions%timeStepParameters(2)*(&
+              ! Dispersion condition
+              ! dt = c_T dx**2/D
+              dts(2) = trackingOptions%timeStepParameters(2)/(    &
                        alphaL*max(abs(vx1), abs(vx2))/( dx**2 ) + & 
                        alphaT*max(abs(vy1), abs(vy2))/( dy**2 ) + &
-                       alphaT*max(abs(vz1), abs(vz2))/( dz**2 ) ) )
+                       alphaT*max(abs(vz1), abs(vz2))/( dz**2 ) )
               ! Compute minimum
               dt     = minval( dts, dts > 0 )
       end select
