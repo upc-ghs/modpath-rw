@@ -127,7 +127,6 @@
 
     ! Interface for timeseries output protocol
     procedure(TimeseriesWriter), pointer :: WriteTimeseries=>null()
->>>>>>> develop-rwpt
 !---------------------------------------------------------------------------------
     
     ! Set version
