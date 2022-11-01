@@ -27,14 +27,18 @@ module ParticleTrackingOptionsModule
 
     ! GPKDE
     logical                       :: GPKDEReconstruction = .false.
-    doubleprecision, dimension(3) :: gpkdeDomainSize
-    doubleprecision, dimension(3) :: gpkdeBinSize
-    doubleprecision, dimension(3) :: gpkdeDomainOrigin
+    real*4, dimension(3)          :: gpkdeDomainSize
+    real*4, dimension(3)          :: gpkdeBinSize
+    real*4, dimension(3)          :: gpkdeDomainOrigin
+    !doubleprecision, dimension(3) :: gpkdeDomainSize
+    !doubleprecision, dimension(3) :: gpkdeBinSize
+    !doubleprecision, dimension(3) :: gpkdeDomainOrigin
     integer                       :: gpkdeNOptLoops 
     character(len=200)            :: gpkdeOutputFile
     integer                       :: gpkdeOutputUnit = 125
     logical                       :: gpkdeKernelDatabase
-    doubleprecision, dimension(3) :: gpkdeKDBParams
+    real*4, dimension(3)          :: gpkdeKDBParams
+    !doubleprecision, dimension(3) :: gpkdeKDBParams
 
 
     ! TEMPORARY NONLINEAR RWPT

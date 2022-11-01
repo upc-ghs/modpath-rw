@@ -109,7 +109,8 @@
     logical :: isTimeSeriesPoint, timeseriesRecordWritten
 
     ! GPKDE
-    doubleprecision, dimension(:,:), allocatable :: activeParticleCoordinates
+    real*4, dimension(:,:), allocatable :: activeParticleCoordinates
+    !doubleprecision, dimension(:,:), allocatable :: activeParticleCoordinates
     integer :: activeCounter
 
     ! Parallel variables
