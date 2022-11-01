@@ -976,7 +976,7 @@
                             ! Write timeseries record to the timeseries file
                             pCoordTP => trackPathResult%ParticlePath%Timeseries%Items(1)
                             p%GlobalX = pCoordTP%GlobalX ! GPKDE
-                            p%GlobalY = pCoordTP%GlobalY ! HPKDE
+                            p%GlobalY = pCoordTP%GlobalY ! GPKDE
                             ! With interface
                             call WriteTimeseries(p%SequenceNumber, p%ID, groupIndex, & 
                                         ktime, nt, pCoordTP, geoRef, timeseriesUnit, & 
