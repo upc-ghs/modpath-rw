@@ -3,6 +3,7 @@ module TransportModelDataModule
   use ParticleTrackingOptionsModule,only : ParticleTrackingOptionsType
   use ParticleGroupModule,only : ParticleGroupType
   use StartingLocationReaderModule,only : ReadAndPrepareLocations,    &
+                                          ReadAndPrepareLocationsMass,&
                                    pr_CreateParticlesAsInternalArray, &
                                    CreateMassParticlesAsInternalArray
   use FlowModelDataModule,only : FlowModelDataType
@@ -729,14 +730,18 @@ contains
                           call ustop('Invalid starting locations file name. stop.')
                       end if
                       
-                      ! LOAD LOCATION FILES 
-                      call ReadAndPrepareLocations(slocUnit, outUnit, particleGroups(nic),   &
-                        ibound, grid%CellCount, grid, seqNumber)
+                      ! SOMETHING LIKE THIS
 
                       ! Read particles mass
                       read(inUnit, *) particleMass
 
                       ! Read diffusion ?
+
+
+                      ! LOAD LOCATION FILES 
+                      call ReadAndPrepareLocationsMass(slocUnit, outUnit, particleGroups(nic),   &
+                        ibound, grid%CellCount, grid, seqNumber, particleMass ) 
+
 
 
                 end select
@@ -818,6 +823,8 @@ contains
 
                 select case ( injectionFormat ) 
                     case (1)
+                        ! CELL WITH GIVEN CONCENTRATION AND FLUX (?)
+                        ! AND TIMES
                         continue 
                     case (2)
                         ! Density/concentration arrays are expected 
@@ -864,14 +871,15 @@ contains
                         nParticlesY  = 0
                         nParticlesZ  = 0
 
-                        ! Simple delZ 
+                        ! Compute delZ
+                        ! Simple and correct if convertible 
                         delZ = grid%Top( injectionCellNumber ) - grid%Bottom(injectionCellNumber )
                         ! LayerType if .eq. 1 convertible
                         if( this%Grid%CellType( injectionCellNumber ) .eq. 1 ) then
-                            if( flowModelData%Heads( injectionCellNumber ) .lt. & 
-                                                grid%Top( injectionCellNumber ) ) then 
-                                delZ = flowModelData%Heads( injectionCellNumber ) - grid%Bottom( injectionCellNumber )
-                            end if
+                          if( flowModelData%Heads( injectionCellNumber ) .lt. & 
+                                              grid%Top( injectionCellNumber ) ) then 
+                              delZ = flowModelData%Heads( injectionCellNumber ) - grid%Bottom( injectionCellNumber )
+                          end if
                         end if
                         if ( delZ(1) .le. 0d0 ) then
                             delZ(1) = 0d0 
@@ -914,7 +922,8 @@ contains
                                 subDiv(n,m) = 0
                             end do
                         end do
-                     
+                    
+                        ! Cell shape factors 
                         if ( dimensionMask(1) .eq. 1 ) then 
                             ! Shape factors
                             if ( cellVolumes(1) .le. 0d0 ) cycle
@@ -933,6 +942,8 @@ contains
                             shapeFactorZ(1) = delZ(1)/(cellVolumes(1)**(1d0/nDim))
                         end if 
 
+
+                        ! Compute release data for each time
                         do it =1, nInjectionTimes
 
                             ! For each injectionDensity 
@@ -960,8 +971,7 @@ contains
                             
                         end do
 
-                        ! AFTER LAST LOOP THE TOTAL NUMBER OF PARTICLES 
-                        ! TO BE USED IN INJECTION TIMESERIES
+
                         ! Calculate the total number of particles for all release time points.
                         totalParticleCount = 0
                         totalParticleCount = np
@@ -969,17 +979,8 @@ contains
                         allocate(particleGroups(nic)%Particles(totalParticleCount))
                         particleGroups(nic)%TotalParticleCount = totalParticleCount
 
-                        !print *, 'TOTAL PARTICLE COUNT INJECTION ', totalParticleCount
 
-                        ! INTEGRATE MASS IN TIME
-                        !totalMass = 0d0
-                        !deltaTRelease = 0d0
-                        !do n =2,nInjectionTimes
-                        !    deltaTRelease = injectionTimes( n ) - injectionTimes( n-1 )
-                        !end do
-
-                        ! UPDATE PARTICLES MASS
-                        ! THIS SHOULD BE DONE IN TIME
+                        ! Update particles mass using the actual injected number
                         particleMass = sum( &
                             abs(injectionDensity)*cellVolumes(1)*flowModelData%Porosity( injectionCellNumber ) &
                         )/totalParticleCount 
@@ -991,6 +992,7 @@ contains
                             sdiv(1) = int( nParticlesX(it) ) + 1
                             sdiv(2) = int( nParticlesY(it) ) + 1
                             sdiv(3) = int( nParticlesZ(it) ) + 1
+                            ! For said rare cases where the injected quantity is negative
                             if ( injectionDensity(it) .gt. 0 ) then 
                                 particleMass = abs( particleMass ) 
                             else 
@@ -1004,12 +1006,14 @@ contains
                             )
                         end do 
 
+
                         ! Deallocate temporary arrays
                         deallocate(subDiv)
                         deallocate(templateSubDivisionTypes)
                         deallocate(drape)
                         deallocate(templateCellCounts)
                         deallocate(templateCellNumbers)
+
 
                 end select 
     
