@@ -1014,9 +1014,8 @@
             end do
             !$omp end parallel do
 
-
             ! GPKDE for the current groupIndex
-            if ( simulationData%TrackingOptions%GPKDEReconstruction ) then
+            if ( simulationData%TrackingOptions%GPKDEReconstruction .and. isTimeSeriesPoint ) then
 
                 ! Count how many active after trackpath, not necessarilly the same 
                 ! as activeCount
