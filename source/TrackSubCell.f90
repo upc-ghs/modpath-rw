@@ -719,6 +719,8 @@ contains
       ! Initialize kind of domain solver
       twoDimensions = trackingOptions%twoDimensions
 
+      ! DIMENSION MASK
+
 
       ! Compute time step for RWPT
       call this%ComputeRandomWalkTimeStep( trackingOptions, dt )
@@ -801,7 +803,6 @@ contains
               call this%ExitFaceAndUpdateTimeStep( x, y, z, nx, ny, nz, &
                                        vx, vy, vz, divDx, divDy, divDz, &
                                        dBx, dBy, dBz, t, dt, dtxyz, exitFace )
-
 
               if ( intLoopCounter .gt. 3 ) then
                   !print *, '######### RESTARTING', cellNumber, intLoopCounter
@@ -890,7 +891,15 @@ contains
                   if ( exitFace .eq. 5 ) nz=0d0
               else
                   ! If exitFace .eq. 0
-                  !print *, '######### RESTARTING', cellNumber, intLoopCounter
+                  !print *, '######### RESTARTING EXIT FACE 0', cellNumber, intLoopCounter
+                  !print *, x, y, z
+                  !print *, nx, ny, nz
+                  !print *, dt, dtxyz
+                  !print *, dAdvx, dAdvy, dAdvz
+                  !print *, dBx, dBy, dBz
+                  !print *, divDx, divDy, divDz
+                  !call exit(0)
+
                   ! Restart new coordinates 
                   nx = initialLocation%LocalX
                   ny = initialLocation%LocalY
@@ -1506,9 +1515,9 @@ contains
           end if
 
           ! Exactly at interface, force new cell
-          if ( dInterface .eq. 0.0 ) then
+          if ( dInterface .eq. 0d0 ) then
               exitFace = exitFaceX
-              dt = 0d0
+              dt = 0.0 
               return
           end if
 
@@ -1520,7 +1529,6 @@ contains
           zsqrtarg = BFace**2 + 4*dInterface*AFace
 
           if ( ( zsqrtarg .ge. 0d0 ) .and. ( AFace .ne. 0d0 ) ) then 
-
               zsqrt = sqrt( zsqrtarg )
               z1    = (-BFace + zsqrt )/( 2*AFace )
               z2    = (-BFace - zsqrt )/( 2*AFace )
@@ -1528,13 +1536,36 @@ contains
               if ( any( (/ z1, z2 /) .gt. 0d0) ) then 
                   ! Compute new dt
                   dtxyz(1) = minval( (/z1, z2/), mask=(/z1, z2/)>0d0 )**2
+                  ! If computed dt is zero, then 
+                  ! particle is at the interface
+                  if ( dtxyz(1) .eq. 0d0 ) then
+                      exitFace = exitFaceX
+                      dt = 0.0 
+                      return
+                  end if
+              else if ( any( (/ z1, z2 /) .eq. 0d0) ) then 
+                  ! This is equivalent to being at the interface, 
+                  ! It didn't detected any solution gt 0, but one zero,
+                  ! which means interface
+                  exitFace = exitFaceX
+                  dt       = 0.0
+                  return
               end if
 
           else if ( AFace .eq. 0d0 ) then 
               ! If A is zero, then the equation is linear
               ! At this point, it is important to note
-              ! that dInterface is non zero
-              if ( BFace .ne. 0d0 ) dtxyz(1) = ( dInterface/BFace )**2
+              ! that dInterface is non zero, but could be really small
+              if ( BFace .ne. 0d0 ) then 
+                  dtxyz(1) = ( dInterface/BFace )**2
+                  ! If computed dt is zero, then 
+                  ! particle is at the interface
+                  if ( dtxyz(1) .eq. 0d0 ) then
+                      exitFace = exitFaceX
+                      dt = 0.0 
+                      return
+                  end if
+              end if 
           end if
 
           ! If computed dt is higher than current
@@ -1577,7 +1608,6 @@ contains
           zsqrtarg = BFace**2 + 4*dInterface*AFace
 
           if ( ( zsqrtarg .ge. 0d0 ) .and. ( AFace .ne. 0d0 ) ) then
-
               zsqrt = sqrt( zsqrtarg )
               z1    = (-BFace + zsqrt )/( 2*AFace )
               z2    = (-BFace - zsqrt )/( 2*AFace )
@@ -1585,13 +1615,36 @@ contains
               if ( any( (/ z1, z2 /) .gt. 0d0) ) then 
                   ! Compute new dt
                   dtxyz(2) = minval( (/z1, z2/), mask=(/z1, z2/)>0d0 )**2
+                  ! If computed dt is zero, then 
+                  ! particle is at the interface
+                  if ( dtxyz(2) .eq. 0d0 ) then
+                      exitFace = exitFaceY
+                      dt = 0.0 
+                      return
+                  end if
+              else if ( any( (/ z1, z2 /) .eq. 0d0) ) then 
+                  ! This is equivalent to being at the interface, 
+                  ! It didn't detected any solution gt 0, but one zero,
+                  ! which means interface
+                  exitFace = exitFaceY
+                  dt       = 0.0
+                  return
               end if
 
           else if ( AFace .eq. 0d0 ) then 
               ! If A is zero, then the equation is linear
               ! At this point, it is important to note
-              ! that dInterface is non zero
-              if ( BFace .ne. 0d0 ) dtxyz(2) = ( dInterface/BFace )**2
+              ! that dInterface is non zero, but could be really small
+              if ( BFace .ne. 0d0 ) then 
+                  dtxyz(2) = ( dInterface/BFace )**2
+                  ! If computed dt is zero, then 
+                  ! particle is at the interface
+                  if ( dtxyz(2) .eq. 0d0 ) then
+                      exitFace = exitFaceY
+                      dt = 0.0 
+                      return
+                  end if
+              end if 
           end if
 
           ! If computed dt is higher than current
@@ -1629,12 +1682,11 @@ contains
           ! Coefficients
           AFace = vz + divDz
           BFace = dBz
-
+        
           ! Given dInterface, compute new dt
           zsqrtarg = BFace**2 + 4*dInterface*AFace
 
           if ( ( zsqrtarg .ge. 0d0 ) .and. ( AFace .ne. 0d0 ) )  then
-
               zsqrt = sqrt( zsqrtarg )
               z1    = (-BFace + zsqrt )/( 2*AFace )
               z2    = (-BFace - zsqrt )/( 2*AFace )
@@ -1642,13 +1694,36 @@ contains
               if ( any( (/ z1, z2 /) .gt. 0d0 ) ) then 
                   ! Compute new dt
                   dtxyz(3) = minval( (/z1, z2/), mask=(/z1, z2/)>0d0 )**2
+                  ! If computed dt is zero, then 
+                  ! particle is at the interface
+                  if ( dtxyz(3) .eq. 0d0 ) then
+                      exitFace = exitFaceZ
+                      dt = 0.0 
+                      return
+                  end if
+              else if ( any( (/ z1, z2 /) .eq. 0d0) ) then 
+                  ! This is equivalent to being at the interface, 
+                  ! It didn't detected any solution gt 0, but one zero,
+                  ! which means interface
+                  exitFace = exitFaceZ
+                  dt       = 0.0
+                  return
               end if
 
           else if ( AFace .eq. 0d0 ) then 
               ! If A is zero, then the equation is linear
               ! At this point, it is important to note
               ! that dInterface is non zero
-              if ( BFace .ne. 0d0 ) dtxyz(3) = ( dInterface/BFace )**2
+              if ( BFace .ne. 0d0 ) then 
+                  dtxyz(3) = ( dInterface/BFace )**2
+                  ! If computed dt is zero, then 
+                  ! particle is at the interface
+                  if ( dtxyz(3) .eq. 0d0 ) then
+                      exitFace = exitFaceZ
+                      dt = 0.0 
+                      return
+                  end if
+              end if 
           end if
 
           ! If computed dt is higher than current
@@ -1668,7 +1743,7 @@ contains
 
       ! Find minimum dt and 
       ! assign values accordingly
-      imindt = minloc( dtxyz, dim=1, mask=(dtxyz > 0) )
+      imindt = minloc( dtxyz, dim=1, mask=(dtxyz > 0d0) )
       dt     = dtxyz(imindt)
 
       if ( imindt .eq. 1 ) then
@@ -1678,6 +1753,7 @@ contains
       else if ( imindt .eq. 3 ) then
           exitFace = exitFaceZ
       end if
+
 
       ! Update time
       t = t + dt
