@@ -781,7 +781,7 @@
     call ulog('Begin TRACKING_INTERVAL_LOOP', logUnit)
     TRACKING_INTERVAL_LOOP: do while (itend .eq. 0)
 
-    !print *, '-----------------------------------------------------------------------------------'
+    print *, '-----------------------------------------------------------------------------------'
 
     itend = 1
     maxTime = tsMax
@@ -1057,7 +1057,6 @@
 
 
         end do
-
 
     end if
   

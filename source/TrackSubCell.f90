@@ -724,8 +724,6 @@ contains
       call this%ComputeRandomWalkTimeStep( trackingOptions, dt )
 
 
-
-
       ! Initializes current time
       t     = initialTime
       dtold = dt
@@ -784,7 +782,6 @@ contains
               dzrw = dAdvz + divDz*dt + dBz*sqrt( dt )
               nz   = z + dzrw/dz
           end if
-
 
           ! particleLeavingCell:
           ! Detect if particle leaving the cell
@@ -847,6 +844,12 @@ contains
               ! Find new RWPT displacements
               if ( ( exitFace .eq. 1 ) .or. ( exitFace .eq. 2 ) ) then
                   dxrw = dAdvx + divDx*dt + dBx*sqrt( dt )
+                  !nx   = x + dxrw/dx
+                  !if ( exitFace .eq. 1 ) then 
+                  !    if ( abs( nx ) .lt. drwtol ) nx = 0d0 
+                  !else
+                  !    if ( abs( nx - 1d0 ) .lt. drwtol ) nx = 1d0 
+                  !end if 
                   nx   = 1.0d0
                   if ( exitFace .eq. 1 ) nx=0d0
                   dyrw = dAdvy + divDy*dt + dBy*sqrt( dt )
@@ -859,6 +862,12 @@ contains
                   dxrw = dAdvx + divDx*dt + dBx*sqrt( dt )
                   nx   = x + dxrw/dx
                   dyrw = dAdvy + divDy*dt + dBy*sqrt( dt )
+                  !ny   = y + dyrw/dy
+                  !if ( exitFace .eq. 3 ) then 
+                  !    if ( abs( ny ) .lt. drwtol ) ny = 0d0 
+                  !else
+                  !    if ( abs( ny - 1d0 ) .lt. drwtol ) ny = 1d0 
+                  !end if 
                   ny   = 1.0d0
                   if ( exitFace .eq. 3 ) ny=0d0
                   if ( .not. twoDimensions ) then 
@@ -871,6 +880,12 @@ contains
                   dyrw = dAdvy + divDy*dt + dBy*sqrt( dt )
                   ny   = y + dyrw/dy
                   dzrw = dAdvz + divDz*dt + dBz*sqrt( dt )
+                  !nz   = z + dzrw/dz
+                  !if ( exitFace .eq. 5 ) then 
+                  !    if ( abs( nz ) .lt. drwtol ) nz = 0d0 
+                  !else
+                  !    if ( abs( nz - 1d0 ) .lt. drwtol ) nz = 1d0 
+                  !end if 
                   nz   = 1.0d0
                   if ( exitFace .eq. 5 ) nz=0d0
               else
@@ -1457,7 +1472,6 @@ contains
       doubleprecision :: AFace, BFace, z1, z2, zsqrt, zsqrtarg
       !----------------------------------------------------------------
         
-      !print*,'DETECTING EULERIAN...'
 
       ! Initialize
       exitFaceX  = 0
