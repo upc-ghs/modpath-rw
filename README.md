@@ -1,7 +1,7 @@
-# modpath-omp
-MODPATH version 7 with parallel processing of particles implemented with the OpenMP library. 
+# modpath-rw
+MODPATH-RW is an extension of MODPATH version 7 implementing particles displacement based on the Random Walk Particle Tracking (RWPT) method. 
 
-Configuration input files are the same that for a normal ``modpath-v7`` simulation, so integration of the parallel version is straightforward.
+Code is built on top of MODPATH-OMP, so it can displace particles in parallel emplying the OpenMP library. 
 
 ## Compilation
 Download source code and access the `make` folder. Here execute one of the makefiles with
@@ -10,8 +10,8 @@ Download source code and access the `make` folder. Here execute one of the makef
 make -f makefile-gfortran-pc
 ```
 
-This will compile source files and will output a binary, by default with name `mpath7omp.exe`. 
-Compilation has been verified with ``gfortran@9.2.1`` and with ``ifort`` from Intel ``oneAPI@2021.3.0``.
+This will compile source files and will output a binary, by default with name `mpathrwpt.exe`. 
+Compilation has been verified with ``gfortran@>=9.2.1`` and with ``ifort`` from Intel ``oneAPI@2021.3.0``.
 
 
 ## Running parallel simulations
@@ -50,6 +50,7 @@ MIT License
 
 * [MODPATH](https://www.usgs.gov/software/modpath-particle-tracking-model-modflow)
 * [Central modpath-v7 repository](https://github.com/MODFLOW-USGS/modpath-v7)
+* [modpath-omp](https://github.com/MARSoluT/modpath-omp)
 * [gfortran](https://gcc.gnu.org/wiki/GFortran)
 * [OpenMP](https://www.openmp.org/)
 * [Intel oneApi HPC toolkit](https://www.intel.com/content/www/us/en/developer/tools/oneapi/hpc-toolkit.html)
