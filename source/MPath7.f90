@@ -109,8 +109,7 @@
     logical :: isTimeSeriesPoint, timeseriesRecordWritten
 
     ! GPKDE
-    real*4, dimension(:,:), allocatable :: activeParticleCoordinates
-    !doubleprecision, dimension(:,:), allocatable :: activeParticleCoordinates
+    doubleprecision, dimension(:,:), allocatable :: activeParticleCoordinates
     integer :: activeCounter
 
     ! Parallel variables
@@ -1014,6 +1013,7 @@
             end do
             !$omp end parallel do
 
+
             ! GPKDE for the current groupIndex
             if ( simulationData%TrackingOptions%GPKDEReconstruction .and. isTimeSeriesPoint ) then
 
@@ -1052,6 +1052,7 @@
                    outputDataId       = nt,                                             &
                    particleGroupId    = groupIndex                                      & 
                 )
+
 
             end if
 
