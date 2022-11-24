@@ -110,7 +110,7 @@
 
     ! GPKDE
     doubleprecision, dimension(:,:), allocatable :: activeParticleCoordinates
-    integer :: activeCounter
+    integer :: activeCounter, itcount
 
     ! Parallel variables
     integer :: ompNumThreads
@@ -751,6 +751,8 @@
                         pCoord%GlobalX, pCoord%GlobalY, pCoord%GlobalZ)
                       p%InitialGlobalZ = pCoord%GlobalZ
                       p%GlobalZ = p%InitialGlobalZ
+                      p%GlobalX = pCoord%GlobalX ! GPKDE
+                      p%GlobalY = pCoord%GlobalY ! GPKDE
 
                       ! If parallel:
                       !     - With consolidated output initial positions are 
@@ -777,10 +779,11 @@
     ! to the beginning or end of the current MODFLOW time step or to the 
     ! specified stop time for the MODPATH analysis.
     itend = 0
+    itcount = 0
     call ulog('Begin TRACKING_INTERVAL_LOOP', logUnit)
     TRACKING_INTERVAL_LOOP: do while (itend .eq. 0)
-
-    print *, '-----------------------------------------------------------------------------------'
+    itcount = itcount + 1 
+    print *, itcount, '-----------------------------------------------------------------------------------'
 
     itend = 1
     maxTime = tsMax
@@ -977,11 +980,14 @@
                             pCoordTP => trackPathResult%ParticlePath%Timeseries%Items(1)
                             p%GlobalX = pCoordTP%GlobalX ! GPKDE
                             p%GlobalY = pCoordTP%GlobalY ! GPKDE
-                            ! With interface
-                            call WriteTimeseries(p%SequenceNumber, p%ID, groupIndex, & 
-                                        ktime, nt, pCoordTP, geoRef, timeseriesUnit, & 
-                                        timeseriesRecordCounts, timeseriesTempUnits  )
-                            timeseriesRecordWritten = .true.
+                            if ( .not. &
+                              simulationData%TrackingOptions%gpkdeSkipTimeseriesWriter ) then 
+                                ! With interface
+                                call WriteTimeseries(p%SequenceNumber, p%ID, groupIndex, & 
+                                            ktime, nt, pCoordTP, geoRef, timeseriesUnit, & 
+                                            timeseriesRecordCounts, timeseriesTempUnits  )
+                            end if 
+                            timeseriesRecordWritten = .true. ! ?
                         end if
                     end if
                 end if
@@ -1004,10 +1010,13 @@
                         pCoord%GlobalX, pCoord%GlobalY, pCoord%GlobalZ)
                       p%GlobalX = pCoord%GlobalX ! GPKDE
                       p%GlobalY = pCoord%GlobalY ! GPKDE
-                      ! With interface
-                      call WriteTimeseries(p%SequenceNumber, p%ID, groupIndex, & 
-                                    ktime, nt, pCoord, geoRef, timeseriesUnit, &
-                                    timeseriesRecordCounts, timeseriesTempUnits)
+                      if ( .not. &
+                        simulationData%TrackingOptions%gpkdeSkipTimeseriesWriter ) then 
+                          ! With interface
+                          call WriteTimeseries(p%SequenceNumber, p%ID, groupIndex, & 
+                                        ktime, nt, pCoord, geoRef, timeseriesUnit, &
+                                        timeseriesRecordCounts, timeseriesTempUnits)
+                      end if
                 end if
 
             end do
@@ -1052,7 +1061,6 @@
                    outputDataId       = nt,                                             &
                    particleGroupId    = groupIndex                                      & 
                 )
-
 
             end if
 

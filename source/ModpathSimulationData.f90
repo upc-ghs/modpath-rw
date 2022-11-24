@@ -98,7 +98,6 @@ contains
 
   ! RWPT
   character(len=200) :: dispersionFile
-  !integer :: dispersionUnit = 88
   integer :: iodispersion   = 0
   integer :: ioInUnit       = 0
 
@@ -619,6 +618,17 @@ contains
                 this%TrackingOptions%gpkdeOutputFile = this%TrackingOptions%gpkdeOutputFile(istart:istop)
 
 
+                ! Read skip timeseries writer
+                read(gpkdeUnit, '(a)') line
+                icol = 1
+                call urword(line, icol, istart, istop, 2, n, r, 0, 0)
+                if ( n .eq. 0 ) then 
+                  this%TrackingOptions%gpkdeSkipTimeseriesWriter = .false.
+                else
+                  this%TrackingOptions%gpkdeSkipTimeseriesWriter = .true.
+                end if
+
+
                 ! Read domainOrigin
                 read(gpkdeUnit, '(a)') line
                 icol = 1
@@ -689,6 +699,16 @@ contains
                     write(outUnit,'(A)') 'GPKDE Reconstruction: brute force reconstruction, no kernel database'
                     ! Defaults to brute force
                     this%TrackingOptions%gpkdeKernelDatabase = .false.
+                    ! Read kernel params
+                    ! - min   h/lambda
+                    ! - max   h/lambda
+                    read(gpkdeUnit, '(a)') line
+                    icol = 1
+                    call urword(line, icol, istart, istop, 3, n, r, 0, 0)
+                    this%TrackingOptions%gpkdeKDBParams(1) = r
+                    this%TrackingOptions%gpkdeKDBParams(2) = 0d0
+                    call urword(line, icol, istart, istop, 3, n, r, 0, 0)
+                    this%TrackingOptions%gpkdeKDBParams(3) = r
                 end if 
 
                 ! Close gpkde data file
