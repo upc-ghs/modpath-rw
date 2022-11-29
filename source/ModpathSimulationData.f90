@@ -622,9 +622,8 @@ contains
                 read(gpkdeUnit, '(a)') line
                 icol = 1
                 call urword(line, icol, istart, istop, 2, n, r, 0, 0)
-                if ( n .eq. 0 ) then 
-                  this%TrackingOptions%gpkdeSkipTimeseriesWriter = .false.
-                else
+                if ( n .eq. 1 ) then
+                  ! Is initialized as .false.
                   this%TrackingOptions%gpkdeSkipTimeseriesWriter = .true.
                 end if
 

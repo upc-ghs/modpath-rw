@@ -34,7 +34,7 @@ module ParticleTrackingOptionsModule
     integer                       :: gpkdeOutputUnit = 125
     logical                       :: gpkdeKernelDatabase
     doubleprecision, dimension(3) :: gpkdeKDBParams
-    logical                       :: gpkdeSkipTimeseriesWriter
+    logical                       :: gpkdeSkipTimeseriesWriter = .false.
 
 
     ! TEMPORARY NONLINEAR RWPT
