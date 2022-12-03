@@ -500,8 +500,7 @@ contains
               trackCellResult%Status = trackCellResult%Status_Undefined()
               return
           ! RWPT 
-          ! This branch block is related to unstructured grid
-          ! internal faces is linked to conceptualization of that case
+          ! This block is related to unstructured grid
           else if(subCellResult%Status .eq. subCellResult%Status_ExitAtInternalFace()) then
               pLoc = this%TrackSubCell%SubCellData%ConvertToLocalParentCoordinate(subCellResult%FinalLocation)
               pLoc%Layer = layer
@@ -582,9 +581,7 @@ contains
                     return
               end select
           ! RWPT
-          ! This branch is for handling the case of fully structured grid
-          ! in which particles leave only at cell faces.
-          ! Note that each branch leaves the function
+          ! Transfer to another cell 
           else if(subCellResult%Status .eq. subCellResult%Status_ExitAtCellFace()) then
               ! The particle has reached a cell boundary face, set trackCellResult status
               ! and exit face and then return. Status = 2 (ReachedBoundaryFace)
