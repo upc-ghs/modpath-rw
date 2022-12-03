@@ -14,6 +14,7 @@ type,public :: ParticleType
   doubleprecision :: GlobalX, GlobalY
   ! RWPT
   doubleprecision :: Mass
+  doubleprecision :: DAqueous
 end type
 
 
