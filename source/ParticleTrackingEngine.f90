@@ -944,7 +944,7 @@ contains
     end subroutine pr_TrackPath
 
 
-! RWPT
+    ! RWPT
     subroutine pr_RWPTrackPath(this, trackPathResult, traceModeOn, traceModeUnit,   &
       group, particleID, seqNumber, location, maximumTrackingTime, timeseriesPoints,&
       timeseriesPointCount)
@@ -974,7 +974,7 @@ contains
     ! RWPT
     type(ModpathCellDataType), dimension( 2, 18 ) :: neighborCellData
 
-    ! OBS
+    ! OBSERVATION CELLS
     integer   :: idObservationCell
     !---------------------------------------------------------------------------------------------------------------
 
@@ -1115,7 +1115,8 @@ contains
                 end if
                 
             end if
-        
+       
+
             ! Write trace mode data if the trace mode is on for this particle
             if(traceModeOn) then
                !$omp critical (tracedata)
@@ -1126,22 +1127,36 @@ contains
             end if
        
 
-            ! If there are observation cells
+            ! If any observation cells
             if ( this%TrackingOptions%observationSimulation ) then
                 ! Determine if the current TrackCell is on 
-                ! array of observations cells and extract
-                ! the corresponding unit
+                ! array of observations cells and get the corresponding unit
 
                 ! Get id of observation cell in observation cell list
                 ! Default is -999
                 idObservationCell = this%TrackingOptions%IdObservationCell( this%TrackCell%CellData%CellNumber ) 
                 if ( idObservationCell .ge. 0 ) then
-                    !$omp critical (observation)
-                    call WriteObservationCellRecord( this, group, particleID,      &
-                         this%TrackCell,                                           &
-                         this%TrackingOptions%observationUnits( idObservationCell ))
-                    !$omp end critical (observation)
+                    ! If the status of the particle is that it 
+                    ! stops at weak sink, and said weak sink 
+                    ! is an observation cell, then write sink record.
+                    if(this%TrackCellResult%Status .eq. this%TrackCellResult%Status_StopAtWeakSink()) then
+                        ! Maybe link this condition to user parameter, kind of observation
+                        !$omp critical (observation)
+                        call WriteObservationSinkCellRecord( this, group, particleID,  &
+                             this%TrackCell,                                           &
+                             this%TrackingOptions%observationUnits( idObservationCell ))
+                        !$omp end critical (observation)
+                    else
+                        ! Normal (weird) observation
+                        !$omp critical (observation)
+                        call WriteObservationCellRecord( this, group, particleID,      &
+                             this%TrackCell,                                           &
+                             this%TrackingOptions%observationUnits( idObservationCell ))
+                        !$omp end critical (observation)
+                    end if 
                 end if
+
+
             end if
 
 
@@ -2110,14 +2125,13 @@ subroutine pr_FillNeighborCellDataStructured( this, neighborCellData )
 end subroutine pr_FillNeighborCellDataStructured
 
 
-! OBS
+! OBSERVATION CELLS
 subroutine WriteObservationCellRecord( this, groupIndex, particleID, trackCell, outUnit )
-    !--------
+    !---------------------------------
     ! Write observation cell record
-    ! Doc me
-    !----------
+    !---------------------------------
     ! Specifications
-    !-----------------
+    !---------------------------------
     implicit none
     class(ParticleTrackingEngineType) :: this
     ! input
@@ -2152,6 +2166,38 @@ subroutine WriteObservationCellRecord( this, groupIndex, particleID, trackCell, 
 end subroutine WriteObservationCellRecord
 
 
+subroutine WriteObservationSinkCellRecord( this, groupIndex, particleID, trackCell, outUnit )
+    !-----------------------------------
+    ! Write observation sink cell record
+    !-----------------------------------
+    ! Specifications
+    !-----------------------------------
+    implicit none
+    class(ParticleTrackingEngineType) :: this
+    ! input
+    type(TrackCellType), intent(in) :: trackCell
+    integer, intent(in)             :: outUnit, groupIndex, particleID
+    ! local
+    doubleprecision     :: initialGlobalX, initialGlobalY, initialGlobalZ
+    doubleprecision     :: finalGlobalX, finalGlobalY, finalGlobalZ
+    doubleprecision     :: initialTime, finalTime
+    !----------------------------------------------
+
+    ! Initial time and thats it
+
+    initialTime = trackCell%TrackSubCell%TrackSubCellResult%InitialLocation%TrackingTime
+    call this%Grid%ConvertToModelXYZ( trackCell%CellData%CellNumber,      &
+        trackCell%TrackSubCell%TrackSubCellResult%InitialLocation%LocalX, & 
+        trackCell%TrackSubCell%TrackSubCellResult%InitialLocation%LocalY, &
+        trackCell%TrackSubCell%TrackSubCellResult%InitialLocation%LocalZ, &
+        initialGlobalX, initialGlobalY, initialGlobalZ )
+
+    write(outUnit, '(2I8,4es18.9e3)')                              &
+      groupIndex, particleID,                                      & 
+      initialTime, initialGlobalX, initialGlobalY, initialGlobalZ  
+
+
+end subroutine WriteObservationSinkCellRecord
 
 
 end module ParticleTrackingEngineModule

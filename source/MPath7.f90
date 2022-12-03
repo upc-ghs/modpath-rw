@@ -1132,7 +1132,93 @@
     
     ! Write particle summary information
     call WriteParticleSummaryInfo(simulationData, mplistUnit)
-    
+   
+
+    ! RWPT
+    ! Process observation cells for reconstruction
+    if ( simulationData%TrackingOptions%observationSimulation ) then
+
+        ! Check if any observation is a sink obs
+
+        ! If so, reset gpkde
+        call ulog('Reset and reinitialize GPKDE for observation cells ', logUnit)
+        call gpkde%Reset()
+
+        ! The length of the timeseries is needed
+
+        ! This would work only for timeseries simulations
+        simulationData%TimePointCount ! domainSize 
+        simulationData%TimePoints(2)-simulationData5TimePoints(1)  ! binSize
+        simulationData%ReferenceTime                               ! domainOrigin
+        ! NLOOPS IS given
+        ! KERNEL DATABASE .FALSE. by default
+        ! KDB PARAMS could use default
+
+
+        ! If no timeseries run, it would be possible to 
+        ! create an histogram based on stoptime for example 
+        ! and given number of bins
+
+        ! Reinitialize gpkde for timeseries reconstruction
+        call gpkde%Initialize(& 
+            simulationData%TrackingOptions%gpkdeDomainSize,                          &
+            simulationData%TrackingOptions%gpkdeBinSize,                             &
+            domainOrigin=simulationData%TrackingOptions%gpkdeDomainOrigin,           &
+            nOptimizationLoops=simulationData%TrackingOptions%gpkdeNOptLoops,        &
+            databaseOptimization=.false.,                                            &
+        )
+
+        ! Then read the observation file to extract arrival times
+        ! and pass it to gpkde for reconstruction
+        
+        ! It needs some obs record count or something
+
+        !this%observationUnits
+        rewind( simulationData%TrackingOptions%observationUnits(n) )
+        do n = 1, recordCounts(n)
+            ! Read from temporal binary
+            read( inUnits(n) ) &
+              timePointIndex, timeStep, pCoord%TrackingTime, sequenceNumber, groupIndex,   &
+              particleID, pCoord%CellNumber, pCoord%LocalX, pCoord%LocalY, pCoord%LocalZ
+              modelX, modelY, pCoord%GlobalZ, pCoord%Layer, recordID
+        end do 
+        
+
+
+        ! Allocate active particles coordinates
+        if ( allocated( activeParticleCoordinates ) ) deallocate( activeParticleCoordinates )
+        allocate( activeParticleCoordinates(activeCounter,3) )
+
+        ! Could be parallelized ?
+        ! Restart active counter and fill coordinates array
+        activeCounter = 0 
+        do particleIndex = 1, simulationData%ParticleGroups(groupIndex)%TotalParticleCount
+            p => simulationData%ParticleGroups(groupIndex)%Particles(particleIndex)
+            ! If active, to the array for GPKDE
+            if( (p%Status .eq. 1) ) then
+                activeCounter = activeCounter + 1
+                activeParticleCoordinates( activeCounter, 1 ) = p%GlobalX
+                activeParticleCoordinates( activeCounter, 2 ) = p%GlobalY
+                activeParticleCoordinates( activeCounter, 3 ) = p%GlobalZ
+            end if
+        end do
+
+        call gpkde%ComputeDensity(                                              &
+           activeParticleCoordinates,                                           &
+           outputFileUnit     = simulationData%TrackingOptions%gpkdeOutputUnit, & ! NO OUTPUT UNIT
+           outputDataId       = nt,                                             &
+           particleGroupId    = groupIndex                                      & 
+        )
+        
+        continue
+        !do n = 1, simulationData%TrackingOptions%nObservations
+        !    close( simulationData%TrackingOptions%observationUnits(n) )
+        !end do 
+        !! And deallocate arrays of observation information
+        !call simulationData%TrackingOptions%Reset()
+    end if 
+
+
 100 continue    
 
     ! RWPT
@@ -1141,7 +1227,7 @@
         do n = 1, simulationData%TrackingOptions%nObservations
             close( simulationData%TrackingOptions%observationUnits(n) )
         end do 
-        ! And deallocate arrays of observationa information
+        ! And deallocate arrays of observation information
         call simulationData%TrackingOptions%Reset()
     end if 
 
@@ -1765,7 +1851,7 @@
     end subroutine WriteParticleSummaryInfo
 
 
-    ! OBS
+    ! OBSERVATION CELLS
     subroutine WriteObservationHeader(outUnit, cellNumber, referenceTime,   &
                                              originX, originY, rotationAngle)
         !---------------------------------------------------------------------

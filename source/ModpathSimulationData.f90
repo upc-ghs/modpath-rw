@@ -756,11 +756,13 @@ contains
                 this%TrackingOptions%observationUnits( nc ) = 5500 + nc
                 ! Write the cell ID
                 write( unit=tempChar, fmt=* )this%TrackingOptions%observationCells( nc )
-                print *,' OBSERVATION ', tempChar
                 ! Write the output file name
                 write( unit=this%TrackingOptions%observationFiles( nc ), fmt='(a)' )'cell_'//trim(adjustl(tempChar))//'.obs'
-                print *,' OBSERVATION FILENAME ', this%TrackingOptions%observationFiles( nc )
             end do 
+
+            ! Depending on the simulation kind initialize observation file as 
+            ! binary or plain-text 
+
 
         end if  
     end if 
