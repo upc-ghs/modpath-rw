@@ -2237,9 +2237,9 @@ subroutine WriteObservationSinkCellRecord( this, groupIndex, particleID, trackCe
         trackCell%TrackSubCell%TrackSubCellResult%InitialLocation%LocalZ, &
         initialGlobalX, initialGlobalY, initialGlobalZ )
 
-    write(outUnit, '(2I8,5es18.9e3)')      &
-      groupIndex, particleID, initialTime, &
-      initialGlobalX, initialGlobalY, initialGlobalZ, &
+    write(outUnit, '(3I8,5es18.9e3)')      &
+      groupIndex, particleID, trackCell%CellData%CellNumber, & 
+      initialTime, initialGlobalX, initialGlobalY, initialGlobalZ, &
       trackCell%CellData%SinkFlow
 
 

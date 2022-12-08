@@ -114,7 +114,7 @@
     integer :: activeCounter, itcount
 
     ! OBSERVATIONS
-    integer :: nlines, io, irow, krow, nobs, nit, countTS, nTimesHigher
+    integer :: nlines, io, irow, krow, nobs, nit, countTS, nTimesHigher, cellNumber 
     doubleprecision :: dTObsSeries
     doubleprecision :: initialTime, initialGlobalX, initialGlobalY, initialGlobalZ, QSinkCell 
     doubleprecision, dimension(3) :: sbuffer
@@ -1204,12 +1204,14 @@
           rewind( obs%outputUnit )
           do n = 1, nlines
               ! Read from obs file
-              read( obs%outputUnit, '(2I8,5es18.9e3)' ) &
-                groupIndex, particleID, initialTime, initialGlobalX, initialGlobalY, initialGlobalZ, QSinkCell
+              read( obs%outputUnit, '(3I8,5es18.9e3)' ) &
+                groupIndex, particleID, cellNumber,     &
+                initialTime, initialGlobalX, initialGlobalY, initialGlobalZ, QSinkCell
               ! Needs some kind of understanding of the particle group, and that it
               ! means another solute ( column? )
               activeParticleCoordinates(n,1) = initialTime 
               activeParticleCoordinates(n,2) = QSinkCell
+              activeParticleCoordinates(n,3) = cellNumber
           end do 
    
           ! Sort by arrival times (efficient ?)
@@ -1237,8 +1239,10 @@
     
           ! Flow rates were written to obs file
           ! And are now sorted by arrival time
-          if ( allocated(obsSinkFlowInTime) ) deallocate(obsSinkFlowInTime) 
-          allocate(obsSinkFlowInTime(simulationData%TimePointCount)) 
+          if ( allocated(obsSinkFlowInTime) ) deallocate(obsSinkFlowInTime)
+          ! Probably with as many columns as observation cells
+          ! composing the observation
+          allocate(obsSinkFlowInTime(simulationData%TimePointCount))
           obsSinkFlowInTime = 0d0
 
           ! Initialze variables for building
