@@ -11,6 +11,7 @@ module ParticleTrackingEngineModule
   use ParticleTrackingOptionsModule,only : ParticleTrackingOptionsType
   use FlowModelDataModule,only : FlowModelDataType
   use TransportModelDataModule,only : TransportModelDataType
+  use ObservationModule,only : ObservationType
   !--------------------------------------------------------------------
 
   implicit none
@@ -397,7 +398,6 @@ contains
     type(TransportModelDataType), optional, target :: transportModelData
     !---------------------------------------------------------------------------------------------------------------
    
-
         ! Call Reset to make sure that all arrays are initially unallocated
         call this%Reset()
         
@@ -684,6 +684,14 @@ contains
         cellBuffer%alphaL = this%TransportModelData%AlphaLong(cellNumber)
         cellBuffer%alphaT = this%TransportModelData%AlphaTrans(cellNumber)
         
+        
+        !! Something to check whether or not this cell 
+        !! is observation and which one
+        !if ( this%TransportModelData%Observation(cellNumber) ) then 
+        !    continue
+        !end if 
+
+
 
         return
 
@@ -975,7 +983,8 @@ contains
     type(ModpathCellDataType), dimension( 2, 18 ) :: neighborCellData
 
     ! OBSERVATION CELLS
-    integer   :: idObservationCell
+    integer   :: idObservationCell, cellNumber, no
+    type(ObservationType), pointer :: obs
     !---------------------------------------------------------------------------------------------------------------
 
 
@@ -1132,30 +1141,56 @@ contains
                 ! Determine if the current TrackCell is on 
                 ! array of observations cells and get the corresponding unit
 
-                ! Get id of observation cell in observation cell list
-                ! Default is -999
-                idObservationCell = this%TrackingOptions%IdObservationCell( this%TrackCell%CellData%CellNumber ) 
-                if ( idObservationCell .ge. 0 ) then
-                    ! If the status of the particle is that it 
-                    ! stops at weak sink, and said weak sink 
-                    ! is an observation cell, then write sink record.
-                    if(this%TrackCellResult%Status .eq. this%TrackCellResult%Status_StopAtWeakSink()) then
-                        ! Maybe link this condition to user parameter, kind of observation
+                ! If this is an observation cell
+                if ( this%TrackingOptions%isObservation(this%TrackCell%CellData%CellNumber) ) then
+
+                  ! Assign the obs pointer
+                  no = this%TrackingOptions%idObservation(this%TrackCell%CellData%CellNumber)
+                  obs => this%TrackingOptions%Observations( no )  
+
+                  ! Process different kind of observations
+                  ! At this point, only strong sink is processed here
+                  select case( obs%style )
+                    case (2)
+                      if(this%TrackCellResult%Status .eq. this%TrackCellResult%Status_StopAtWeakSink()) then
                         !$omp critical (observation)
                         call WriteObservationSinkCellRecord( this, group, particleID,  &
                              this%TrackCell,                                           &
-                             this%TrackingOptions%observationUnits( idObservationCell ))
+                             obs%outputUnit)
                         !$omp end critical (observation)
-                    else
-                        ! Normal (weird) observation
-                        !$omp critical (observation)
-                        call WriteObservationCellRecord( this, group, particleID,      &
-                             this%TrackCell,                                           &
-                             this%TrackingOptions%observationUnits( idObservationCell ))
-                        !$omp end critical (observation)
-                    end if 
-                end if
+                      end if
+                    case default 
+                      continue
+                  end select 
 
+                end if 
+
+                !! Get id of observation cell in observation cell list
+                !! Default is -999
+                !idObservationCell = this%TrackingOptions%IdObservationCell( this%TrackCell%CellData%CellNumber ) 
+                !if ( idObservationCell .ge. 0 ) then
+                !    ! If the status of the particle is that it 
+                !    ! stops at weak sink, and said weak sink 
+                !    ! is an observation cell, then write sink record.
+                !    if(this%TrackCellResult%Status .eq. this%TrackCellResult%Status_StopAtWeakSink()) then
+                !        ! Maybe link this condition to user parameter, kind of observation
+                !        !$omp critical (observation)
+                !        call WriteObservationSinkCellRecord( this, group, particleID,  &
+                !             this%TrackCell,                                           &
+                !             this%TrackingOptions%observationUnits( idObservationCell ))
+                !        !$omp end critical (observation)
+                !        !this%TrackingOptions%obsRecordCounts( idObservationCell ) = & 
+                !        !   this%TrackingOptions%obsRecordCounts( idObservationCell ) + 1 
+                !        ! print *, 'YES ', this%TrackingOptions%obsRecordCounts( idObservationCell )
+                !    !else
+                !    !    ! Normal (weird) observation
+                !    !    !$omp critical (observation)
+                !    !    call WriteObservationCellRecord( this, group, particleID,      &
+                !    !         this%TrackCell,                                           &
+                !    !         this%TrackingOptions%observationUnits( idObservationCell ))
+                !    !    !$omp end critical (observation)
+                !    end if 
+                !end if
 
             end if
 
@@ -2192,9 +2227,10 @@ subroutine WriteObservationSinkCellRecord( this, groupIndex, particleID, trackCe
         trackCell%TrackSubCell%TrackSubCellResult%InitialLocation%LocalZ, &
         initialGlobalX, initialGlobalY, initialGlobalZ )
 
-    write(outUnit, '(2I8,4es18.9e3)')                              &
-      groupIndex, particleID,                                      & 
-      initialTime, initialGlobalX, initialGlobalY, initialGlobalZ  
+    write(outUnit, '(2I8,5es18.9e3)')      &
+      groupIndex, particleID, initialTime, &
+      initialGlobalX, initialGlobalY, initialGlobalZ, &
+      trackCell%CellData%SinkFlow
 
 
 end subroutine WriteObservationSinkCellRecord

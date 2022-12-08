@@ -112,6 +112,12 @@
     doubleprecision, dimension(:,:), allocatable :: activeParticleCoordinates
     integer :: activeCounter, itcount
 
+    ! OBSERVATIONS
+    integer :: nlines, io, irow, krow
+    doubleprecision :: dTObsSeries
+    doubleprecision :: initialTime, initialGlobalX, initialGlobalY, initialGlobalZ, QSinkCell 
+    doubleprecision, dimension(3) :: sbuffer
+
     ! Parallel variables
     integer :: ompNumThreads
     integer :: ompThreadId
@@ -621,16 +627,19 @@
     if ( simulationData%TrackingOptions%observationSimulation ) then
         ! Open the unit and write the header
         do n = 1, simulationData%TrackingOptions%nObservations
-            open( unit=simulationData%TrackingOptions%observationUnits(n),     &
-                  file=simulationData%TrackingOptions%observationFiles(n),     & 
+            open( unit=simulationData%TrackingOptions%Observations(n)%outputUnit, &
+                  file=simulationData%TrackingOptions%Observations(n)%outputFileName,& 
                   status='replace', form='formatted', access='sequential')
+            !open( unit=simulationData%TrackingOptions%observationUnits(n),     &
+            !      file=simulationData%TrackingOptions%observationFiles(n),     & 
+            !      status='replace', form='formatted', access='sequential')
             ! Write the corresponding header
-            call WriteObservationHeader(                              &
-                simulationData%TrackingOptions%observationUnits(n),   &
-                simulationData%TrackingOptions%observationCells(n),   &
-                simulationData%ReferenceTime,                         &
-                modelGrid%OriginX, modelGrid%OriginY,                 &
-                modelGrid%RotationAngle)
+            !call WriteObservationHeader(                              &
+            !    simulationData%TrackingOptions%observationUnits(n),   &
+            !    simulationData%TrackingOptions%observationCells(n),   &
+            !    simulationData%ReferenceTime,                         &
+            !    modelGrid%OriginX, modelGrid%OriginY,                 &
+            !    modelGrid%RotationAngle)
         end do 
     end if 
 
@@ -1138,84 +1147,101 @@
     ! Process observation cells for reconstruction
     if ( simulationData%TrackingOptions%observationSimulation ) then
 
-        ! Check if any observation is a sink obs
+    !    ! Check if any observation is a sink obs
 
-        ! If so, reset gpkde
-        call ulog('Reset and reinitialize GPKDE for observation cells ', logUnit)
-        call gpkde%Reset()
+         ! Need the id of this cell  
 
-        ! The length of the timeseries is needed
+         ! If so, reset gpkde
+         call ulog('Reset and reinitialize GPKDE for observation cells ', logUnit)
+         call gpkde%Reset()
 
-        ! This would work only for timeseries simulations
-        simulationData%TimePointCount ! domainSize 
-        simulationData%TimePoints(2)-simulationData5TimePoints(1)  ! binSize
-        simulationData%ReferenceTime                               ! domainOrigin
-        ! NLOOPS IS given
-        ! KERNEL DATABASE .FALSE. by default
-        ! KDB PARAMS could use default
+         ! The length of the timeseries is needed
 
+         ! This would work only for timeseries simulations
+         !simulationData%TimePointCount ! domainSize 
+         dTObsSeries = simulationData%TimePoints(2)-simulationData%TimePoints(1)  ! binSize
 
-        ! If no timeseries run, it would be possible to 
-        ! create an histogram based on stoptime for example 
-        ! and given number of bins
+         ! Consider irregular binsize GPKDE Reconstruction
 
-        ! Reinitialize gpkde for timeseries reconstruction
-        call gpkde%Initialize(& 
-            simulationData%TrackingOptions%gpkdeDomainSize,                          &
-            simulationData%TrackingOptions%gpkdeBinSize,                             &
-            domainOrigin=simulationData%TrackingOptions%gpkdeDomainOrigin,           &
-            nOptimizationLoops=simulationData%TrackingOptions%gpkdeNOptLoops,        &
-            databaseOptimization=.false.,                                            &
-        )
+         ! If no timeseries run, it would be possible to 
+         ! create an histogram based on stoptime for example 
+         ! and given number of bins
 
-        ! Then read the observation file to extract arrival times
-        ! and pass it to gpkde for reconstruction
+         ! Initialize gpkde for timeseries reconstruction
+         call gpkde%Initialize(& 
+             (/maxval(simulationData%TimePoints(:)),0d0,0d0/),                  &
+             (/dtObsSeries,0d0,0d0/),                                           &
+             domainOrigin=(/simulationData%ReferenceTime,0d0,0d0/),             &
+             nOptimizationLoops=simulationData%TrackingOptions%gpkdeNOptLoops,  &
+             databaseOptimization=.false.                                       &
+         )
+
+         ! Then read the observation file to extract arrival times
+         ! and pass it to gkde for reconstruction
         
-        ! It needs some obs record count or something
+         ! It needs some obs record count or something
+         rewind( simulationData%TrackingOptions%Observations(1)%outputUnit )
+         !rewind( simulationData%TrackingOptions%observationUnits(1) )
+         nlines = 0
+         do
+           read(simulationData%TrackingOptions%Observations(1)%outputUnit,*,iostat=io)
+           !read(simulationData%TrackingOptions%observationUnits(1),*,iostat=io)
+           if (io/=0) exit
+           nlines = nlines + 1
+         end do
 
-        !this%observationUnits
-        rewind( simulationData%TrackingOptions%observationUnits(n) )
-        do n = 1, recordCounts(n)
-            ! Read from temporal binary
-            read( inUnits(n) ) &
-              timePointIndex, timeStep, pCoord%TrackingTime, sequenceNumber, groupIndex,   &
-              particleID, pCoord%CellNumber, pCoord%LocalX, pCoord%LocalY, pCoord%LocalZ
-              modelX, modelY, pCoord%GlobalZ, pCoord%Layer, recordID
-        end do 
-        
+         ! Allocate active particles coordinates (temporary)
+         if ( allocated( activeParticleCoordinates ) ) deallocate( activeParticleCoordinates )
+         allocate( activeParticleCoordinates(nlines,3) )
+         activeParticleCoordinates = 0d0
+
+         ! Load file records into array
+         rewind( simulationData%TrackingOptions%Observations(1)%outputUnit )
+         !rewind( simulationData%TrackingOptions%observationUnits(1) )
+         do n = 1, nlines
+             ! Read from obs file
+             !read( simulationData%TrackingOptions%observationUnits(1), '(2I8,5es18.9e3)' ) &
+             read( simulationData%TrackingOptions%Observations(1)%outputUnit, '(2I8,5es18.9e3)' ) &
+               groupIndex, particleID, initialTime, initialGlobalX, initialGlobalY, initialGlobalZ, QSinkCell
+             ! Needs some kind of understanding of the particle group, and that it
+             ! means another solute ( column? )
+             activeParticleCoordinates(n,1) = initialTime 
+             activeParticleCoordinates(n,2) = QSinkCell
+         end do 
+   
+         ! Sort by arrival times (efficient ?)
+         ! Note:
+         ! This is not necessary for reconstruction, but 
+         ! to obtain a flow-rate timeseries without
+         ! the need to run again over stress periods
+         ! and extract flow rates for a given time.
+         print *, 'SORTING: ' 
+         do irow = 1, nlines
+            krow = minloc( activeParticleCoordinates( irow:nlines, 1 ), dim=1 ) + irow - 1
+            sbuffer( : ) = activeParticleCoordinates( irow, : )
+            activeParticleCoordinates( irow, : ) = activeParticleCoordinates( krow, : )
+            activeParticleCoordinates( krow, : ) = sbuffer( : )
+         enddo
+         do irow = 1, nlines
+            print *, activeParticleCoordinates( irow, : )
+         enddo
 
 
-        ! Allocate active particles coordinates
-        if ( allocated( activeParticleCoordinates ) ) deallocate( activeParticleCoordinates )
-        allocate( activeParticleCoordinates(activeCounter,3) )
+         print *, 'SORTED ! ' 
 
-        ! Could be parallelized ?
-        ! Restart active counter and fill coordinates array
-        activeCounter = 0 
-        do particleIndex = 1, simulationData%ParticleGroups(groupIndex)%TotalParticleCount
-            p => simulationData%ParticleGroups(groupIndex)%Particles(particleIndex)
-            ! If active, to the array for GPKDE
-            if( (p%Status .eq. 1) ) then
-                activeCounter = activeCounter + 1
-                activeParticleCoordinates( activeCounter, 1 ) = p%GlobalX
-                activeParticleCoordinates( activeCounter, 2 ) = p%GlobalY
-                activeParticleCoordinates( activeCounter, 3 ) = p%GlobalZ
-            end if
-        end do
 
-        call gpkde%ComputeDensity(                                              &
-           activeParticleCoordinates,                                           &
-           outputFileUnit     = simulationData%TrackingOptions%gpkdeOutputUnit, & ! NO OUTPUT UNIT
-           outputDataId       = nt,                                             &
-           particleGroupId    = groupIndex                                      & 
-        )
-        
-        continue
-        !do n = 1, simulationData%TrackingOptions%nObservations
-        !    close( simulationData%TrackingOptions%observationUnits(n) )
-        !end do 
-        !! And deallocate arrays of observation information
-        !call simulationData%TrackingOptions%Reset()
+         ! Reconstruction    
+         call gpkde%ComputeDensity(                                              &
+            activeParticleCoordinates,                                           &
+            outputFileUnit     = simulationData%TrackingOptions%gpkdeOutputUnit, & ! NO OUTPUT UNIT
+            outputDataId       = nt+1,                                           &
+            particleGroupId    = groupIndex                                      & 
+         )
+       
+
+         ! Flow rates were written to obs file
+
+
     end if 
 
 
@@ -1225,7 +1251,8 @@
     ! Close observation units if any
     if ( simulationData%TrackingOptions%observationSimulation ) then
         do n = 1, simulationData%TrackingOptions%nObservations
-            close( simulationData%TrackingOptions%observationUnits(n) )
+            close( simulationData%TrackingOptions%Observations(n)%outputUnit )
+            !close( simulationData%TrackingOptions%observationUnits(n) )
         end do 
         ! And deallocate arrays of observation information
         call simulationData%TrackingOptions%Reset()
@@ -1824,7 +1851,6 @@
     write(outUnit, '(i10,1x,a)') statusBins(0), 'particles are pending release.'
     write(outUnit, '(i10,1x,a)') statusBins(1), 'particles remain active.'
     write(outUnit, '(i10,1x,a)') statusBins(2), 'particles terminated at boundary faces.'
-    write(outUnit, '(i10,1x,a)') statusBins(3), 'particles terminated at weak sink cells.'
     write(outUnit, '(i10,1x,a)') statusBins(4), 'particles terminated at weak source cells.'
     write(outUnit, '(i10,1x,a)') statusBins(5),                                 &
       'particles terminated at strong source/sink cells or other cells with no potential exit face.'

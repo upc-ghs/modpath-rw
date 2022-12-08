@@ -1,4 +1,5 @@
 module ParticleTrackingOptionsModule
+  use ObservationModule, only : ObservationType
   implicit none
   
 ! Set default access status to private
@@ -51,6 +52,12 @@ module ParticleTrackingOptionsModule
     integer, allocatable, dimension(:) :: observationCells
     integer, allocatable, dimension(:) :: observationUnits
     character(len=200), allocatable, dimension(:) :: observationFiles
+    integer, allocatable, dimension(:) :: obsRecordCounts
+    logical, allocatable, dimension(:) :: isObservation
+    integer, allocatable, dimension(:) :: idObservation
+
+    
+    type( ObservationType ), allocatable, dimension(:) :: Observations
 
 
   contains
@@ -79,8 +86,13 @@ contains
       if(allocated(this%observationCells)) deallocate(this%observationCells)
       if(allocated(this%observationUnits)) deallocate(this%observationUnits)
       if(allocated(this%observationFiles)) deallocate(this%observationFiles)
+      if(allocated(this%obsRecordCounts)) deallocate(this%obsRecordCounts)
 
+      if(allocated(this%Observations)) deallocate(this%Observations)
 
+      if(allocated(this%isObservation)) deallocate(this%isObservation)
+      if(allocated(this%idObservation)) deallocate(this%idObservation)
+      
   end subroutine pr_Reset
 
 
@@ -104,7 +116,9 @@ contains
       allocate(this%observationCells(nObservations))
       allocate(this%observationUnits(nObservations))
       allocate(this%observationFiles(nObservations))
+      allocate(this%obsRecordCounts(nObservations))
 
+      allocate(this%Observations(nObservations))
 
   end subroutine pr_InitializeObservations
 

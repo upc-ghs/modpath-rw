@@ -19,8 +19,8 @@ ${SOURCEDIR2}
 
 # Define the Fortran compile flags
 FC = gfortran
-FFLAGS = -O2 -fbacktrace -fopenmp 
-#FFLAGS = -g -fbacktrace -fopenmp -Wall -fbounds-check -fcheck=all -ffpe-trap=invalid,zero,overflow
+#FFLAGS = -g -O2 -fbacktrace -fopenmp 
+FFLAGS = -g -fbacktrace -fopenmp -Wall -fbounds-check -fcheck=all -ffpe-trap=invalid,zero,overflow
 
 # Define the C compile flags
 CC = gcc
@@ -42,6 +42,7 @@ $(OBJDIR)/BudgetListItem.o \
 $(OBJDIR)/HeadRecordHeader.o \
 $(OBJDIR)/GridLocation.o \
 $(OBJDIR)/GlobalData.o \
+$(OBJDIR)/Observation.o \
 $(OBJDIR)/ParticleTrackingOptions.o \
 $(OBJDIR)/compilerversion.o \
 $(OBJDIR)/openspec.o \

@@ -57,6 +57,7 @@ module ModpathSimulationDataModule
 
 contains
 
+
   subroutine pr_ReadFileHeaders(this, inUnit)
   use UTL8MODULE,only : u8rdcom
   implicit none
@@ -75,12 +76,15 @@ contains
   read(inUnit, '(a)') this%ListingFile
   
   end subroutine pr_ReadFileHeaders
-  
+ 
+
+  ! Read simulation data 
   subroutine pr_ReadData(this, inUnit, outUnit, ibound, timeDiscretization, grid)
-  use UTL8MODULE,only : urword, ustop, u1dint, u1drel, u1ddbl, u8rdcom, u3ddblmpusg, u3dintmp, u3dintmpusg, u3ddblmp
+  use UTL8MODULE,only : urword, ustop, u1dint, u1drel, u1ddbl, u8rdcom, u3ddblmpusg, u3dintmp, u3dintmpusg, u3ddblmp, ugetnode
   use TimeDiscretizationDataModule,only : TimeDiscretizationDataType
+  use ObservationModule, only: ObservationType
   implicit none
-  class(ModpathSimulationDataType) :: this
+  class(ModpathSimulationDataType), target :: this
   class(ModflowRectangularGridType),intent(in) :: grid
   integer,intent(in) :: inUnit, outUnit
   integer,dimension(:),allocatable :: cellsPerLayer
@@ -104,6 +108,9 @@ contains
   ! OBS
   integer :: nObservations  = 0
   character(len=100) :: tempChar
+  integer :: layerCount, rowCount, columnCount
+  type( ObservationType ), pointer :: obs => null()
+  integer :: readStyle, no, cellNumber, layer, row, column, cellCount
 
   ! GPKDE
   character(len=200) :: gpkdeFile
@@ -745,20 +752,171 @@ contains
             ! Allocate observation arrays
             call this%TrackingOptions%InitializeObservations( nObservations )
 
+            print *, 'OBS: ', nObservations, ' observation cells.'
+
+            ! It might be needed downstream
+            layerCount = grid%LayerCount
+            rowCount = grid%RowCount
+            columnCount = grid%ColumnCount
+            cellCount = grid%CellCount
+
+            
+            ! Allocate id arrays in tracking options
+            if(allocated(this%TrackingOptions%isObservation)) & 
+                deallocate(this%TrackingOptions%isObservation)
+            allocate(this%TrackingOptions%isObservation(cellCount))
+            if(allocated(this%TrackingOptions%idObservation)) & 
+                deallocate(this%TrackingOptions%idObservation)
+            allocate(this%TrackingOptions%idObservation(cellCount))
+            this%TrackingOptions%isObservation(:) = .false.
+            this%TrackingOptions%idObservation(:) = -999
+
             ! Read observation cells and assign 
             ! proper variables
             do nc = 1, nObservations
-                read(inUnit, '(a)', iostat=ioInUnit) line
-                icol = 1
-                call urword(line, icol, istart, istop, 2, n, r, 0, 0)
-                this%TrackingOptions%observationCells( nc ) = n
-                ! 5500 is just to move to a known place of id units, improve
-                this%TrackingOptions%observationUnits( nc ) = 5500 + nc
-                ! Write the cell ID
-                write( unit=tempChar, fmt=* )this%TrackingOptions%observationCells( nc )
-                ! Write the output file name
-                write( unit=this%TrackingOptions%observationFiles( nc ), fmt='(a)' )'cell_'//trim(adjustl(tempChar))//'.obs'
+
+              ! A pointer
+              obs => this%TrackingOptions%Observations(nc) 
+
+              ! Read observation id
+              read(inUnit, '(a)', iostat=ioInUnit) line
+              icol = 1
+              call urword(line, icol, istart, istop, 2, n, r, 0, 0)
+              obs%id = n 
+             
+
+              ! Read observation filename and assign an output unit 
+              read(inUnit, '(a)') obs%outputFileName
+              icol = 1
+              call urword(obs%outputFileName,icol,istart,istop,0,n,r,0,0)
+              obs%outputFileName = obs%outputFileName(istart:istop)
+              obs%outputUnit     = 5500 + nc
+
+
+              ! Read observation style (sink obs, normal count of particles obs)
+              read(inUnit, '(a)', iostat=ioInUnit) line
+              icol = 1
+              call urword(line, icol, istart, istop, 2, n, r, 0, 0)
+              obs%style = n 
+
+
+              ! Read observation cell option
+              ! Determine how to read cells
+              read(inUnit, '(a)', iostat=ioInUnit) line
+              icol = 1
+              call urword(line, icol, istart, istop, 2, n, r, 0, 0)
+              obs%cellOption = n 
+
+              print *, 'CELL DATA SO FAR: '
+              print *, obs%id, obs%outputFileName, obs%outputUnit, obs%style, obs%cellOption
+
+
+              ! Load observation cells
+              select case( obs%cellOption ) 
+                case (1)
+                  ! Read number of observation cells 
+                  read(inUnit, '(a)', iostat=ioInUnit) line
+                  icol = 1
+                  call urword(line, icol, istart, istop, 2, n, r, 0, 0)
+                  obs%nCells = n 
+                  
+                  ! Depending on the number of cells 
+                  ! allocate array for cell ids
+                  if ( allocated( obs%cells ) ) deallocate( obs%cells )
+                  allocate( obs%cells(obs%nCells) )
+
+                  read(inUnit, '(a)', iostat=ioInUnit) line
+                  icol = 1
+                  call urword(line, icol, istart, istop, 2, n, r, 0, 0)
+                  readStyle = n
+        
+                  print *, 'READ STYLE:', readStyle
+
+
+                  ! Load the observation cells
+                  if( readStyle .eq. 1) then
+                    ! Read as layer, row, column
+                    do no = 1, obs%nCells
+                        read(inUnit, *) layer, row, column
+                        call ugetnode(layerCount, rowCount, columnCount, layer, row, column,cellNumber)
+                        print *, layer, row, column, cellNumber
+                        obs%cells(no) = cellNumber
+                    end do 
+                  else if ( readStyle .eq. 2 ) then 
+                      do no = 1, obs%nCells
+                        read(inUnit,*)  cellNumber
+                        obs%cells(no) = cellNumber
+                      end do 
+                  else
+                      call ustop('Invalid observation kind. Stop.')
+                  end if
+
+                !case (2)
+                ! Read as a three dimensional array 
+                case default
+                    call ustop('Invalid observation cells reading option. Stop.')
+              end select
+
+              ! Assign into id arrays
+              do no =1, obs%nCells
+                this%TrackingOptions%isObservation(obs%cells(no)) = .true.
+                !this%TrackingOptions%idObservation(obs%cells(no)) = obs%id
+                this%TrackingOptions%idObservation(obs%cells(no)) = nc
+              end do
+
+
+              ! Read observation cell time option
+              ! Determine how to reconstruct timeseries
+              read(inUnit, '(a)', iostat=ioInUnit) line
+              icol = 1
+              call urword(line, icol, istart, istop, 2, n, r, 0, 0)
+              obs%timeOption = n 
+
+              ! Timeoption determine from where 
+              ! to obtain the timeseries considered for 
+              ! reconstruction
+
+              select case(obs%timeOption)
+                case(1)
+                  ! Get it from the timeseries run 
+                  ! Is there any gpkde config for this ?
+                  continue
+                case (2)
+                  ! Create it by reading input 
+                  ! params like for example the 
+                  ! number of datapoints
+
+                  ! Needs reading
+
+                  continue
+                case default
+                  ! Get it from the timeseries run 
+                  continue
+              end select
+
+
+
+
+              !! Probably will be deprecated
+              !this%TrackingOptions%observationCells( nc ) = n
+              !this%TrackingOptions%obsRecordCounts( nc ) = 0
+              !! 5500 is just to move to a known place of id units, improve
+              !this%TrackingOptions%observationUnits( nc ) = 5500 + nc
+              !! Write the cell ID
+              !write( unit=tempChar, fmt=* )this%TrackingOptions%observationCells( nc )
+              !! Write the output file name
+              !write( unit=this%TrackingOptions%observationFiles( nc ), fmt='(a)' )'cell_'//trim(adjustl(tempChar))//'.obs'
+
+              print *, '------------------------------------------------'
+              print *, 'OBSID : ', obs%id
+              print *, 'NCELLS: ', obs%nCells
+              print *, 'CELLS : '
+              print *, '    ' , obs%cells
             end do 
+
+            print *, 'EARLY END ! ' 
+            !call exit(0)
+
 
             ! Depending on the simulation kind initialize observation file as 
             ! binary or plain-text 
