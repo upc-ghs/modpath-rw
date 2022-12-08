@@ -52,6 +52,7 @@
     use BudgetRecordHeaderModule,only : BudgetRecordHeaderType
     use GeoReferenceModule,only : GeoReferenceType
     use CompilerVersion,only : get_compiler
+    use ObservationModule, only : ObservationType ! OBS
     use GridProjectedKDEModule, only : GridProjectedKDEType ! GPKDE
     use omp_lib ! OpenMP
     !--------------------------------------------------------------------------
@@ -113,10 +114,11 @@
     integer :: activeCounter, itcount
 
     ! OBSERVATIONS
-    integer :: nlines, io, irow, krow
+    integer :: nlines, io, irow, krow, nobs
     doubleprecision :: dTObsSeries
     doubleprecision :: initialTime, initialGlobalX, initialGlobalY, initialGlobalZ, QSinkCell 
     doubleprecision, dimension(3) :: sbuffer
+    type( ObservationType ), pointer :: obs => null()
 
     ! Parallel variables
     integer :: ompNumThreads
@@ -1144,105 +1146,111 @@
    
 
     ! RWPT
-    ! Process observation cells for reconstruction
-    if ( simulationData%TrackingOptions%observationSimulation ) then
+    ! Process observation sink cells for reconstruction
+    if ( simulationData%TrackingOptions%anySinkObservation ) then
 
-    !    ! Check if any observation is a sink obs
+      ! If so, reset gpkde
+      call ulog('Reset and reinitialize GPKDE for observation cells ', logUnit)
+      call gpkde%Reset()
 
-         ! Need the id of this cell  
+      ! Loop over observations
+      do nobs=1, simulationData%TrackingOptions%nObservations
+        obs => simulationData%TrackingOptions%Observations(nobs)
 
-         ! If so, reset gpkde
-         call ulog('Reset and reinitialize GPKDE for observation cells ', logUnit)
-         call gpkde%Reset()
+        ! If this is is a sink obs cell
+        if ( obs%style .eq. 2 ) then 
 
-         ! The length of the timeseries is needed
+          !! DEPENDING ON THE TIMESERIES SPECS 
+          ! The length of the timeseries is needed
 
-         ! This would work only for timeseries simulations
-         !simulationData%TimePointCount ! domainSize 
-         dTObsSeries = simulationData%TimePoints(2)-simulationData%TimePoints(1)  ! binSize
+          ! This would work only for timeseries simulations
+          !simulationData%TimePointCount ! domainSize 
+          dTObsSeries = simulationData%TimePoints(2)-simulationData%TimePoints(1)  ! binSize
 
-         ! Consider irregular binsize GPKDE Reconstruction
+          ! Consider irregular binsize GPKDE Reconstruction
 
-         ! If no timeseries run, it would be possible to 
-         ! create an histogram based on stoptime for example 
-         ! and given number of bins
+          ! If no timeseries run, it would be possible to 
+          ! create an histogram based on stoptime for example 
+          ! and given number of bins
 
-         ! Initialize gpkde for timeseries reconstruction
-         call gpkde%Initialize(& 
-             (/maxval(simulationData%TimePoints(:)),0d0,0d0/),                  &
-             (/dtObsSeries,0d0,0d0/),                                           &
-             domainOrigin=(/simulationData%ReferenceTime,0d0,0d0/),             &
-             nOptimizationLoops=simulationData%TrackingOptions%gpkdeNOptLoops,  &
-             databaseOptimization=.false.                                       &
-         )
+          ! Initialize gpkde for timeseries reconstruction
+          call gpkde%Initialize(& 
+              (/maxval(simulationData%TimePoints(:)),0d0,0d0/),                  &
+              (/dtObsSeries,0d0,0d0/),                                           &
+              domainOrigin=(/simulationData%ReferenceTime,0d0,0d0/),             &
+              nOptimizationLoops=simulationData%TrackingOptions%gpkdeNOptLoops,  &
+              databaseOptimization=.false.                                       &
+          )
 
-         ! Then read the observation file to extract arrival times
-         ! and pass it to gkde for reconstruction
-        
-         ! It needs some obs record count or something
-         rewind( simulationData%TrackingOptions%Observations(1)%outputUnit )
-         !rewind( simulationData%TrackingOptions%observationUnits(1) )
-         nlines = 0
-         do
-           read(simulationData%TrackingOptions%Observations(1)%outputUnit,*,iostat=io)
-           !read(simulationData%TrackingOptions%observationUnits(1),*,iostat=io)
-           if (io/=0) exit
-           nlines = nlines + 1
-         end do
+          ! Then read the observation file to extract arrival times
+          ! and pass it to gkde for reconstruction
+      
+          ! It needs some obs record count or something
+          rewind( obs%outputUnit )
+          nlines = 0
+          do
+            read(obs%outputUnit,*,iostat=io)
+            if (io/=0) exit
+            nlines = nlines + 1
+          end do
 
-         ! Allocate active particles coordinates (temporary)
-         if ( allocated( activeParticleCoordinates ) ) deallocate( activeParticleCoordinates )
-         allocate( activeParticleCoordinates(nlines,3) )
-         activeParticleCoordinates = 0d0
+          ! Allocate active particles coordinates (temporary)
+          if ( allocated( activeParticleCoordinates ) ) deallocate( activeParticleCoordinates )
+          allocate( activeParticleCoordinates(nlines,3) )
+          activeParticleCoordinates = 0d0
 
-         ! Load file records into array
-         rewind( simulationData%TrackingOptions%Observations(1)%outputUnit )
-         !rewind( simulationData%TrackingOptions%observationUnits(1) )
-         do n = 1, nlines
-             ! Read from obs file
-             !read( simulationData%TrackingOptions%observationUnits(1), '(2I8,5es18.9e3)' ) &
-             read( simulationData%TrackingOptions%Observations(1)%outputUnit, '(2I8,5es18.9e3)' ) &
-               groupIndex, particleID, initialTime, initialGlobalX, initialGlobalY, initialGlobalZ, QSinkCell
-             ! Needs some kind of understanding of the particle group, and that it
-             ! means another solute ( column? )
-             activeParticleCoordinates(n,1) = initialTime 
-             activeParticleCoordinates(n,2) = QSinkCell
-         end do 
+          ! Load file records into array
+          rewind( obs%outputUnit )
+          do n = 1, nlines
+              ! Read from obs file
+              read( obs%outputUnit, '(2I8,5es18.9e3)' ) &
+                groupIndex, particleID, initialTime, initialGlobalX, initialGlobalY, initialGlobalZ, QSinkCell
+              ! Needs some kind of understanding of the particle group, and that it
+              ! means another solute ( column? )
+              activeParticleCoordinates(n,1) = initialTime 
+              activeParticleCoordinates(n,2) = QSinkCell
+          end do 
    
-         ! Sort by arrival times (efficient ?)
-         ! Note:
-         ! This is not necessary for reconstruction, but 
-         ! to obtain a flow-rate timeseries without
-         ! the need to run again over stress periods
-         ! and extract flow rates for a given time.
-         print *, 'SORTING: ' 
-         do irow = 1, nlines
-            krow = minloc( activeParticleCoordinates( irow:nlines, 1 ), dim=1 ) + irow - 1
-            sbuffer( : ) = activeParticleCoordinates( irow, : )
-            activeParticleCoordinates( irow, : ) = activeParticleCoordinates( krow, : )
-            activeParticleCoordinates( krow, : ) = sbuffer( : )
-         enddo
-         do irow = 1, nlines
-            print *, activeParticleCoordinates( irow, : )
-         enddo
+          ! Sort by arrival times (efficient ?)
+          ! Note:
+          ! This is not necessary for reconstruction, but 
+          ! to obtain a flow-rate timeseries without
+          ! the need to run again over stress periods
+          ! and extract flow rates for a given time.
+          print *, 'SORTING: ' 
+          do irow = 1, nlines
+             krow = minloc( activeParticleCoordinates( irow:nlines, 1 ), dim=1 ) + irow - 1
+             sbuffer( : ) = activeParticleCoordinates( irow, : )
+             activeParticleCoordinates( irow, : ) = activeParticleCoordinates( krow, : )
+             activeParticleCoordinates( krow, : ) = sbuffer( : )
+          enddo
+          do irow = 1, nlines
+             print *, activeParticleCoordinates( irow, : )
+          enddo
 
 
-         print *, 'SORTED ! ' 
+          print *, 'SORTED ! ' 
 
 
-         ! Reconstruction    
-         call gpkde%ComputeDensity(                                              &
-            activeParticleCoordinates,                                           &
-            outputFileUnit     = simulationData%TrackingOptions%gpkdeOutputUnit, & ! NO OUTPUT UNIT
-            outputDataId       = nt+1,                                           &
-            particleGroupId    = groupIndex                                      & 
-         )
-       
+          ! Reconstruction    
+          call gpkde%ComputeDensity(                                              &
+             activeParticleCoordinates,                                           &
+             outputFileUnit     = simulationData%TrackingOptions%gpkdeOutputUnit, & ! NO OUTPUT UNIT
+             outputDataId       = nt+1,                                           & ! FOR NOW THE LAST TIME ID+1
+             particleGroupId    = groupIndex                                      & 
+          )
+      
 
-         ! Flow rates were written to obs file
+          ! Flow rates were written to obs file
 
+          ! And reset gpkde 
+          call gpkde%Reset()
 
-    end if 
+        end if ! If obs%style.eq.2
+
+      end do ! obsLoop
+
+    end if ! process sink obs cells 
 
 
 100 continue    
@@ -1252,12 +1260,10 @@
     if ( simulationData%TrackingOptions%observationSimulation ) then
         do n = 1, simulationData%TrackingOptions%nObservations
             close( simulationData%TrackingOptions%Observations(n)%outputUnit )
-            !close( simulationData%TrackingOptions%observationUnits(n) )
         end do 
         ! And deallocate arrays of observation information
         call simulationData%TrackingOptions%Reset()
     end if 
-
 
 
     ! Deallocate major components

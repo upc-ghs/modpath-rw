@@ -799,6 +799,10 @@ contains
               call urword(line, icol, istart, istop, 2, n, r, 0, 0)
               obs%style = n 
 
+              if ( obs%style .eq. 2 ) then 
+                this%TrackingOptions%anySinkObservation = .true.
+              end if 
+
 
               ! Read observation cell option
               ! Determine how to read cells
@@ -812,7 +816,9 @@ contains
 
 
               ! Load observation cells
-              select case( obs%cellOption ) 
+              select case( obs%cellOption )
+                ! In case 1, a list of cell ids is specified, that 
+                ! compose the observation.  
                 case (1)
                   ! Read number of observation cells 
                   read(inUnit, '(a)', iostat=ioInUnit) line
@@ -825,13 +831,11 @@ contains
                   if ( allocated( obs%cells ) ) deallocate( obs%cells )
                   allocate( obs%cells(obs%nCells) )
 
+                  ! Are these ids as (lay,row,col) or (cellid) ?
                   read(inUnit, '(a)', iostat=ioInUnit) line
                   icol = 1
                   call urword(line, icol, istart, istop, 2, n, r, 0, 0)
                   readStyle = n
-        
-                  print *, 'READ STYLE:', readStyle
-
 
                   ! Load the observation cells
                   if( readStyle .eq. 1) then
@@ -851,6 +855,8 @@ contains
                       call ustop('Invalid observation kind. Stop.')
                   end if
 
+                ! In case 2, observation cells are given by specifying an array
+                ! with 0 (not observation) and 1 (observation) 
                 !case (2)
                 ! Read as a three dimensional array 
                 case default
