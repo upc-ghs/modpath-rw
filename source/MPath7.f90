@@ -114,11 +114,12 @@
     integer :: activeCounter, itcount
 
     ! OBSERVATIONS
-    integer :: nlines, io, irow, krow, nobs
+    integer :: nlines, io, irow, krow, nobs, nit, countTS, nTimesHigher
     doubleprecision :: dTObsSeries
     doubleprecision :: initialTime, initialGlobalX, initialGlobalY, initialGlobalZ, QSinkCell 
     doubleprecision, dimension(3) :: sbuffer
     type( ObservationType ), pointer :: obs => null()
+    doubleprecision, allocatable, dimension(:) :: obsSinkFlowInTime
 
     ! Parallel variables
     integer :: ompNumThreads
@@ -1224,27 +1225,62 @@
              activeParticleCoordinates( irow, : ) = activeParticleCoordinates( krow, : )
              activeParticleCoordinates( krow, : ) = sbuffer( : )
           enddo
-          do irow = 1, nlines
-             print *, activeParticleCoordinates( irow, : )
-          enddo
-
-
           print *, 'SORTED ! ' 
 
-
-          ! Reconstruction    
+          ! Timeseries reconstruction    
           call gpkde%ComputeDensity(                                              &
              activeParticleCoordinates,                                           &
              outputFileUnit     = simulationData%TrackingOptions%gpkdeOutputUnit, & ! NO OUTPUT UNIT
              outputDataId       = nt+1,                                           & ! FOR NOW THE LAST TIME ID+1
              particleGroupId    = groupIndex                                      & 
           )
-      
-
+    
           ! Flow rates were written to obs file
+          ! And are now sorted by arrival time
+          if ( allocated(obsSinkFlowInTime) ) deallocate(obsSinkFlowInTime) 
+          allocate(obsSinkFlowInTime(simulationData%TimePointCount)) 
+          obsSinkFlowInTime = 0d0
+
+          ! Initialze variables for building
+          ! flow rate in time for the obs cell
+
+          ! It seems this is needed for each cellNumber
+          ! This is because sink flow rate is specific for each cell 
+          nit = 0
+          countTS = 1
+          obsSinkFlowInTime(1) = activeParticleCoordinates(1,2) ! The first flow rate
+          do while (countTS .lt. simulationData%TimePointCount )
+            nit = nit + 1 
+            initialTime = activeParticleCoordinates(nit,1) ! Get the arrival time
+            if (& 
+               ( initialTime .gt. simulationData%TimePoints(countTS) ) .and. & 
+               ( initialTime .lt. simulationData%TimePoints(countTS+1) ) )  then
+               ! If the current arrival now went by and  
+               countTS = countTS + 1
+               ! Remember to consider the case in which flow rate
+               ! stopped at some point, it should remain as zero
+               obsSinkFlowInTime(countTS) = activeParticleCoordinates(nit,2)
+            else if ( initialTime .gt. simulationData%TimePoints(countTS+1) )  then 
+               ! This is to address the case in which the flow rate went 
+               ! to zero at some point
+               ! How many times higher ?
+               ! Only works for a regular timeseries
+               nTimesHigher = ceiling( (initialTime-simulationData%TimePoints(countTS+1))/dtObsSeries )
+               countTS = countTS + nTimesHigher
+               obsSinkFlowInTime(countTS) = activeParticleCoordinates(nit,2)
+            end if 
+          end do
+
+            
+          ! With flow rates, histogram and gpkde, write observation file
+          do nit = 1, simulationData%TimePointCount
+             print *, simulationData%TimePoints(nit), obsSinkFlowInTime(nit)
+          end do 
+
 
           ! And reset gpkde 
           call gpkde%Reset()
+
 
         end if ! If obs%style.eq.2
 

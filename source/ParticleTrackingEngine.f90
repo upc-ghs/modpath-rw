@@ -1153,11 +1153,21 @@ contains
                   select case( obs%style )
                     case (2)
                       if(this%TrackCellResult%Status .eq. this%TrackCellResult%Status_StopAtWeakSink()) then
+                        ! If a particle is removed due to strong sink
                         !$omp critical (observation)
                         call WriteObservationSinkCellRecord( this, group, particleID,  &
                              this%TrackCell,                                           &
                              obs%outputUnit)
                         !$omp end critical (observation)
+                      !else if (this%TrackCell%CellData%SinkFlow .eq. 0d0 ) then 
+                      !  ! If the cell was marked as sink obs, 
+                      !  ! particle was not removed and SinkFlow .eq. 0d0, 
+                      !  ! write a record with zero flow rate
+                      !  !$omp critical (observation)
+                      !  call WriteObservationSinkCellRecord( this, group, particleID,  &
+                      !       this%TrackCell,                                           &
+                      !       obs%outputUnit)
+                      !  !$omp end critical (observation)
                       end if
                     case default 
                       continue
