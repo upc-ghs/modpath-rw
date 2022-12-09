@@ -1248,42 +1248,42 @@
           end do 
 
 
-          ! Sort by cell number
-          ! This could be avoided if data is 
-          ! alredy distributed in different
-          ! units, one for each cell in the obs
-          do irow = 1, nlines
-             krow = minloc( activeParticleCoordinates( irow:nlines, 3 ), dim=1 ) + irow - 1 ! notice the index 3
-             sbuffer( : ) = activeParticleCoordinates( irow, : )
-             activeParticleCoordinates( irow, : ) = activeParticleCoordinates( krow, : )
-             activeParticleCoordinates( krow, : ) = sbuffer( : )
-          enddo
+          !! Sort by cell number
+          !! This could be avoided if data is 
+          !! alredy distributed in different
+          !! units, one for each cell in the obs
+          !do irow = 1, nlines
+          !   krow = minloc( activeParticleCoordinates( irow:nlines, 3 ), dim=1 ) + irow - 1 ! notice the index 3
+          !   sbuffer( : ) = activeParticleCoordinates( irow, : )
+          !   activeParticleCoordinates( irow, : ) = activeParticleCoordinates( krow, : )
+          !   activeParticleCoordinates( krow, : ) = sbuffer( : )
+          !enddo
   
-          ! Count how many records for each cell
-          do n=1, obs%nCells
-            ! notice the index 3
-            obs%nRecordsCell(n) = count(activeParticleCoordinates(:,3).eq.obs%cells(n))
-          end do
+          !! Count how many records for each cell
+          !do n=1, obs%nCells
+          !  ! notice the index 3
+          !  obs%nRecordsCell(n) = count(activeParticleCoordinates(:,3).eq.obs%cells(n))
+          !end do
 
-          ! Sort by time for each cell
-          do n=1, obs%nCells
-            ! If no records, nothing to do
-            if ( obs%nRecordsCell(n) .eq. 0 ) cycle
-            if ( n .gt. 1 ) then 
-                baserow = sum(obs%nRecordsCell(1:n-1))
-            else
-                baserow = 0
-            end if
-            lastrow = obs%nRecordsCell(n) + baserow
-            do irow = 1, obs%nRecordsCell(n)
-               srow = irow + baserow
-               ! notice the index 1
-               krow = minloc( activeParticleCoordinates( srow:lastrow, 1 ), dim=1 ) + srow - 1
-               sbuffer( : ) = activeParticleCoordinates( srow, : )
-               activeParticleCoordinates( srow, : ) = activeParticleCoordinates( krow, : )
-               activeParticleCoordinates( krow, : ) = sbuffer( : )
-            enddo
-          end do
+          !! Sort by time for each cell
+          !do n=1, obs%nCells
+          !  ! If no records, nothing to do
+          !  if ( obs%nRecordsCell(n) .eq. 0 ) cycle
+          !  if ( n .gt. 1 ) then 
+          !      baserow = sum(obs%nRecordsCell(1:n-1))
+          !  else
+          !      baserow = 0
+          !  end if
+          !  lastrow = obs%nRecordsCell(n) + baserow
+          !  do irow = 1, obs%nRecordsCell(n)
+          !     srow = irow + baserow
+          !     ! notice the index 1
+          !     krow = minloc( activeParticleCoordinates( srow:lastrow, 1 ), dim=1 ) + srow - 1
+          !     sbuffer( : ) = activeParticleCoordinates( srow, : )
+          !     activeParticleCoordinates( srow, : ) = activeParticleCoordinates( krow, : )
+          !     activeParticleCoordinates( krow, : ) = sbuffer( : )
+          !  enddo
+          !end do
        
 
           ! Timeseries reconstruction    
