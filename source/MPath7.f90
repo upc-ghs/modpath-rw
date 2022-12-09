@@ -115,13 +115,15 @@
 
     ! OBSERVATIONS
     integer :: nlines, io, irow, krow, nobs, nit, countTS, nTimesHigher, cellNumber 
-    integer :: baserow, lastrow, srow
+    integer :: baserow, lastrow, srow, timeIndex
     doubleprecision :: dTObsSeries
     doubleprecision :: initialTime, initialGlobalX, initialGlobalY, initialGlobalZ, QSinkCell 
     doubleprecision, dimension(3) :: sbuffer
     type( ObservationType ), pointer :: obs => null()
     doubleprecision, allocatable, dimension(:,:) :: obsSinkFlowInTime ! (ntimes,ncells)
     doubleprecision, allocatable, dimension(:)   :: obsAccumSinkFlowInTime ! (ntimes)
+    doubleprecision, allocatable, dimension(:)   :: qSinkBuffer
+    character(len=200) :: qSinkFormat
 
     ! Parallel variables
     integer :: ompNumThreads
@@ -635,6 +637,13 @@
             open( unit=simulationData%TrackingOptions%Observations(n)%outputUnit, &
                   file=simulationData%TrackingOptions%Observations(n)%outputFileName,& 
                   status='replace', form='formatted', access='sequential')
+            ! For a sink observation
+            if ( simulationData%TrackingOptions%Observations(n)%style .eq. 2 )  then 
+              ! Remember to replace by binary once in production
+              open( unit=simulationData%TrackingOptions%Observations(n)%flowRateUnit, &
+                    file=simulationData%TrackingOptions%Observations(n)%flowRateFileName,& 
+                    status='replace', form='formatted', access='sequential')
+            end if
             !open( unit=simulationData%TrackingOptions%observationUnits(n),     &
             !      file=simulationData%TrackingOptions%observationFiles(n),     & 
             !      status='replace', form='formatted', access='sequential')
@@ -1090,15 +1099,19 @@
     ! points determine the obs records
     if( ( simulationData%TrackingOptions%anySinkObservation ) & 
                                     .and. isTimeSeriesPoint ) then
-        print *, 'WRITE FLOW RATES FOR THE CURRENT TIME:'
-        print *, 'TIME INDEX: ', nt
-
+        ! Write sink flow rates only for obs of this kind
         do nobs=1,simulationData%TrackingOptions%nObservations
           obs =>simulationData%TrackingOptions%Observations(nobs)
+          if ( obs%style .ne. 2 ) cycle
+          if (allocated(qSinkBuffer))deallocate(qSinkBuffer)
+          allocate(qSinkBuffer(obs%nCells))
           do n=1,obs%nCells
-            print *, flowModelData%SinkFlows(obs%cells(n))
+            qSinkBuffer(n) = flowModelData%SinkFlows(obs%cells(n))
           end do
+          write(qSinkFormat,*) '(1I10,', obs%nCells, 'es18.9e3)'
+          write(obs%flowRateUnit,qSinkFormat) nt, qSinkBuffer(:)
         end do
+
     end if
 
 
@@ -1248,9 +1261,9 @@
   
           ! Count how many records for each cell
           do n=1, obs%nCells
+            ! notice the index 3
             obs%nRecordsCell(n) = count(activeParticleCoordinates(:,3).eq.obs%cells(n))
           end do
-          print *, 'CELL HAS NRECORDS: ', obs%nRecordsCell
 
           ! Sort by time for each cell
           do n=1, obs%nCells
@@ -1264,7 +1277,8 @@
             lastrow = obs%nRecordsCell(n) + baserow
             do irow = 1, obs%nRecordsCell(n)
                srow = irow + baserow
-               krow = minloc( activeParticleCoordinates( srow:lastrow, 1 ), dim=1 ) + srow - 1 ! notice the index 1
+               ! notice the index 1
+               krow = minloc( activeParticleCoordinates( srow:lastrow, 1 ), dim=1 ) + srow - 1
                sbuffer( : ) = activeParticleCoordinates( srow, : )
                activeParticleCoordinates( srow, : ) = activeParticleCoordinates( krow, : )
                activeParticleCoordinates( krow, : ) = sbuffer( : )
@@ -1289,54 +1303,57 @@
           allocate(obsSinkFlowInTime(simulationData%TimePointCount, obs%nCells))
           obsSinkFlowInTime = 0d0
 
+          ! Fill flow-rate timeseries for each cell
+          rewind( obs%flowRateUnit ) 
+          do n =1, simulationData%TimePointCount
+            read(obs%flowRateUnit,*) timeIndex, obsSinkFlowInTime( n, : )
+          end do
+
           
-          ! Build sink flow-rate timeseries for each cell
-          do n=1, obs%nCells
-            ! If no records, nothing to do
-            if ( obs%nRecordsCell(n) .eq. 0 ) cycle
-            if ( n .gt. 1 ) then 
-                baserow = sum(obs%nRecordsCell(1:n-1))
-            else
-                baserow = 0
-            end if
-            lastrow = obs%nRecordsCell(n) + baserow
-
-            ! Build the timeseries
-            nit = 0
-            countTS = 1
-            obsSinkFlowInTime(1,n) = activeParticleCoordinates(baserow+1,2) ! The first flow rate, index 2
-            do while (countTS .lt. simulationData%TimePointCount )
-              nit = nit + 1 
-              irow = baserow + nit
-              if ( irow .gt. nlines ) exit
-              initialTime = activeParticleCoordinates(irow,1) ! Get the arrival time
-              if (& 
-                 ( initialTime .gt. simulationData%TimePoints(countTS) ) .and. & 
-                 ( initialTime .lt. simulationData%TimePoints(countTS+1) ) )  then
-                 ! If the current arrival now went by and  
-                 countTS = countTS + 1
-                 ! Remember to consider the case in which flow rate
-                 ! stopped at some point, it should remain as zero
-                 obsSinkFlowInTime(countTS,n) = activeParticleCoordinates(irow,2)
-              else if ( initialTime .gt. simulationData%TimePoints(countTS+1) )  then 
-                 ! This is to address the case in which the flow rate went 
-                 ! to zero at some point
-                 ! How many times higher ?
-                 ! Only works for a regular timeseries
-                 nTimesHigher = ceiling( (initialTime-simulationData%TimePoints(countTS+1))/dtObsSeries )
-                 countTS = countTS + nTimesHigher
-                 obsSinkFlowInTime(countTS,n) = activeParticleCoordinates(irow,2)
-              end if 
-            end do
-
-          end do  
-
+          !! Build sink flow-rate timeseries for each cell
+          !! Starting from qsink records in the obs file
+          !do n=1, obs%nCells
+          !  ! If no records, nothing to do
+          !  if ( obs%nRecordsCell(n) .eq. 0 ) cycle
+          !  if ( n .gt. 1 ) then 
+          !      baserow = sum(obs%nRecordsCell(1:n-1))
+          !  else
+          !      baserow = 0
+          !  end if
+          !  lastrow = obs%nRecordsCell(n) + baserow
+          !  ! Build the timeseries
+          !  nit = 0
+          !  countTS = 1
+          !  obsSinkFlowInTime(1,n) = activeParticleCoordinates(baserow+1,2) ! The first flow rate, index 2
+          !  do while (countTS .lt. simulationData%TimePointCount )
+          !    nit = nit + 1 
+          !    irow = baserow + nit
+          !    if ( irow .gt. nlines ) exit
+          !    initialTime = activeParticleCoordinates(irow,1) ! Get the arrival time
+          !    if (& 
+          !       ( initialTime .gt. simulationData%TimePoints(countTS) ) .and. & 
+          !       ( initialTime .lt. simulationData%TimePoints(countTS+1) ) )  then
+          !       ! If the current arrival now went by and  
+          !       countTS = countTS + 1
+          !       ! Remember to consider the case in which flow rate
+          !       ! stopped at some point, it should remain as zero
+          !       obsSinkFlowInTime(countTS,n) = activeParticleCoordinates(irow,2)
+          !    else if ( initialTime .gt. simulationData%TimePoints(countTS+1) )  then 
+          !       ! This is to address the case in which the flow rate went 
+          !       ! to zero at some point
+          !       ! How many times higher ?
+          !       ! Only works for a regular timeseries
+          !       nTimesHigher = ceiling( (initialTime-simulationData%TimePoints(countTS+1))/dtObsSeries )
+          !       countTS = countTS + nTimesHigher
+          !       obsSinkFlowInTime(countTS,n) = activeParticleCoordinates(irow,2)
+          !    end if 
+          !  end do
+          !end do  
           ! Still requires something better for flow-rates
           ! Notice that if no particles arrive at the cell, 
           ! then there are no records. In this case, 
           ! flow-rate will be marked as zero, when in 
           ! fact it may not be.
-
 
           ! Accumulate flow rates, absolute values 
           obsAccumSinkFlowInTime = sum( abs(obsSinkFlowInTime), dim=2 )
@@ -1361,18 +1378,19 @@
                 obsAccumSinkFlowInTime(nit), gpkde%densityEstimateGrid(nit,1,1), &
                 gpkde%densityEstimateGrid(nit,1,1)/obsAccumSinkFlowInTime(nit)
 
-                ! idTime, time, Mass-HIST, Mass-GPKDE, QSink, CFlux-HIST, CFlux-GPKDE
+                ! idTime, time, QSink, Mass-HIST, Mass-GPKDE, CFlux-HIST, CFlux-GPKDE
                 write(obs%outputUnit, '(1I8,7es18.9e3)') nit, simulationData%TimePoints(nit), &
-                      gpkde%densityEstimateGrid(nit,1,1), gpkde%densityEstimateGrid(nit,1,1), &
                       obsAccumSinkFlowInTime(nit), &
+                      gpkde%densityEstimateGrid(nit,1,1), gpkde%densityEstimateGrid(nit,1,1), &
                       gpkde%densityEstimateGrid(nit,1,1)/obsAccumSinkFlowInTime(nit), &
                       gpkde%densityEstimateGrid(nit,1,1)/obsAccumSinkFlowInTime(nit)
              else
                 ! No concentrations
-                ! idTime, time, Mass-HIST, Mass-GPKDE, 0d0, 0d0, 0d0
+                ! idTime, time, 0d0, Mass-HIST, Mass-GPKDE, 0d0, 0d0
                 write(obs%outputUnit, '(1I8,7es18.9e3)') nit, simulationData%TimePoints(nit), &
+                      0d0, &
                       gpkde%densityEstimateGrid(nit,1,1), gpkde%densityEstimateGrid(nit,1,1), &
-                      0d0, 0d0, 0d0
+                      0d0, 0d0
              end if 
           end do 
 
@@ -1395,6 +1413,9 @@
     if ( simulationData%TrackingOptions%observationSimulation ) then
         do n = 1, simulationData%TrackingOptions%nObservations
             close( simulationData%TrackingOptions%Observations(n)%outputUnit )
+            if ( simulationData%TrackingOptions%Observations(n)%style .eq. 2 ) then 
+              close( simulationData%TrackingOptions%Observations(n)%flowRateUnit )
+            end if 
         end do 
         ! And deallocate arrays of observation information
         call simulationData%TrackingOptions%Reset()

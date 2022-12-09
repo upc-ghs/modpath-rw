@@ -2228,7 +2228,8 @@ subroutine WriteObservationSinkCellRecord( this, groupIndex, particleID, trackCe
     doubleprecision     :: initialTime, finalTime
     !----------------------------------------------
 
-    ! Initial time and thats it
+    ! Arrival time, particle group and cell id
+    ! Flow rate is read during timeseries advance 
 
     initialTime = trackCell%TrackSubCell%TrackSubCellResult%InitialLocation%TrackingTime
     call this%Grid%ConvertToModelXYZ( trackCell%CellData%CellNumber,      &

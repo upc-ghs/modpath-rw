@@ -14,6 +14,8 @@ module ObservationModule
     integer                            :: timeOption
     character(len=300)                 :: outputFileName
     integer                            :: outputUnit
+    integer                            :: flowRateUnit
+    character(len=300)                 :: flowRateFileName
   end type
 
 
