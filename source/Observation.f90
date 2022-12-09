@@ -7,6 +7,7 @@ module ObservationModule
   type, public :: ObservationType
     integer, allocatable, dimension(:) :: cells
     integer                            :: nCells
+    integer, allocatable, dimension(:) :: nRecordsCell
     integer                            :: id
     integer                            :: style
     integer                            :: cellOption

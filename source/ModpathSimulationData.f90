@@ -830,6 +830,9 @@ contains
                   ! allocate array for cell ids
                   if ( allocated( obs%cells ) ) deallocate( obs%cells )
                   allocate( obs%cells(obs%nCells) )
+                  if ( allocated( obs%nRecordsCell ) ) deallocate( obs%nRecordsCell )
+                  allocate( obs%nRecordsCell(obs%nCells) )
+                  obs%nRecordsCell(:) = 0
 
                   ! Are these ids as (lay,row,col) or (cellid) ?
                   read(inUnit, '(a)', iostat=ioInUnit) line
