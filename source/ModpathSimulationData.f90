@@ -95,10 +95,11 @@ contains
   doubleprecision :: initialReleaseTime, releaseInterval
   doubleprecision,dimension(:),allocatable :: releaseTimes
   doubleprecision :: frac, r, tinc
-  character*24 aname(2)
+  character*24 aname(3)
   character(len=200) line
   DATA aname(1) /'              ZONE ARRAY'/
   DATA aname(2) /'                 RFACTOR'/
+  DATA aname(3) /'                OBSCELLS'/
 
   ! RWPT
   character(len=200) :: dispersionFile
@@ -110,7 +111,8 @@ contains
   character(len=100) :: tempChar
   integer :: layerCount, rowCount, columnCount
   type( ObservationType ), pointer :: obs => null()
-  integer :: readStyle, no, cellNumber, layer, row, column, cellCount
+  integer :: readStyle, no, cellNumber, layer, row, column, cellCount, ocount
+  integer,dimension(:),allocatable :: obsCells
 
   ! GPKDE
   character(len=200) :: gpkdeFile
@@ -752,7 +754,6 @@ contains
             ! Allocate observation arrays
             call this%TrackingOptions%InitializeObservations( nObservations )
 
-            print *, 'OBS: ', nObservations, ' observation cells.'
 
             ! It might be needed downstream
             layerCount = grid%LayerCount
@@ -802,6 +803,8 @@ contains
               call urword(line, icol, istart, istop, 2, n, r, 0, 0)
               obs%style = n 
 
+
+              ! Is the style that requires flow-rates ?
               if ( obs%style .eq. 2 ) then 
                 this%TrackingOptions%anySinkObservation = .true.
               end if 
@@ -813,9 +816,6 @@ contains
               icol = 1
               call urword(line, icol, istart, istop, 2, n, r, 0, 0)
               obs%cellOption = n 
-
-              print *, 'CELL DATA SO FAR: '
-              print *, obs%id, obs%outputFileName, obs%outputUnit, obs%style, obs%cellOption
 
 
               ! Load observation cells
@@ -861,18 +861,67 @@ contains
                       call ustop('Invalid observation kind. Stop.')
                   end if
 
-                ! In case 2, observation cells are given by specifying an array
-                ! with 0 (not observation) and 1 (observation) 
-                !case (2)
-                ! Read as a three dimensional array 
+                case (2)
+                  ! In case 2, observation cells are given by specifying a 3D array
+                  ! with 0 (not observation) and 1 (observation) 
+
+                  ! Required for u3d
+                  if(allocated(obsCells)) deallocate(obsCells)
+                  allocate(obsCells(grid%CellCount))
+                  obsCells(:) = 0
+               
+                  ! OBSCELLS
+                  if((grid%GridType .eq. 1) .or. (grid%GridType .eq. 3)) then
+                      call u3dintmp(inUnit, outUnit, grid%LayerCount, grid%RowCount,      &
+                        grid%ColumnCount, grid%CellCount, obsCells, aname(3))                      
+                  else if((grid%GridType .eq. 2) .or. (grid%GridType .eq. 4)) then
+                      call u3dintmpusg(inUnit, outUnit, grid%CellCount, grid%LayerCount,  &
+                        obsCells, aname(3), cellsPerLayer)
+                  else
+                      write(outUnit,*) 'Invalid grid type specified when reading OBSCELLS array data.'
+                      write(outUnit,*) 'Stopping.'
+                      call ustop(' ')          
+                  end if
+
+                  ! Count how many obs cells specified 
+                  obs%nCells = count(obsCells/=0)
+
+                  if ( obs%nCells .eq. 0 ) then 
+                    write(outUnit,*) 'No observation cells in the array of cells for observation:', obs%id
+                    write(outUnit,*) 'Stopping.'
+                    call ustop('No observation cells in the array of cells. Stop.')
+                  end if
+
+                  ! Depending on the number of cells 
+                  ! allocate array for cell ids
+                  if ( allocated( obs%cells ) ) deallocate( obs%cells )
+                  allocate( obs%cells(obs%nCells) )
+                  if ( allocated( obs%nRecordsCell ) ) deallocate( obs%nRecordsCell )
+                  allocate( obs%nRecordsCell(obs%nCells) )
+                  obs%nRecordsCell(:) = 0
+
+                  ! Fill obs%cells with the corresponding cell numbers
+                  ocount = 0
+                  do n =1,grid%CellCount
+                    if(obsCells(n).eq.0) cycle
+                    ocount = ocount + 1
+                    obs%cells(ocount) = n 
+                  end do
+
+                  ! Clean
+                  deallocate( obsCells )
+                  deallocate( cellsPerLayer )
+ 
                 case default
                     call ustop('Invalid observation cells reading option. Stop.')
+
               end select
+
 
               ! Assign into id arrays
               do no =1, obs%nCells
                 this%TrackingOptions%isObservation(obs%cells(no)) = .true.
-                !this%TrackingOptions%idObservation(obs%cells(no)) = obs%id
+                ! The id on the list of cells !
                 this%TrackingOptions%idObservation(obs%cells(no)) = nc
               end do
 
@@ -884,10 +933,10 @@ contains
               call urword(line, icol, istart, istop, 2, n, r, 0, 0)
               obs%timeOption = n 
 
+
               ! Timeoption determine from where 
               ! to obtain the timeseries considered for 
               ! reconstruction
-
               select case(obs%timeOption)
                 case(1)
                   ! Get it from the timeseries run 
@@ -907,27 +956,13 @@ contains
               end select
 
 
-
-
-              !! Probably will be deprecated
-              !this%TrackingOptions%observationCells( nc ) = n
-              !this%TrackingOptions%obsRecordCounts( nc ) = 0
-              !! 5500 is just to move to a known place of id units, improve
-              !this%TrackingOptions%observationUnits( nc ) = 5500 + nc
-              !! Write the cell ID
-              !write( unit=tempChar, fmt=* )this%TrackingOptions%observationCells( nc )
-              !! Write the output file name
-              !write( unit=this%TrackingOptions%observationFiles( nc ), fmt='(a)' )'cell_'//trim(adjustl(tempChar))//'.obs'
-
               print *, '------------------------------------------------'
               print *, 'OBSID : ', obs%id
               print *, 'NCELLS: ', obs%nCells
               print *, 'CELLS : '
               print *, '    ' , obs%cells
-            end do 
 
-            print *, 'EARLY END ! ' 
-            !call exit(0)
+            end do 
 
 
             ! Depending on the simulation kind initialize observation file as 
