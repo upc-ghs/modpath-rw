@@ -792,9 +792,9 @@ contains
               call urword(obs%outputFileName,icol,istart,istop,0,n,r,0,0)
               obs%outputFileName = obs%outputFileName(istart:istop)
               obs%outputUnit     = 5500 + nc
-              obs%flowRateUnit   = 6600 + nc
-              tempChar = 'temp'
-              write( unit=obs%flowRateFileName, fmt='(a)')&
+              obs%auxOutputUnit  = 7700 + nc
+              tempChar           = 'temp'
+              write( unit=obs%auxOutputFileName, fmt='(a)')&
                   trim(adjustl(tempChar))//'_'//trim(adjustl(obs%outputFileName))
 
               ! Read observation style (sink obs, normal count of particles obs)

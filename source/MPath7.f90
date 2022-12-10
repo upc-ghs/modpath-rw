@@ -124,6 +124,10 @@
     doubleprecision, allocatable, dimension(:)   :: obsAccumSinkFlowInTime ! (ntimes)
     doubleprecision, allocatable, dimension(:)   :: qSinkBuffer
     character(len=200) :: qSinkFormat
+    doubleprecision    :: obsAccumPorousVolume, dX, dY, dZ, porosity
+    doubleprecision    :: modelX, modelY
+    integer            :: sequenceNumber, timePointIndex, timeStep
+
 
     ! Parallel variables
     integer :: ompNumThreads
@@ -637,11 +641,18 @@
             open( unit=simulationData%TrackingOptions%Observations(n)%outputUnit, &
                   file=simulationData%TrackingOptions%Observations(n)%outputFileName,& 
                   status='replace', form='formatted', access='sequential')
+            ! For a normal observation
+            if ( simulationData%TrackingOptions%Observations(n)%style .eq. 1 )  then 
+              ! Remember to replace by binary once in production
+              open( unit=simulationData%TrackingOptions%Observations(n)%auxOutputUnit, &
+                    file=simulationData%TrackingOptions%Observations(n)%auxOutputFileName,& 
+                    status='replace', form='formatted', access='sequential')
+            end if
             ! For a sink observation
             if ( simulationData%TrackingOptions%Observations(n)%style .eq. 2 )  then 
               ! Remember to replace by binary once in production
-              open( unit=simulationData%TrackingOptions%Observations(n)%flowRateUnit, &
-                    file=simulationData%TrackingOptions%Observations(n)%flowRateFileName,& 
+              open( unit=simulationData%TrackingOptions%Observations(n)%auxOutputUnit, &
+                    file=simulationData%TrackingOptions%Observations(n)%auxOutputFileName,& 
                     status='replace', form='formatted', access='sequential')
             end if
             !open( unit=simulationData%TrackingOptions%observationUnits(n),     &
@@ -854,7 +865,7 @@
             !$omp private( trackPathResult, status )         &
             !$omp private( timeseriesRecordWritten )         &
             !$omp private( ompThreadId )                     &
-            !$omp private( cellDataBuffer )                  &
+            !$omp private( cellDataBuffer, obs, nobs )       &
             !$omp firstprivate( trackingEngine )             &
             !$omp firstprivate( WriteTimeseries )            &
             !$omp reduction( +:pendingCount )                &
@@ -1011,6 +1022,25 @@
                                             timeseriesRecordCounts, timeseriesTempUnits  )
                             end if 
                             timeseriesRecordWritten = .true. ! ?
+                            
+                            ! Normal observations
+                            if ( &
+                              simulationData%TrackingOptions%isObservation(pCoordTP%CellNumber) ) then 
+                              obs => simulationData%TrackingOptions%Observations(&
+                                  simulationData%TrackingOptions%idObservation(pCoordTP%CellNumber) )
+                              if ( obs%style .eq. 1 ) then  
+                                do nobs=1,obs%nCells
+                                  if( obs%cells(nobs) .ne. pCoordTP%CellNumber ) cycle
+                                  ! If it is part of the cells in the obs, write
+                                  ! record to auxOutputUnit
+                                  call WriteTimeseriesRecordCritical(& 
+                                      p%SequenceNumber, p%ID, groupIndex, ktime, &
+                                        nt, pCoordTP, geoRef, obs%auxOutputUnit, & 
+                                    timeseriesRecordCounts, timeseriesTempUnits  )
+                                end do 
+                              end if
+                            end if
+
                         end if
                     end if
                 end if
@@ -1040,13 +1070,32 @@
                                         ktime, nt, pCoord, geoRef, timeseriesUnit, &
                                         timeseriesRecordCounts, timeseriesTempUnits)
                       end if
+
+                      ! Normal observations
+                      if ( &
+                        simulationData%TrackingOptions%isObservation(pCoordTP%CellNumber) ) then 
+                        obs => simulationData%TrackingOptions%Observations(&
+                            simulationData%TrackingOptions%idObservation(pCoordTP%CellNumber) )
+                        if ( obs%style .eq. 1 ) then  
+                          do nobs=1,obs%nCells
+                            if( obs%cells(nobs) .ne. pCoordTP%CellNumber ) cycle
+                            ! If it is part of the cells in the obs, write
+                            ! record to auxOutputUnit
+                            call WriteTimeseriesRecordCritical(& 
+                                p%SequenceNumber, p%ID, groupIndex, ktime, &
+                                  nt, pCoordTP, geoRef, obs%auxOutputUnit, & 
+                              timeseriesRecordCounts, timeseriesTempUnits  )
+                          end do 
+                        end if
+                      end if
+
                 end if
 
             end do
             !$omp end parallel do
 
 
-            ! GPKDE for the current groupIndex
+            ! Spatial GPKDE for the current groupIndex
             if ( simulationData%TrackingOptions%GPKDEReconstruction .and. isTimeSeriesPoint ) then
 
                 ! Count how many active after trackpath, not necessarilly the same 
@@ -1109,7 +1158,7 @@
             qSinkBuffer(n) = flowModelData%SinkFlows(obs%cells(n))
           end do
           write(qSinkFormat,*) '(1I10,', obs%nCells, 'es18.9e3)'
-          write(obs%flowRateUnit,qSinkFormat) nt, qSinkBuffer(:)
+          write(obs%auxOutputUnit,qSinkFormat) nt, qSinkBuffer(:)
         end do
 
     end if
@@ -1178,10 +1227,13 @@
     ! Write particle summary information
     call WriteParticleSummaryInfo(simulationData, mplistUnit)
    
-
     ! RWPT
-    ! Process observation sink cells for reconstruction
-    if ( simulationData%TrackingOptions%anySinkObservation ) then
+    ! Process observation cells for reconstruction
+    if ( simulationData%TrackingOptions%observationSimulation ) then
+
+    !! RWPT
+    !! Process observation sink cells for reconstruction
+    !if ( simulationData%TrackingOptions%anySinkObservation ) then
 
       ! If so, reset gpkde
       call ulog('Reset and reinitialize GPKDE for observation cells ', logUnit)
@@ -1190,6 +1242,123 @@
       ! Loop over observations
       do nobs=1, simulationData%TrackingOptions%nObservations
         obs => simulationData%TrackingOptions%Observations(nobs)
+
+        ! If this is a normal obs cell
+        if ( obs%style .eq. 1 ) then 
+
+          !! DEPENDING ON THE TIMESERIES SPECS 
+          ! The length of the timeseries is needed
+
+          ! This would work only for timeseries simulations
+          !simulationData%TimePointCount ! domainSize 
+          dTObsSeries = simulationData%TimePoints(2)-simulationData%TimePoints(1)  ! binSize
+
+          ! Consider irregular binsize GPKDE Reconstruction
+
+          ! If no timeseries run, it would be possible to 
+          ! create an histogram based on stoptime for example 
+          ! and given number of bins. Still, this 
+          ! should probably be done before, while reading
+          ! simulation data, in order to force a timeseries
+          ! run, hand craft a timeseries sim writing records
+          ! at the specified times
+
+          ! Initialize gpkde for timeseries reconstruction
+          call gpkde%Initialize(& 
+              (/maxval(simulationData%TimePoints(:)),0d0,0d0/),                  &
+              (/dtObsSeries,0d0,0d0/),                                           &
+              domainOrigin=(/simulationData%ReferenceTime,0d0,0d0/),             &
+              nOptimizationLoops=simulationData%TrackingOptions%gpkdeNOptLoops,  &
+              databaseOptimization=.false.                                       &
+          )
+
+          ! Then read the observation file
+          ! and pass it to gpkde for reconstruction
+      
+          ! It needs some obs record count or something
+          rewind( obs%auxOutputUnit )
+          nlines = 0
+          do
+            read(obs%auxOutputUnit,*,iostat=io)
+            if (io/=0) exit
+            nlines = nlines + 1
+          end do
+
+          ! Allocate active particles coordinates (temporary)
+          if ( allocated( activeParticleCoordinates ) ) deallocate( activeParticleCoordinates )
+          allocate( activeParticleCoordinates(nlines,1) )
+          activeParticleCoordinates = 0d0
+
+          ! Load file records into array
+          rewind( obs%auxOutputUnit )
+          do n = 1, nlines
+              ! Read from obs file
+              ! Based on TS record, it could be reduced 
+              read( obs%auxOutputUnit, '(2I8,es18.9e3,i10,i5,2i10,6es18.9e3,i10)')          &
+                timePointIndex, timeStep, initialTime, sequenceNumber, groupIndex,  &
+                particleID, pCoord%CellNumber, pCoord%LocalX, pCoord%LocalY, pCoord%LocalZ, &
+                modelX, modelY, pCoord%GlobalZ, pCoord%Layer
+              ! Needs some kind of understanding of the particle group, and that it
+              ! means another solute ( column? )
+              activeParticleCoordinates(n,1) = initialTime 
+          end do 
+
+
+          ! Timeseries reconstruction    
+          call gpkde%ComputeDensity(                                              &
+             activeParticleCoordinates,                                           &
+             outputFileUnit     = simulationData%TrackingOptions%gpkdeOutputUnit, & ! NO OUTPUT UNIT
+             outputDataId       = nt+1,                                           & ! FOR NOW THE LAST TIME ID+1
+             particleGroupId    = groupIndex                                      & 
+          )
+
+          ! Accumulate volumes
+          ! Compute porous volume for each cell in the 
+          ! observation and add them for writing the 
+          ! observation record. 
+          ! Assume perfectly saturated cell for all times and 
+          ! volume is computed with dZ = Top - Bottom
+          obsAccumPorousVolume = 0d0
+          do n=1, obs%nCells
+            dX       = modelGrid%DelX(obs%cells(n))
+            dY       = modelGrid%DelY(obs%cells(n))
+            dZ       = abs(modelGrid%Top(obs%cells(n))-modelGrid%Bottom(obs%cells(n)))
+            porosity = flowModelData%Porosity(obs%cells(n))
+            obsAccumPorousVolume = & 
+               obsAccumPorousVolume + dX*dY*dZ*porosity 
+          end do 
+
+          ! Once the accumulated porous volume is known, compute resident
+          ! concentration
+
+          ! Apply the logic to determine where to write the obs records
+          ! Case 1: write to the same file as before: close it, open again and dump
+          close( obs%outputUnit )
+          open( unit=obs%outputUnit, &
+                file=obs%outputFileName,& 
+                status='replace', form='formatted', access='sequential')
+          ! Case 2: close the previous file and open a new one using the same
+          ! unit number for the obs, but with a different filename: keep the arrival records
+         
+
+          ! And write
+          ! Remember to decide what to do for different species, pgroups (?)
+          if ( obsAccumPorousVolume .ne. 0d0 ) then 
+            do nit = 1, simulationData%TimePointCount
+              ! idTime, time, Mass-HIST, Mass-GPKDE, CFlux-HIST, CFlux-GPKDE
+              write(obs%outputUnit, '(1I8,6es18.9e3)') nit, simulationData%TimePoints(nit), &
+                    gpkde%densityEstimateGrid(nit,1,1), gpkde%densityEstimateGrid(nit,1,1), &
+                    gpkde%densityEstimateGrid(nit,1,1)/obsAccumPorousVolume,                &
+                    gpkde%densityEstimateGrid(nit,1,1)/obsAccumPorousVolume
+            end do 
+          end if 
+
+          ! And reset gpkde 
+          call gpkde%Reset()
+
+
+        end if ! If obs%style.eq.1
+
 
         ! If this is is a sink obs cell
         if ( obs%style .eq. 2 ) then 
@@ -1248,44 +1417,6 @@
           end do 
 
 
-          !! Sort by cell number
-          !! This could be avoided if data is 
-          !! alredy distributed in different
-          !! units, one for each cell in the obs
-          !do irow = 1, nlines
-          !   krow = minloc( activeParticleCoordinates( irow:nlines, 3 ), dim=1 ) + irow - 1 ! notice the index 3
-          !   sbuffer( : ) = activeParticleCoordinates( irow, : )
-          !   activeParticleCoordinates( irow, : ) = activeParticleCoordinates( krow, : )
-          !   activeParticleCoordinates( krow, : ) = sbuffer( : )
-          !enddo
-  
-          !! Count how many records for each cell
-          !do n=1, obs%nCells
-          !  ! notice the index 3
-          !  obs%nRecordsCell(n) = count(activeParticleCoordinates(:,3).eq.obs%cells(n))
-          !end do
-
-          !! Sort by time for each cell
-          !do n=1, obs%nCells
-          !  ! If no records, nothing to do
-          !  if ( obs%nRecordsCell(n) .eq. 0 ) cycle
-          !  if ( n .gt. 1 ) then 
-          !      baserow = sum(obs%nRecordsCell(1:n-1))
-          !  else
-          !      baserow = 0
-          !  end if
-          !  lastrow = obs%nRecordsCell(n) + baserow
-          !  do irow = 1, obs%nRecordsCell(n)
-          !     srow = irow + baserow
-          !     ! notice the index 1
-          !     krow = minloc( activeParticleCoordinates( srow:lastrow, 1 ), dim=1 ) + srow - 1
-          !     sbuffer( : ) = activeParticleCoordinates( srow, : )
-          !     activeParticleCoordinates( srow, : ) = activeParticleCoordinates( krow, : )
-          !     activeParticleCoordinates( krow, : ) = sbuffer( : )
-          !  enddo
-          !end do
-       
-
           ! Timeseries reconstruction    
           call gpkde%ComputeDensity(                                              &
              activeParticleCoordinates,                                           &
@@ -1304,56 +1435,10 @@
           obsSinkFlowInTime = 0d0
 
           ! Fill flow-rate timeseries for each cell
-          rewind( obs%flowRateUnit ) 
+          rewind( obs%auxOutputUnit ) 
           do n =1, simulationData%TimePointCount
-            read(obs%flowRateUnit,*) timeIndex, obsSinkFlowInTime( n, : )
+            read(obs%auxOutputUnit,*) timeIndex, obsSinkFlowInTime( n, : )
           end do
-
-          
-          !! Build sink flow-rate timeseries for each cell
-          !! Starting from qsink records in the obs file
-          !do n=1, obs%nCells
-          !  ! If no records, nothing to do
-          !  if ( obs%nRecordsCell(n) .eq. 0 ) cycle
-          !  if ( n .gt. 1 ) then 
-          !      baserow = sum(obs%nRecordsCell(1:n-1))
-          !  else
-          !      baserow = 0
-          !  end if
-          !  lastrow = obs%nRecordsCell(n) + baserow
-          !  ! Build the timeseries
-          !  nit = 0
-          !  countTS = 1
-          !  obsSinkFlowInTime(1,n) = activeParticleCoordinates(baserow+1,2) ! The first flow rate, index 2
-          !  do while (countTS .lt. simulationData%TimePointCount )
-          !    nit = nit + 1 
-          !    irow = baserow + nit
-          !    if ( irow .gt. nlines ) exit
-          !    initialTime = activeParticleCoordinates(irow,1) ! Get the arrival time
-          !    if (& 
-          !       ( initialTime .gt. simulationData%TimePoints(countTS) ) .and. & 
-          !       ( initialTime .lt. simulationData%TimePoints(countTS+1) ) )  then
-          !       ! If the current arrival now went by and  
-          !       countTS = countTS + 1
-          !       ! Remember to consider the case in which flow rate
-          !       ! stopped at some point, it should remain as zero
-          !       obsSinkFlowInTime(countTS,n) = activeParticleCoordinates(irow,2)
-          !    else if ( initialTime .gt. simulationData%TimePoints(countTS+1) )  then 
-          !       ! This is to address the case in which the flow rate went 
-          !       ! to zero at some point
-          !       ! How many times higher ?
-          !       ! Only works for a regular timeseries
-          !       nTimesHigher = ceiling( (initialTime-simulationData%TimePoints(countTS+1))/dtObsSeries )
-          !       countTS = countTS + nTimesHigher
-          !       obsSinkFlowInTime(countTS,n) = activeParticleCoordinates(irow,2)
-          !    end if 
-          !  end do
-          !end do  
-          ! Still requires something better for flow-rates
-          ! Notice that if no particles arrive at the cell, 
-          ! then there are no records. In this case, 
-          ! flow-rate will be marked as zero, when in 
-          ! fact it may not be.
 
           ! Accumulate flow rates, absolute values 
           obsAccumSinkFlowInTime = sum( abs(obsSinkFlowInTime), dim=2 )
@@ -1374,10 +1459,6 @@
           ! Remember to decide what to do for different species, pgroups (?)
           do nit = 1, simulationData%TimePointCount
              if ( obsAccumSinkFlowInTime(nit) .gt. 0d0 ) then 
-                print *, 'nit:', simulationData%TimePoints(nit), obsSinkFlowInTime(nit,:), &
-                obsAccumSinkFlowInTime(nit), gpkde%densityEstimateGrid(nit,1,1), &
-                gpkde%densityEstimateGrid(nit,1,1)/obsAccumSinkFlowInTime(nit)
-
                 ! idTime, time, QSink, Mass-HIST, Mass-GPKDE, CFlux-HIST, CFlux-GPKDE
                 write(obs%outputUnit, '(1I8,7es18.9e3)') nit, simulationData%TimePoints(nit), &
                       obsAccumSinkFlowInTime(nit), &
@@ -1394,12 +1475,11 @@
              end if 
           end do 
 
-
           ! And reset gpkde 
           call gpkde%Reset()
 
-
         end if ! If obs%style.eq.2
+
 
       end do ! obsLoop
 
@@ -1413,8 +1493,11 @@
     if ( simulationData%TrackingOptions%observationSimulation ) then
         do n = 1, simulationData%TrackingOptions%nObservations
             close( simulationData%TrackingOptions%Observations(n)%outputUnit )
+            if ( simulationData%TrackingOptions%Observations(n)%style .eq. 1 ) then 
+              close( simulationData%TrackingOptions%Observations(n)%auxOutputUnit )
+            end if 
             if ( simulationData%TrackingOptions%Observations(n)%style .eq. 2 ) then 
-              close( simulationData%TrackingOptions%Observations(n)%flowRateUnit )
+              close( simulationData%TrackingOptions%Observations(n)%auxOutputUnit )
             end if 
         end do 
         ! And deallocate arrays of observation information
