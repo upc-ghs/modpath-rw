@@ -45,7 +45,7 @@ Three different output protocols for timeseries running in parallel have been im
 - ``-tsoutput 3``: timeseries records are written into thread specific output units. Timeseries file header is only written to output unit related to the first thread ``1_example.timeseries``. Initial particle positions are also written to the file of the first thread.
 
 ## Contributing
-[Contribution guidelines for this project](readme/CONTRIBUTING.md)
+Follow the [contribution guidelines](readme/CONTRIBUTING.md) for this project.
 
 ## License
 MIT License
