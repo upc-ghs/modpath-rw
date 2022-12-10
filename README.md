@@ -1,7 +1,8 @@
 # modpath-rw
-MODPATH-RW is an extension of MODPATH version 7 implementing particles displacement based on the Random Walk Particle Tracking (RWPT) method. 
+A Random Walk Particle Tracking Code for Solute Transport in Heterogeneous Aquifers
 
-Code is built on top of MODPATH-OMP, so it can displace particles in parallel emplying the OpenMP library. 
+## Overview
+MODPATH-RW is an extension of MODPATH version 7 implementing particles displacement based on the Random Walk Particle Tracking (RWPT) method. Code is built on top of MODPATH-OMP, so it can displace particles in parallel with the OpenMP library. 
 
 ## Compilation
 Download source code and access the `make` folder. Here execute one of the makefiles with
@@ -43,6 +44,9 @@ Three different output protocols for timeseries running in parallel have been im
 - ``-tsoutput 2``: timeseries records are written into thread specific binary units and then consolidated into a single file after each timeseries output time. Timeseries file generated with this format does not contains a file header.
 - ``-tsoutput 3``: timeseries records are written into thread specific output units. Timeseries file header is only written to output unit related to the first thread ``1_example.timeseries``. Initial particle positions are also written to the file of the first thread.
 
+## Contributing
+[Contribution guidelines for this project](readme/CONTRIBUTING.md)
+
 ## License
 MIT License
 
@@ -50,7 +54,7 @@ MIT License
 
 * [MODPATH](https://www.usgs.gov/software/modpath-particle-tracking-model-modflow)
 * [Central modpath-v7 repository](https://github.com/MODFLOW-USGS/modpath-v7)
-* [modpath-omp](https://github.com/MARSoluT/modpath-omp)
+* [MODPATH-OMP](https://github.com/MARSoluT/modpath-omp)
 * [gfortran](https://gcc.gnu.org/wiki/GFortran)
 * [OpenMP](https://www.openmp.org/)
 * [Intel oneApi HPC toolkit](https://www.intel.com/content/www/us/en/developer/tools/oneapi/hpc-toolkit.html)
