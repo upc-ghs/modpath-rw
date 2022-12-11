@@ -42,7 +42,8 @@ module ModpathSimulationDataModule
     character(len=200) :: TimeseriesFile
     character(len=200) :: TraceFile
     character(len=200) :: AdvectiveObservationsFile
-    character(len=200) :: DispersionFile ! RWPT
+    character(len=200) :: DispersionFile          ! RWPT
+    logical            :: isRWSimulation =.false. ! RWPT
     integer,dimension(:),allocatable :: BudgetCells
     integer,dimension(:),allocatable :: Zones
     doubleprecision,dimension(:),allocatable :: Retardation
@@ -266,6 +267,7 @@ contains
             call urword(this%AdvectiveObservationsFile, icol, istart, istop, 0, n, r,0,0)
             this%AdvectiveObservationsFile = this%AdvectiveObservationsFile(istart:istop)
           end if
+          this%isRWSimulation = .true.
       case(6)
           write(outUnit,'(A,I2,A)') 'RWPT with Pathline and Timeseries Analysis (Simulation type =', this%SimulationType, ')'
           read(inUnit, '(a)') this%EndpointFile
@@ -286,12 +288,14 @@ contains
             call urword(this%AdvectiveObservationsFile, icol, istart, istop, 0, n, r,0,0)
             this%AdvectiveObservationsFile = this%AdvectiveObservationsFile(istart:istop)
           end if
+          this%isRWSimulation = .true.
       case(7)
           write(outUnit,'(A,I2,A)') 'RWPT Endpoint Analysis (Simulation type =', this%SimulationType, ')'
           read(inUnit, '(a)') this%EndpointFile
           icol = 1
           call urword(this%EndpointFile,icol,istart,istop,0,n,r,0,0)
           this%EndpointFile = this%EndpointFile(istart:istop)
+          this%isRWSimulation = .true.
       case default
           call ustop('Invalid simulation type. Stop.')
   end select
@@ -550,7 +554,16 @@ contains
       write(outUnit, '(a,i4,a,i10,a)') 'Particle group ', n, ' contains ',      &
         this%ParticleGroups(n)%TotalParticleCount, ' particles.'
       particleCount = particleCount + this%ParticleGroups(n)%TotalParticleCount
+
+      ! RWPT
+      if ( this%isRWSimulation ) then 
+        ! Read group mass, is a proxy for concentrations
+        ! when mass is uniform for a pgroup
+        read(inUnit, *) this%ParticleGroups(n)%Mass
+      end if
+
     end do
+
     this%TotalParticleCount = particleCount
     write(outUnit, '(a,i10)') 'Total number of particles = ', this%TotalParticleCount
     write(outUnit, *)
@@ -584,7 +597,9 @@ contains
          (this%SimulationType .eq. 6) .or. & 
          (this%SimulationType .eq. 7) ) then
 
-        ! Identify the simulation 
+        ! Identify the simulation, used in trackingEngine and probably
+        ! in more places. Is not the same as isRWSimulation for 
+        ! reading mass from pgroups reading 
         this%TrackingOptions%RandomWalkParticleTracking = .true.
 
         ! Open the dispersion data file
