@@ -1096,6 +1096,11 @@
 
 
             ! Spatial GPKDE for the current groupIndex
+            ! This directly relate GPKDE reconstruction with a given 
+            ! group, however, multiple groups could be of the same solute kind.
+            ! This means that GPDKE could be performed after displacing all
+            ! pgroups, integrating data from common solutes into a single
+            ! reconstruction
             if ( simulationData%TrackingOptions%GPKDEReconstruction .and. isTimeSeriesPoint ) then
 
                 ! Count how many active after trackpath, not necessarilly the same 
@@ -1127,12 +1132,23 @@
                     end if
                 end do
 
+                ! GPKDE for mass distribution
+                ! Link particles mass to particleGroup mass
                 call gpkde%ComputeDensity(                                              &
                    activeParticleCoordinates,                                           &
                    outputFileUnit     = simulationData%TrackingOptions%gpkdeOutputUnit, &
                    outputDataId       = nt,                                             &
-                   particleGroupId    = groupIndex                                      & 
+                   particleGroupId    = groupIndex,                                     &
+                   unitVolume         = .true.,                                         &
+                   scalingFactor      = simulationData%ParticleGroups(groupIndex)%Mass  &
                 )
+               
+
+                ! And needs volume correction for 
+                ! cells, considering porosities and so on
+                ! It would work only for structured grids
+                ! sharing the same discretization than GPKDE
+
 
             end if
 
@@ -1301,9 +1317,11 @@
 
 
           ! Timeseries reconstruction    
-          call gpkde%ComputeDensity(     &
-              activeParticleCoordinates, &
-                     unitVolume = .true. )
+          call gpkde%ComputeDensity(                                                &
+            activeParticleCoordinates,                                              &
+            unitVolume = .true.,                                                    &
+            scalingFactor = simulationData%ParticleGroups(groupIndex)%Mass,         & 
+            histogramScalingFactor = simulationData%ParticleGroups(groupIndex)%Mass )
 
 
           ! Accumulate volumes
@@ -1341,9 +1359,9 @@
           if ( obsAccumPorousVolume .ne. 0d0 ) then 
             do nit = 1, simulationData%TimePointCount
               ! idTime, time, Mass-HIST, Mass-GPKDE, CFlux-HIST, CFlux-GPKDE
-              write(obs%outputUnit, '(1I8,6es18.9e3)') nit, simulationData%TimePoints(nit),&
-                    1d0*gpkde%histogram%counts(nit,1,1), gpkde%densityEstimateGrid(nit,1,1),   &
-                    1d0*gpkde%histogram%counts(nit,1,1)/obsAccumPorousVolume,                  &
+              write(obs%outputUnit, '(1I8,6es18.9e3)') nit, simulationData%TimePoints(nit),    &
+                    gpkde%rawDensityEstimateGrid(nit,1,1), gpkde%densityEstimateGrid(nit,1,1), &
+                    gpkde%rawDensityEstimateGrid(nit,1,1)/obsAccumPorousVolume,                &
                     gpkde%densityEstimateGrid(nit,1,1)/obsAccumPorousVolume
             end do 
           end if 
@@ -1413,9 +1431,11 @@
 
 
           ! Timeseries reconstruction
-          call gpkde%ComputeDensity(     &
-              activeParticleCoordinates, &
-                     unitVolume = .true. )
+          call gpkde%ComputeDensity(                                                &
+            activeParticleCoordinates,                                              &
+            unitVolume = .true.,                                                    &
+            scalingFactor = simulationData%ParticleGroups(groupIndex)%Mass,         & 
+            histogramScalingFactor = simulationData%ParticleGroups(groupIndex)%Mass )
     
 
           ! Flow rates were written to obs file
@@ -1459,8 +1479,8 @@
                 ! idTime, time, QSink, Mass-HIST, Mass-GPKDE, CFlux-HIST, CFlux-GPKDE
                 write(obs%outputUnit, '(1I8,7es18.9e3)') nit, simulationData%TimePoints(nit), &
                       obsAccumSinkFlowInTime(nit), &
-                      1d0*gpkde%histogram%counts(nit,1,1), gpkde%densityEstimateGrid(nit,1,1), &
-                      1d0*gpkde%histogram%counts(nit,1,1)/obsAccumSinkFlowInTime(nit), &
+                      gpkde%rawDensityEstimateGrid(nit,1,1), gpkde%densityEstimateGrid(nit,1,1), &
+                      gpkde%rawDensityEstimateGrid(nit,1,1)/obsAccumSinkFlowInTime(nit), &
                       gpkde%densityEstimateGrid(nit,1,1)/obsAccumSinkFlowInTime(nit)
              else
                 ! No concentrations

@@ -18,6 +18,9 @@ module ParticleGroupModule
     integer,private :: ReleaseOption = 1
     doubleprecision,private :: ReleaseInterval = 0.0d0
     doubleprecision,dimension(:),allocatable,private :: ReleaseTimes
+    ! RWPT
+    doubleprecision :: Mass   = 1d0
+    integer         :: Solute = 0
   contains
     procedure :: GetSingleReleaseParticleCount=>pr_GetSingleReleaseParticleCount
     procedure :: GetParticleCount=>pr_GetParticleCount

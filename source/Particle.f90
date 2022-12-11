@@ -13,8 +13,11 @@ type,public :: ParticleType
   ! GPKDE-RECONSTRUCTION
   doubleprecision :: GlobalX, GlobalY
   ! RWPT
-  doubleprecision :: Mass
+  doubleprecision :: Mass   = 1d0
+  integer         :: Solute = 0
+  ! may be deprecated
   doubleprecision :: DAqueous
+
 end type
 
 
