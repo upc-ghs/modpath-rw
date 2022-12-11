@@ -868,6 +868,7 @@ contains
                       call ustop('Invalid observation kind. Stop.')
                   end if
 
+
                 case (2)
                   ! In case 2, observation cells are given by specifying a 3D array
                   ! with 0 (not observation) and 1 (observation) 
@@ -915,11 +916,9 @@ contains
                     obs%cells(ocount) = n 
                   end do
 
-                  ! Clean
-                  deallocate( obsCells )
-                  deallocate( cellsPerLayer )
- 
+
                 case default
+                    ! Invalid option
                     call ustop('Invalid observation cells reading option. Stop.')
 
               end select

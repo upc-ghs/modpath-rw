@@ -1231,10 +1231,6 @@
     ! Process observation cells for reconstruction
     if ( simulationData%TrackingOptions%observationSimulation ) then
 
-    !! RWPT
-    !! Process observation sink cells for reconstruction
-    !if ( simulationData%TrackingOptions%anySinkObservation ) then
-
       ! If so, reset gpkde
       call ulog('Reset and reinitialize GPKDE for observation cells ', logUnit)
       call gpkde%Reset()
@@ -1246,11 +1242,10 @@
         ! If this is a normal obs cell
         if ( obs%style .eq. 1 ) then 
 
-          !! DEPENDING ON THE TIMESERIES SPECS 
           ! The length of the timeseries is needed
 
           ! This would work only for timeseries simulations
-          !simulationData%TimePointCount ! domainSize 
+          ! with regular timestep definition
           dTObsSeries = simulationData%TimePoints(2)-simulationData%TimePoints(1)  ! binSize
 
           ! Consider irregular binsize GPKDE Reconstruction
@@ -1289,6 +1284,7 @@
           allocate( activeParticleCoordinates(nlines,1) )
           activeParticleCoordinates = 0d0
 
+
           ! Load file records into array
           rewind( obs%auxOutputUnit )
           do n = 1, nlines
@@ -1305,12 +1301,8 @@
 
 
           ! Timeseries reconstruction    
-          call gpkde%ComputeDensity(                                              &
-             activeParticleCoordinates,                                           &
-             outputFileUnit     = simulationData%TrackingOptions%gpkdeOutputUnit, & ! NO OUTPUT UNIT
-             outputDataId       = nt+1,                                           & ! FOR NOW THE LAST TIME ID+1
-             particleGroupId    = groupIndex                                      & 
-          )
+          call gpkde%ComputeDensity(activeParticleCoordinates) 
+
 
           ! Accumulate volumes
           ! Compute porous volume for each cell in the 
@@ -1331,6 +1323,7 @@
           ! Once the accumulated porous volume is known, compute resident
           ! concentration
 
+
           ! Apply the logic to determine where to write the obs records
           ! Case 1: write to the same file as before: close it, open again and dump
           close( obs%outputUnit )
@@ -1346,9 +1339,9 @@
           if ( obsAccumPorousVolume .ne. 0d0 ) then 
             do nit = 1, simulationData%TimePointCount
               ! idTime, time, Mass-HIST, Mass-GPKDE, CFlux-HIST, CFlux-GPKDE
-              write(obs%outputUnit, '(1I8,6es18.9e3)') nit, simulationData%TimePoints(nit), &
-                    gpkde%densityEstimateGrid(nit,1,1), gpkde%densityEstimateGrid(nit,1,1), &
-                    gpkde%densityEstimateGrid(nit,1,1)/obsAccumPorousVolume,                &
+              write(obs%outputUnit, '(1I8,6es18.9e3)') nit, simulationData%TimePoints(nit),&
+                    1d0*gpkde%histogram%counts(nit,1,1), gpkde%densityEstimateGrid(nit,1,1),   &
+                    1d0*gpkde%histogram%counts(nit,1,1)/obsAccumPorousVolume,                  &
                     gpkde%densityEstimateGrid(nit,1,1)/obsAccumPorousVolume
             end do 
           end if 
@@ -1363,11 +1356,9 @@
         ! If this is is a sink obs cell
         if ( obs%style .eq. 2 ) then 
 
-          !! DEPENDING ON THE TIMESERIES SPECS 
           ! The length of the timeseries is needed
 
           ! This would work only for timeseries simulations
-          !simulationData%TimePointCount ! domainSize 
           dTObsSeries = simulationData%TimePoints(2)-simulationData%TimePoints(1)  ! binSize
 
           ! Consider irregular binsize GPKDE Reconstruction
@@ -1397,10 +1388,12 @@
             nlines = nlines + 1
           end do
 
+
           ! Allocate active particles coordinates (temporary)
           if ( allocated( activeParticleCoordinates ) ) deallocate( activeParticleCoordinates )
           allocate( activeParticleCoordinates(nlines,3) )
           activeParticleCoordinates = 0d0
+
 
           ! Load file records into array
           rewind( obs%outputUnit )
@@ -1412,18 +1405,13 @@
               ! Needs some kind of understanding of the particle group, and that it
               ! means another solute ( column? )
               activeParticleCoordinates(n,1) = initialTime 
-              activeParticleCoordinates(n,2) = QSinkCell
-              activeParticleCoordinates(n,3) = cellNumber ! remember these indexes 1,2,3
+              !activeParticleCoordinates(n,2) = QSinkCell
+              !activeParticleCoordinates(n,3) = cellNumber ! remember these indexes 1,2,3
           end do 
 
 
-          ! Timeseries reconstruction    
-          call gpkde%ComputeDensity(                                              &
-             activeParticleCoordinates,                                           &
-             outputFileUnit     = simulationData%TrackingOptions%gpkdeOutputUnit, & ! NO OUTPUT UNIT
-             outputDataId       = nt+1,                                           & ! FOR NOW THE LAST TIME ID+1
-             particleGroupId    = groupIndex                                      & 
-          )
+          ! Timeseries reconstruction
+          call gpkde%ComputeDensity( activeParticleCoordinates )
     
 
           ! Flow rates were written to obs file
@@ -1434,16 +1422,21 @@
           allocate(obsSinkFlowInTime(simulationData%TimePointCount, obs%nCells))
           obsSinkFlowInTime = 0d0
 
+
           ! Fill flow-rate timeseries for each cell
           rewind( obs%auxOutputUnit ) 
           do n =1, simulationData%TimePointCount
             read(obs%auxOutputUnit,*) timeIndex, obsSinkFlowInTime( n, : )
           end do
 
+
           ! Accumulate flow rates, absolute values 
           obsAccumSinkFlowInTime = sum( abs(obsSinkFlowInTime), dim=2 )
-            
           ! Once flow-rates are known, can compute flux-concentration
+
+
+          ! Something to verify if sink flows were zero the whole time
+
 
           ! Apply the logic to determine where to write the obs records
           ! Case 1: write to the same file as before: close it, open again and dump
@@ -1462,8 +1455,8 @@
                 ! idTime, time, QSink, Mass-HIST, Mass-GPKDE, CFlux-HIST, CFlux-GPKDE
                 write(obs%outputUnit, '(1I8,7es18.9e3)') nit, simulationData%TimePoints(nit), &
                       obsAccumSinkFlowInTime(nit), &
-                      gpkde%densityEstimateGrid(nit,1,1), gpkde%densityEstimateGrid(nit,1,1), &
-                      gpkde%densityEstimateGrid(nit,1,1)/obsAccumSinkFlowInTime(nit), &
+                      1d0*gpkde%histogram%counts(nit,1,1), gpkde%densityEstimateGrid(nit,1,1), &
+                      1d0*gpkde%histogram%counts(nit,1,1)/obsAccumSinkFlowInTime(nit), &
                       gpkde%densityEstimateGrid(nit,1,1)/obsAccumSinkFlowInTime(nit)
              else
                 ! No concentrations
@@ -1475,8 +1468,10 @@
              end if 
           end do 
 
+
           ! And reset gpkde 
           call gpkde%Reset()
+
 
         end if ! If obs%style.eq.2
 
