@@ -1301,7 +1301,9 @@
 
 
           ! Timeseries reconstruction    
-          call gpkde%ComputeDensity(activeParticleCoordinates) 
+          call gpkde%ComputeDensity(     &
+              activeParticleCoordinates, &
+                     unitVolume = .true. )
 
 
           ! Accumulate volumes
@@ -1411,7 +1413,9 @@
 
 
           ! Timeseries reconstruction
-          call gpkde%ComputeDensity( activeParticleCoordinates )
+          call gpkde%ComputeDensity(     &
+              activeParticleCoordinates, &
+                     unitVolume = .true. )
     
 
           ! Flow rates were written to obs file
