@@ -44,6 +44,7 @@ module ModpathSimulationDataModule
     character(len=200) :: AdvectiveObservationsFile
     character(len=200) :: DispersionFile          ! RWPT
     logical            :: isRWSimulation =.false. ! RWPT
+    integer            :: ParticlesMassOption     ! RWPT
     integer,dimension(:),allocatable :: BudgetCells
     integer,dimension(:),allocatable :: Zones
     doubleprecision,dimension(:),allocatable :: Retardation
@@ -187,6 +188,21 @@ contains
       this%TimeseriesOutputOption = 0
     else
       this%TimeseriesOutputOption = n
+    end if
+  end if
+
+  ! Particles mass option
+  call urword(line, icol, istart, istop, 2, n, r, -1, 0)
+  ! If error while reading the last option (could be triggered by # comments ) 
+  if ( line(len(line):len(line)).eq.'E' ) then
+    ! Continue as zero
+    this%ParticlesMassOption = 0
+  else
+    ! Read from input
+    if (istart.eq.len(line)) then
+      this%ParticlesMassOption = 0
+    else
+      this%ParticlesMassOption = n
     end if
   end if
 
@@ -556,7 +572,7 @@ contains
       particleCount = particleCount + this%ParticleGroups(n)%TotalParticleCount
 
       ! RWPT
-      if ( this%isRWSimulation ) then 
+      if ( this%ParticlesMassOption .eq. 1 ) then 
         ! Read group mass, is a proxy for concentrations
         ! when mass is uniform for a pgroup
         read(inUnit, *) this%ParticleGroups(n)%Mass
