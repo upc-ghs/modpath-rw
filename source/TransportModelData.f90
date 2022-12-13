@@ -7,6 +7,7 @@ module TransportModelDataModule
                                    pr_CreateParticlesAsInternalArray, &
                                    CreateMassParticlesAsInternalArray
   use FlowModelDataModule,only : FlowModelDataType
+  use SoluteModule,only : SoluteType
   use ModpathSimulationDataModule, only: ModpathSimulationDataType
   implicit none
   !---------------------------------------------------------------------------------------------------------------
@@ -17,12 +18,19 @@ module TransportModelDataModule
     type,public :: TransportModelDataType
 
       logical :: Initialized = .false.
-      doubleprecision,dimension(:),allocatable :: AlphaLong
-      doubleprecision,dimension(:),allocatable :: AlphaTrans
+      doubleprecision,dimension(:),pointer :: AlphaLong => null()
+      doubleprecision,dimension(:),pointer :: AlphaTran => null()
+      !doubleprecision,dimension(:),allocatable :: AlphaLong 
+      !doubleprecision,dimension(:),allocatable :: AlphaTran
       doubleprecision,dimension(:),allocatable :: MediumDistance ! Nonlinear model
       integer,allocatable,dimension(:)         :: ICBound
       integer,allocatable,dimension(:)         :: ICBoundTS
       doubleprecision :: DMol
+
+      ! Solutes
+      type( SoluteType ), allocatable, dimension(:) :: Solutes
+      type( SoluteType ) :: BaseSolute
+      integer            :: nSolutes
 
       ! grid
       class(ModflowRectangularGridType),pointer :: Grid => null()
@@ -37,6 +45,8 @@ module TransportModelDataModule
       procedure :: Reset=>pr_Reset
       procedure :: ReadData=>pr_ReadData
       procedure :: LoadTimeStep=>pr_LoadTimeStep
+      procedure :: LoadSoluteDispersion=>pr_LoadSoluteDispersion
+      procedure :: SetSoluteDispersion=>pr_SetSoluteDispersion
 
     end type
 
@@ -69,12 +79,12 @@ contains
         gridType = grid%GridType
         this%Grid => grid
 
-        if(allocated(this%AlphaLong)) deallocate(this%AlphaLong)
-        if(allocated(this%AlphaTrans)) deallocate(this%AlphaTrans)
+        !if(allocated(this%AlphaLong)) deallocate(this%AlphaLong)
+        !if(allocated(this%AlphaTran)) deallocate(this%AlphaTran)
         if(allocated(this%ICBoundTS)) deallocate(this%ICBoundTS)
         if(allocated(this%ICBound)) deallocate(this%ICBound)
-        allocate(this%AlphaTrans(grid%CellCount))
-        allocate(this%AlphaLong(grid%CellCount))
+        !allocate(this%AlphaTran(grid%CellCount))
+        !allocate(this%AlphaLong(grid%CellCount))
         allocate(this%ICBoundTS(grid%CellCount))
         allocate(this%ICBound(grid%CellCount))
 
@@ -95,7 +105,7 @@ contains
     use UTL8MODULE,only : urword, ustop, u1dint, u1drel, u1ddbl, u8rdcom, &
       u3dintmp, u3dintmpusg, u3ddblmp, u3ddblmpusg
     implicit none
-    class(TransportModelDataType) :: this
+    class(TransportModelDataType), target:: this
     class(FlowModelDataType), intent(in) :: flowModelData
     class(ModpathSimulationDataType), intent(inout) :: simulationData
     integer,intent(in) :: inUnit, outUnit
@@ -170,124 +180,203 @@ contains
     doubleprecision, dimension(:), allocatable :: injectionTimes, injectionDensity
     character(len=200) :: injectionSeriesFile
     integer :: tempInjectionUnit = 667
-    integer :: it, res
+    integer :: it, res, npg, ns, ncount
     doubleprecision :: totalMass, deltaTRelease
+    !----------------------------------------------------------------------------------------------------
 
-    !---------------------------------------------------------------------------------------------------------------
-
-        
         ! Open dispersion unit 
         open( inUnit, file=inFile, status='old', access='sequential')
-
 
         ! Required for u3d
         allocate(cellsPerLayer(grid%LayerCount))
         do n = 1, grid%LayerCount
             cellsPerLayer(n) = grid%GetLayerCellCount(n)
         end do
-    
 
         ! Write header to the listing file
         write(outUnit, *)
         write(outUnit, '(1x,a)') 'MODPATH RWPT dispersion data file'
         write(outUnit, '(1x,a)') '----------------------------'
 
+        ! Read solute model option
+        read(inUnit, *) simulationData%SolutesOption
 
-        ! Read dispersion model kind
-        read(inUnit, *) trackingOptions%dispersionModel
+        select case( simulationData%SolutesOption ) 
+          case (1)
+            ! A single virtual solute storing the same 
+            ! transport parameters for all pgroups
+            this%BaseSolute%id = 0
+            this%BaseSolute%stringid = 'S0' 
 
-        select case( trackingOptions%dispersionModel ) 
-            case( 1 ) ! Linear
-                ! Read dispersivity variable, eventually file
-                ! These methods follor OPEN/CLOSE, CONSTANT input format
-                ! and variables are expected to be defined for each layer
+            ! Read dispersion model kind
+            read(inUnit, '(a)') line
+            icol = 1
+            call urword(line, icol, istart, istop, 2, n, r, 0, 0)
+            this%BaseSolute%dispersionModel = n 
+            ! In the meantime this is neede because 
+            ! this variable determines the dispersion 
+            ! function 
+            trackingOptions%dispersionModel = n 
 
-                ! ALPHALONG
-                if((grid%GridType .eq. 1) .or. (grid%GridType .eq. 3)) then
-                    call u3ddblmp(inUnit, outUnit, grid%LayerCount, grid%RowCount,      &
-                      grid%ColumnCount, grid%CellCount, this%AlphaLong, ANAME(2))                      
-                else if((grid%GridType .eq. 2) .or. (grid%GridType .eq. 4)) then
-                    call u3ddblmpusg(inUnit, outUnit, grid%CellCount, grid%LayerCount,  &
-                      this%AlphaLong, aname(2), cellsPerLayer)
-                else
-                    write(outUnit,*) 'Invalid grid type specified when reading ALPHALONG array data.'
-                    write(outUnit,*) 'Stopping.'
-                    call ustop(' ')          
-                end if
+            ! Read dispersion data
+            call this%LoadSoluteDispersion(&
+                inUnit, outUnit, this%BaseSolute, grid, &
+                          cellsPerLayer, trackingOptions )
+
+            ! Assign dispersion pointers
+            ! Something different if nonlinear dispersion ?
+            this%AlphaLong => this%BaseSolute%AlphaLong
+            this%AlphaTran => this%BaseSolute%AlphaTran
+
+
+            ! Needs clarification
+            this%DMol = this%BaseSolute%dAqueous
+
+            if (simulationData%ParticlesMassOption .eq. 2) then
+                ! Create different solutes for id purposes
+                ! However, they are all displaced with the 
+                ! same transport properties
+                ! Extracted from particles groups defined until 
+                ! this very moment. 
+                continue
+            end if
+
+
+          case (2)
+              ! Multiple solutes
+              ! How many ?
+              read(inUnit, '(a)') line
+              icol = 1
+              call urword(line, icol, istart, istop, 2, n, r, 0, 0)
+              this%nSolutes = n 
+              
+              ! Lets trust the user, but some checking should be done
+              ! on the value of n 
+              if ( allocated(this%Solutes) ) deallocate( this%Solutes )
+              allocate( this%Solutes(this%nSolutes) )
+
+              print *, 'NUMBER OF SOLUTES ', this%nSolutes
+
+              ! Initialize these guys
+              do ns =1,this%nSolutes
+                ! Of course needs some attributes 
+                ! of the solute
+
+                ! Read the integer id 
+                read(inUnit, '(a)') line
+                icol = 1
+                call urword(line, icol, istart, istop, 2, n, r, 0, 0)
+                this%Solutes(ns)%id = n 
+                
+                ! Read the string id
+                read(inUnit, '(a)') line
+                icol = 1
+                call urword(line, icol, istart, istop, 0, n, r, 0, 0)
+                this%Solutes(ns)%stringid = line(istart:istop)
+
+                ! If the soluteId was assigned to each 
+                ! particle group due to particlessmassoption 2 
+                ! then respect those assignments
+                if ( simulationData%ParticlesMassOption .ne. 2 ) then
+
+                  ! Read how many pgroups
+                  read(inUnit, '(a)') line
+                  icol = 1
+                  call urword(line, icol, istart, istop, 2, n, r, 0, 0)
+                  this%Solutes(ns)%nParticleGroups = n 
+                  
+                  if ( allocated( this%Solutes(ns)%pGroups ) ) deallocate( this%Solutes(ns)%pGroups )
+                  allocate( this%Solutes(ns)%pGroups( &
+                     this%Solutes(ns)%nParticleGroups ) )
+                  
+                  ! Read the INDEXES in simulationData%ParticleGroup list
+                  do npg =1,this%Solutes(ns)%nParticleGroups
+                    ! Read the pgroups
+                    read(inUnit, '(a)') line
+                    icol = 1
+                    call urword(line, icol, istart, istop, 2, n, r, 0, 0)
+                    this%Solutes(ns)%pGroups(npg) = n
+
+                    ! It needs to assign the soluteId back to the 
+                    ! corresponding pgroup
+                    ! Only if simulation 
+                    simulationData%ParticleGroups(&
+                        this%Solutes(ns)%pGroups(npg) )%Solute = ns
+                  end do
+
+                  else if ( simulationData%ParticlesMassOption .eq. 2 ) then
+
+                    ! Read the INDEXES in simulationData%ParticleGroup list
+                    ! and count how many for this solute
+                    ncount = 0
+                    do npg =1,simulationData%ParticleGroupCount
+                      if ( simulationData%ParticleGroups( npg )%Solute .eq. ns ) then
+                        ncount = ncount + 1
+                      end if 
+                    end do
+
+                    ! If no pgroups, let it continue
+                    if ( ncount .eq. 0 ) then 
+                        write(outUnit,*) 'Warning: no particle groups associated to solute id ', ns
+                    else
+                        ! Initialize pgroups for the solute
+                        this%Solutes(ns)%nParticleGroups = ncount
+                  
+                        if ( allocated( this%Solutes(ns)%pGroups ) ) deallocate( this%Solutes(ns)%pGroups )
+                        allocate( this%Solutes(ns)%pGroups( &
+                           this%Solutes(ns)%nParticleGroups ) )
+                  
+                        do npg =1,simulationData%ParticleGroupCount
+                          if ( simulationData%ParticleGroups( npg )%Solute .eq. ns ) then
+                            ncount = ncount + 1
+                            this%Solutes(ns)%pGroups(ncount) = npg
+                          end if 
+                        end do
+
+                    end if 
+
+                end if 
                
-
-                ! ALPHATRANS
-                if((grid%GridType .eq. 1) .or. (grid%GridType .eq. 3)) then
-                    call u3ddblmp(inUnit, outUnit, grid%LayerCount, grid%RowCount,      &
-                      grid%ColumnCount, grid%CellCount, this%AlphaTrans, ANAME(2))                      
-                else if((grid%GridType .eq. 2) .or. (grid%GridType .eq. 4)) then
-                    call u3ddblmpusg(inUnit, outUnit, grid%CellCount, grid%LayerCount,  &
-                      this%AlphaTrans, aname(2), cellsPerLayer)
-                else
-                      write(outUnit,*) 'Invalid grid type specified when reading ALPHATRANS array data.'
-                      write(outUnit,*) 'Stopping.'
-                      call ustop(' ')          
-                end if
-
-
-            case( 2 ) ! Nonlinear
-                ! NONLINEAR
-
-                ! Nonlinear model
-                if(allocated(this%MediumDistance)) deallocate(this%MediumDistance)
-                allocate(this%MediumDistance(grid%CellCount))
-
-                ! betaLong
-                read( inUnit, * ) line
+                ! Read dispersion model kind
+                read(inUnit, '(a)') line
                 icol = 1
-                call urword(line,icol,istart,istop,3,n,r,0,0)
-                trackingOptions%betaLong  = r
+                call urword(line, icol, istart, istop, 2, n, r, 0, 0)
+                this%Solutes(ns)%dispersionModel = n
 
-                ! betaTrans
-                read( inUnit, * ) line
-                icol = 1
-                call urword(line,icol,istart,istop,3,n,r,0,0)
-                trackingOptions%betaTrans = r
+                ! Read dispersion data
+                call this%LoadSoluteDispersion(&
+                    inUnit, outUnit, this%Solutes(ns), grid, &
+                              cellsPerLayer, trackingOptions )
 
-                ! mediumDelta
-                read( inUnit, * ) line
-                icol = 1
-                call urword(line,icol,istart,istop,3,n,r,0,0)
-                trackingOptions%mediumDelta = r
 
-                ! MEDIUMDISTANCE
-                if((grid%GridType .eq. 1) .or. (grid%GridType .eq. 3)) then
-                    call u3ddblmp(inUnit, outUnit, grid%LayerCount, grid%RowCount,      &
-                      grid%ColumnCount, grid%CellCount, this%MediumDistance, aname(5)) 
-                else if((grid%GridType .eq. 2) .or. (grid%GridType .eq. 4)) then
-                    call u3ddblmpusg(inUnit, outUnit, grid%CellCount, grid%LayerCount,  &
-                      this%MediumDistance, aname(5), cellsPerLayer)
-                else
-                    write(outUnit,*) 'Invalid grid type specified when reading MEDIUMDISTANCE array data.'
-                    write(outUnit,*) 'Stopping.'
-                    call ustop(' ')          
-                end if
+              end do  
 
-                ! TEMPORAL 
-                trackingOptions%mediumDistance = this%MediumDistance(1)
+              !! At some point something need to done 
+              !! with particlemassoption ? 
+              !else if (simulationData%ParticlesMassOption .eq. 2) then
+              !   ! Link particle groups to recently created solutes
+              !   ! Already done by requesting pgroups 
+              !   continue
+              !end if
 
-                ! END NONLINEAR
+              ! In this case, dispersivities and other 
+              ! parameters are asigned during the loop 
+              ! over particle groups
+
 
         end select
 
+        print *, 'SOLUTES OPTION', simulationData%SolutesOption
+        print *, 'PARTICLESSMASSOPTIOn ', simulationData%ParticlesMassOption
+        print *, 'NSOLUTES ', this%nSolutes
 
-        ! Dmol
-        read( inUnit, * ) line
-        icol = 1
-        call urword(line,icol,istart,istop,3,n,r,0,0)
-        this%DMol = r
-        trackingOptions%Dmol = r
 
         ! Time Step kind 
         read(inUnit, '(a)') line
         icol = 1
         call urword(line,icol,istart,istop,1,n,r,0,0)
         line = line(istart:istop)
+        print *, 'LINE:!!', line
         ! Give a Courant
         if ( line .eq. 'CONSTANT_CU' ) then
             trackingOptions%timeStepKind = 1
@@ -1062,8 +1151,10 @@ contains
        
         this%Grid => null()
         this%DMol = 0
-        if(allocated(this%AlphaLong)) deallocate( this%AlphaLong )
-        if(allocated(this%AlphaTrans)) deallocate( this%AlphaTrans )
+        !if(allocated(this%AlphaLong)) deallocate( this%AlphaLong )
+        !if(allocated(this%AlphaTran)) deallocate( this%AlphaTran )
+        this%AlphaLong  => null()
+        this%AlphaTran => null()
         if(allocated(this%ICBoundTS)) deallocate( this%ICBoundTS )
         if(allocated(this%ICBound)) deallocate( this%ICBound )
 
@@ -1075,7 +1166,10 @@ contains
     !***************************************************************************************************************
     !
     !***************************************************************************************************************
-    ! Specifications
+    ! Specifications:
+    !   - Huge simplification from flowModelData%LoadTimeStep
+    !   - It could be employed for loading time variable data for dispersion
+    !   - In the meantime, only update time references and ICBOUND 
     !---------------------------------------------------------------------------------------------------------------
     implicit none
     class(TransportModelDataType) :: this
@@ -1084,388 +1178,178 @@ contains
       trimmedLength
     integer :: spaceAssigned, status,cellCount, iface, index,              &
       boundaryFlowsOffset, listItemBufferSize, cellNumber, layer
-    !type(BudgetRecordHeaderType) :: header
     character(len=16) :: textLabel
     doubleprecision :: top 
     real :: HDryTol, HDryDiff
     !---------------------------------------------------------------------------------------------------------------
-     
 
-        !! Readers of time variable data 
-        !call this%ClearTimeStepBudgetData()
-        !call this%BudgetReader%GetRecordHeaderRange(stressPeriod, timeStep, firstRecord, lastRecord)
-        !if(firstRecord .eq. 0) return
-    
         cellCount = this%Grid%CellCount
-        !listItemBufferSize = size(this%ListItemBuffer)
-        
-        ! Set steady state = true, then change it if the budget file contains storage
-        !this%SteadyState = .true.
-        
-        ! MASS TRANSPORT; RWPT: could be recycled for changes in boundary conditions
-        ! Load heads for this time step
-        !call this%HeadReader%FillTimeStepHeadBuffer(stressPeriod, timeStep, &
-        !  this%Heads, cellCount, spaceAssigned)
-        
-        ! Fill ICBoundTS array and set the SaturatedTop array for the Grid.
-        ! The saturated top is set equal to the top for confined cells and water table cells 
-        ! where the head is above the top or below the bottom.
-        !HDryTol = abs(epsilon(HDryTol)*sngl(this%HDry))
         if(this%Grid%GridType .gt. 2) then
             do n = 1, cellCount
                 this%ICBoundTS(n) = this%ICBound(n)
-                ! DO SOMETHING WITH IBOUNDTS 
-                ! DEPENDNING ON HEADS OR OTHERS
-                !layer = this%Grid%GetLayer(n)
-                !if(this%Grid%CellType(n) .eq. 1) then
-                !    HDryDiff = sngl(this%Heads(n)) - sngl(this%HDry)
-                !    if(abs(HDryDiff) .lt. HDryTol) then
-                !        this%IBoundTS(n) = 0
-                !        if(this%Heads(n) .lt. this%Grid%Bottom(n)) then
-                !            this%IBoundTS(n) = 0
-                !            this%Grid%SaturatedTop(n) = this%Grid%Bottom(n)
-                !        end if
-                !    end if
-                !    if(this%IBoundTS(n) .ne. 0) then
-                !        if((this%Heads(n) .le. this%Grid%Top(n)) .and. &
-                !          (this%Heads(n) .ge. this%Grid%Bottom(n))) then
-                !            this%Grid%SaturatedTop(n) = this%Heads(n)
-                !        end if
-                !    end if
-                !end if
             end do
-            
         else
             do n = 1, cellCount
                 this%ICBoundTS(n) = this%ICBound(n)
-                !this%Grid%SaturatedTop(n) = this%Grid%Top(n)
-                !this%StorageFlows(n) = 0.0
-                !this%IBoundTS(n) = this%IBound(n)
-                !layer = this%Grid%GetLayer(n)
-                !if(this%Grid%CellType(n) .eq. 1) then
-                !    HDryDiff = sngl(this%Heads(n)) - sngl(this%HDry)
-                !    if((abs(HDryDiff) .lt. HDryTol) .or. (this%Heads(n) .gt. 1.0d+6)) then
-                !        this%IBoundTS(n) = 0
-                !    end if
-                !    if(this%IBoundTS(n) .ne. 0) then
-                !        if((this%Heads(n) .le. this%Grid%Top(n)) .and. &
-                !          (this%Heads(n) .ge. this%Grid%Bottom(n))) then
-                !            this%Grid%SaturatedTop(n) = this%Heads(n)
-                !        end if
-                !    end if
-                !end if
             end do
         end if
-       
 
-        !! MASS TRANSPORT, RWPT: COULD BE USEFUL FOR READING SOMETHING FROM EXTERNAL FILE 
-        !! Loop through record headers
-        !do n = firstRecord, lastRecord
-        !     header = this%BudgetReader%GetRecordHeader(n)
-        !     textLabel = header%TextLabel
-        !     call TrimAll(textLabel, firstNonBlank, lastNonBlank, trimmedLength)
-        !     
-        !     select case(textLabel(firstNonBlank:lastNonBlank))
-        !     case('CONSTANT HEAD', 'CHD')
-        !          ! Read constant head flows into the sinkFlows and sourceFlows arrays.
-        !          ! For a standard budget file, Method = 0. For a compact budget file,
-        !          ! Method = 2.
-        !          if(header%Method .eq. 0) then
-        !              call this%BudgetReader%FillRecordDataBuffer(header,             &
-        !                this%ArrayBufferDbl, cellCount, spaceAssigned, status)
-        !              if(cellCount .eq. spaceAssigned) then
-        !                  do m = 1, spaceAssigned
-        !                      if(this%ArrayBufferDbl(m) .gt. 0.0d0) then
-        !                          this%SourceFlows(m) = this%SourceFlows(m) +         &
-        !                            this%ArrayBufferDbl(m)
-        !                      else if(this%ArrayBufferDbl(m) .lt. 0.0d0) then
-        !                          this%SinkFlows(m) = this%SinkFlows(m) +             &
-        !                            this%ArrayBufferDbl(m)
-        !                      end if
-        !                  end do
-        !              end if
-        !          else if(header%Method .eq. 2) then
-        !              call this%BudgetReader%FillRecordDataBuffer(header,             &
-        !                this%ListItemBuffer, listItemBufferSize, spaceAssigned, status)
-        !              if(spaceAssigned .gt. 0) then
-        !                  do m = 1, spaceAssigned
-        !                      cellNumber = this%ListItemBuffer(m)%CellNumber
-        !                      if(this%ListItemBuffer(m)%BudgetValue .gt. 0.0d0) then
-        !                          this%SourceFlows(cellNumber) =                      &
-        !                            this%SourceFlows(cellNumber) + this%ListItemBuffer(m)%BudgetValue
-        !                      else if(this%ListItemBuffer(m)%BudgetValue .lt. 0.0d0) then
-        !                          this%SinkFlows(cellNumber) =                        &
-        !                            this%SinkFlows(cellNumber) + this%ListItemBuffer(m)%BudgetValue
-        !                      end if
-        !                  end do
-        !              end if
-        !          else if((header%Method .eq. 5) .or. (header%Method .eq. 6)) then
-        !              call this%BudgetReader%FillRecordDataBuffer(header,             &
-        !                this%ListItemBuffer, listItemBufferSize, spaceAssigned,       &
-        !                status)
-        !              if(spaceAssigned .gt. 0) then
-        !                  do m = 1, spaceAssigned
-        !                      call this%CheckForDefaultIface(header%TextLabel, iface)
-        !                      index = header%FindAuxiliaryNameIndex('IFACE')
-        !                      if(index .gt. 0) then
-        !                          iface = int(this%ListItemBuffer(m)%AuxiliaryValues(index))
-        !                      end if
-        !                      
-        !                      cellNumber = this%ListItemBuffer(m)%CellNumber
-        !                      if(iface .gt. 0) then
-        !                          boundaryFlowsOffset = 6 * (cellNumber - 1)
-        !                          this%BoundaryFlows(boundaryFlowsOffset + iface) =   &
-        !                            this%BoundaryFlows(boundaryFlowsOffset + iface) + &
-        !                            this%ListItemBuffer(m)%BudgetValue
-        !                      else
-        !                          if(this%ListItemBuffer(m)%BudgetValue .gt. 0.0d0) then
-        !                              this%SourceFlows(cellNumber) =                  &
-        !                                this%SourceFlows(cellNumber) +                &
-        !                                this%ListItemBuffer(m)%BudgetValue
-        !                          else if(this%ListItemBuffer(m)%BudgetValue .lt. 0.0d0) then
-        !                              this%SinkFlows(cellNumber) =                    &
-        !                                this%SinkFlows(cellNumber) +                  &
-        !                                this%ListItemBuffer(m)%BudgetValue
-        !                          end if
-        !                      end if
-        !                  end do
-        !              end if
-        !          end if
-        !         
-        !     case('STORAGE', 'STO-SS', 'STO-SY')
-        !          ! Read storage for all cells into the StorageFlows array.
-        !          ! Method should always be 0 or 1, but check anyway to be sure.
-        !          if((header%Method .eq. 0) .or. (header%Method .eq. 1)) then
-        !              if(header%ArrayItemCount .eq. cellCount) then
-        !                  call this%BudgetReader%FillRecordDataBuffer(header,         &
-        !                    this%ArrayBufferDbl, cellCount, spaceAssigned, status)
-        !                  if(cellCount .eq. spaceAssigned) then
-        !                      do m = 1, spaceAssigned
-        !                          this%StorageFlows(m) = this%StorageFlows(m) + this%ArrayBufferDbl(m)
-        !                          if(this%StorageFlows(m) .ne. 0.0) this%SteadyState = .false.
-        !                      end do
-        !                  end if
-        !              end if
-        !          end if
-        !         
-        !     case('FLOW JA FACE', 'FLOW-JA-FACE')
-        !          ! Read connected face flows into the FlowsJA array for unstructured grids.
-        !          if((header%Method .eq. 0) .or. (header%Method .eq. 1)) then
-        !              ! Method should always be 0 or 1 for flow between grid cells. 
-        !              if(header%ArrayItemCount .eq. this%BudgetReader%GetFlowArraySize()) then
-        !                  call this%BudgetReader%FillRecordDataBuffer(header,         &
-        !                    this%FlowsJA, header%ArrayItemCount, spaceAssigned,       &
-        !                    status)
-        !              end if
-        !          else if(header%Method .eq. 6) then
-        !              ! Method code 6 indicates flow to or from cells in the current model grid
-        !              ! and another connected model grid in a multi-model MODFLOW-6 simulation. 
-        !              ! Treat flows to or from connected model grids as distributed source/sink flows 
-        !              ! for the current grid.
-        !              call this%BudgetReader%FillRecordDataBuffer(header,             &
-        !                this%ListItemBuffer, listItemBufferSize, spaceAssigned,       &
-        !                status)
-        !              if(spaceAssigned .gt. 0) then
-        !                  do m = 1, spaceAssigned
-        !                      cellNumber = this%ListItemBuffer(m)%CellNumber
-        !                      if(this%ListItemBuffer(m)%BudgetValue .gt. 0.0d0) then
-        !                          this%SourceFlows(cellNumber) =                  &
-        !                              this%SourceFlows(cellNumber) +                &
-        !                              this%ListItemBuffer(m)%BudgetValue
-        !                      else if(this%ListItemBuffer(m)%BudgetValue .lt. 0.0d0) then
-        !                          this%SinkFlows(cellNumber) =                    &
-        !                              this%SinkFlows(cellNumber) +                  &
-        !                              this%ListItemBuffer(m)%BudgetValue
-        !                      end if
-        !                  end do
-        !              end if
-        !          end if
-        !         
-        !     case('FLOW RIGHT FACE')
-        !          ! Read flows across the right face for structured grids.
-        !          ! Method should always be 0 or 1, but check anyway to be sure.
-        !          if((header%Method .eq. 0) .or. (header%Method .eq. 1)) then
-        !              if(header%ArrayItemCount .eq. this%BudgetReader%GetFlowArraySize()) then
-        !                  call this%BudgetReader%FillRecordDataBuffer(header,         &
-        !                    this%FlowsRightFace, header%ArrayItemCount, spaceAssigned,&
-        !                    status)
-        !              end if
-        !          end if
-        !         
-        !     case('FLOW FRONT FACE')
-        !          ! Read flows across the front face for structured grids.
-        !          ! Method should always be 0 or 1, but check anyway to be sure.
-        !          if((header%Method .eq. 0) .or. (header%Method .eq. 1)) then
-        !              if(header%ArrayItemCount .eq. this%BudgetReader%GetFlowArraySize()) then
-        !                  call this%BudgetReader%FillRecordDataBuffer(header,         &
-        !                    this%FlowsFrontFace, header%ArrayItemCount, spaceAssigned,&
-        !                    status)
-        !              end if
-        !          end if
-        !         
-        !     case('FLOW LOWER FACE')
-        !          ! Read flows across the lower face for structured grids.
-        !          ! Method should always be 0 or 1, but check anyway to be sure.
-        !          if((header%Method .eq. 0) .or. (header%Method .eq. 1)) then
-        !              if(header%ArrayItemCount .eq. this%BudgetReader%GetFlowArraySize()) then
-        !                  call this%BudgetReader%FillRecordDataBuffer(header,         &
-        !                    this%FlowsLowerFace, header%ArrayItemCount, spaceAssigned,&
-        !                    status)
-        !              end if
-        !          end if
-        !     
-        !      case default
-        !          ! Now handle any other records in the budget file.
-        !           if((header%Method .eq. 0) .or. (header%Method .eq. 1)) then
-        !              if(header%ArrayItemCount .eq. cellCount) then
-        !                  call this%BudgetReader%FillRecordDataBuffer(header,         &
-        !                    this%ArrayBufferDbl, cellCount, spaceAssigned, status)
-        !                  if(cellCount .eq. spaceAssigned) then
-        !                      call this%CheckForDefaultIface(header%TextLabel, iface)
-        !                      if(iface .gt. 0) then
-        !                          do m = 1, spaceAssigned
-        !                              boundaryFlowsOffset = 6 * (m - 1)
-        !                              this%BoundaryFlows(boundaryFlowsOffset + iface) =   &
-        !                                this%BoundaryFlows(boundaryFlowsOffset + iface) + &
-        !                                this%ArrayBufferDbl(m)
-        !                          end do
-        !                      else
-        !                          do m = 1, spaceAssigned
-        !                              if(this%ArrayBufferDbl(m) .gt. 0.0d0) then
-        !                                  this%SourceFlows(m) = this%SourceFlows(m) +     &
-        !                                    this%ArrayBufferDbl(m)
-        !                              else if(this%ArrayBufferDbl(m) .lt. 0.0d0) then
-        !                                  this%SinkFlows(m) = this%SinkFlows(m) +         &
-        !                                    this%ArrayBufferDbl(m)
-        !                              end if
-        !                          end do
-        !                      end if
-        !                  end if
-        !              end if
-        !           else if(header%Method .eq. 3) then
-        !              call this%BudgetReader%FillRecordDataBuffer(header,             &
-        !                this%ArrayBufferDbl, this%ArrayBufferInt,                     &
-        !                header%ArrayItemCount, spaceAssigned, status)
-        !              if(header%ArrayItemCount .eq. spaceAssigned) then
-        !                  call this%CheckForDefaultIface(header%TextLabel, iface)
-        !                  if(iface .gt. 0) then
-        !                      do m = 1, spaceAssigned
-        !                          cellNumber = this%ArrayBufferInt(m)
-        !                          boundaryFlowsOffset = 6 * (cellNumber - 1)
-        !                          this%BoundaryFlows(boundaryFlowsOffset + iface) =   &
-        !                            this%BoundaryFlows(boundaryFlowsOffset + iface) + &
-        !                            this%ArrayBufferDbl(m)
-        !                      end do
-        !                  else            
-        !                      do m = 1, spaceAssigned
-        !                          cellNumber = this%ArrayBufferInt(m)
-        !                          if(this%ArrayBufferDbl(m) .gt. 0.0d0) then
-        !                              this%SourceFlows(cellNumber) =                  &
-        !                                this%SourceFlows(cellNumber) +                &
-        !                                this%ArrayBufferDbl(m)
-        !                          else if(this%ArrayBufferDbl(m) .lt. 0.0d0) then
-        !                              this%SinkFlows(cellNumber) =                    &
-        !                                this%SinkFlows(cellNumber) +                  &
-        !                                this%ArrayBufferDbl(m)
-        !                          end if
-        !                      end do
-        !                  end if
-        !              end if
-        !           else if(header%Method .eq. 4) then
-        !              call this%BudgetReader%FillRecordDataBuffer(header,             &
-        !                this%ArrayBufferDbl, header%ArrayItemCount, spaceAssigned,    &
-        !                status)
-        !              if(header%ArrayItemCount .eq. spaceAssigned) then
-        !                  call this%CheckForDefaultIface(header%TextLabel, iface)
-        !                  if(iface .gt. 0) then
-        !                      do m = 1, spaceAssigned
-        !                          boundaryFlowsOffset = 6 * (m - 1)
-        !                          this%BoundaryFlows(boundaryFlowsOffset + iface) =   &
-        !                            this%BoundaryFlows(boundaryFlowsOffset + iface) + &
-        !                            this%ArrayBufferDbl(m)
-        !                      end do
-        !                  else            
-        !                      do m = 1, spaceAssigned
-        !                          if(this%ArrayBufferDbl(m) .gt. 0.0d0) then
-        !                              this%SourceFlows(m) = this%SourceFlows(m) +     &
-        !                                this%ArrayBufferDbl(m)
-        !                          else if(this%ArrayBufferDbl(m) .lt. 0.0d0) then
-        !                              this%SinkFlows(m) = this%SinkFlows(m) +         &
-        !                                this%ArrayBufferDbl(m)
-        !                          end if
-        !                      end do
-        !                  end if
-        !              end if
-        !          else if(header%Method .eq. 2) then
-        !              call this%BudgetReader%FillRecordDataBuffer(header,             &
-        !                this%ListItemBuffer, listItemBufferSize, spaceAssigned,       &
-        !                status)
-        !              if(spaceAssigned .gt. 0) then
-        !                  call this%CheckForDefaultIface(header%TextLabel, iface)
-        !                  if(iface .gt. 0) then
-        !                      do m = 1, spaceAssigned
-        !                          cellNumber = this%ListItemBuffer(m)%CellNumber
-        !                          boundaryFlowsOffset = 6 * (cellNumber - 1)
-        !                          this%BoundaryFlows(boundaryFlowsOffset + iface) =   &
-        !                            this%BoundaryFlows(boundaryFlowsOffset + iface) + &
-        !                            this%ListItemBuffer(m)%BudgetValue
-        !                      end do
-        !                  else            
-        !                      do m = 1, spaceAssigned
-        !                          cellNumber = this%ListItemBuffer(m)%CellNumber
-        !                          if(this%ListItemBuffer(m)%BudgetValue .gt. 0.0d0) then
-        !                              this%SourceFlows(cellNumber) =                  &
-        !                                this%SourceFlows(cellNumber) +                &
-        !                                this%ListItemBuffer(m)%BudgetValue
-        !                          else if(this%ListItemBuffer(m)%BudgetValue .lt. 0.0d0) then
-        !                              this%SinkFlows(cellNumber) =                    &
-        !                                this%SinkFlows(cellNumber) +                  &
-        !                                this%ListItemBuffer(m)%BudgetValue
-        !                          end if
-        !                      end do
-        !                  end if
-        !              end if
-        !          else if((header%Method .eq. 5) .or. (header%Method .eq. 6)) then
-        !              call this%BudgetReader%FillRecordDataBuffer(header,             &
-        !                this%ListItemBuffer, listItemBufferSize, spaceAssigned,       &
-        !                status)
-        !              if(spaceAssigned .gt. 0) then
-        !                  do m = 1, spaceAssigned
-        !                      call this%CheckForDefaultIface(header%TextLabel, iface)
-        !                      index = header%FindAuxiliaryNameIndex('IFACE')
-        !                      if(index .gt. 0) then
-        !                          iface = int(this%ListItemBuffer(m)%AuxiliaryValues(index))
-        !                      end if
-        !                      
-        !                      cellNumber = this%ListItemBuffer(m)%CellNumber
-        !                      if(iface .gt. 0) then
-        !                          boundaryFlowsOffset = 6 * (cellNumber - 1)
-        !                          this%BoundaryFlows(boundaryFlowsOffset + iface) =   &
-        !                            this%BoundaryFlows(boundaryFlowsOffset + iface) + &
-        !                            this%ListItemBuffer(m)%BudgetValue
-        !                      else
-        !                          if(this%ListItemBuffer(m)%BudgetValue .gt. 0.0d0) then
-        !                              this%SourceFlows(cellNumber) =                  &
-        !                                this%SourceFlows(cellNumber) +                &
-        !                                this%ListItemBuffer(m)%BudgetValue
-        !                          else if(this%ListItemBuffer(m)%BudgetValue .lt. 0.0d0) then
-        !                              this%SinkFlows(cellNumber) =                    &
-        !                                this%SinkFlows(cellNumber) +                  &
-        !                                this%ListItemBuffer(m)%BudgetValue
-        !                          end if
-        !                      end if
-        !                  end do
-        !              end if
-        !          end if
-        !     
-        !     end select
-        !     
-        !end do
-    
         this%CurrentStressPeriod = stressPeriod
         this%CurrentTimeStep = timeStep
     
     end subroutine pr_LoadTimeStep
+
+    
+    subroutine pr_LoadSoluteDispersion( this, inUnit, outUnit, solute, &
+                                   grid, cellsPerLayer, trackingOptions) 
+    !***********************************************************************************
+    !
+    !***********************************************************************************
+    ! Specifications
+    !-----------------------------------------------------------------------------------
+    use UTL8MODULE,only : urword, ustop, u1dint, u1drel, u1ddbl, u8rdcom, &
+                          u3dintmp, u3dintmpusg, u3ddblmp, u3ddblmpusg
+    implicit none
+    class(TransportModelDataType) :: this
+    class(SoluteType), intent(inout) :: solute
+    class(ModflowRectangularGridType),intent(in) :: grid
+    type(ParticleTrackingOptionsType),intent(inout) :: trackingOptions
+    integer,intent(in) :: inUnit, outUnit 
+    integer, dimension(:), intent(in) :: cellsPerLayer
+    character(len=300) :: line
+    character(len=24),dimension(3) :: aname
+    data aname(1) /'          LONG DISP'/
+    data aname(2) /'          TRAN DISP'/
+    data aname(3) /'          TRAN DISP'/
+    doubleprecision :: r
+    integer :: icol, istart, istop, n , ns
+    !-----------------------------------------------------------------------------------
+    
+        ! Initialize dispersion properties 
+        call solute%Initialize( grid%CellCount ) 
+
+        ! Aqueous diffusion 
+        read( inUnit, * ) line
+        icol = 1
+        call urword(line,icol,istart,istop,3,n,r,0,0)
+        solute%dAqueous = r
+
+        ! Dispersivities
+        select case( solute%dispersionModel )
+
+          case( 1 ) ! Linear
+            ! Read dispersivities
+            ! These methods follor OPEN/CLOSE, CONSTANT input format
+            ! and variables are expected to be defined for each layer
+            ! ALPHALONG
+            if((grid%GridType .eq. 1) .or. (grid%GridType .eq. 3)) then
+                call u3ddblmp(inUnit, outUnit, grid%LayerCount, grid%RowCount,      &
+                  grid%ColumnCount, grid%CellCount, solute%AlphaLong, aname(1))                      
+            else if((grid%GridType .eq. 2) .or. (grid%GridType .eq. 4)) then
+                call u3ddblmpusg(inUnit, outUnit, grid%CellCount, grid%LayerCount,  &
+                  solute%AlphaLong, aname(1), cellsPerLayer)
+            else
+                write(outUnit,*) 'Invalid grid type specified when reading ALPHALONG array data.'
+                write(outUnit,*) 'Stopping.'
+                call ustop(' ')          
+            end if
+            
+            ! ALPHATRANS
+            if((grid%GridType .eq. 1) .or. (grid%GridType .eq. 3)) then
+                call u3ddblmp(inUnit, outUnit, grid%LayerCount, grid%RowCount,      &
+                  grid%ColumnCount, grid%CellCount, solute%AlphaTran, aname(2))                      
+            else if((grid%GridType .eq. 2) .or. (grid%GridType .eq. 4)) then
+                call u3ddblmpusg(inUnit, outUnit, grid%CellCount, grid%LayerCount,  &
+                  solute%AlphaTran, aname(2), cellsPerLayer)
+            else
+                  write(outUnit,*) 'Invalid grid type specified when reading ALPHATRANS array data.'
+                  write(outUnit,*) 'Stopping.'
+                  call ustop(' ')          
+            end if
+
+
+          case( 2 ) ! Nonlinear
+            ! NONLINEAR
+
+            ! Nonlinear model
+            if(allocated(this%MediumDistance)) deallocate(this%MediumDistance)
+            allocate(this%MediumDistance(grid%CellCount))
+
+            ! betaLong
+            read( inUnit, * ) line
+            icol = 1
+            call urword(line,icol,istart,istop,3,n,r,0,0)
+            trackingOptions%betaLong  = r
+            solute%betaLong  = r
+
+            ! betaTrans
+            read( inUnit, * ) line
+            icol = 1
+            call urword(line,icol,istart,istop,3,n,r,0,0)
+            trackingOptions%betaTrans = r
+            solute%betaTrans  = r
+
+            ! mediumDelta
+            read( inUnit, * ) line
+            icol = 1
+            call urword(line,icol,istart,istop,3,n,r,0,0)
+            trackingOptions%mediumDelta = r
+
+            ! MEDIUMDISTANCE
+            if((grid%GridType .eq. 1) .or. (grid%GridType .eq. 3)) then
+                call u3ddblmp(inUnit, outUnit, grid%LayerCount, grid%RowCount,      &
+                  grid%ColumnCount, grid%CellCount, this%MediumDistance, aname(5)) 
+            else if((grid%GridType .eq. 2) .or. (grid%GridType .eq. 4)) then
+                call u3ddblmpusg(inUnit, outUnit, grid%CellCount, grid%LayerCount,  &
+                  this%MediumDistance, aname(5), cellsPerLayer)
+            else
+                write(outUnit,*) 'Invalid grid type specified when reading MEDIUMDISTANCE array data.'
+                write(outUnit,*) 'Stopping.'
+                call ustop(' ')          
+            end if
+
+            ! TEMPORAL 
+            trackingOptions%mediumDistance = this%MediumDistance(1)
+
+            ! END NONLINEAR
+
+          case default
+            write(outUnit,*) 'Invalid dispersion model. Accepts 1 or 2, given ', solute%dispersionModel
+            write(outUnit,*) 'Stopping.'
+            call ustop('Invalid dispersion model. Stop')          
+        end select
+
+    end subroutine pr_LoadSoluteDispersion 
+
+
+    subroutine pr_SetSoluteDispersion( this, soluteId )
+    !***********************************************************************************
+    !
+    !***********************************************************************************
+    ! Specifications:
+    !   - Need to assign transport model data dispersivities
+    !     with values from the corresponding soluteId
+    !   - Runs only if SolutesOption .eq. 2, Multidispersion
+    !-----------------------------------------------------------------------------------
+    implicit none
+    class(TransportModelDataType), target :: this
+    integer, intent(in) :: soluteId
+    !-----------------------------------------------------------------------------------
+
+        ! Some sanity check
+
+        this%AlphaLong => this%Solutes(soluteId)%AlphaLong
+        this%AlphaTran => this%Solutes(soluteId)%AlphaTran
+
+        ! Note this, needs clarification of the actual values 
+        ! of diffusion to be used in displacements
+        this%DMol = this%Solutes(soluteId)%dAqueous 
+
+
+    end subroutine pr_SetSoluteDispersion
+    
+    
+
 
 
 end module TransportModelDataModule

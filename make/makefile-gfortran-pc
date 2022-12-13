@@ -42,6 +42,7 @@ $(OBJDIR)/BudgetListItem.o \
 $(OBJDIR)/HeadRecordHeader.o \
 $(OBJDIR)/GridLocation.o \
 $(OBJDIR)/GlobalData.o \
+$(OBJDIR)/Solute.o \
 $(OBJDIR)/Observation.o \
 $(OBJDIR)/ParticleTrackingOptions.o \
 $(OBJDIR)/compilerversion.o \

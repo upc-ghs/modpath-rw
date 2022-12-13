@@ -86,6 +86,7 @@ module TrackSubCellModule
     procedure :: SetCornerPorosityIndexes=> pr_SetCornerPorosityIndexes
     procedure :: Trilinear=>pr_Trilinear
     procedure :: TrilinearDerivative=>pr_TrilinearDerivative
+    procedure :: SetDispersionDisplacement=>pr_SetDispersionDisplacement
     procedure :: DispersionDivergenceDischarge=>pr_DispersionDivergenceDischarge
     procedure :: DisplacementRandomDischarge=>pr_DisplacementRandomDischarge
     procedure :: GenerateStandardNormalRandom=>pr_GenerateStandardNormalRandom
@@ -468,16 +469,7 @@ contains
       call this%SetCornerPorosityIndexes()
 
       ! Should set dispersion model (linear vs nonlinear)
-
-      ! Assign displacement pointers
-      if ( trackingOptions%dispersionModel .eq. 1 ) then 
-          !  Linear
-          this%ComputeRWPTDisplacements => pr_RWPTDisplacementsLinear 
-      else if ( trackingOptions%dispersionModel .eq.2 ) then
-          ! Non linear 
-          this%ComputeRWPTDisplacements => pr_RWPTDisplacementsNonlinear
-      end if
-
+      call this%SetDispersionDisplacement( trackingOptions%dispersionModel )
 
       ! Done
       return
@@ -485,6 +477,33 @@ contains
 
   end subroutine pr_InitializeRandomWalk
 
+
+  subroutine pr_SetDispersionDisplacement(this, dispersionModel)
+      !------------------------------------------------------------
+      !------------------------------------------------------------
+      implicit none
+      class(TrackSubCellType) :: this
+      integer :: dispersionModel 
+      !------------------------------------------------------------
+      ! Specifications
+      !------------------------------------------------------------
+
+      ! Assign displacement pointers
+      if ( dispersionModel .eq. 1 ) then 
+          !  Linear
+          this%ComputeRWPTDisplacements => pr_RWPTDisplacementsLinear 
+      else if ( dispersionModel .eq.2 ) then
+          ! Non linear 
+          this%ComputeRWPTDisplacements => pr_RWPTDisplacementsNonlinear
+      else 
+          ! Not set !
+          continue
+      end if
+
+      ! Done
+      return
+
+  end subroutine pr_SetDispersionDisplacement
 
 
   subroutine pr_RWPTDisplacementsLinear(this, x, y, z, vx, vy, vz, &
@@ -983,14 +1002,10 @@ contains
                           exit
                       end if 
 
-
-                      ! Is zero, a boundary, inactive
+                      ! reboundCounter and a catch for unexpected cases
                       reboundCounter = reboundCounter + 1
-
                       if ( reboundCounter .gt. 10 ) then
                           ! If particle has been rebounding for a long time, stop
-                          ! Note: This will not occur as each output case is already 
-                          ! managed finalizing with exitFace .eq. 0 
                           trackingResult%ExitFace = 0
                           trackingResult%Status   = trackingResult%Status_Undefined()
                           trackingResult%FinalLocation%CellNumber = cellNumber
@@ -999,7 +1014,6 @@ contains
                           trackingResult%FinalLocation%LocalZ = z
                           trackingResult%FinalLocation%TrackingTime = t
                           return
-
                       end if 
 
 
@@ -1010,7 +1024,10 @@ contains
                      
 
                       ! If dt .eq. 0d0 then the particle is exactly 
-                      ! at the interface, and is a rebound interface. 
+                      ! at the interface, and is a rebound interface.
+                      ! Stays there ? Becomes inactive ?
+                      ! In the meantime, restart.
+                      ! This may generate problems for pure advection sims.
                       if ( dt .eq. 0d0 ) then
 
                           ! Restart new coordinates 

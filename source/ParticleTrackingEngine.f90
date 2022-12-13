@@ -47,6 +47,7 @@ module ParticleTrackingEngineModule
     procedure :: Reset=>pr_Reset
     !procedure :: TrackPath=>pr_TrackPath
     !procedure :: FillCellBuffer=>pr_FillCellBuffer
+    procedure :: UpdateDispersionFunction=>pr_UpdateDispersionFunction
     procedure :: FillFaceFlowsBuffer=>pr_FillFaceFlowsBuffer
     procedure :: FillCellFlowsBuffer=>pr_FillCellFlowsBuffer
     procedure :: GetVolumetricBalanceSummary=>pr_GetVolumetricBalanceSummary
@@ -476,6 +477,23 @@ contains
 
     end subroutine pr_Initialize
 
+    
+    subroutine pr_UpdateDispersionFunction( this, dispersionModel ) 
+    !***************************************************************************************************************
+    !
+    !***************************************************************************************************************
+    ! Specifications
+    !---------------------------------------------------------------------------------------------------------------
+    implicit none
+    class(ParticleTrackingEngineType) :: this
+    integer, intent(in) :: dispersionModel 
+    !---------------------------------------------------------------------------------------------------------------
+
+      ! Assign methods for RWPT tracking in tracksubcell
+      call this%TrackCell%TrackSubCell%SetDispersionDisplacement( dispersionModel )
+
+    end subroutine pr_UpdateDispersionFunction 
+    
 
     subroutine  pr_FillFaceFlowsBuffer(this,buffer,bufferSize,count)
     !***************************************************************************************************************
@@ -610,10 +628,10 @@ contains
           this%FlowModelData%Heads(cellNumber), cellType, this%FlowModelData%Zones(cellNumber),   &
                               this%TransportModelData%ICBound, this%TransportModelData%ICBoundTS  ) 
 
-        ! If AlphaLong or AlphaTrans are constants, then 
+        ! If AlphaLong or AlphaTran are constants, then 
         ! it should handle said scenario to avoid unnecessary memory usage
         cellBuffer%alphaL = this%TransportModelData%AlphaLong(cellNumber)
-        cellBuffer%alphaT = this%TransportModelData%AlphaTrans(cellNumber)
+        cellBuffer%alphaT = this%TransportModelData%AlphaTran(cellNumber)
         
 
         return
@@ -679,10 +697,10 @@ contains
 
         call pr_FillCellBufferStructured(this, cellNumber, cellBuffer)
 
-        ! If AlphaLong or AlphaTrans are constants, then 
+        ! If AlphaLong or AlphaTran are constants, then 
         ! it should handle said scenario to avoid unnecessary memory usage
         cellBuffer%alphaL = this%TransportModelData%AlphaLong(cellNumber)
-        cellBuffer%alphaT = this%TransportModelData%AlphaTrans(cellNumber)
+        cellBuffer%alphaT = this%TransportModelData%AlphaTran(cellNumber)
         
         
         !! Something to check whether or not this cell 

@@ -843,6 +843,16 @@
     activeCount = 0
     if(simulationData%ParticleGroupCount .gt. 0) then
         do groupIndex = 1, simulationData%ParticleGroupCount
+            if ( simulationData%SolutesOption .eq. 2 ) then 
+                ! Assign pointers to dispersivities 
+                ! in transportModelData
+                call transportModelData%SetSoluteDispersion( &
+                  simulationData%ParticleGroups(groupIndex)%Solute )
+                call trackingEngine%UpdateDispersionFunction( &
+                  transportModelData%Solutes(&
+                  simulationData%ParticleGroups(groupIndex)%Solute )%dispersionModel )
+            end if 
+            ! -- Particles loop -- !
             !$omp parallel do schedule( dynamic,1 )          &
             !$omp default( none )                            &
             !$omp shared( simulationData, modelGrid )        &

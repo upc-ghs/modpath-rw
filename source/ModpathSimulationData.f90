@@ -45,6 +45,7 @@ module ModpathSimulationDataModule
     character(len=200) :: DispersionFile          ! RWPT
     logical            :: isRWSimulation =.false. ! RWPT
     integer            :: ParticlesMassOption     ! RWPT
+    integer            :: SolutesOption           ! RWPT
     integer,dimension(:),allocatable :: BudgetCells
     integer,dimension(:),allocatable :: Zones
     doubleprecision,dimension(:),allocatable :: Retardation
@@ -572,10 +573,14 @@ contains
       particleCount = particleCount + this%ParticleGroups(n)%TotalParticleCount
 
       ! RWPT
-      if ( this%ParticlesMassOption .eq. 1 ) then 
+      if ( this%ParticlesMassOption .ge. 1 ) then 
         ! Read group mass, is a proxy for concentrations
         ! when mass is uniform for a pgroup
         read(inUnit, *) this%ParticleGroups(n)%Mass
+        ! Read the solute id for this group 
+        if ( this%ParticlesMassOption .eq. 2 ) then 
+          read(inUnit, *) this%ParticleGroups(n)%Solute
+        end if
       end if
 
     end do

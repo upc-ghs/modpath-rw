@@ -25,6 +25,11 @@ module ParticleTrackingOptionsModule
     doubleprecision, dimension(2) :: timeStepParameters = 0
     integer                       :: advectionKind
     logical                       :: twoDimensions = .false.
+    integer                       :: dispersionModel
+    ! NONLINEAR DISPERSION RWPT (TEMP)
+    doubleprecision :: betaTrans, betaLong
+    doubleprecision :: mediumDistance, mediumDelta
+
 
 
     ! GPKDE
@@ -38,12 +43,9 @@ module ParticleTrackingOptionsModule
     logical                       :: gpkdeKernelDatabase
     doubleprecision, dimension(3) :: gpkdeKDBParams
     logical                       :: gpkdeSkipTimeseriesWriter = .false.
+    logical                       :: skipTimeseriesWriter = .false.
 
 
-    ! NONLINEAR DISPERSION RWPT (TEMP)
-    integer         :: dispersionModel
-    doubleprecision :: betaTrans, betaLong
-    doubleprecision :: mediumDistance, mediumDelta
 
 
     ! OBSERVATION CELLS
@@ -56,7 +58,6 @@ module ParticleTrackingOptionsModule
     logical, allocatable, dimension(:) :: isObservation
     integer, allocatable, dimension(:) :: idObservation
     logical :: anySinkObservation = .false.
-    
     type( ObservationType ), allocatable, dimension(:) :: Observations
 
 
