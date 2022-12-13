@@ -126,6 +126,8 @@
     doubleprecision, allocatable, dimension(:,:) :: obsSinkFlowInTime ! (ntimes,ncells)
     doubleprecision, allocatable, dimension(:)   :: obsAccumSinkFlowInTime ! (ntimes)
     doubleprecision, allocatable, dimension(:)   :: qSinkBuffer
+    integer            :: idColFormat
+    character(len=200) :: colFormat
     character(len=200) :: qSinkFormat
     doubleprecision    :: obsAccumPorousVolume, dX, dY, dZ, porosity
     doubleprecision    :: modelX, modelY
@@ -1593,8 +1595,8 @@
             call gpkde%ComputeDensity(&
               gpkdeDataCarrier,       &
               unitVolume = .true.,    &
+              scalingFactor = 1d0,    & 
               histogramScalingFactor = 1d0 )
-              !scalingFactor = simulationData%ParticleGroups(groupIndex)%Mass,         & 
             BTCPerSolute(:,ns) = gpkde%densityEstimateGrid(:,1,1)
 
           end do 
@@ -1611,21 +1613,17 @@
           allocate(obsSinkFlowInTime(simulationData%TimePointCount, obs%nCells))
           obsSinkFlowInTime = 0d0
 
-
           ! Fill flow-rate timeseries for each cell
           rewind( obs%auxOutputUnit ) 
           do n =1, simulationData%TimePointCount
             read(obs%auxOutputUnit,*) timeIndex, obsSinkFlowInTime( n, : )
           end do
 
-
           ! Accumulate flow rates, absolute values 
           obsAccumSinkFlowInTime = sum( abs(obsSinkFlowInTime), dim=2 )
           ! Once flow-rates are known, can compute flux-concentration
 
-
           ! Something to verify if sink flows were zero the whole time
-
 
           ! Apply the logic to determine where to write the obs records
           ! Case 1: write to the same file as before: close it, open again and dump
@@ -1635,27 +1633,49 @@
                 status='replace', form='formatted', access='sequential')
           ! Case 2: close the previous file and open a new one using the same
           ! unit number for the obs, but with a different filename: keep the arrival records
-         
-
-          ! And write
-          ! Remember to decide what to do for different species, pgroups (?)
-          do nit = 1, simulationData%TimePointCount
-             if ( obsAccumSinkFlowInTime(nit) .gt. 0d0 ) then 
-                ! idTime, time, QSink, Mass-HIST, Mass-GPKDE, CFlux-HIST, CFlux-GPKDE
-                write(obs%outputUnit, '(1I8,7es18.9e3)') nit, simulationData%TimePoints(nit), &
-                      obsAccumSinkFlowInTime(nit), &
-                      gpkde%rawDensityEstimateGrid(nit,1,1), gpkde%densityEstimateGrid(nit,1,1), &
-                      gpkde%rawDensityEstimateGrid(nit,1,1)/obsAccumSinkFlowInTime(nit), &
-                      gpkde%densityEstimateGrid(nit,1,1)/obsAccumSinkFlowInTime(nit)
-             else
-                ! No concentrations
-                ! idTime, time, 0d0, Mass-HIST, Mass-GPKDE, 0d0, 0d0
-                write(obs%outputUnit, '(1I8,7es18.9e3)') nit, simulationData%TimePoints(nit), &
-                      0d0, &
-                      gpkde%densityEstimateGrid(nit,1,1), gpkde%densityEstimateGrid(nit,1,1), &
-                      0d0, 0d0
-             end if 
-          end do 
+       
+          idColFormat = 1
+          select case(idColFormat)
+          case (1)
+            ! idTime, time, QSink, CFlux-GPKDE(:)
+            ! Needs the format 
+            write (colFormat,*) '(1I8,',&
+                2 + transportModelData%nSolutes, 'es18.9e3)'
+            ! And write
+            do nit = 1, simulationData%TimePointCount
+               if ( obsAccumSinkFlowInTime(nit) .gt. 0d0 ) then 
+                  ! idTime, time, QSink, CFlux-GPKDE(t,:)
+                  write(obs%outputUnit, colFormat) nit, simulationData%TimePoints(nit), &
+                        obsAccumSinkFlowInTime(nit), BTCPerSolute(nit,:)/obsAccumSinkFlowInTime(nit)
+               else
+                 ! No concentrations
+                 ! idTime, time, QSink, CFlux-GPKDE(t,:), CFlux-HIST(t,:)
+                 write(obs%outputUnit, colFormat) nit, simulationData%TimePoints(nit), &
+                       0d0, spread(0d0,1,transportModelData%nSolutes) 
+               end if 
+            end do 
+          case (2)
+            ! idTime, time, QSink, CFlux-GPKDE(:), CFlux-HIST(:)
+            ! Needs the format 
+            write (colFormat,*) '(1I8,',&
+                2 + 2*transportModelData%nSolutes, 'es18.9e3)'
+            ! And write
+            do nit = 1, simulationData%TimePointCount
+               if ( obsAccumSinkFlowInTime(nit) .gt. 0d0 ) then 
+                  ! idTime, time, QSink, CFlux-GPKDE(t,:), CFlux-HIST(t,:)
+                  write(obs%outputUnit, colFormat) nit, simulationData%TimePoints(nit), &
+                        obsAccumSinkFlowInTime(nit), BTCPerSolute(nit,:)/obsAccumSinkFlowInTime(nit), &
+                                                     BTCPerSolute(nit,:)/obsAccumSinkFlowInTime(nit) 
+               else
+                 ! No concentrations
+                 ! idTime, time, QSink, CFlux-GPKDE(t,:), CFlux-HIST(t,:)
+                 write(obs%outputUnit, colFormat) nit, simulationData%TimePoints(nit), &
+                       0d0, spread(0d0,1,2*transportModelData%nSolutes) 
+               end if 
+            end do
+          case default 
+              continue
+          end select 
 
 
           ! And reset gpkde 
