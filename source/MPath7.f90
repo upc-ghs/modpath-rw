@@ -133,6 +133,7 @@
     doubleprecision    :: modelX, modelY
     integer            :: sequenceNumber, timePointIndex, timeStep
     doubleprecision, allocatable, dimension(:,:) :: BTCPerSolute
+    doubleprecision, allocatable, dimension(:,:) :: BTCHistPerSolute
     logical :: anyFromThisSolute = .false.
 
     ! Parallel variables
@@ -1406,10 +1407,19 @@
               activeParticleCoordinates(n,2) = groupIndex
           end do 
 
-          ! Loop over solutes
-          ! Some kind of structure is needed
+          ! idColFormat for observations output
+          idColFormat = 2
+
+          ! For storing the BTCS
           if (allocated(BTCPerSolute)) deallocate(BTCPerSolute)
           allocate(BTCPerSolute(simulationData%TimePointCount, transportModelData%nSolutes))
+
+          if (idColFormat.eq.2) then 
+            if (allocated(BTCHistPerSolute)) deallocate(BTCHistPerSolute)
+            allocate(BTCHistPerSolute(simulationData%TimePointCount, transportModelData%nSolutes))
+          end if
+
+          ! Loop over solutes
           do ns=1, transportModelData%nSolutes
             solute => transportModelData%Solutes(ns)
 
@@ -1444,16 +1454,20 @@
             ! Timeseries reconstruction    
             call gpkde%ComputeDensity(&
               gpkdeDataCarrier,       &
-              unitVolume = .true.)
-              !unitVolume = .true.,                                                    &
-              !scalingFactor = simulationData%ParticleGroups(groupIndex)%Mass,         & 
-              !histogramScalingFactor = simulationData%ParticleGroups(groupIndex)%Mass )
+              unitVolume = .true.,    &
+              scalingFactor = 1d0,    &
+              histogramScalingFactor = 1d0 ) 
+
             BTCPerSolute(:,ns) = gpkde%densityEstimateGrid(:,1,1)
+
+            if (idColFormat.eq.2) then 
+              BTCHistPerSolute(:,ns) = gpkde%rawDensityEstimateGrid(:,1,1)
+            end if 
 
           end do
 
           do n=1,simulationData%TimePointCount
-             print *, 'n: ', BTCPerSolute(n,:)
+             print *, 'n: ', BTCPerSolute(n,:), BTCHistPerSolute(n,:)
           end do
 
 
@@ -1490,14 +1504,37 @@
           ! And write
           ! Remember to decide what to do for different species, pgroups (?)
           if ( obsAccumPorousVolume .ne. 0d0 ) then 
-            do nit = 1, simulationData%TimePointCount
-              ! idTime, time, Mass-HIST, Mass-GPKDE, CFlux-HIST, CFlux-GPKDE
-              write(obs%outputUnit, '(1I8,6es18.9e3)') nit, simulationData%TimePoints(nit),    &
-                    gpkde%rawDensityEstimateGrid(nit,1,1), gpkde%densityEstimateGrid(nit,1,1), &
-                    gpkde%rawDensityEstimateGrid(nit,1,1)/obsAccumPorousVolume,                &
-                    gpkde%densityEstimateGrid(nit,1,1)/obsAccumPorousVolume
-            end do 
+            ! Probably should be as a property from obs 
+            select case(idColFormat)
+            case (1)
+              ! idTime, time, C-GPKDE(:)
+              ! Needs the format 
+              write (colFormat,*) '(1I8,',&
+                  1 + transportModelData%nSolutes, 'es18.9e3)'
+              ! And write
+              do nit = 1, simulationData%TimePointCount
+                ! idTime, time, C-GPKDE(t,:)
+                write(obs%outputUnit, colFormat) nit, simulationData%TimePoints(nit), &
+                                            BTCPerSolute(nit,:)/obsAccumPorousVolume
+              end do 
+            case (2)
+              ! idTime, time, C-GPKDE(:), C-HIST(:)
+              ! Needs the format 
+              write (colFormat,*) '(1I8,',&
+                  1 + 2*transportModelData%nSolutes, 'es18.9e3)'
+              ! And write
+              do nit = 1, simulationData%TimePointCount
+                ! idTime, time, C-GPKDE(t,:), C-HIST(t,:)
+                write(obs%outputUnit, colFormat) nit, simulationData%TimePoints(nit), &
+                      BTCPerSolute(nit,:)/obsAccumPorousVolume, &
+                        BTCHistPerSolute(nit,:)/obsAccumPorousVolume
+              end do
+            case default 
+                continue
+            end select 
+
           end if 
+
 
           ! And reset gpkde 
           call gpkde%Reset()
@@ -1560,11 +1597,19 @@
               activeParticleCoordinates(n,2) = groupIndex ! remember these indexes
           end do 
 
+          ! idColFormat for observations output
+          idColFormat = 2
 
-          ! Loop over solutes
-          ! Some kind of structure is needed
+          ! For storign the BTCS
           if (allocated(BTCPerSolute)) deallocate(BTCPerSolute)
           allocate(BTCPerSolute(simulationData%TimePointCount, transportModelData%nSolutes))
+
+          if (idColFormat.eq.2) then 
+            if (allocated(BTCHistPerSolute)) deallocate(BTCHistPerSolute)
+            allocate(BTCHistPerSolute(simulationData%TimePointCount, transportModelData%nSolutes))
+          end if
+
+          ! Loop over solutes
           do ns=1, transportModelData%nSolutes
             solute => transportModelData%Solutes(ns)
 
@@ -1597,12 +1642,17 @@
               unitVolume = .true.,    &
               scalingFactor = 1d0,    & 
               histogramScalingFactor = 1d0 )
+
             BTCPerSolute(:,ns) = gpkde%densityEstimateGrid(:,1,1)
+
+            if (idColFormat.eq.2) then 
+              BTCHistPerSolute(:,ns) = gpkde%rawDensityEstimateGrid(:,1,1)
+            end if 
 
           end do 
     
           do n=1,simulationData%TimePointCount
-             print *, 'n: ', BTCPerSolute(n,:)
+             print *, 'n: ', BTCPerSolute(n,:), BTCHistPerSolute(n,:)
           end do
 
           ! Flow rates were written to obs file
@@ -1633,8 +1683,8 @@
                 status='replace', form='formatted', access='sequential')
           ! Case 2: close the previous file and open a new one using the same
           ! unit number for the obs, but with a different filename: keep the arrival records
-       
-          idColFormat = 1
+      
+          ! Probably should be as a property from  obs 
           select case(idColFormat)
           case (1)
             ! idTime, time, QSink, CFlux-GPKDE(:)
@@ -1665,7 +1715,7 @@
                   ! idTime, time, QSink, CFlux-GPKDE(t,:), CFlux-HIST(t,:)
                   write(obs%outputUnit, colFormat) nit, simulationData%TimePoints(nit), &
                         obsAccumSinkFlowInTime(nit), BTCPerSolute(nit,:)/obsAccumSinkFlowInTime(nit), &
-                                                     BTCPerSolute(nit,:)/obsAccumSinkFlowInTime(nit) 
+                                                     BTCHistPerSolute(nit,:)/obsAccumSinkFlowInTime(nit) 
                else
                  ! No concentrations
                  ! idTime, time, QSink, CFlux-GPKDE(t,:), CFlux-HIST(t,:)
@@ -1687,7 +1737,8 @@
 
       end do ! obsLoop
 
-    end if ! process sink obs cells 
+
+    end if ! process obs cells 
 
 
 100 continue    
