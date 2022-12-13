@@ -1418,6 +1418,7 @@
             end do
             if ( allocated(gpkdeDataCarrier) ) deallocate(gpkdeDataCarrier) 
             allocate( gpkdeDataCarrier(solCount,3) )
+            gpkdeDataCarrier = 0d0
 
             ! Not necessarily the most efficient,
             ! think about cases with lots of pgroups per
@@ -1541,9 +1542,8 @@
 
           ! Allocate active particles coordinates (temporary)
           if ( allocated( activeParticleCoordinates ) ) deallocate( activeParticleCoordinates )
-          allocate( activeParticleCoordinates(nlines,3) )
+          allocate( activeParticleCoordinates(nlines,2) )
           activeParticleCoordinates = 0d0
-
 
           ! Load file records into array
           rewind( obs%outputUnit )
@@ -1555,18 +1555,53 @@
               ! Needs some kind of understanding of the particle group, and that it
               ! means another solute ( column? )
               activeParticleCoordinates(n,1) = initialTime 
-              !activeParticleCoordinates(n,2) = QSinkCell
-              !activeParticleCoordinates(n,3) = cellNumber ! remember these indexes 1,2,3
+              activeParticleCoordinates(n,2) = groupIndex ! remember these indexes
           end do 
 
 
-          ! Timeseries reconstruction
-          call gpkde%ComputeDensity(                                                &
-            activeParticleCoordinates,                                              &
-            unitVolume = .true.,                                                    &
-            scalingFactor = simulationData%ParticleGroups(groupIndex)%Mass,         & 
-            histogramScalingFactor = simulationData%ParticleGroups(groupIndex)%Mass )
+          ! Loop over solutes
+          ! Some kind of structure is needed
+          if (allocated(BTCPerSolute)) deallocate(BTCPerSolute)
+          allocate(BTCPerSolute(simulationData%TimePointCount, transportModelData%nSolutes))
+          do ns=1, transportModelData%nSolutes
+            solute => transportModelData%Solutes(ns)
+
+            ! Count how many for this solute
+            solCount = 0
+            do npg=1,solute%nParticleGroups
+              solCount = solCount + count(activeParticleCoordinates(:,2).eq.solute%pGroups(npg) ) 
+            end do
+            if ( allocated(gpkdeDataCarrier) ) deallocate(gpkdeDataCarrier) 
+            allocate( gpkdeDataCarrier(solCount,3) )
+            gpkdeDataCarrier = 0d0
+
+            irow = 0
+            do n=1,nlines
+              anyFromThisSolute = .false.
+              do npg=1,solute%nParticleGroups
+                if (activeParticleCoordinates(n,2).eq.solute%pGroups(npg)) then 
+                    anyFromThisSolute = .true.
+                    exit
+                end if
+              end do
+              if ( .not. anyFromThisSolute ) cycle
+              irow = irow + 1
+              gpkdeDataCarrier(irow,1) = activeParticleCoordinates(n,1)
+            end do
+
+            ! Timeseries reconstruction
+            call gpkde%ComputeDensity(&
+              gpkdeDataCarrier,       &
+              unitVolume = .true.,    &
+              histogramScalingFactor = 1d0 )
+              !scalingFactor = simulationData%ParticleGroups(groupIndex)%Mass,         & 
+            BTCPerSolute(:,ns) = gpkde%densityEstimateGrid(:,1,1)
+
+          end do 
     
+          do n=1,simulationData%TimePointCount
+             print *, 'n: ', BTCPerSolute(n,:)
+          end do
 
           ! Flow rates were written to obs file
           ! And are now sorted by arrival time
