@@ -817,19 +817,12 @@ contains
                           call ustop('Invalid starting locations file name. stop.')
                       end if
                       
-                      ! SOMETHING LIKE THIS
-
                       ! Read particles mass
                       read(inUnit, *) particleMass
 
-                      ! Read diffusion ?
-
-
-                      ! LOAD LOCATION FILES 
+                      ! Load locations file
                       call ReadAndPrepareLocationsMass(slocUnit, outUnit, particleGroups(nic),   &
                         ibound, grid%CellCount, grid, seqNumber, particleMass ) 
-
-
 
                 end select
 

@@ -113,8 +113,10 @@
 
     ! GPKDE
     doubleprecision, dimension(:,:), allocatable :: activeParticleCoordinates
+    doubleprecision, dimension(:), allocatable   :: activeParticleMasses
     integer :: activeCounter, itcount, ns, npg, pgid
     doubleprecision, dimension(:,:), allocatable :: gpkdeDataCarrier
+    doubleprecision, dimension(:), allocatable :: gpkdeWeightsCarrier
 
     ! OBSERVATIONS
     integer :: nlines, io, irow, krow, nobs, nit, countTS, nTimesHigher, cellNumber 
@@ -1199,6 +1201,10 @@
             ! Allocate active particles coordinates
             if ( allocated( activeParticleCoordinates ) ) deallocate( activeParticleCoordinates )
             allocate( activeParticleCoordinates(activeCounter,3) )
+            activeParticleCoordinates = 0d0
+            if ( allocated( activeParticleMasses ) ) deallocate( activeParticleMasses )
+            allocate( activeParticleMasses(activeCounter) )
+            activeParticleMasses = 0d0
 
             ! Could be parallelized ?
             ! Restart active counter and fill coordinates array
@@ -1212,6 +1218,7 @@
                   activeParticleCoordinates( activeCounter, 1 ) = p%GlobalX
                   activeParticleCoordinates( activeCounter, 2 ) = p%GlobalY
                   activeParticleCoordinates( activeCounter, 3 ) = p%GlobalZ
+                  activeParticleMasses( activeCounter ) = p%Mass
                 end if
               end do
             end do
@@ -1225,8 +1232,9 @@
                outputFileUnit     = simulationData%TrackingOptions%gpkdeOutputUnit, &
                outputDataId       = nt,                                             & ! timeindex
                particleGroupId    = solute%id,                                      &
-               unitVolume         = .true.                                          &
-               !scalingFactor      = simulationData%ParticleGroups(groupIndex)%Mass  &
+               unitVolume         = .true.,                                         &
+               weightedHistogram  = .true.,                                         &
+               weights            = activeParticleMasses                            &
             )
             
             ! And needs volume correction for 
@@ -1385,6 +1393,9 @@
           if ( allocated( activeParticleCoordinates ) ) deallocate( activeParticleCoordinates )
           allocate( activeParticleCoordinates(nlines,2) )
           activeParticleCoordinates = 0d0
+          if ( allocated( activeParticleMasses ) ) deallocate( activeParticleMasses )
+          allocate( activeParticleMasses(nlines) )
+          activeParticleMasses = 0d0
 
 
           ! It seems that the most reasonable 
@@ -1405,6 +1416,12 @@
               ! means another solute ( column? )
               activeParticleCoordinates(n,1) = initialTime 
               activeParticleCoordinates(n,2) = groupIndex
+
+              ! A similar access could be used for getting soluteId from 
+              ! the particle directly, avoiding the identification stage 
+              ! coming further down
+              activeParticleMasses(n) = &
+                simulationData%ParticleGroups(groupIndex)%Particles(particleID)%Mass
           end do 
 
           ! idColFormat for observations output
@@ -1413,10 +1430,11 @@
           ! For storing the BTCS
           if (allocated(BTCPerSolute)) deallocate(BTCPerSolute)
           allocate(BTCPerSolute(simulationData%TimePointCount, transportModelData%nSolutes))
-
+          BTCPerSolute = 0d0
           if (idColFormat.eq.2) then 
             if (allocated(BTCHistPerSolute)) deallocate(BTCHistPerSolute)
             allocate(BTCHistPerSolute(simulationData%TimePointCount, transportModelData%nSolutes))
+            BTCHistPerSolute = 0d0
           end if
 
           ! Loop over solutes
@@ -1431,6 +1449,9 @@
             if ( allocated(gpkdeDataCarrier) ) deallocate(gpkdeDataCarrier) 
             allocate( gpkdeDataCarrier(solCount,3) )
             gpkdeDataCarrier = 0d0
+            if ( allocated(gpkdeWeightsCarrier) ) deallocate(gpkdeWeightsCarrier) 
+            allocate( gpkdeWeightsCarrier(solCount) )
+            gpkdeWeightsCarrier = 0d0
 
             ! Not necessarily the most efficient,
             ! think about cases with lots of pgroups per
@@ -1449,14 +1470,16 @@
               if ( .not. anyFromThisSolute ) cycle
               irow = irow + 1
               gpkdeDataCarrier(irow,1) = activeParticleCoordinates(n,1)
+              gpkdeWeightsCarrier(irow) = activeParticleMasses(n)
             end do
 
             ! Timeseries reconstruction    
-            call gpkde%ComputeDensity(&
-              gpkdeDataCarrier,       &
-              unitVolume = .true.,    &
-              scalingFactor = 1d0,    &
-              histogramScalingFactor = 1d0 ) 
+            call gpkde%ComputeDensity(   &
+              gpkdeDataCarrier,          &
+              unitVolume = .true.,       &
+              histogramScalingFactor=1d0,&
+              weightedHistogram= .true., &
+              weights = gpkdeWeightsCarrier )
 
             BTCPerSolute(:,ns) = gpkde%densityEstimateGrid(:,1,1)
 
@@ -1583,6 +1606,9 @@
           if ( allocated( activeParticleCoordinates ) ) deallocate( activeParticleCoordinates )
           allocate( activeParticleCoordinates(nlines,2) )
           activeParticleCoordinates = 0d0
+          if ( allocated( activeParticleMasses ) ) deallocate( activeParticleMasses )
+          allocate( activeParticleMasses(nlines) )
+          activeParticleMasses = 0d0
 
           ! Load file records into array
           rewind( obs%outputUnit )
@@ -1595,6 +1621,12 @@
               ! means another solute ( column? )
               activeParticleCoordinates(n,1) = initialTime 
               activeParticleCoordinates(n,2) = groupIndex ! remember these indexes
+
+              ! A similar access could be used for getting soluteId from 
+              ! the particle directly, avoiding the identification stage 
+              ! coming further down
+              activeParticleMasses(n) = &
+                simulationData%ParticleGroups(groupIndex)%Particles(particleID)%Mass
           end do 
 
           ! idColFormat for observations output
@@ -1603,11 +1635,12 @@
           ! For storign the BTCS
           if (allocated(BTCPerSolute)) deallocate(BTCPerSolute)
           allocate(BTCPerSolute(simulationData%TimePointCount, transportModelData%nSolutes))
-
+          BTCPerSolute = 0d0
           if (idColFormat.eq.2) then 
             if (allocated(BTCHistPerSolute)) deallocate(BTCHistPerSolute)
             allocate(BTCHistPerSolute(simulationData%TimePointCount, transportModelData%nSolutes))
           end if
+          BTCHistPerSolute = 0d0
 
           ! Loop over solutes
           do ns=1, transportModelData%nSolutes
@@ -1621,6 +1654,9 @@
             if ( allocated(gpkdeDataCarrier) ) deallocate(gpkdeDataCarrier) 
             allocate( gpkdeDataCarrier(solCount,3) )
             gpkdeDataCarrier = 0d0
+            if ( allocated(gpkdeWeightsCarrier) ) deallocate(gpkdeWeightsCarrier) 
+            allocate( gpkdeWeightsCarrier(solCount) )
+            gpkdeWeightsCarrier = 0d0
 
             irow = 0
             do n=1,nlines
@@ -1634,14 +1670,16 @@
               if ( .not. anyFromThisSolute ) cycle
               irow = irow + 1
               gpkdeDataCarrier(irow,1) = activeParticleCoordinates(n,1)
+              gpkdeWeightsCarrier(irow) = activeParticleMasses(n)
             end do
 
-            ! Timeseries reconstruction
-            call gpkde%ComputeDensity(&
-              gpkdeDataCarrier,       &
-              unitVolume = .true.,    &
-              scalingFactor = 1d0,    & 
-              histogramScalingFactor = 1d0 )
+            ! Timeseries reconstruction    
+            call gpkde%ComputeDensity(   &
+              gpkdeDataCarrier,          &
+              unitVolume = .true.,       &
+              histogramScalingFactor=1d0,&
+              weightedHistogram= .true., &
+              weights = gpkdeWeightsCarrier )
 
             BTCPerSolute(:,ns) = gpkde%densityEstimateGrid(:,1,1)
 

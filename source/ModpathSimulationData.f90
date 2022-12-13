@@ -577,6 +577,7 @@ contains
         ! Read group mass, is a proxy for concentrations
         ! when mass is uniform for a pgroup
         read(inUnit, *) this%ParticleGroups(n)%Mass
+        this%ParticleGroups(n)%Particles(:)%Mass = this%ParticleGroups(n)%Mass
         ! Read the solute id for this group 
         if ( this%ParticlesMassOption .eq. 2 ) then 
           read(inUnit, *) this%ParticleGroups(n)%Solute
