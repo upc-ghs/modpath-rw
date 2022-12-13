@@ -255,8 +255,6 @@ contains
               if ( allocated(this%Solutes) ) deallocate( this%Solutes )
               allocate( this%Solutes(this%nSolutes) )
 
-              print *, 'NUMBER OF SOLUTES ', this%nSolutes
-
               ! Initialize these guys
               do ns =1,this%nSolutes
                 ! Of course needs some attributes 
@@ -289,7 +287,7 @@ contains
                   allocate( this%Solutes(ns)%pGroups( &
                      this%Solutes(ns)%nParticleGroups ) )
                   
-                  ! Read the INDEXES in simulationData%ParticleGroup list
+                  ! Read related particle groups
                   do npg =1,this%Solutes(ns)%nParticleGroups
                     ! Read the pgroups
                     read(inUnit, '(a)') line
@@ -304,36 +302,36 @@ contains
                         this%Solutes(ns)%pGroups(npg) )%Solute = ns
                   end do
 
-                  else if ( simulationData%ParticlesMassOption .eq. 2 ) then
+                else if ( simulationData%ParticlesMassOption .eq. 2 ) then
 
-                    ! Read the INDEXES in simulationData%ParticleGroup list
-                    ! and count how many for this solute
-                    ncount = 0
-                    do npg =1,simulationData%ParticleGroupCount
-                      if ( simulationData%ParticleGroups( npg )%Solute .eq. ns ) then
-                        ncount = ncount + 1
-                      end if 
-                    end do
-
-                    ! If no pgroups, let it continue
-                    if ( ncount .eq. 0 ) then 
-                        write(outUnit,*) 'Warning: no particle groups associated to solute id ', ns
-                    else
-                        ! Initialize pgroups for the solute
-                        this%Solutes(ns)%nParticleGroups = ncount
-                  
-                        if ( allocated( this%Solutes(ns)%pGroups ) ) deallocate( this%Solutes(ns)%pGroups )
-                        allocate( this%Solutes(ns)%pGroups( &
-                           this%Solutes(ns)%nParticleGroups ) )
-                  
-                        do npg =1,simulationData%ParticleGroupCount
-                          if ( simulationData%ParticleGroups( npg )%Solute .eq. ns ) then
-                            ncount = ncount + 1
-                            this%Solutes(ns)%pGroups(ncount) = npg
-                          end if 
-                        end do
-
+                  ! Read the INDEXES in simulationData%ParticleGroup list
+                  ! and count how many for this solute
+                  ncount = 0
+                  do npg =1,simulationData%ParticleGroupCount
+                    if ( simulationData%ParticleGroups( npg )%Solute .eq. ns ) then
+                      ncount = ncount + 1
                     end if 
+                  end do
+
+                  ! If no pgroups, let it continue
+                  if ( ncount .eq. 0 ) then 
+                      write(outUnit,*) 'Warning: no particle groups associated to solute id ', ns
+                  else
+                      ! Initialize pgroups for the solute
+                      this%Solutes(ns)%nParticleGroups = ncount
+                
+                      if ( allocated( this%Solutes(ns)%pGroups ) ) deallocate( this%Solutes(ns)%pGroups )
+                      allocate( this%Solutes(ns)%pGroups( &
+                         this%Solutes(ns)%nParticleGroups ) )
+
+                      ncount = 0 
+                      do npg =1,simulationData%ParticleGroupCount
+                        if ( simulationData%ParticleGroups( npg )%Solute .eq. ns ) then
+                          ncount = ncount + 1
+                          this%Solutes(ns)%pGroups(ncount) = npg
+                        end if 
+                      end do
+                  end if 
 
                 end if 
                
@@ -1349,7 +1347,4 @@ contains
     end subroutine pr_SetSoluteDispersion
     
     
-
-
-
 end module TransportModelDataModule

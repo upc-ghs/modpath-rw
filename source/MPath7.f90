@@ -1105,65 +1105,123 @@
             !$omp end parallel do
 
 
-            ! Spatial GPKDE for the current groupIndex
-            ! This directly relate GPKDE reconstruction with a given 
-            ! group, however, multiple groups could be of the same solute kind.
-            ! This means that GPDKE could be performed after displacing all
-            ! pgroups, integrating data from common solutes into a single
-            ! reconstruction
-            if ( simulationData%TrackingOptions%GPKDEReconstruction .and. isTimeSeriesPoint ) then
+            !! Spatial GPKDE for the current groupIndex
+            !! This directly relate GPKDE reconstruction with a given 
+            !! group, however, multiple groups could be of the same solute kind.
+            !! This means that GPDKE could be performed after displacing all
+            !! pgroups, integrating data from common solutes into a single
+            !! reconstruction
+            !if ( simulationData%TrackingOptions%GPKDEReconstruction .and. isTimeSeriesPoint ) then
 
-                ! Count how many active after trackpath, not necessarilly the same 
-                ! as activeCount
-                activeCounter = 0
-                do particleIndex = 1, simulationData%ParticleGroups(groupIndex)%TotalParticleCount
-                    p => simulationData%ParticleGroups(groupIndex)%Particles(particleIndex)
-                    ! If active, to the array for GPKDE
-                    if( (p%Status .eq. 1) ) then
-                        activeCounter = activeCounter + 1
-                    end if
-                end do
+            !    ! Count how many active after trackpath, not necessarilly the same 
+            !    ! as activeCount
+            !    activeCounter = 0
+            !    do particleIndex = 1, simulationData%ParticleGroups(groupIndex)%TotalParticleCount
+            !        p => simulationData%ParticleGroups(groupIndex)%Particles(particleIndex)
+            !        ! If active, to the array for GPKDE
+            !        if( (p%Status .eq. 1) ) then
+            !            activeCounter = activeCounter + 1
+            !        end if
+            !    end do
 
-                ! Allocate active particles coordinates
-                if ( allocated( activeParticleCoordinates ) ) deallocate( activeParticleCoordinates )
-                allocate( activeParticleCoordinates(activeCounter,3) )
+            !    ! Allocate active particles coordinates
+            !    if ( allocated( activeParticleCoordinates ) ) deallocate( activeParticleCoordinates )
+            !    allocate( activeParticleCoordinates(activeCounter,3) )
 
-                ! Could be parallelized ?
-                ! Restart active counter and fill coordinates array
-                activeCounter = 0 
-                do particleIndex = 1, simulationData%ParticleGroups(groupIndex)%TotalParticleCount
-                    p => simulationData%ParticleGroups(groupIndex)%Particles(particleIndex)
-                    ! If active, to the array for GPKDE
-                    if( (p%Status .eq. 1) ) then
-                        activeCounter = activeCounter + 1
-                        activeParticleCoordinates( activeCounter, 1 ) = p%GlobalX
-                        activeParticleCoordinates( activeCounter, 2 ) = p%GlobalY
-                        activeParticleCoordinates( activeCounter, 3 ) = p%GlobalZ
-                    end if
-                end do
+            !    ! Could be parallelized ?
+            !    ! Restart active counter and fill coordinates array
+            !    activeCounter = 0 
+            !    do particleIndex = 1, simulationData%ParticleGroups(groupIndex)%TotalParticleCount
+            !        p => simulationData%ParticleGroups(groupIndex)%Particles(particleIndex)
+            !        ! If active, to the array for GPKDE
+            !        if( (p%Status .eq. 1) ) then
+            !            activeCounter = activeCounter + 1
+            !            activeParticleCoordinates( activeCounter, 1 ) = p%GlobalX
+            !            activeParticleCoordinates( activeCounter, 2 ) = p%GlobalY
+            !            activeParticleCoordinates( activeCounter, 3 ) = p%GlobalZ
+            !        end if
+            !    end do
 
-                ! GPKDE for mass distribution
-                ! Link particles mass to particleGroup mass
-                call gpkde%ComputeDensity(                                              &
-                   activeParticleCoordinates,                                           &
-                   outputFileUnit     = simulationData%TrackingOptions%gpkdeOutputUnit, &
-                   outputDataId       = nt,                                             &
-                   particleGroupId    = groupIndex,                                     &
-                   unitVolume         = .true.,                                         &
-                   scalingFactor      = simulationData%ParticleGroups(groupIndex)%Mass  &
-                )
-               
+            !    ! GPKDE for mass distribution
+            !    ! Link particles mass to particleGroup mass
+            !    call gpkde%ComputeDensity(                                              &
+            !       activeParticleCoordinates,                                           &
+            !       outputFileUnit     = simulationData%TrackingOptions%gpkdeOutputUnit, &
+            !       outputDataId       = nt,                                             &
+            !       particleGroupId    = groupIndex,                                     &
+            !       unitVolume         = .true.,                                         &
+            !       scalingFactor      = simulationData%ParticleGroups(groupIndex)%Mass  &
+            !    )
+            !   
 
-                ! And needs volume correction for 
-                ! cells, considering porosities and so on
-                ! It would work only for structured grids
-                ! sharing the same discretization than GPKDE
+            !    ! And needs volume correction for 
+            !    ! cells, considering porosities and so on
+            !    ! It would work only for structured grids
+            !    ! sharing the same discretization than GPKDE
 
 
-            end if
+            !end if
 
 
         end do
+
+
+        print *, 'NOW NEEDS GPKDE RECONSTRUCION FOR EACH SOLUTE !!!!'
+
+        ! Once it finished transporting all 
+        ! particle groups, reconstruction 
+        ! grouped by solute
+        if ( simulationData%TrackingOptions%GPKDEReconstruction .and. isTimeSeriesPoint ) then
+
+            ! Count how many active after trackpath, not necessarilly the same 
+            ! as activeCount
+            activeCounter = 0
+            do particleIndex = 1, simulationData%ParticleGroups(groupIndex)%TotalParticleCount
+                p => simulationData%ParticleGroups(groupIndex)%Particles(particleIndex)
+                ! If active, to the array for GPKDE
+                if( (p%Status .eq. 1) ) then
+                    activeCounter = activeCounter + 1
+                end if
+            end do
+
+            ! Allocate active particles coordinates
+            if ( allocated( activeParticleCoordinates ) ) deallocate( activeParticleCoordinates )
+            allocate( activeParticleCoordinates(activeCounter,3) )
+
+            ! Could be parallelized ?
+            ! Restart active counter and fill coordinates array
+            activeCounter = 0 
+            do particleIndex = 1, simulationData%ParticleGroups(groupIndex)%TotalParticleCount
+                p => simulationData%ParticleGroups(groupIndex)%Particles(particleIndex)
+                ! If active, to the array for GPKDE
+                if( (p%Status .eq. 1) ) then
+                    activeCounter = activeCounter + 1
+                    activeParticleCoordinates( activeCounter, 1 ) = p%GlobalX
+                    activeParticleCoordinates( activeCounter, 2 ) = p%GlobalY
+                    activeParticleCoordinates( activeCounter, 3 ) = p%GlobalZ
+                end if
+            end do
+
+            ! GPKDE for mass distribution
+            ! Link particles mass to particleGroup mass
+            call gpkde%ComputeDensity(                                              &
+               activeParticleCoordinates,                                           &
+               outputFileUnit     = simulationData%TrackingOptions%gpkdeOutputUnit, &
+               outputDataId       = nt,                                             &
+               particleGroupId    = groupIndex,                                     &
+               unitVolume         = .true.,                                         &
+               scalingFactor      = simulationData%ParticleGroups(groupIndex)%Mass  &
+            )
+           
+
+            ! And needs volume correction for 
+            ! cells, considering porosities and so on
+            ! It would work only for structured grids
+            ! sharing the same discretization than GPKDE
+
+
+        end if
+
 
     end if
  
