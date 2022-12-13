@@ -1156,69 +1156,33 @@ contains
 
             ! If any observation cells
             if ( this%TrackingOptions%observationSimulation ) then
-                ! Determine if the current TrackCell is on 
-                ! array of observations cells and get the corresponding unit
+              ! Determine if the current TrackCell is on 
+              ! array of observations cells and get the corresponding unit
 
-                ! If this is an observation cell
-                if ( this%TrackingOptions%isObservation(this%TrackCell%CellData%CellNumber) ) then
+              ! If this is an observation cell
+              if ( this%TrackingOptions%isObservation(this%TrackCell%CellData%CellNumber) ) then
 
-                  ! Assign the obs pointer
-                  no = this%TrackingOptions%idObservation(this%TrackCell%CellData%CellNumber)
-                  obs => this%TrackingOptions%Observations( no )  
+                ! Assign the obs pointer
+                no = this%TrackingOptions%idObservation(this%TrackCell%CellData%CellNumber)
+                obs => this%TrackingOptions%Observations( no )  
 
-                  ! Process different kind of observations
-                  ! At this point, only strong sink is processed here
-                  select case( obs%style )
-                    case (2)
-                      if(this%TrackCellResult%Status .eq. this%TrackCellResult%Status_StopAtWeakSink()) then
-                        ! If a particle is removed due to strong sink
-                        !$omp critical (observation)
-                        call WriteObservationSinkCellRecord( this, group, particleID,  &
-                             this%TrackCell,                                           &
-                             obs%outputUnit)
-                        !$omp end critical (observation)
-                      !else if (this%TrackCell%CellData%SinkFlow .eq. 0d0 ) then 
-                      !  ! If the cell was marked as sink obs, 
-                      !  ! particle was not removed and SinkFlow .eq. 0d0, 
-                      !  ! write a record with zero flow rate
-                      !  !$omp critical (observation)
-                      !  call WriteObservationSinkCellRecord( this, group, particleID,  &
-                      !       this%TrackCell,                                           &
-                      !       obs%outputUnit)
-                      !  !$omp end critical (observation)
-                      end if
-                    case default 
-                      continue
-                  end select 
+                ! Process different kind of observations
+                ! At this point, only strong sink is processed here
+                select case( obs%style )
+                  case (2)
+                    if(this%TrackCellResult%Status .eq. this%TrackCellResult%Status_StopAtWeakSink()) then
+                      ! If a particle is removed due to strong sink
+                      !$omp critical (observation)
+                      call WriteObservationSinkCellRecord( this, group, particleID,  &
+                           this%TrackCell,                                           &
+                           obs%outputUnit)
+                      !$omp end critical (observation)
+                    end if
+                  case default 
+                    continue
+                end select 
 
-                end if 
-
-                !! Get id of observation cell in observation cell list
-                !! Default is -999
-                !idObservationCell = this%TrackingOptions%IdObservationCell( this%TrackCell%CellData%CellNumber ) 
-                !if ( idObservationCell .ge. 0 ) then
-                !    ! If the status of the particle is that it 
-                !    ! stops at weak sink, and said weak sink 
-                !    ! is an observation cell, then write sink record.
-                !    if(this%TrackCellResult%Status .eq. this%TrackCellResult%Status_StopAtWeakSink()) then
-                !        ! Maybe link this condition to user parameter, kind of observation
-                !        !$omp critical (observation)
-                !        call WriteObservationSinkCellRecord( this, group, particleID,  &
-                !             this%TrackCell,                                           &
-                !             this%TrackingOptions%observationUnits( idObservationCell ))
-                !        !$omp end critical (observation)
-                !        !this%TrackingOptions%obsRecordCounts( idObservationCell ) = & 
-                !        !   this%TrackingOptions%obsRecordCounts( idObservationCell ) + 1 
-                !        ! print *, 'YES ', this%TrackingOptions%obsRecordCounts( idObservationCell )
-                !    !else
-                !    !    ! Normal (weird) observation
-                !    !    !$omp critical (observation)
-                !    !    call WriteObservationCellRecord( this, group, particleID,      &
-                !    !         this%TrackCell,                                           &
-                !    !         this%TrackingOptions%observationUnits( idObservationCell ))
-                !    !    !$omp end critical (observation)
-                !    end if 
-                !end if
+              end if 
 
             end if
 

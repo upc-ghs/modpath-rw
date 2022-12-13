@@ -52,6 +52,7 @@
     use BudgetRecordHeaderModule,only : BudgetRecordHeaderType
     use GeoReferenceModule,only : GeoReferenceType
     use CompilerVersion,only : get_compiler
+    use SoluteModule, only : SoluteType ! RWPT
     use ObservationModule, only : ObservationType ! OBS
     use GridProjectedKDEModule, only : GridProjectedKDEType ! GPKDE
     use omp_lib ! OpenMP
@@ -71,7 +72,7 @@
     type(TimeDiscretizationDataType), allocatable :: tdisData
     type(ParticleTrackingEngineType), allocatable,target :: trackingEngine
     type(FlowModelDataType), allocatable :: flowModelData
-    type(TransportModelDataType), allocatable :: transportModelData  ! RWPT
+    type(TransportModelDataType), allocatable, target:: transportModelData  ! RWPT
     type(ModpathBasicDataType), allocatable, target :: basicData
     type(ModpathSimulationDataType), allocatable, target :: simulationData
     type(ModpathCellDataType), allocatable, target :: cellData
@@ -85,6 +86,7 @@
     type(GeoReferenceType) :: geoRef
     type(GridProjectedKDEType), allocatable:: gpkde                 ! GPKDE
     type(ModpathCellDataType) :: cellDataBuffer                     ! RWPT
+    type(SoluteType), pointer :: solute                             ! RWPT
     doubleprecision,dimension(:),allocatable :: timePoints
     doubleprecision,dimension(:),allocatable :: tPoint
     integer,dimension(7) :: budgetIntervalBins
@@ -111,11 +113,12 @@
 
     ! GPKDE
     doubleprecision, dimension(:,:), allocatable :: activeParticleCoordinates
-    integer :: activeCounter, itcount
+    integer :: activeCounter, itcount, ns, npg, pgid
+    doubleprecision, dimension(:,:), allocatable :: gpkdeDataCarrier
 
     ! OBSERVATIONS
     integer :: nlines, io, irow, krow, nobs, nit, countTS, nTimesHigher, cellNumber 
-    integer :: baserow, lastrow, srow, timeIndex
+    integer :: baserow, lastrow, srow, timeIndex, solCount
     doubleprecision :: dTObsSeries
     doubleprecision :: initialTime, initialGlobalX, initialGlobalY, initialGlobalZ, QSinkCell 
     doubleprecision, dimension(3) :: sbuffer
@@ -127,7 +130,8 @@
     doubleprecision    :: obsAccumPorousVolume, dX, dY, dZ, porosity
     doubleprecision    :: modelX, modelY
     integer            :: sequenceNumber, timePointIndex, timeStep
-
+    doubleprecision, allocatable, dimension(:,:) :: BTCPerSolute
+    logical :: anyFromThisSolute = .false.
 
     ! Parallel variables
     integer :: ompNumThreads
@@ -1166,22 +1170,27 @@
         end do
 
 
-        print *, 'NOW NEEDS GPKDE RECONSTRUCION FOR EACH SOLUTE !!!!'
-
         ! Once it finished transporting all 
         ! particle groups, reconstruction 
         ! grouped by solute
         if ( simulationData%TrackingOptions%GPKDEReconstruction .and. isTimeSeriesPoint ) then
 
-            ! Count how many active after trackpath, not necessarilly the same 
-            ! as activeCount
+          do ns=1,transportModelData%nSolutes
+
+            solute => transportModelData%Solutes(ns)
+
+            ! Count how many active, considering
+            ! all the particle groups linked to a given solute 
             activeCounter = 0
-            do particleIndex = 1, simulationData%ParticleGroups(groupIndex)%TotalParticleCount
+            do npg=1,solute%nParticleGroups
+              groupIndex = solute%pGroups(npg)
+              do particleIndex = 1, simulationData%ParticleGroups(groupIndex)%TotalParticleCount
                 p => simulationData%ParticleGroups(groupIndex)%Particles(particleIndex)
                 ! If active, to the array for GPKDE
                 if( (p%Status .eq. 1) ) then
-                    activeCounter = activeCounter + 1
+                  activeCounter = activeCounter + 1
                 end if
+              end do
             end do
 
             ! Allocate active particles coordinates
@@ -1191,37 +1200,40 @@
             ! Could be parallelized ?
             ! Restart active counter and fill coordinates array
             activeCounter = 0 
-            do particleIndex = 1, simulationData%ParticleGroups(groupIndex)%TotalParticleCount
+            do npg=1,solute%nParticleGroups
+              do particleIndex = 1, simulationData%ParticleGroups(groupIndex)%TotalParticleCount
                 p => simulationData%ParticleGroups(groupIndex)%Particles(particleIndex)
                 ! If active, to the array for GPKDE
                 if( (p%Status .eq. 1) ) then
-                    activeCounter = activeCounter + 1
-                    activeParticleCoordinates( activeCounter, 1 ) = p%GlobalX
-                    activeParticleCoordinates( activeCounter, 2 ) = p%GlobalY
-                    activeParticleCoordinates( activeCounter, 3 ) = p%GlobalZ
+                  activeCounter = activeCounter + 1
+                  activeParticleCoordinates( activeCounter, 1 ) = p%GlobalX
+                  activeParticleCoordinates( activeCounter, 2 ) = p%GlobalY
+                  activeParticleCoordinates( activeCounter, 3 ) = p%GlobalZ
                 end if
+              end do
             end do
 
-            ! GPKDE for mass distribution
-            ! Link particles mass to particleGroup mass
+
+            ! GPKDE
+            ! Compute density for the particles linked to a given 
+            ! solute. These may have different mass
             call gpkde%ComputeDensity(                                              &
                activeParticleCoordinates,                                           &
                outputFileUnit     = simulationData%TrackingOptions%gpkdeOutputUnit, &
-               outputDataId       = nt,                                             &
-               particleGroupId    = groupIndex,                                     &
-               unitVolume         = .true.,                                         &
-               scalingFactor      = simulationData%ParticleGroups(groupIndex)%Mass  &
+               outputDataId       = nt,                                             & ! timeindex
+               particleGroupId    = solute%id,                                      &
+               unitVolume         = .true.                                          &
+               !scalingFactor      = simulationData%ParticleGroups(groupIndex)%Mass  &
             )
-           
-
+            
             ! And needs volume correction for 
             ! cells, considering porosities and so on
             ! It would work only for structured grids
             ! sharing the same discretization than GPKDE
 
+          end do 
 
         end if
-
 
     end if
  
@@ -1307,10 +1319,13 @@
               pathlineRecordCount, simulationData%TotalParticleCount) 
         end if
     end if
-    
+ 
+
     ! Write particle summary information
+    ! Before the processing of Observations ?
     call WriteParticleSummaryInfo(simulationData, mplistUnit)
-   
+
+
     ! RWPT
     ! Process observation cells for reconstruction
     if ( simulationData%TrackingOptions%observationSimulation ) then
@@ -1365,8 +1380,13 @@
 
           ! Allocate active particles coordinates (temporary)
           if ( allocated( activeParticleCoordinates ) ) deallocate( activeParticleCoordinates )
-          allocate( activeParticleCoordinates(nlines,1) )
+          allocate( activeParticleCoordinates(nlines,2) )
           activeParticleCoordinates = 0d0
+
+
+          ! It seems that the most reasonable 
+          ! approach would be to read solute id
+          ! from records. 
 
 
           ! Load file records into array
@@ -1381,15 +1401,57 @@
               ! Needs some kind of understanding of the particle group, and that it
               ! means another solute ( column? )
               activeParticleCoordinates(n,1) = initialTime 
+              activeParticleCoordinates(n,2) = groupIndex
           end do 
 
+          ! Loop over solutes
+          ! Some kind of structure is needed
+          if (allocated(BTCPerSolute)) deallocate(BTCPerSolute)
+          allocate(BTCPerSolute(simulationData%TimePointCount, transportModelData%nSolutes))
+          do ns=1, transportModelData%nSolutes
+            solute => transportModelData%Solutes(ns)
 
-          ! Timeseries reconstruction    
-          call gpkde%ComputeDensity(                                                &
-            activeParticleCoordinates,                                              &
-            unitVolume = .true.,                                                    &
-            scalingFactor = simulationData%ParticleGroups(groupIndex)%Mass,         & 
-            histogramScalingFactor = simulationData%ParticleGroups(groupIndex)%Mass )
+            ! Count how many for this solute
+            solCount = 0
+            do npg=1,solute%nParticleGroups
+              solCount = solCount + count(activeParticleCoordinates(:,2).eq.solute%pGroups(npg) ) 
+            end do
+            if ( allocated(gpkdeDataCarrier) ) deallocate(gpkdeDataCarrier) 
+            allocate( gpkdeDataCarrier(solCount,3) )
+
+            ! Not necessarily the most efficient,
+            ! think about cases with lots of pgroups per
+            ! solute. Is either this or write the solute id 
+            ! to the observation record. This would require
+            ! modification of the TrackPath interfaces at trackingEngine
+            irow = 0
+            do n=1,nlines
+              anyFromThisSolute = .false.
+              do npg=1,solute%nParticleGroups
+                if (activeParticleCoordinates(n,2).eq.solute%pGroups(npg)) then 
+                    anyFromThisSolute = .true.
+                    exit
+                end if
+              end do
+              if ( .not. anyFromThisSolute ) cycle
+              irow = irow + 1
+              gpkdeDataCarrier(irow,1) = activeParticleCoordinates(n,1)
+            end do
+
+            ! Timeseries reconstruction    
+            call gpkde%ComputeDensity(&
+              gpkdeDataCarrier,       &
+              unitVolume = .true.)
+              !unitVolume = .true.,                                                    &
+              !scalingFactor = simulationData%ParticleGroups(groupIndex)%Mass,         & 
+              !histogramScalingFactor = simulationData%ParticleGroups(groupIndex)%Mass )
+            BTCPerSolute(:,ns) = gpkde%densityEstimateGrid(:,1,1)
+
+          end do
+
+          do n=1,simulationData%TimePointCount
+             print *, 'n: ', BTCPerSolute(n,:)
+          end do
 
 
           ! Accumulate volumes

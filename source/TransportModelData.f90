@@ -296,8 +296,8 @@ contains
                     this%Solutes(ns)%pGroups(npg) = n
 
                     ! It needs to assign the soluteId back to the 
-                    ! corresponding pgroup
-                    ! Only if simulation 
+                    ! corresponding pgroup for simulations 
+                    ! where the solute is not specified in the pgroup
                     simulationData%ParticleGroups(&
                         this%Solutes(ns)%pGroups(npg) )%Solute = ns
                   end do
