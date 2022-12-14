@@ -1352,6 +1352,7 @@
         ! If this is a normal obs cell
         if ( obs%style .eq. 1 ) then 
 
+          print *, 'NORMAL OBS CELL:!'
           ! The length of the timeseries is needed
 
           ! This would work only for timeseries simulations
@@ -1478,7 +1479,7 @@
               gpkdeDataCarrier,          &
               unitVolume = .true.,       &
               histogramScalingFactor=1d0,&
-              weightedHistogram= .true., &
+              weightedHistogram = .true.,&
               weights = gpkdeWeightsCarrier )
 
             BTCPerSolute(:,ns) = gpkde%densityEstimateGrid(:,1,1)
@@ -1569,6 +1570,8 @@
         ! If this is is a sink obs cell
         if ( obs%style .eq. 2 ) then 
 
+          print *, 'SINK OBS CELL:!'
+
           ! The length of the timeseries is needed
 
           ! This would work only for timeseries simulations
@@ -1649,7 +1652,7 @@
             ! Count how many for this solute
             solCount = 0
             do npg=1,solute%nParticleGroups
-              solCount = solCount + count(activeParticleCoordinates(:,2).eq.solute%pGroups(npg) ) 
+              solCount = solCount + count(activeParticleCoordinates(:,2).eq.solute%pGroups(npg)) 
             end do
             if ( allocated(gpkdeDataCarrier) ) deallocate(gpkdeDataCarrier) 
             allocate( gpkdeDataCarrier(solCount,3) )
@@ -1676,9 +1679,9 @@
             ! Timeseries reconstruction    
             call gpkde%ComputeDensity(   &
               gpkdeDataCarrier,          &
-              unitVolume = .true.,       &
+              unitVolume = .false.,      &
               histogramScalingFactor=1d0,&
-              weightedHistogram= .true., &
+              weightedHistogram = .true.,&
               weights = gpkdeWeightsCarrier )
 
             BTCPerSolute(:,ns) = gpkde%densityEstimateGrid(:,1,1)
