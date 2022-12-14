@@ -79,12 +79,9 @@ contains
         gridType = grid%GridType
         this%Grid => grid
 
-        !if(allocated(this%AlphaLong)) deallocate(this%AlphaLong)
-        !if(allocated(this%AlphaTran)) deallocate(this%AlphaTran)
+        ! IBounds
         if(allocated(this%ICBoundTS)) deallocate(this%ICBoundTS)
         if(allocated(this%ICBound)) deallocate(this%ICBound)
-        !allocate(this%AlphaTran(grid%CellCount))
-        !allocate(this%AlphaLong(grid%CellCount))
         allocate(this%ICBoundTS(grid%CellCount))
         allocate(this%ICBound(grid%CellCount))
 
@@ -100,6 +97,16 @@ contains
     !
     !***************************************************************************************************************
     ! Specifications
+    !   - Reading of dispersion related input parameters
+    !   - This function reads what comes immediately after particle groups (pgroups) in classical modpath
+    !   - Logic:
+    !     - Initial conditions (increase pgroups) 
+    !     - Prescribed flux boundaries (increase pgroups)
+    !     - Solutes and dispersion parameters, dispersivities
+    !     - Time step configuration
+    !     - Advection
+    !     - ICBound
+    !     - Dimension mask 
     !---------------------------------------------------------------------------------------------------------------
     use utl7module,only : urdcom, upcase
     use UTL8MODULE,only : urword, ustop, u1dint, u1drel, u1ddbl, u8rdcom, &
@@ -182,6 +189,9 @@ contains
     integer :: tempInjectionUnit = 667
     integer :: it, res, npg, ns, ncount
     doubleprecision :: totalMass, deltaTRelease
+
+    ! Solutes 
+    integer :: soluteId
     !----------------------------------------------------------------------------------------------------
 
         ! Open dispersion unit 
@@ -193,283 +203,13 @@ contains
             cellsPerLayer(n) = grid%GetLayerCellCount(n)
         end do
 
-        ! Write header to the listing file
-        write(outUnit, *)
-        write(outUnit, '(1x,a)') 'MODPATH RWPT dispersion data file'
-        write(outUnit, '(1x,a)') '----------------------------'
-
-        ! Read solute model option
-        read(inUnit, *) simulationData%SolutesOption
-
-        select case( simulationData%SolutesOption ) 
-          case (1)
-            ! A single virtual solute storing the same 
-            ! transport parameters for all pgroups
-            this%BaseSolute%id = 0
-            this%BaseSolute%stringid = 'S0' 
-
-            ! Read dispersion model kind
-            read(inUnit, '(a)') line
-            icol = 1
-            call urword(line, icol, istart, istop, 2, n, r, 0, 0)
-            this%BaseSolute%dispersionModel = n 
-            ! In the meantime this is neede because 
-            ! this variable determines the dispersion 
-            ! function 
-            trackingOptions%dispersionModel = n 
-
-            ! Read dispersion data
-            call this%LoadSoluteDispersion(&
-                inUnit, outUnit, this%BaseSolute, grid, &
-                          cellsPerLayer, trackingOptions )
-
-            ! Assign dispersion pointers
-            ! Something different if nonlinear dispersion ?
-            this%AlphaLong => this%BaseSolute%AlphaLong
-            this%AlphaTran => this%BaseSolute%AlphaTran
+        ! Cell size
+        rowCount    = grid%RowCount
+        columnCount = grid%ColumnCount
+        layerCount  = grid%LayerCount
 
 
-            ! Needs clarification
-            this%DMol = this%BaseSolute%dAqueous
-
-            if (simulationData%ParticlesMassOption .eq. 2) then
-                ! Create different solutes for id purposes
-                ! However, they are all displaced with the 
-                ! same transport properties
-                ! Extracted from particles groups defined until 
-                ! this very moment. 
-                continue
-            end if
-
-
-          case (2)
-              ! Multiple solutes
-              ! How many ?
-              read(inUnit, '(a)') line
-              icol = 1
-              call urword(line, icol, istart, istop, 2, n, r, 0, 0)
-              this%nSolutes = n 
-              
-              ! Lets trust the user, but some checking should be done
-              ! on the value of n 
-              if ( allocated(this%Solutes) ) deallocate( this%Solutes )
-              allocate( this%Solutes(this%nSolutes) )
-
-              ! Initialize these guys
-              do ns =1,this%nSolutes
-                ! Of course needs some attributes 
-                ! of the solute
-
-                ! Read the integer id 
-                read(inUnit, '(a)') line
-                icol = 1
-                call urword(line, icol, istart, istop, 2, n, r, 0, 0)
-                this%Solutes(ns)%id = n 
-                
-                ! Read the string id
-                read(inUnit, '(a)') line
-                icol = 1
-                call urword(line, icol, istart, istop, 0, n, r, 0, 0)
-                this%Solutes(ns)%stringid = line(istart:istop)
-
-                ! If the soluteId was assigned to each 
-                ! particle group due to particlessmassoption 2 
-                ! then respect those assignments
-                if ( simulationData%ParticlesMassOption .ne. 2 ) then
-
-                  ! Read how many pgroups
-                  read(inUnit, '(a)') line
-                  icol = 1
-                  call urword(line, icol, istart, istop, 2, n, r, 0, 0)
-                  this%Solutes(ns)%nParticleGroups = n 
-                  
-                  if ( allocated( this%Solutes(ns)%pGroups ) ) deallocate( this%Solutes(ns)%pGroups )
-                  allocate( this%Solutes(ns)%pGroups( &
-                     this%Solutes(ns)%nParticleGroups ) )
-                  
-                  ! Read related particle groups
-                  do npg =1,this%Solutes(ns)%nParticleGroups
-                    ! Read the pgroups
-                    read(inUnit, '(a)') line
-                    icol = 1
-                    call urword(line, icol, istart, istop, 2, n, r, 0, 0)
-                    this%Solutes(ns)%pGroups(npg) = n
-
-                    ! It needs to assign the soluteId back to the 
-                    ! corresponding pgroup for simulations 
-                    ! where the solute is not specified in the pgroup
-                    simulationData%ParticleGroups(&
-                        this%Solutes(ns)%pGroups(npg) )%Solute = ns
-                  end do
-
-                else if ( simulationData%ParticlesMassOption .eq. 2 ) then
-
-                  ! Read the INDEXES in simulationData%ParticleGroup list
-                  ! and count how many for this solute
-                  ncount = 0
-                  do npg =1,simulationData%ParticleGroupCount
-                    if ( simulationData%ParticleGroups( npg )%Solute .eq. ns ) then
-                      ncount = ncount + 1
-                    end if 
-                  end do
-
-                  ! If no pgroups, let it continue
-                  if ( ncount .eq. 0 ) then 
-                      write(outUnit,*) 'Warning: no particle groups associated to solute id ', ns
-                  else
-                      ! Initialize pgroups for the solute
-                      this%Solutes(ns)%nParticleGroups = ncount
-                
-                      if ( allocated( this%Solutes(ns)%pGroups ) ) deallocate( this%Solutes(ns)%pGroups )
-                      allocate( this%Solutes(ns)%pGroups( &
-                         this%Solutes(ns)%nParticleGroups ) )
-
-                      ncount = 0 
-                      do npg =1,simulationData%ParticleGroupCount
-                        if ( simulationData%ParticleGroups( npg )%Solute .eq. ns ) then
-                          ncount = ncount + 1
-                          this%Solutes(ns)%pGroups(ncount) = npg
-                        end if 
-                      end do
-                  end if 
-
-                end if 
-               
-                ! Read dispersion model kind
-                read(inUnit, '(a)') line
-                icol = 1
-                call urword(line, icol, istart, istop, 2, n, r, 0, 0)
-                this%Solutes(ns)%dispersionModel = n
-
-                ! Read dispersion data
-                call this%LoadSoluteDispersion(&
-                    inUnit, outUnit, this%Solutes(ns), grid, &
-                              cellsPerLayer, trackingOptions )
-
-
-              end do  
-
-              !! At some point something need to done 
-              !! with particlemassoption ? 
-              !else if (simulationData%ParticlesMassOption .eq. 2) then
-              !   ! Link particle groups to recently created solutes
-              !   ! Already done by requesting pgroups 
-              !   continue
-              !end if
-
-              ! In this case, dispersivities and other 
-              ! parameters are asigned during the loop 
-              ! over particle groups
-
-
-        end select
-
-        print *, 'SOLUTES OPTION', simulationData%SolutesOption
-        print *, 'PARTICLESSMASSOPTIOn ', simulationData%ParticlesMassOption
-        print *, 'NSOLUTES ', this%nSolutes
-
-
-        ! Time Step kind 
-        read(inUnit, '(a)') line
-        icol = 1
-        call urword(line,icol,istart,istop,1,n,r,0,0)
-        line = line(istart:istop)
-        print *, 'LINE:!!', line
-        ! Give a Courant
-        if ( line .eq. 'CONSTANT_CU' ) then
-            trackingOptions%timeStepKind = 1
-            read( inUnit, * ) line
-            icol = 1
-            call urword(line,icol,istart,istop,3,n,r,0,0)
-            trackingOptions%timeStepParameters(1) = r
-        ! Give a Peclet
-        else if ( line .eq. 'CONSTANT_PE' ) then
-            trackingOptions%timeStepKind = 2
-            read( inUnit, * ) line
-            icol = 1
-            call urword(line,icol,istart,istop,3,n,r,0,0)
-            trackingOptions%timeStepParameters(2) = r
-        ! Minimum between Courant and Peclet 
-        else if ( line .eq. 'MIN_ADV_DISP' ) then
-            trackingOptions%timeStepKind = 3
-            read( inUnit, * ) line
-            icol = 1
-            call urword(line,icol,istart,istop,3,n,r,0,0)
-            trackingOptions%timeStepParameters(1) = r
-            read( inUnit, * ) line
-            icol = 1
-            call urword(line,icol,istart,istop,3,n,r,0,0)
-            trackingOptions%timeStepParameters(2) = r
-        else
-            call ustop('RWPT: Invalid options for time step selection. Stop.')
-        end if
-
-
-        ! Advection Integration Kind
-        read(inUnit, '(a)', iostat=iodispersion) line
-        if ( iodispersion .lt. 0 ) then 
-            ! end of file
-            trackingOptions%advectionKind = 1
-            write(outUnit,'(A)') 'RWPT: Advection integration not specified. Default to EXPONENTIAL.'
-        else
-            icol = 1
-            call urword(line,icol,istart,istop,1,n,r,0,0)
-            line = line(istart:istop)
-            select case(line)
-                case('EXPONENTIAL')
-                    trackingOptions%advectionKind = 1
-                    write(outUnit,'(A)') 'RWPT: Advection integration is EXPONENTIAL.'
-                case('EULERIAN')
-                    trackingOptions%advectionKind = 2
-                    write(outUnit,'(A)') 'RWPT: Advection integration is EULERIAN.'
-                case default
-                    trackingOptions%advectionKind = 1
-                    write(outUnit,'(A)') 'RWPT: Advection integration not specified. Default to EXPONENTIAL.'
-            end select
-        end if
-
-
-        ! Domain dimensions option
-        read(inUnit, '(a)', iostat=iodispersion) line
-        if ( iodispersion .lt. 0 ) then 
-            ! end of file
-            trackingOptions%twoDimensions = .false.
-            write(outUnit,'(A)') 'RWPT: Number of dimensions not specified. Defaults to 3D.'
-        else
-            icol = 1
-            call urword(line,icol,istart,istop,1,n,r,0,0)
-            line = line(istart:istop)
-            select case(line)
-                case('2D')
-                    trackingOptions%twoDimensions = .true.
-                    write(outUnit,'(A)') 'RWPT: Selected 2D domain solver.'
-                case('3D')
-                    trackingOptions%twoDimensions = .false.
-                    write(outUnit,'(A)') 'RWPT: Selected 3D domain solver.'
-                case default
-                    trackingOptions%twoDimensions = .false.
-                    write(outUnit,'(A)') 'RWPT: Invalid option for domain solver, defaults to 3D.'
-            end select
-        end if 
-
-
-        ! ICBOUND
-        if((grid%GridType .eq. 1) .or. (grid%GridType .eq. 3)) then
-            call u3dintmp(inUnit, outUnit, grid%LayerCount, grid%RowCount,      &
-              grid%ColumnCount, grid%CellCount, this%ICBound, ANAME(3))
-        else if((grid%GridType .eq. 2) .or. (grid%GridType .eq. 4)) then
-            call u3dintmpusg(inUnit, outUnit, grid%CellCount, grid%LayerCount,  &
-              this%ICBound, aname(3), cellsPerLayer)
-        else
-              write(outUnit,*) 'Invalid grid type specified when reading ICBOUND array data.'
-              write(outUnit,*) 'Stopping.'
-              call ustop(' ')          
-        end if
-        ! END ICBOUND
-
-
-        ! THIS COULD BE REUSED LATER FOR DIMENSIONALITY ADAPTIVITY
-        ! Determine model dimensions
+        ! Determine model dimensions (READIT!)
         dimensionMask = 0
         if ( grid%ColumnCount .gt. 1 ) dimensionMask(1) = 1 ! this dimension is active
         if ( grid%RowCount .gt. 1 )    dimensionMask(2) = 1 ! this dimension is active
@@ -477,395 +217,318 @@ contains
         nDim = sum(dimensionMask)
 
 
-        ! INITIAL CONDITIONS
-        ! MORE LIKE SPECIES AND EACH WITH AN INITIAL DISTRIBUTION
-        ! THESE ARE TRANSFORMED INTO MASS PARTICLES 
+        ! Write header to the listing file
+        write(outUnit, *)
+        write(outUnit, '(1x,a)') 'MODPATH-RW configuration file'
+        write(outUnit, '(1x,a)') '----------------------------'
+
+        ! Process initial conditions 
         read(inUnit, *) nInitialConditions
         write(outUnit,'(/A,I5)') 'Number of initial conditions = ', nInitialConditions
+
+        ! What is this ?
         particleCount = 0
-        slocUnit = 0
-        seqNumber = 0
+        slocUnit      = 0
+        seqNumber     = 0
 
-
-        ! ADD THEM TO EXISTING PARTICLE GROUPS
-        ! LOOP IN MPATH IS ALL OVER PARTICLEGROUPS STORED IN SIMULATIONDATA
+        ! Extend particle groups
         if(nInitialConditions .gt. 0) then
 
-            ! Would be like a realloc to extend 
-            allocate(particleGroups(nInitialConditions))
+          ! Carrier of particle groups
+          allocate(particleGroups(nInitialConditions))
 
-            ! Loop over initial conditions
-            do nic = 1, nInitialConditions
+          ! Loop over initial conditions
+          do nic = 1, nInitialConditions
 
-                particleGroups(nic)%Group = simulationData%ParticleGroupCount + nic
+            ! Increase pgroup counter
+            particleGroups(nic)%Group = simulationData%ParticleGroupCount + nic
 
-                ! Set release time for initial condition.
-                ! In the meantime force 0d0 although it could 
-                ! be extracted from a previuosly defined stage
-                initialReleaseTime = 0d0
-                call particleGroups(nic)%SetReleaseOption1(initialReleaseTime)
+            ! Set release time for initial condition.
+            ! It is an initial condition, then
+            ! assumes release at referencetime
+            initialReleaseTime = simulationData%ReferenceTime
+            call particleGroups(nic)%SetReleaseOption1(initialReleaseTime)
 
-                ! Initial condition format 
-                read(inUnit, *) initialConditionFormat ! 1: concentration, 2: particles (classic)
+            ! Read id 
+            read(inUnit, '(a)') particleGroups(nic)%Name
 
-                read(inUnit, '(a)') particleGroups(nic)%Name
+            ! Initial condition format
+            ! 1: concentration
+            ! 2: particles (classic)
+            read(inUnit, *) initialConditionFormat
 
-                select case ( initialConditionFormat )
-                  case (1) ! Read initial conditions as concentration 
-                           
-                      read(inUnit, *) massProcessingFormat ! 1:
-
-                      select case ( massProcessingFormat )
-                          case (1)
-                              ! Read as mass concentration (ML^-3)
-
-                              ! Given a value for the mass of particles, 
-                              ! use flowModelData to compute cell volume 
-                              ! and estimated number of particles per cell
-
-                              ! Density/concentration arrays are expected 
-                              ! to be consistent with flow model grid.
-                              if(allocated(densityDistribution)) deallocate(densityDistribution)
-                              allocate(densityDistribution(grid%CellCount))
-                              if(allocated(rawNParticles)) deallocate(rawNParticles)
-                              allocate(rawNParticles(grid%CellCount))
-                              if(allocated(nParticles)) deallocate(nParticles)
-                              allocate(nParticles(grid%CellCount))
-                              if(allocated(cellVolumes)) deallocate(cellVolumes)
-                              allocate(cellVolumes(grid%CellCount))
-                              if(allocated(delZ)) deallocate(delZ)
-                              allocate(delZ(grid%CellCount))
-                              if(allocated(shapeFactorX)) deallocate(shapeFactorX)
-                              allocate(shapeFactorX(grid%CellCount))
-                              if(allocated(shapeFactorY)) deallocate(shapeFactorY)
-                              allocate(shapeFactorY(grid%CellCount))
-                              if(allocated(shapeFactorZ)) deallocate(shapeFactorZ)
-                              allocate(shapeFactorZ(grid%CellCount))
-                              if(allocated(nParticlesX)) deallocate(nParticlesX)
-                              allocate(nParticlesX(grid%CellCount))
-                              if(allocated(nParticlesY)) deallocate(nParticlesY)
-                              allocate(nParticlesY(grid%CellCount))
-                              if(allocated(nParticlesZ)) deallocate(nParticlesZ)
-                              allocate(nParticlesZ(grid%CellCount))
+            select case ( initialConditionFormat )
+            ! Read initial condition as concentration 
+            case (1) 
+              ! Read as resident concentration (ML^-3)
+              ! Given a value for the mass of particles, 
+              ! use flowModelData to compute cellvolume
+              ! and a shape factor from which the number 
+              ! of particles per cell is estimated
 
 
-                              ! Now convert to particles using mass
-                              read(inUnit, *) particleMass
+              ! Density/concentration arrays are expected 
+              ! to be consistent with flow model grid.
+              if(allocated(densityDistribution)) deallocate(densityDistribution)
+              allocate(densityDistribution(grid%CellCount))
+              if(allocated(rawNParticles)) deallocate(rawNParticles)
+              allocate(rawNParticles(grid%CellCount))
+              if(allocated(nParticles)) deallocate(nParticles)
+              allocate(nParticles(grid%CellCount))
+              if(allocated(cellVolumes)) deallocate(cellVolumes)
+              allocate(cellVolumes(grid%CellCount))
+              if(allocated(delZ)) deallocate(delZ)
+              allocate(delZ(grid%CellCount))
+              if(allocated(shapeFactorX)) deallocate(shapeFactorX)
+              allocate(shapeFactorX(grid%CellCount))
+              if(allocated(shapeFactorY)) deallocate(shapeFactorY)
+              allocate(shapeFactorY(grid%CellCount))
+              if(allocated(shapeFactorZ)) deallocate(shapeFactorZ)
+              allocate(shapeFactorZ(grid%CellCount))
+              if(allocated(nParticlesX)) deallocate(nParticlesX)
+              allocate(nParticlesX(grid%CellCount))
+              if(allocated(nParticlesY)) deallocate(nParticlesY)
+              allocate(nParticlesY(grid%CellCount))
+              if(allocated(nParticlesZ)) deallocate(nParticlesZ)
+              allocate(nParticlesZ(grid%CellCount))
 
-                              ! Read diffusion ?
-                              !read(inUnit, *) particleDiffusion
+              ! Read particles mass
+              read(inUnit, *) particleMass
 
+              if ( ( simulationData%ParticlesMassOption .eq. 2 ) .or. & 
+                   ( simulationData%SolutesOption .eq. 1 ) ) then 
+                ! Read solute id 
+                read(inUnit, *) soluteId
+              end if 
 
-                              ! READ AS DENSITY/CONCENTRATION
-                              if((grid%GridType .eq. 1) .or. (grid%GridType .eq. 3)) then
-                                  call u3ddblmp(inUnit, outUnit, grid%LayerCount, grid%RowCount,      &
-                                    grid%ColumnCount, grid%CellCount, densityDistribution, ANAME(4))
-                              else if((grid%GridType .eq. 2) .or. (grid%GridType .eq. 4)) then
-                                  call u3ddblmpusg(inUnit, outUnit, grid%CellCount, grid%LayerCount,  &
-                                    densityDistribution, aname(4), cellsPerLayer)
-                              else
-                                    write(outUnit,*) 'Invalid grid type specified when reading IC array ', & 
-                                        particleGroups(nic)%Name, ' name.'
-                                    write(outUnit,*) 'Stopping.'
-                                    call ustop(' ')          
-                              end if
-                              
-   
-                              ! Initialize
-                              nParticles   = 0
-                              cellVolumes  = 0d0
-                              shapeFactorX = 0
-                              shapeFactorY = 0
-                              shapeFactorZ = 0
-                              nParticlesX  = 0
-                              nParticlesY  = 0
-                              nParticlesZ  = 0
+              ! Read as density/concentration
+              if((grid%GridType .eq. 1) .or. (grid%GridType .eq. 3)) then
+                call u3ddblmp(inUnit, outUnit, grid%LayerCount, grid%RowCount,      &
+                  grid%ColumnCount, grid%CellCount, densityDistribution, ANAME(4))
+              else if((grid%GridType .eq. 2) .or. (grid%GridType .eq. 4)) then
+                call u3ddblmpusg(inUnit, outUnit, grid%CellCount, grid%LayerCount,  &
+                  densityDistribution, aname(4), cellsPerLayer)
+              else
+                write(outUnit,*) 'Invalid grid type specified when reading IC array ', & 
+                    particleGroups(nic)%Name, ' name.'
+                write(outUnit,*) 'Stopping.'
+                call ustop(' ')          
+              end if
+              
+              ! Initialize
+              nParticles   = 0
+              cellVolumes  = 0d0
+              shapeFactorX = 0
+              shapeFactorY = 0
+              shapeFactorZ = 0
+              nParticlesX  = 0
+              nParticlesY  = 0
+              nParticlesZ  = 0
 
+              ! Simple delZ 
+              delZ = grid%Top-grid%Bottom
+              ! LayerType if .eq. 1 convertible
+              where( this%Grid%CellType .eq. 1 )
+                  ! ONLY IF HEADS .lt. TOP 
+                  delZ = flowModelData%Heads-grid%Bottom
+              end where
+              where ( delZ .le. 0d0 )
+                  delZ = 0d0 
+              end where
 
-                              ! Do it simple (there's a volume involved)
-                              ! Following is the particles density 
-                              ! absolute value is required for the case that 
-                              ! densityDsitribution contains negative values
-                              rawNParticles = abs(densityDistribution)/particleMass
+              ! Compute cell volumes
+              cellVolumes = 1d0
+              do n =1, 3
+                if ( dimensionMask(n) .eq. 1 ) then 
+                  select case( n ) 
+                    case(1)
+                      cellVolumes = cellVolumes*grid%DelX
+                    case(2)
+                      cellVolumes = cellVolumes*grid%DelY
+                    case(3)
+                      cellVolumes = cellVolumes*delZ
+                  end select
+                end if 
+              end do 
 
+              ! Particles density 
+              ! absolute value is required for the case that 
+              ! densityDsitribution contains negative values
+              rawNParticles = abs(densityDistribution)/particleMass
 
-                              ! Simple delZ 
-                              delZ      = grid%Top-grid%Bottom
-                              ! LayerType if .eq. 1 convertible
-                              where( this%Grid%CellType .eq. 1 )
-                                  ! ONLY IF HEADS .lt. TOP 
-                                  delZ = flowModelData%Heads-grid%Bottom
-                              end where
-                              where ( delZ .le. 0d0 )
-                                  delZ = 0d0 
-                              end where
+              ! nParticles
+              ! notice rawNParticles = mass/volume/mass = 1/volume: particle density
+              nParticles  = rawNParticles*flowModelData%Porosity*cellVolumes
 
-                              ! Compute cell volumes
-                              cellVolumes = 1
-                              do n =1, 3
-                                  if ( dimensionMask(n) .eq. 1 ) then 
-                                      select case( n ) 
-                                          case(1)
-                                              cellVolumes = cellVolumes*grid%DelX
-                                          case(2)
-                                              cellVolumes = cellVolumes*grid%DelY
-                                          case(3)
-                                              cellVolumes = cellVolumes*delZ
-                                      end select
-                                  end if 
-                              end do 
+              ! The minimum measurable absolute concentration/density 
+              minOneParticleDensity = minval(particleMass/flowModelData%Porosity/cellVolumes)
 
+              ! Allocate subdivision arrays
+              templateCount     = 1 
+              templateCellCount = grid%CellCount 
+              allocate(subDiv(templateCount,12))
+              allocate(templateSubDivisionTypes(templateCount))
+              allocate(templateCellCounts(templateCount))
+              allocate(drape(templateCount))
+              allocate(templateCellNumbers(templateCellCount))
 
-                              ! nParticles
-                              ! notice rawNParticles = mass/volume/mass = 1/volume: particle density
-                              nParticles  = rawNParticles*flowModelData%Porosity*cellVolumes
+              subDiv(:,:) = 0
+              drape       = 0 ! Should come from somewhere
+              templateSubDivisionTypes(1) = 1
+              templateCellCounts(1)       = grid%CellCount
 
-                              ! The minimum measurable absolute concentration/density 
-                              minOneParticleDensity = minval(particleMass/flowModelData%Porosity/cellVolumes)
+              
+              np     = 0
+              npcell = 0
+              offset = 0
+              ! There is only one templateCount
+              do n = 1, templateCount
+                ! Determine subdivisions
+                if ( dimensionMask(1) .eq. 1 ) then 
+                  ! Shape factors
+                  do m =1, grid%CellCount
+                      if ( cellVolumes(m) .le. 0d0 ) cycle
+                      shapeFactorX(m) = grid%DelX(m)/(cellVolumes(m)**(1d0/nDim))
+                  end do 
+                end if 
 
+                if ( dimensionMask(2) .eq. 1 ) then 
+                  ! Shape factors
+                  do m =1, grid%CellCount
+                      if ( cellVolumes(m) .le. 0d0 ) cycle
+                      shapeFactorY(m) = grid%DelY(m)/(cellVolumes(m)**(1d0/nDim))
+                  end do 
+                end if 
 
-                          !case (2) ! Read as cell number - concentration
+                if ( dimensionMask(3) .eq. 1 ) then 
+                  ! Shape factors
+                  do m =1, grid%CellCount
+                      if ( cellVolumes(m) .le. 0d0 ) cycle
+                      shapeFactorZ(m) = delZ(m)/(cellVolumes(m)**(1d0/nDim))
+                  end do 
+                end if 
 
+                where ( nParticles .lt. 1d0 )
+                   nParticles = 0d0 
+                end where 
+                nParticlesX = shapeFactorX*(nParticles)**(1d0/nDim) 
+                nParticlesY = shapeFactorY*(nParticles)**(1d0/nDim)
+                nParticlesZ = shapeFactorZ*(nParticles)**(1d0/nDim)
 
-                          case default
-                              continue
+                ! Loop through cells and count the number of particles
+                do cell = 1, templateCellCounts(n)
+                  if(ibound(cell) .ne. 0) then
+                    ! Could be a user defined threshold ?
+                    if ( nParticles(cell) .lt. 1d0 ) cycle
+                    ! Cell subdivisions
+                    subDiv(n,1) = int( nParticlesX(cell) ) + 1
+                    subDiv(n,2) = int( nParticlesY(cell) ) + 1
+                    subDiv(n,3) = int( nParticlesZ(cell) ) + 1
+                    npcell      = subDiv(n,1)*subDiv(n,2)*subDiv(n,3)
+                    np = np + npcell
+                  end if
+                end do
+                ! Increment the offset
+                offset = offset + templateCellCounts(n)
+              end do
 
-                      end select
+              ! Calculate the total number of particles for all release time points.
+              totalParticleCount = 0
+              totalParticleCount = np*particleGroups(nic)%GetReleaseTimeCount()
+              if(allocated(particleGroups(nic)%Particles)) deallocate(particleGroups(nic)%Particles)
+              allocate(particleGroups(nic)%Particles(totalParticleCount))
+              particleGroups(nic)%TotalParticleCount = totalParticleCount
+              
+              ! Update particles mass
+              ! If for a given cell the value of density or concentration 
+              ! is negative, then assign the number of particles
+              ! and modify the sign of particles mass for that cell 
+              ! with a negative sign 
+              particleMass = sum( abs(densityDistribution)*cellVolumes*flowModelData%Porosity )/totalParticleCount 
+              write(outUnit,'(/A,es18.9e3)') 'Effective particleMass for initial condition = ', particleMass
 
+              ! Assign to the particle group 
+              particleGroups(nic)%Mass = particleMass
 
-                      ! Read the number of cells
-                      templateCount = 1 
-                      templateCellCount = grid%CellCount 
+              ! Set the data for particles at the first release time point
+              m = 0
+              offset = 0
+              if(templateCount .gt. 0) then
+                do n = 1, templateCount
+                  do cell = 1, templateCellCounts(n)
+                    if(ibound(cell) .ne. 0) then
+                      if ( nParticles(cell) .lt. 1d0 ) cycle
+                      sdiv(1) = int( nParticlesX(cell) ) + 1
+                      sdiv(2) = int( nParticlesY(cell) ) + 1
+                      sdiv(3) = int( nParticlesZ(cell) ) + 1
+                      if ( densityDistribution(cell) .gt. 0 ) then 
+                        particleMass = abs( particleMass ) 
+                      else 
+                        particleMass = -1*abs( particleMass )
+                      end if 
+                      call CreateMassParticlesAsInternalArray(& 
+                        particleGroups(nic), cell, m, sdiv(1), sdiv(2), sdiv(3), & 
+                        drape(n), particleMass, particleGroups(nic)%GetReleaseTime(1) )
+                    end if
+                  end do
+                  ! Increment the offset
+                  offset = offset + templateCellCounts(n)
+                end do
+              end if
+              if ( simulationData%ParticlesMassOption .eq. 2 ) then 
+                ! Assign the solute id 
+                particleGroups(nic)%Solute = soluteId
+              end if 
+              
+              ! Deallocate temporary arrays
+              deallocate(subDiv)
+              deallocate(templateSubDivisionTypes)
+              deallocate(drape)
+              deallocate(templateCellCounts)
+              deallocate(templateCellNumbers)
 
-                      ! Allocate temporary arrays
-                      allocate(subDiv(templateCount,12))
-                      allocate(templateSubDivisionTypes(templateCount))
-                      allocate(templateCellCounts(templateCount))
-                      allocate(drape(templateCount))
-                      allocate(templateCellNumbers(templateCellCount))
+            case default
+              write(outUnit,*) 'Invalid initial condition kind ', initialConditionFormat 
+              write(outUnit,*) 'Stopping.'
+              call ustop('Error: Invalid initial condition kind ')          
+            end select
 
-                      ! TEMP
-                      drape = 0 ! SHOULD COME FROM SOMEWHERE
-                      templateSubDivisionTypes(1) = 1
-                      templateCellCounts(1) = grid%CellCount
+            ! Report number of particles
+            write(outUnit, '(a,i4,a,i10,a)') 'Initial condition ', n, ' contains ',   &
+              particleGroups(nic)%TotalParticleCount, ' particles.'
+            particleCount = particleCount + particleGroups(nic)%TotalParticleCount
 
-                      ! Read data into temporary arrays and count the number of particles
-                      rowCount    = grid%RowCount
-                      columnCount = grid%ColumnCount
-                      layerCount  = grid%LayerCount
-                      do n = 1, templateCount
-                          do m = 1, 12
-                              subDiv(n,m) = 0
-                          end do
-                      end do
-                     
-                      np = 0
-                      npcell = 0
-                      offset = 0
-                      do n = 1, templateCount
-                          ! SHOULD DETERMINE SUBDIVISIONS GIVEN 
-                          ! THE NUMBER OF PARTICLES. 
-                          ! AS A DESIGN CONSIDERATION; THIS 
-                          ! MASS PROCESSING METHOD CONSIDERS 
-                          ! UNIFORM DISTRIBUTION OF PARTICLES
-                          ! SOMETHING WITH A CELL SHAPE FACTOR
-                          ! cellVolumes is already known
-                          ! RAW ESTIMATE
-                          
-                          if ( dimensionMask(1) .eq. 1 ) then 
-                              ! Shape factors
-                              do m =1, grid%CellCount
-                                  if ( cellVolumes(m) .le. 0d0 ) cycle
-                                  shapeFactorX(m) = grid%DelX(m)/(cellVolumes(m)**(1d0/nDim))
-                              end do 
-                          end if 
-
-                          if ( dimensionMask(2) .eq. 1 ) then 
-                              ! Shape factors
-                              do m =1, grid%CellCount
-                                  if ( cellVolumes(m) .le. 0d0 ) cycle
-                                  shapeFactorY(m) = grid%DelY(m)/(cellVolumes(m)**(1d0/nDim))
-                              end do 
-                          end if 
-
-                          if ( dimensionMask(3) .eq. 1 ) then 
-                              ! Shape factors
-                              do m =1, grid%CellCount
-                                  if ( cellVolumes(m) .le. 0d0 ) cycle
-                                  shapeFactorZ(m) = delZ(m)/(cellVolumes(m)**(1d0/nDim))
-                              end do 
-                          end if 
-
-                          where ( nParticles .lt. 1d0 )
-                             nParticles = 0d0 
-                          end where 
-                          nParticlesX = shapeFactorX*(nParticles)**(1d0/nDim) 
-                          nParticlesY = shapeFactorY*(nParticles)**(1d0/nDim)
-                          nParticlesZ = shapeFactorZ*(nParticles)**(1d0/nDim)
-
-
-                          ! THESE LINE READS THE CELL IDS THAT NEED TO BE PROCESSED
-                          ! read(inUnit, *) (templateCellNumbers(offset + m), m = 1, templateCellCounts(n))
-                          ! ALL ARE PROCESSED HERE
-                          ! Loop through cells and count the number of particles
-                          do cell = 1, templateCellCounts(n)
-                              if(ibound(cell) .ne. 0) then
-                                  ! Could be a user defined threshold
-                                  if ( nParticles(cell) .lt. 1d0 ) cycle
-                                  ! Cell subdivisions
-                                  subDiv(n,1) = int( nParticlesX(cell) ) + 1
-                                  subDiv(n,2) = int( nParticlesY(cell) ) + 1
-                                  subDiv(n,3) = int( nParticlesZ(cell) ) + 1
-                                  npcell      = subDiv(n,1)*subDiv(n,2)*subDiv(n,3)
-                                  np = np + npcell
-                              end if
-                          end do
-                          
-                          ! Increment the offset
-                          offset = offset + templateCellCounts(n)
-
-                      end do
-
-
-                      ! Calculate the total number of particles for all release time points.
-                      totalParticleCount = 0
-                      totalParticleCount = np*particleGroups(nic)%GetReleaseTimeCount()
-                      if(allocated(particleGroups(nic)%Particles)) deallocate(particleGroups(nic)%Particles)
-                      allocate(particleGroups(nic)%Particles(totalParticleCount))
-                      particleGroups(nic)%TotalParticleCount = totalParticleCount
-                     
-
-                      ! UPDATE PARTICLES MASS
-                      ! If for a given cell the value of density or concentration 
-                      ! is negative, then assign the number of particles
-                      ! and modify the sign of particles mass for that cell 
-                      ! with a negative sign 
-                      particleMass = sum( abs(densityDistribution)*cellVolumes*flowModelData%Porosity )/totalParticleCount 
-
-                      ! Set the data for particles at the first release time point
-                      m = 0
-                      offset = 0
-                      if(templateCount .gt. 0) then
-                          do n = 1, templateCount
-                              do cell = 1, templateCellCounts(n)
-                                  if(ibound(cell) .ne. 0) then
-                                      if ( nParticles(cell) .lt. 1d0 ) cycle
-                                      sdiv(1) = int( nParticlesX(cell) ) + 1
-                                      sdiv(2) = int( nParticlesY(cell) ) + 1
-                                      sdiv(3) = int( nParticlesZ(cell) ) + 1
-                                      if ( densityDistribution(cell) .gt. 0 ) then 
-                                          particleMass = abs( particleMass ) 
-                                      else 
-                                          particleMass = -1*abs( particleMass )
-                                      end if 
-                                      call CreateMassParticlesAsInternalArray(& 
-                                          particleGroups(nic), cell, m, sdiv(1), sdiv(2), sdiv(3), & 
-                                          drape(n), particleMass, particleGroups(nic)%GetReleaseTime(1) )
-                                  end if
-                              end do
-                              
-                              ! Increment the offset
-                              offset = offset + templateCellCounts(n)
-
-                          end do
-                      end if
-                      
-
-                      ! Deallocate temporary arrays
-                      deallocate(subDiv)
-                      deallocate(templateSubDivisionTypes)
-                      deallocate(drape)
-                      deallocate(templateCellCounts)
-                      deallocate(templateCellNumbers)
-                      !!  END  SIMPLIFIED FROM READLOATIONS3 !!!!!!!!!!!!!!!!!!!!!!!!!!
-
-
-                  case (2) ! Read particles, the classical way + mass parameters
-                   
-                      ! releaseOption
-                      read(inUnit, *) releaseOption
-                      select case (releaseOption)
-                          case (1)
-                              read(inUnit, *) initialReleaseTime
-                              call particleGroups(nic)%SetReleaseOption1(initialReleaseTime)
-                          case (2)
-                              read(inUnit, *) releaseTimeCount, initialReleaseTime, releaseInterval
-                              call particleGroups(nic)%SetReleaseOption2(initialReleaseTime, &
-                                releaseTimeCount, releaseInterval)
-                          case (3)
-                              read(inUnit, *) releaseTimeCount
-                              if(allocated(releaseTimes)) deallocate(releaseTimes)
-                              allocate(releaseTimes(releaseTimeCount))
-                              read(inUnit, *) (releaseTimes(nn), nn = 1, releaseTimeCount)
-                              call particleGroups(nic)%SetReleaseOption3(releaseTimeCount,   &
-                                releaseTimes)
-                          case default
-                          ! write error message and stop
-                      end select
-                      
-                      read(inUnit, '(a)') line
-                      icol = 1
-                      call urword(line,icol,istart,istop,1,n,r,0,0)
-                      if(line(istart:istop) .eq. 'EXTERNAL') then
-                          call urword(line,icol,istart,istop,0,n,r,0,0)
-                          particleGroups(nic)%LocationFile = line(istart:istop)
-                          slocUnit = 0
-                      else if(line(istart:istop) .eq. 'INTERNAL') then
-                          particleGroups(nic)%LocationFile = ''
-                          slocUnit = inUnit
-                      else
-                          call ustop('Invalid starting locations file name. stop.')
-                      end if
-                      
-                      ! Read particles mass
-                      read(inUnit, *) particleMass
-
-                      ! Load locations file
-                      call ReadAndPrepareLocationsMass(slocUnit, outUnit, particleGroups(nic),   &
-                        ibound, grid%CellCount, grid, seqNumber, particleMass ) 
-
-                end select
-
-                ! REPORT NUMBER OF PARTICLES
-                write(outUnit, '(a,i4,a,i10,a)') 'Initial condition ', n, ' contains ',   &
-                  particleGroups(nic)%TotalParticleCount, ' particles.'
-                particleCount = particleCount + particleGroups(nic)%TotalParticleCount
+          end do ! loop over initial conditions 
+          write(outUnit, '(a,i10)') 'Total number of particles on initial conditions = ', particleCount
+          write(outUnit, *)
 
 
-            end do ! loop over particle groups
+          ! Extend simulationdata to include these particle groups
+          newParticleGroupCount = simulationData%ParticleGroupCount + nInitialConditions
+          allocate(newParticleGroups(newParticleGroupCount))
+          do n = 1, simulationData%ParticleGroupCount
+              newParticleGroups(n) = simulationData%ParticleGroups(n)
+          end do 
+          do n = 1, nInitialConditions
+              newParticleGroups(n+simulationData%ParticleGroupCount) = particleGroups(n)
+          end do 
+          call move_alloc( newParticleGroups, simulationData%ParticleGroups )
+          simulationData%ParticleGroupCount = newParticleGroupCount
 
-            write(outUnit, '(a,i10)') 'Total number of particles on initial conditions = ', particleCount
-            write(outUnit, *)
-
-
-            ! EXTEND SIMULATIONDATA TO INCLUDE THESE PARTICLE GROUPS
-            ! OR RETURN THESE PARTICLEGROUPS AND REALLOCATE OUTSIDE
-            newParticleGroupCount = simulationData%ParticleGroupCount + nInitialConditions
-            allocate(newParticleGroups(newParticleGroupCount))
-            do n = 1, simulationData%ParticleGroupCount
-                newParticleGroups(n) = simulationData%ParticleGroups(n)
-            end do 
-            do n = 1, nInitialConditions
-                newParticleGroups(n+simulationData%ParticleGroupCount) = particleGroups(n)
-            end do 
-
-            call move_alloc( newParticleGroups, simulationData%ParticleGroups )
-            simulationData%ParticleGroupCount = newParticleGroupCount
-
-            deallocate( particleGroups )
-        
+          ! Will process the next at some point
+          deallocate( particleGroups )
+       
 
         end if ! if nInitialConditions .gt. 0
 
 
 
-        ! INJECTION BOUNDARY CONDITIONS
-        ! SHOULD BE RELATED TO ICBOUND ?
+
+        ! Prescribed flux boundary conditions
         read(inUnit, *) nInjectionConditions
         write(outUnit,'(/A,I5)') 'Number of mass injection cells = ', nInjectionConditions
 
-        ! ADD THEM TO EXISTING PARTICLE GROUPS
-        ! LOOP IN MPATH IS ALL OVER PARTICLEGROUPS STORED IN SIMULATIONDATA
+        ! Extends particle groups 
         if(nInjectionConditions .gt. 0) then
 
             ! Allocate particlegroups  
@@ -1121,6 +784,268 @@ contains
         end if ! if nInjectionConditions .gt. 0
 
 
+
+        ! ICBOUND
+        if((grid%GridType .eq. 1) .or. (grid%GridType .eq. 3)) then
+          call u3dintmp(inUnit, outUnit, grid%LayerCount, grid%RowCount,      &
+            grid%ColumnCount, grid%CellCount, this%ICBound, ANAME(3))
+        else if((grid%GridType .eq. 2) .or. (grid%GridType .eq. 4)) then
+          call u3dintmpusg(inUnit, outUnit, grid%CellCount, grid%LayerCount,  &
+            this%ICBound, aname(3), cellsPerLayer)
+        else
+          write(outUnit,*) 'Invalid grid type specified when reading ICBOUND array data.'
+          write(outUnit,*) 'Stopping.'
+          call ustop(' ')          
+        end if
+        ! END ICBOUND
+
+
+
+        ! Define dispersion according to solutes option 
+        select case( simulationData%SolutesOption )
+          ! 0: Single solute dispersion 
+          case (0)
+            ! A single virtual solute storing the same 
+            ! transport parameters for all pgroups
+            this%BaseSolute%id = 0
+            this%BaseSolute%stringid = 'S0' 
+
+            ! Read dispersion model kind
+            read(inUnit, '(a)') line
+            icol = 1
+            call urword(line, icol, istart, istop, 2, n, r, 0, 0)
+            this%BaseSolute%dispersionModel = n 
+            ! In the meantime this is neede because 
+            ! this variable determines the dispersion 
+            ! function 
+            trackingOptions%dispersionModel = n 
+
+            ! Read dispersion data
+            call this%LoadSoluteDispersion(&
+                inUnit, outUnit, this%BaseSolute, grid, &
+                          cellsPerLayer, trackingOptions )
+
+            ! Assign dispersion pointers
+            ! Something different if nonlinear dispersion ?
+            this%AlphaLong => this%BaseSolute%AlphaLong
+            this%AlphaTran => this%BaseSolute%AlphaTran
+
+            ! Needs clarification
+            this%DMol = this%BaseSolute%dAqueous
+
+            if (simulationData%ParticlesMassOption .eq. 2) then
+                ! Create different solutes for id purposes
+                ! However, they are all displaced with the 
+                ! same transport properties
+                ! Extracted from particles groups defined until 
+                ! this very moment. 
+                continue
+            end if
+
+          ! 1: Multiple solute, multidispersion
+          case (1)
+              ! How many ?
+              read(inUnit, '(a)') line
+              icol = 1
+              call urword(line, icol, istart, istop, 2, n, r, 0, 0)
+              this%nSolutes = n 
+              
+              ! Lets trust the user, but some checking should be done
+              ! on the value of n 
+              if ( allocated(this%Solutes) ) deallocate( this%Solutes )
+              allocate( this%Solutes(this%nSolutes) )
+
+              ! Initialize these guys
+              do ns =1,this%nSolutes
+                ! Of course needs some attributes 
+                ! of the solute
+
+                ! Read the integer id 
+                read(inUnit, '(a)') line
+                icol = 1
+                call urword(line, icol, istart, istop, 2, n, r, 0, 0)
+                this%Solutes(ns)%id = n 
+                
+                ! Read the string id
+                read(inUnit, '(a)') line
+                icol = 1
+                call urword(line, icol, istart, istop, 0, n, r, 0, 0)
+                this%Solutes(ns)%stringid = line(istart:istop)
+
+                ! If the soluteId was assigned to each 
+                ! particle group due to particlessmassoption 2 
+                ! then respect those assignments
+                if ( simulationData%ParticlesMassOption .ne. 2 ) then
+
+                  ! Read how many pgroups
+                  read(inUnit, '(a)') line
+                  icol = 1
+                  call urword(line, icol, istart, istop, 2, n, r, 0, 0)
+                  this%Solutes(ns)%nParticleGroups = n 
+                  
+                  if ( allocated( this%Solutes(ns)%pGroups ) ) deallocate( this%Solutes(ns)%pGroups )
+                  allocate( this%Solutes(ns)%pGroups( &
+                     this%Solutes(ns)%nParticleGroups ) )
+                  
+                  ! Read related particle groups
+                  do npg =1,this%Solutes(ns)%nParticleGroups
+                    ! Read the pgroups
+                    read(inUnit, '(a)') line
+                    icol = 1
+                    call urword(line, icol, istart, istop, 2, n, r, 0, 0)
+                    this%Solutes(ns)%pGroups(npg) = n
+
+                    ! It needs to assign the soluteId back to the 
+                    ! corresponding pgroup for simulations 
+                    ! where the solute is not specified in the pgroup
+                    simulationData%ParticleGroups(&
+                        this%Solutes(ns)%pGroups(npg) )%Solute = ns
+                  end do
+
+                else if ( simulationData%ParticlesMassOption .eq. 2 ) then
+
+                  ! Read the INDEXES in simulationData%ParticleGroup list
+                  ! and count how many for this solute
+                  ncount = 0
+                  do npg =1,simulationData%ParticleGroupCount
+                    if ( simulationData%ParticleGroups( npg )%Solute .eq. ns ) then
+                      ncount = ncount + 1
+                    end if 
+                  end do
+
+                  ! If no pgroups, let it continue
+                  if ( ncount .eq. 0 ) then 
+                      write(outUnit,*) 'Warning: no particle groups associated to solute id ', ns
+                  else
+                      ! Initialize pgroups for the solute
+                      this%Solutes(ns)%nParticleGroups = ncount
+                
+                      if ( allocated( this%Solutes(ns)%pGroups ) ) deallocate( this%Solutes(ns)%pGroups )
+                      allocate( this%Solutes(ns)%pGroups( &
+                         this%Solutes(ns)%nParticleGroups ) )
+
+                      ncount = 0 
+                      do npg =1,simulationData%ParticleGroupCount
+                        if ( simulationData%ParticleGroups( npg )%Solute .eq. ns ) then
+                          ncount = ncount + 1
+                          this%Solutes(ns)%pGroups(ncount) = npg
+                        end if 
+                      end do
+                  end if 
+
+                end if 
+               
+                ! Read dispersion model kind
+                read(inUnit, '(a)') line
+                icol = 1
+                call urword(line, icol, istart, istop, 2, n, r, 0, 0)
+                this%Solutes(ns)%dispersionModel = n
+
+                ! Read dispersion data
+                call this%LoadSoluteDispersion(&
+                    inUnit, outUnit, this%Solutes(ns), grid, &
+                              cellsPerLayer, trackingOptions )
+
+
+              end do  
+
+              !! At some point something need to done 
+              !! with particlemassoption ? 
+              !else if (simulationData%ParticlesMassOption .eq. 2) then
+              !   ! Link particle groups to recently created solutes
+              !   ! Already done by requesting pgroups 
+              !   continue
+              !end if
+
+              ! In this case, dispersivities and other 
+              ! parameters are asigned during the loop 
+              ! over particle groups
+
+
+        end select
+
+
+        ! Time Step kind 
+        read(inUnit, '(a)') line
+        icol = 1
+        call urword(line,icol,istart,istop,1,n,r,0,0)
+        line = line(istart:istop)
+        ! Give a Courant
+        if ( line .eq. 'CONSTANT_CU' ) then
+            trackingOptions%timeStepKind = 1
+            read( inUnit, * ) line
+            icol = 1
+            call urword(line,icol,istart,istop,3,n,r,0,0)
+            trackingOptions%timeStepParameters(1) = r
+        ! Give a Peclet
+        else if ( line .eq. 'CONSTANT_PE' ) then
+            trackingOptions%timeStepKind = 2
+            read( inUnit, * ) line
+            icol = 1
+            call urword(line,icol,istart,istop,3,n,r,0,0)
+            trackingOptions%timeStepParameters(2) = r
+        ! Minimum between Courant and Peclet 
+        else if ( line .eq. 'MIN_ADV_DISP' ) then
+            trackingOptions%timeStepKind = 3
+            read( inUnit, * ) line
+            icol = 1
+            call urword(line,icol,istart,istop,3,n,r,0,0)
+            trackingOptions%timeStepParameters(1) = r
+            read( inUnit, * ) line
+            icol = 1
+            call urword(line,icol,istart,istop,3,n,r,0,0)
+            trackingOptions%timeStepParameters(2) = r
+        else
+            call ustop('RWPT: Invalid options for time step selection. Stop.')
+        end if
+
+
+        ! Advection Integration Kind
+        read(inUnit, '(a)', iostat=iodispersion) line
+        if ( iodispersion .lt. 0 ) then 
+            ! end of file
+            trackingOptions%advectionKind = 1
+            write(outUnit,'(A)') 'RWPT: Advection integration not specified. Default to EXPONENTIAL.'
+        else
+            icol = 1
+            call urword(line,icol,istart,istop,1,n,r,0,0)
+            line = line(istart:istop)
+            select case(line)
+                case('EXPONENTIAL')
+                    trackingOptions%advectionKind = 1
+                    write(outUnit,'(A)') 'RWPT: Advection integration is EXPONENTIAL.'
+                case('EULERIAN')
+                    trackingOptions%advectionKind = 2
+                    write(outUnit,'(A)') 'RWPT: Advection integration is EULERIAN.'
+                case default
+                    trackingOptions%advectionKind = 2
+                    write(outUnit,'(A)') 'RWPT: Advection integration not specified. Default to EULERIAN.'
+            end select
+        end if
+
+
+        ! Domain dimensions option
+        read(inUnit, '(a)', iostat=iodispersion) line
+        if ( iodispersion .lt. 0 ) then 
+            ! end of file
+            trackingOptions%twoDimensions = .false.
+            write(outUnit,'(A)') 'RWPT: Number of dimensions not specified. Defaults to 3D.'
+        else
+            icol = 1
+            call urword(line,icol,istart,istop,1,n,r,0,0)
+            line = line(istart:istop)
+            select case(line)
+                case('2D')
+                    trackingOptions%twoDimensions = .true.
+                    write(outUnit,'(A)') 'RWPT: Selected 2D domain solver.'
+                case('3D')
+                    trackingOptions%twoDimensions = .false.
+                    write(outUnit,'(A)') 'RWPT: Selected 3D domain solver.'
+                case default
+                    trackingOptions%twoDimensions = .false.
+                    write(outUnit,'(A)') 'RWPT: Invalid option for domain solver, defaults to 3D.'
+            end select
+        end if 
     
 
         ! Close dispersion data file

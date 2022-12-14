@@ -308,7 +308,7 @@
         case (4)
             ! MODFLOW-6 DISV binary grid file
             ! Read spatial discretization
-            write(mplistUnit, '(a,1x)') 'Grid file type: MODFLOW-6 DIS binary grid file.'
+            write(mplistUnit, '(a,1x)') 'Grid file type: MODFLOW-6 DISV binary grid file.'
             call ulog('Allocate disvMf6Grid.', logUnit)
             allocate(disvMf6Grid)
             call ulog('Read DISV binary grid file.', logUnit)
@@ -329,9 +329,13 @@
             close(disUnit)
             close(tdisUnit)
             
+            ! RWPT: Seems possible to detect whether it is unstructured or not,
+            ! isSmoothed 
+
         case (5)
             ! MODFLOW-6 DISU binary grid file
             write(mplistUnit, '(1x,a)') 'MODFLOW-6 DISU binary grid files are not yet supported. Stop.' 
+            stop
             
         case default
             write(mplistUnit, '(1x,a)') 'Unknown grid file type. Stop.'
@@ -453,6 +457,41 @@
         open(unit=simulationData%TrackingOptions%gpkdeOutputUnit, &
              file=simulationData%TrackingOptions%gpkdeOutputFile, &
            status='replace', form='formatted', access='sequential')
+
+        !! Is there a way to verify whether gpkde and the flow-model have the
+        !! same cells structure ?
+        !select case (gridFileType)
+        !    case (1)
+        !      ! MODFLOW-2005 discretization file (DIS)
+        !      if(&
+        !        ( gpkde%nBins(1) .eq. modelGrid%columnCount ) .and. &
+        !        ( gpkde%nBins(2) .eq. modelGrid%rowCount    ) .and. &
+        !        ( gpkde%nBins(3) .eq. modelGrid%layerCount  ) )
+        !        ! Is the same grid
+        !        print *, 'MF62005DIS: YES IS THE SAME !'
+        !        continue
+        !      end if
+        !    case (2)
+        !      ! MODPATH spatial(MPUGRID) and time (TDIS) discretization files 
+        !      continue
+        !    case (3) 
+        !      ! MODFLOW-6 DIS binary grid file
+        !      if(&
+        !        ( gpkde%nBins(1) .eq. modelGrid%columnCount ) .and. &
+        !        ( gpkde%nBins(2) .eq. modelGrid%rowCount    ) .and. &
+        !        ( gpkde%nBins(3) .eq. modelGrid%layerCount  ) )
+        !        ! Is the same grid
+        !        print *, 'MF6DIS: YES IS THE SAME !'
+        !        continue
+        !      end if 
+        !    case (4)
+        !      ! MODFLOW-6 DISV binary grid file
+        !      continue
+        !    case (5)
+        !      ! MODFLOW-6 DISU binary grid file
+        !      continue
+        !end select
+
     end if
 
 
@@ -852,7 +891,7 @@
     activeCount = 0
     if(simulationData%ParticleGroupCount .gt. 0) then
         do groupIndex = 1, simulationData%ParticleGroupCount
-            if ( simulationData%SolutesOption .eq. 2 ) then 
+            if ( simulationData%SolutesOption .eq. 1 ) then 
                 ! Assign pointers to dispersivities 
                 ! in transportModelData
                 call transportModelData%SetSoluteDispersion( &
@@ -1341,9 +1380,16 @@
     ! Process observation cells for reconstruction
     if ( simulationData%TrackingOptions%observationSimulation ) then
 
+
       ! If so, reset gpkde
       call ulog('Reset and reinitialize GPKDE for observation cells ', logUnit)
-      call gpkde%Reset()
+      ! If it was allocated from spatial reconstruction
+      if( allocated( gpkde ) ) then 
+         call gpkde%Reset()
+      else
+         allocate( gpkde )
+      end if  
+
 
       ! Loop over observations
       do nobs=1, simulationData%TrackingOptions%nObservations
@@ -1490,10 +1536,6 @@
 
           end do
 
-          do n=1,simulationData%TimePointCount
-             print *, 'n: ', BTCPerSolute(n,:), BTCHistPerSolute(n,:)
-          end do
-
 
           ! Accumulate volumes
           ! Compute porous volume for each cell in the 
@@ -1513,7 +1555,6 @@
 
           ! Once the accumulated porous volume is known, compute resident
           ! concentration
-
 
           ! Apply the logic to determine where to write the obs records
           ! Case 1: write to the same file as before: close it, open again and dump
@@ -1692,9 +1733,6 @@
 
           end do 
     
-          do n=1,simulationData%TimePointCount
-             print *, 'n: ', BTCPerSolute(n,:), BTCHistPerSolute(n,:)
-          end do
 
           ! Flow rates were written to obs file
           ! And are now sorted by arrival time

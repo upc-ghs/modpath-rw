@@ -207,6 +207,23 @@ contains
     end if
   end if
 
+  ! Solutes option
+  call urword(line, icol, istart, istop, 2, n, r, -1, 0)
+  ! If error while reading the last option (could be triggered by # comments ) 
+  if ( line(len(line):len(line)).eq.'E' ) then
+    ! Continue as zero
+    this%SolutesOption = 0
+  else
+    ! Read from input
+    if (istart.eq.len(line)) then
+      this%SolutesOption = 0
+    else
+      this%SolutesOption = n
+    end if
+  end if
+
+
+
   ! Pathline format option (hardwire value 1 = consolidate)
   this%PathlineFormatOption = 1
   
@@ -384,7 +401,31 @@ contains
     case default
       call ustop('Invalid timeseries output option.')
   end select
-  
+
+  ! Particles mass option
+  select case(this%ParticlesMassOption)
+    case (0)
+      write(outUnit, '(A)') 'Particle groups with default mass and soluteid (ParticlesMassOption = 0)'
+    case (1)
+      write(outUnit,'(A)') 'Particle groups will read mass (ParticlesMassOption = 1)'
+    case (2)
+      write(outUnit,'(A)') 'Particle groups will read both mass and soluteid (ParticlesMassOption = 2)'
+    case default
+      call ustop('Invalid particles mass option.')
+  end select
+ 
+
+  ! Solutes option
+  select case(this%SolutesOption)
+    case (0)
+      write(outUnit, '(A)') 'Solutes with the same dispersion (SolutesOption= 0)'
+    case (1)
+      write(outUnit,'(A)') 'Solutes with specific dispersion (SolutesOption = 1)'
+    case default
+      call ustop('Invalid solutes option.')
+  end select
+
+
     ! Reference time option
     read(inUnit, '(a)') line
     icol = 1
