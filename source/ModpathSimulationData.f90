@@ -44,6 +44,7 @@ module ModpathSimulationDataModule
     character(len=200) :: AdvectiveObservationsFile
     character(len=200) :: DispersionFile          ! RWPT
     logical            :: isRWSimulation =.false. ! RWPT
+    logical            :: anyObservation =.false. ! RWPT
     integer            :: ParticlesMassOption     ! RWPT
     integer            :: SolutesOption           ! RWPT
     integer,dimension(:),allocatable :: BudgetCells
@@ -415,7 +416,7 @@ contains
   end select
  
 
-  ! Solutes option
+  ! Solutes dispersion option
   select case(this%SolutesOption)
     case (0)
       write(outUnit, '(A)') 'Solutes with the same dispersion (SolutesOption= 0)'
@@ -825,14 +826,13 @@ contains
         icol = 1
         call urword(line, icol, istart, istop, 2, n, r, 0, 0)
         ! number of observations
-        if ( n .gt. 2 ) then 
-            ! out
-            call ustop('OBS: Max allowed observation cells equals 2. Stop.')
-        else if ( n .eq. 0 ) then 
+        if ( n .le. 0 ) then 
             ! no obs
             write(outUnit,'(A)') 'OBS: No observation cells.'
         else
-            ! ok
+            ! ok, initialize
+
+            this%anyObservation = .true.
             nObservations = n
             write(outUnit,'(1X,A,I6,A)') 'OBS: ', nObservations, ' observation cells.'
 

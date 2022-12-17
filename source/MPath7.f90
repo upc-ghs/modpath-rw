@@ -1067,39 +1067,42 @@
                         end if
                     end if
                     if(simulationData%SimulationType .ge. 3) then
-                        if(tsCount .gt. 0) then
-                            ! Write timeseries record to the timeseries file
-                            pCoordTP => trackPathResult%ParticlePath%Timeseries%Items(1)
-                            p%GlobalX = pCoordTP%GlobalX ! GPKDE
-                            p%GlobalY = pCoordTP%GlobalY ! GPKDE
-                            if ( .not. &
-                              simulationData%TrackingOptions%gpkdeSkipTimeseriesWriter ) then 
-                                ! With interface
-                                call WriteTimeseries(p%SequenceNumber, p%ID, groupIndex, & 
-                                            ktime, nt, pCoordTP, geoRef, timeseriesUnit, & 
-                                            timeseriesRecordCounts, timeseriesTempUnits  )
-                            end if 
-                            timeseriesRecordWritten = .true. ! ?
-                            
-                            ! Normal observations
-                            if ( &
-                              simulationData%TrackingOptions%isObservation(pCoordTP%CellNumber) ) then 
-                              obs => simulationData%TrackingOptions%Observations(&
-                                  simulationData%TrackingOptions%idObservation(pCoordTP%CellNumber) )
-                              if ( obs%style .eq. 1 ) then  
-                                do nobs=1,obs%nCells
-                                  if( obs%cells(nobs) .ne. pCoordTP%CellNumber ) cycle
-                                  ! If it is part of the cells in the obs, write
-                                  ! record to auxOutputUnit
-                                  call WriteTimeseriesRecordCritical(& 
-                                      p%SequenceNumber, p%ID, groupIndex, ktime, &
-                                        nt, pCoordTP, geoRef, obs%auxOutputUnit, & 
-                                    timeseriesRecordCounts, timeseriesTempUnits  )
-                                end do 
-                              end if
+                      if(tsCount .gt. 0) then
+                        ! Write timeseries record to the timeseries file
+                        pCoordTP => trackPathResult%ParticlePath%Timeseries%Items(1)
+                        p%GlobalX = pCoordTP%GlobalX ! GPKDE
+                        p%GlobalY = pCoordTP%GlobalY ! GPKDE
+                        if ( .not. &
+                          simulationData%TrackingOptions%gpkdeSkipTimeseriesWriter ) then 
+                            ! With interface
+                            call WriteTimeseries(p%SequenceNumber, p%ID, groupIndex, & 
+                                        ktime, nt, pCoordTP, geoRef, timeseriesUnit, & 
+                                        timeseriesRecordCounts, timeseriesTempUnits  )
+                        end if 
+                        timeseriesRecordWritten = .true. ! ?
+                        
+                        if ( simulationData%anyObservation ) then  
+                          ! Write record for resident observations
+                          if ( &
+                            simulationData%TrackingOptions%isObservation(pCoordTP%CellNumber) ) then 
+                            obs => simulationData%TrackingOptions%Observations(&
+                                simulationData%TrackingOptions%idObservation(pCoordTP%CellNumber) )
+                            if ( obs%style .eq. 1 ) then  
+                              do nobs=1,obs%nCells
+                                if( obs%cells(nobs) .ne. pCoordTP%CellNumber ) cycle
+                                ! If it is part of the cells in the obs, write
+                                ! record to auxOutputUnit
+                                ! Temp proxy !
+                                call WriteTimeseriesRecordCritical(& 
+                                    p%SequenceNumber, p%ID, groupIndex, ktime, &
+                                      nt, pCoordTP, geoRef, obs%auxOutputUnit, & 
+                                  timeseriesRecordCounts, timeseriesTempUnits  )
+                              end do 
                             end if
-
+                          end if
                         end if
+
+                      end if
                     end if
                 end if
                 
@@ -1129,21 +1132,23 @@
                                         timeseriesRecordCounts, timeseriesTempUnits)
                       end if
 
-                      ! Normal observations
-                      if ( &
-                        simulationData%TrackingOptions%isObservation(pCoordTP%CellNumber) ) then 
-                        obs => simulationData%TrackingOptions%Observations(&
-                            simulationData%TrackingOptions%idObservation(pCoordTP%CellNumber) )
-                        if ( obs%style .eq. 1 ) then  
-                          do nobs=1,obs%nCells
-                            if( obs%cells(nobs) .ne. pCoordTP%CellNumber ) cycle
-                            ! If it is part of the cells in the obs, write
-                            ! record to auxOutputUnit
-                            call WriteTimeseriesRecordCritical(& 
-                                p%SequenceNumber, p%ID, groupIndex, ktime, &
-                                  nt, pCoordTP, geoRef, obs%auxOutputUnit, & 
-                              timeseriesRecordCounts, timeseriesTempUnits  )
-                          end do 
+                      if ( simulationData%anyObservation ) then  
+                        ! Write record for resident observations
+                        if ( &
+                          simulationData%TrackingOptions%isObservation(pCoordTP%CellNumber) ) then 
+                          obs => simulationData%TrackingOptions%Observations(&
+                              simulationData%TrackingOptions%idObservation(pCoordTP%CellNumber) )
+                          if ( obs%style .eq. 1 ) then  
+                            do nobs=1,obs%nCells
+                              if( obs%cells(nobs) .ne. pCoordTP%CellNumber ) cycle
+                              ! If it is part of the cells in the obs, write
+                              ! record to auxOutputUnit
+                              call WriteTimeseriesRecordCritical(& 
+                                  p%SequenceNumber, p%ID, groupIndex, ktime, &
+                                    nt, pCoordTP, geoRef, obs%auxOutputUnit, & 
+                                timeseriesRecordCounts, timeseriesTempUnits  )
+                            end do 
+                          end if
                         end if
                       end if
 
