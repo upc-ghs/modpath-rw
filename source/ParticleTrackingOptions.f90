@@ -84,7 +84,7 @@ contains
       ! Deallocate observation cells 
       this%nObservations         = 0
       this%observationSimulation = .false.
-      this%anySinkObservation = .false.
+      this%anySinkObservation    = .false.
       if(allocated(this%observationCells)) deallocate(this%observationCells)
       if(allocated(this%observationUnits)) deallocate(this%observationUnits)
       if(allocated(this%observationFiles)) deallocate(this%observationFiles)
