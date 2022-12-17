@@ -26,7 +26,7 @@
         gridFile, headFile, budgetFile, mpsimFile, traceFile,  gridMetaFile,    &
         mplogFile, logType, particleGroupCount, gridFileType
     use UtilMiscModule,only : ulog
-    use utl8module,only : freeunitnumber, ustop
+    use utl8module,only : freeunitnumber, ustop, ugetnode ! GPDKE
     use ModpathCellDataModule,only : ModpathCellDataType
     use ModpathBasicDataModule,only : ModpathBasicDataType
     use ModpathSimulationDataModule,only : ModpathSimulationDataType
@@ -1221,6 +1221,15 @@
             ! cells, considering porosities and so on
             ! It would work only for structured grids
             ! sharing the same discretization than GPKDE
+
+            ! if( modelGrid%isUnstructured ) then 
+            !   ! It could do some kind of histogram reconstruction
+            ! else
+            !  ! Run over the active 
+            !  read(inUnit, *) layer, row, column
+            !  call ugetnode(layerCount, rowCount, columnCount, layer, row, column,cellNumber)
+            !  obs%cells(no) = cellNumber
+            ! end if
 
           end do 
 
