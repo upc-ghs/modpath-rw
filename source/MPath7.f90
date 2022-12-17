@@ -1317,11 +1317,6 @@
     end if
  
 
-    ! Write particle summary information
-    ! Before the processing of Observations ?
-    call WriteParticleSummaryInfo(simulationData, mplistUnit)
-
-
     ! RWPT
     ! Process observation cells for reconstruction
     if ( simulationData%TrackingOptions%observationSimulation ) then
@@ -1764,6 +1759,10 @@
 
 
     end if ! process obs cells 
+
+
+    ! Write particle summary information
+    call WriteParticleSummaryInfo(simulationData, mplistUnit)
 
 
 100 continue    
