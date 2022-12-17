@@ -934,7 +934,6 @@ contains
                     do no = 1, obs%nCells
                         read(inUnit, *) layer, row, column
                         call ugetnode(layerCount, rowCount, columnCount, layer, row, column,cellNumber)
-                        print *, layer, row, column, cellNumber
                         obs%cells(no) = cellNumber
                     end do 
                   else if ( readStyle .eq. 2 ) then 
@@ -1038,13 +1037,6 @@ contains
                   ! Get it from the timeseries run 
                   continue
               end select
-
-
-              print *, '------------------------------------------------'
-              print *, 'OBSID : ', obs%id
-              print *, 'NCELLS: ', obs%nCells
-              print *, 'CELLS : '
-              print *, '    ' , obs%cells
 
             end do 
 
