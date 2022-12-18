@@ -890,12 +890,15 @@
     pendingCount = 0
     activeCount = 0
     if(simulationData%ParticleGroupCount .gt. 0) then
+        ! -- Particles groups loop -- !
         do groupIndex = 1, simulationData%ParticleGroupCount
             if ( simulationData%SolutesOption .eq. 1 ) then 
                 ! Assign pointers to dispersivities 
                 ! in transportModelData
                 call transportModelData%SetSoluteDispersion( &
                   simulationData%ParticleGroups(groupIndex)%Solute )
+                ! Update dispersion function interface
+                ! depending on dispersion model 
                 call trackingEngine%UpdateDispersionFunction( &
                   transportModelData%Solutes(&
                   simulationData%ParticleGroups(groupIndex)%Solute )%dispersionModel )
@@ -1348,7 +1351,6 @@
         ! If this is a normal obs cell
         if ( obs%style .eq. 1 ) then 
 
-          print *, 'NORMAL OBS CELL:!'
           ! The length of the timeseries is needed
 
           ! This would work only for timeseries simulations
@@ -1560,8 +1562,6 @@
 
         ! If this is is a sink obs cell
         if ( obs%style .eq. 2 ) then 
-
-          print *, 'SINK OBS CELL:!'
 
           ! The length of the timeseries is needed
 
