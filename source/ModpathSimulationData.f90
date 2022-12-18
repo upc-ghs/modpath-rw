@@ -594,7 +594,7 @@ contains
           case default
           ! write error message and stop
       end select
-      
+    
       read(inUnit, '(a)') line
       icol = 1
       call urword(line,icol,istart,istop,1,n,r,0,0)
