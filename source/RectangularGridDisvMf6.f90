@@ -402,6 +402,8 @@ module RectangularGridDisvMf6Module
           else
             ! This is a mid-face point, so increment the mid-face counter
             midFaceCount = midFaceCount + 1
+            ! RWPT: defined at ModflowRectangularGridType 
+            this%isUnstructured = .true.
           end if
       end do
       ptCount = ptCount + 1

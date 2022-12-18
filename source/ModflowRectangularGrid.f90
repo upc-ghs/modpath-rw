@@ -17,6 +17,7 @@ module ModflowRectangularGridModule
     integer :: ColumnCount = 0
     integer,dimension(:),allocatable :: JaFace
     double precision,dimension(:),allocatable :: DelX, DelY
+    logical :: isUnstructured =.false.
   contains
     procedure :: GetLeft
     procedure :: GetRight
