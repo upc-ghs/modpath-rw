@@ -811,48 +811,47 @@
       end if
     end if
     
-    if ( .not. &
-      simulationData%TrackingOptions%gpkdeSkipTimeseriesWriter ) then 
-      ! If simulation type is TIMESERIES, write initial locations of all particles active at tracking time = 0,
-      ! or all particles regardless of status if that option is set
-      ! RWPT
-      if( (simulationData%SimulationType .ge. 3) .and. & 
-          (simulationData%SimulationType .lt. 7) .and. (ktime .eq. kfirst) ) then
-          do groupIndex =1, simulationData%ParticleGroupCount
-              do particleIndex = 1, simulationData%ParticleGroups(groupIndex)%TotalParticleCount
-                  ! Add code
-                    p => simulationData%ParticleGroups(groupIndex)%Particles(particleIndex)
-                    if(((p%Status .eq. 0) .and. (p%InitialTrackingTime .eq. 0.0d0)) .or.    &
-                       (simulationData%TimeseriesOutputOption .eq. 1) )then
-                        pCoord%CellNumber = p%CellNumber
-                        pCoord%Layer = p%Layer
-                        pCoord%LocalX = p%LocalX
-                        pCoord%LocalY = p%LocalY
-                        pCoord%LocalZ = p%LocalZ
-                        pCoord%TrackingTime = 0.0d0
-                        call modelGrid%ConvertToModelXYZ(pCoord%CellNumber,        &
-                          pCoord%LocalX, pCoord%LocalY, pCoord%LocalZ,            &
-                          pCoord%GlobalX, pCoord%GlobalY, pCoord%GlobalZ)
-                        p%InitialGlobalZ = pCoord%GlobalZ
-                        p%GlobalZ = p%InitialGlobalZ
-                        p%GlobalX = pCoord%GlobalX ! GPKDE
-                        p%GlobalY = pCoord%GlobalY ! GPKDE
+    ! If simulation type is TIMESERIES, write initial locations of all particles active at tracking time = 0,
+    ! or all particles regardless of status if that option is set
+    ! RWPT
+    if((simulationData%SimulationType .ge. 3) .and. & 
+      (simulationData%SimulationType .lt. 7) .and. (ktime .eq. kfirst) ) then
+      do groupIndex =1, simulationData%ParticleGroupCount
+        do particleIndex = 1, simulationData%ParticleGroups(groupIndex)%TotalParticleCount
+          p => simulationData%ParticleGroups(groupIndex)%Particles(particleIndex)
+          if(((p%Status .eq. 0) .and. (p%InitialTrackingTime .eq. 0.0d0)) .or.    &
+            (simulationData%TimeseriesOutputOption .eq. 1) ) then
+            pCoord%CellNumber = p%CellNumber
+            pCoord%Layer = p%Layer
+            pCoord%LocalX = p%LocalX
+            pCoord%LocalY = p%LocalY
+            pCoord%LocalZ = p%LocalZ
+            pCoord%TrackingTime = 0.0d0
+            call modelGrid%ConvertToModelXYZ(pCoord%CellNumber,        &
+              pCoord%LocalX, pCoord%LocalY, pCoord%LocalZ,            &
+              pCoord%GlobalX, pCoord%GlobalY, pCoord%GlobalZ)
+            p%InitialGlobalZ = pCoord%GlobalZ
+            p%GlobalZ = p%InitialGlobalZ
+            p%GlobalX = pCoord%GlobalX ! GPKDE
+            p%GlobalY = pCoord%GlobalY ! GPKDE
 
-                        ! If parallel:
-                        !     - With consolidated output initial positions are 
-                        !       stored into temporal unit for first thread 
-                        !       and then consolidated
-                        !     - Without consolidation then initial positions 
-                        !       will be stored in file for first thread
-                        ! If not parallel: remains the same as usual
-                        call WriteTimeseries(p%SequenceNumber, p%ID, groupIndex, & 
-                                       ktime, 0, pCoord, geoRef, timeseriesUnit, & 
-                                    timeseriesRecordCounts, timeseriesTempUnits  )
+            if ( .not. &
+              simulationData%TrackingOptions%gpkdeSkipTimeseriesWriter ) then 
+              ! If parallel:
+              !     - With consolidated output initial positions are 
+              !       stored into temporal unit for first thread 
+              !       and then consolidated
+              !     - Without consolidation then initial positions 
+              !       will be stored in file for first thread
+              ! If not parallel: remains the same as usual
+              call WriteTimeseries(p%SequenceNumber, p%ID, groupIndex, & 
+                             ktime, 0, pCoord, geoRef, timeseriesUnit, & 
+                          timeseriesRecordCounts, timeseriesTempUnits  )
 
-                    end if
-              end do
-          end do
-      end if
+            end if
+          end if
+        end do
+      end do
     end if
     
     
@@ -1245,6 +1244,8 @@
           end do 
 
         end if
+
+        call exit(0)
 
     end if
  
