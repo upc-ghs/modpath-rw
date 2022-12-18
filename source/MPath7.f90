@@ -268,6 +268,9 @@
             ! Close discretization files
             close(disUnit)
             
+            ! RWPT
+            ! isUnstructured remains as false
+
         case (2)
             ! MODPATH spatial(MPUGRID) and time (TDIS) discretization files 
             ! Read spatial discretization
@@ -281,6 +284,9 @@
             ! Close discretization file
             close(disUnit)
         
+            ! RWPT: Is there a way to check if is really Unstructured ? 
+            ! In the meantime, assume it is at RectangularGridDisuMfusgInit1 
+
         case (3)
             ! MODFLOW-6 DIS binary grid file
             ! Read spatial discretization
@@ -304,7 +310,10 @@
             ! Close discretization files
             close(disUnit)
             close(tdisUnit)
-            
+           
+            ! RWPT
+            ! isUnstructured remains as false
+
         case (4)
             ! MODFLOW-6 DISV binary grid file
             ! Read spatial discretization
@@ -329,8 +338,8 @@
             close(disUnit)
             close(tdisUnit)
             
-            ! RWPT: Seems possible to detect whether it is unstructured or not,
-            ! isSmoothed 
+            ! RWPT: In RectangularGridDisvMf6Module it is checked whether it is unstructured or not,
+            ! while counting midPoints, CheckRectangular, checking if isSmoothed 
 
         case (5)
             ! MODFLOW-6 DISU binary grid file

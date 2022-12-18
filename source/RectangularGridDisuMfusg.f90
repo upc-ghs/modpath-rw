@@ -65,7 +65,10 @@ module RectangularGridDisuMfusgModule
     
 ! Assign connections to cell faces
   call this%ComputeFaceAssignments()
-  
+ 
+  ! RWPT: Assume is USG, it seems is not so easy to detect if any subcell
+  this%isUnstructured = .true.
+
   end subroutine RectangularGridDisuMfusgInit1  
 !------------------------------------------------------------------------
 !  End initialization procedures
