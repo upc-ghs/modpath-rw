@@ -156,11 +156,10 @@
 !---------------------------------------------------------------------------------
     
     ! Set version
-!!    version = '7.2.002'
-    version = '7.2.002 PROVISIONAL'    ! kluge provisional
+    version = '0.0.1'
     
     call get_compiler(compilerVersionText)
-    write(*,'(1x/a,a)') 'MODPATH Version ', version
+    write(*,'(1x/a,a)') 'MODPATH-RW Version ', version
     write(*,'(a)') compilerVersionText
     write(*,*)
     
@@ -300,7 +299,7 @@
             ! Read time discretization file
             if(len_trim(tdisFile) .gt. 0) then
                 write(mplistUnit, '(a,1x)') 'Time discretization file type: MODFLOW-6 time discretization file.'
-                call ulog('Read time discretization data component ...', logUnit)
+                call ulog('R ead time discretization data component ...', logUnit)
                 call tdisData%ReadData(tdisUnit, mplistUnit)
             else
                 call ulog('The time discretization file was not specified.', logUnit)
@@ -313,6 +312,10 @@
            
             ! RWPT
             ! isUnstructured remains as false
+
+            ! Notice that this grid could have different (distributed)
+            ! delr, delc. Meaning that although is structured,
+            ! is not regular.
 
         case (4)
             ! MODFLOW-6 DISV binary grid file
@@ -411,14 +414,8 @@
     ! If budget output option = 2, then write a list of budget record headers.
     call WriteBudgetFileInfo(mplistUnit, budgetReader) 
     if(simulationData%BudgetOutputOption .eq. 2) call WriteBudgetRecordHeaders(mplistUnit, budgetReader)
-        
-    ! Prepare to stop if there are no particles to track
-    if(simulationData%TotalParticleCount .eq. 0) then
-        terminationMessage = 'The simulation was terminated because there are no particles to track.'
-        goto 100
-    end if
-   
 
+        
     ! Initialize the particle tracking engine:
     call ulog('Allocate particle tracking engine component.', logUnit)
     allocate(trackingEngine)
@@ -443,6 +440,12 @@
         call trackingEngine%Initialize(modelGrid, simulationData%TrackingOptions, flowModelData)
     end if 
     ! The trackingEngine initialization is complete
+
+    ! Prepare to stop if there are no particles to track
+    if(simulationData%TotalParticleCount .eq. 0) then
+        terminationMessage = 'The simulation was terminated because there are no particles to track.'
+        goto 100
+    end if
 
     ! Initialize GPKDE reconstruction 
     if ( simulationData%TrackingOptions%GPKDEReconstruction ) then
@@ -861,9 +864,85 @@
           end if
         end do
       end do
+
+
+      ! GPKDE reconstruction for initial 
+      ! particles distribution 
+      ! reconstruction grouped by solute
+      if ( simulationData%TrackingOptions%GPKDEReconstruction ) then
+
+        do ns=1,transportModelData%nSolutes
+
+          solute => transportModelData%Solutes(ns)
+
+          ! Count how many active, considering
+          ! all the particle groups linked to a given solute 
+          activeCounter = 0
+          do npg=1,solute%nParticleGroups
+            groupIndex = solute%pGroups(npg)
+            do particleIndex = 1, simulationData%ParticleGroups(groupIndex)%TotalParticleCount
+              p => simulationData%ParticleGroups(groupIndex)%Particles(particleIndex)
+              ! If active, to the array for GPKDE
+              !if( (p%Status .eq. 1) ) then
+              if((p%Status .eq. 0) .and. (p%InitialTrackingTime .eq. 0.0d0)) then 
+                activeCounter = activeCounter + 1
+              end if
+            end do
+          end do
+
+          ! Allocate active particles coordinates
+          if ( allocated( activeParticleCoordinates ) ) deallocate( activeParticleCoordinates )
+          allocate( activeParticleCoordinates(activeCounter,3) )
+          activeParticleCoordinates = 0d0
+          if ( allocated( activeParticleMasses ) ) deallocate( activeParticleMasses )
+          allocate( activeParticleMasses(activeCounter) )
+          activeParticleMasses = 0d0
+
+          ! Could be parallelized ?
+          ! Restart active counter and fill coordinates array
+          activeCounter = 0 
+          do npg=1,solute%nParticleGroups
+            groupIndex = solute%pGroups(npg)
+            do particleIndex = 1, simulationData%ParticleGroups(groupIndex)%TotalParticleCount
+              p => simulationData%ParticleGroups(groupIndex)%Particles(particleIndex)
+              ! If active, to the array for GPKDE
+              !if( (p%Status .eq. 1) ) then
+              if((p%Status .eq. 0) .and. (p%InitialTrackingTime .eq. 0.0d0)) then 
+                activeCounter = activeCounter + 1
+                activeParticleCoordinates( activeCounter, 1 ) = p%GlobalX
+                activeParticleCoordinates( activeCounter, 2 ) = p%GlobalY
+                activeParticleCoordinates( activeCounter, 3 ) = p%GlobalZ
+                activeParticleMasses( activeCounter ) = p%Mass
+              end if
+            end do
+          end do
+
+          ! GPKDE
+          ! Compute density for the particles linked to a given 
+          ! solute. These may have different mass
+          call gpkde%ComputeDensity(                                              &
+             activeParticleCoordinates,                                           &
+             outputFileUnit     = simulationData%TrackingOptions%gpkdeOutputUnit, &
+             outputDataId       = 0,                                              & ! timeindex
+             particleGroupId    = solute%id,                                      &
+             unitVolume         = .true.,                                         &
+             weightedHistogram  = .true.,                                         &
+             weights            = activeParticleMasses                            &
+          )
+
+          ! Reconstruction still needs some review. 
+          ! When giving an initial condition for a quasi-2D layer
+          ! and the dimension in the "compressed" dimension is 
+          ! non-zero, the output of gpkde needs to be normalized 
+          ! by this distance. Verify if this happens for other
+          ! conditions. 
+
+        end do 
+
+      end if
+
     end if
-    
-    
+  
 
     ! TRACKING_INTERVAL_LOOP: 
     ! Loop through all the required time points that fall within the
@@ -1253,8 +1332,6 @@
           end do 
 
         end if
-
-        call exit(0)
 
     end if
  

@@ -570,67 +570,67 @@ contains
     this%TotalParticleCount = 0
     particleCount = 0
     if(this%ParticleGroupCount .gt. 0) then
-    allocate(this%ParticleGroups(this%ParticleGroupCount))
-    do n = 1, this%ParticleGroupCount
-      this%ParticleGroups(n)%Group = n
-      read(inUnit, '(a)') this%ParticleGroups(n)%Name
-      read(inUnit, *) releaseOption
+      allocate(this%ParticleGroups(this%ParticleGroupCount))
+      do n = 1, this%ParticleGroupCount
+        this%ParticleGroups(n)%Group = n
+        read(inUnit, '(a)') this%ParticleGroups(n)%Name
+        read(inUnit, *) releaseOption
+        
+        select case (releaseOption)
+            case (1)
+                read(inUnit, *) initialReleaseTime
+                call this%ParticleGroups(n)%SetReleaseOption1(initialReleaseTime)
+            case (2)
+                read(inUnit, *) releaseTimeCount, initialReleaseTime, releaseInterval
+                call this%ParticleGroups(n)%SetReleaseOption2(initialReleaseTime, &
+                  releaseTimeCount, releaseInterval)
+            case (3)
+                read(inUnit, *) releaseTimeCount
+                if(allocated(releaseTimes)) deallocate(releaseTimes)
+                allocate(releaseTimes(releaseTimeCount))
+                read(inUnit, *) (releaseTimes(nn), nn = 1, releaseTimeCount)
+                call this%ParticleGroups(n)%SetReleaseOption3(releaseTimeCount,   &
+                  releaseTimes)
+            case default
+            ! write error message and stop
+        end select
       
-      select case (releaseOption)
-          case (1)
-              read(inUnit, *) initialReleaseTime
-              call this%ParticleGroups(n)%SetReleaseOption1(initialReleaseTime)
-          case (2)
-              read(inUnit, *) releaseTimeCount, initialReleaseTime, releaseInterval
-              call this%ParticleGroups(n)%SetReleaseOption2(initialReleaseTime, &
-                releaseTimeCount, releaseInterval)
-          case (3)
-              read(inUnit, *) releaseTimeCount
-              if(allocated(releaseTimes)) deallocate(releaseTimes)
-              allocate(releaseTimes(releaseTimeCount))
-              read(inUnit, *) (releaseTimes(nn), nn = 1, releaseTimeCount)
-              call this%ParticleGroups(n)%SetReleaseOption3(releaseTimeCount,   &
-                releaseTimes)
-          case default
-          ! write error message and stop
-      end select
-    
-      read(inUnit, '(a)') line
-      icol = 1
-      call urword(line,icol,istart,istop,1,n,r,0,0)
-      if(line(istart:istop) .eq. 'EXTERNAL') then
-          call urword(line,icol,istart,istop,0,n,r,0,0)
-          this%ParticleGroups(n)%LocationFile = line(istart:istop)
-          slocUnit = 0
-      else if(line(istart:istop) .eq. 'INTERNAL') then
-          this%ParticleGroups(n)%LocationFile = ''
-          slocUnit = inUnit
-      else
-          call ustop('Invalid starting locations file name. stop.')
-      end if
-      call ReadAndPrepareLocations(slocUnit, outUnit, this%ParticleGroups(n),   &
-        ibound, grid%CellCount, grid, seqNumber)
-      write(outUnit, '(a,i4,a,i10,a)') 'Particle group ', n, ' contains ',      &
-        this%ParticleGroups(n)%TotalParticleCount, ' particles.'
-      particleCount = particleCount + this%ParticleGroups(n)%TotalParticleCount
-
-      ! RWPT
-      if ( this%ParticlesMassOption .ge. 1 ) then 
-        ! Read group mass, is a proxy for concentrations
-        ! when mass is uniform for a pgroup
-        read(inUnit, *) this%ParticleGroups(n)%Mass
-        this%ParticleGroups(n)%Particles(:)%Mass = this%ParticleGroups(n)%Mass
-        ! Read the solute id for this group 
-        if ( this%ParticlesMassOption .eq. 2 ) then 
-          read(inUnit, *) this%ParticleGroups(n)%Solute
+        read(inUnit, '(a)') line
+        icol = 1
+        call urword(line,icol,istart,istop,1,n,r,0,0)
+        if(line(istart:istop) .eq. 'EXTERNAL') then
+            call urword(line,icol,istart,istop,0,n,r,0,0)
+            this%ParticleGroups(n)%LocationFile = line(istart:istop)
+            slocUnit = 0
+        else if(line(istart:istop) .eq. 'INTERNAL') then
+            this%ParticleGroups(n)%LocationFile = ''
+            slocUnit = inUnit
+        else
+            call ustop('Invalid starting locations file name. stop.')
         end if
-      end if
+        call ReadAndPrepareLocations(slocUnit, outUnit, this%ParticleGroups(n),   &
+          ibound, grid%CellCount, grid, seqNumber)
+        write(outUnit, '(a,i4,a,i10,a)') 'Particle group ', n, ' contains ',      &
+          this%ParticleGroups(n)%TotalParticleCount, ' particles.'
+        particleCount = particleCount + this%ParticleGroups(n)%TotalParticleCount
 
-    end do
+        ! RWPT
+        if ( this%ParticlesMassOption .ge. 1 ) then 
+          ! Read group mass, is a proxy for concentrations
+          ! when mass is uniform for a pgroup
+          read(inUnit, *) this%ParticleGroups(n)%Mass
+          this%ParticleGroups(n)%Particles(:)%Mass = this%ParticleGroups(n)%Mass
+          ! Read the solute id for this group 
+          if ( this%ParticlesMassOption .eq. 2 ) then 
+            read(inUnit, *) this%ParticleGroups(n)%Solute
+          end if
+        end if
 
-    this%TotalParticleCount = particleCount
-    write(outUnit, '(a,i10)') 'Total number of particles = ', this%TotalParticleCount
-    write(outUnit, *)
+      end do
+
+      this%TotalParticleCount = particleCount
+      write(outUnit, '(a,i10)') 'Total number of particles = ', this%TotalParticleCount
+      write(outUnit, *)
     end if
 
     ! TrackingOptions data
