@@ -168,7 +168,7 @@ contains
 
     ! FROM READLOCATIONS3
     type(ParticleGroupType) :: pGroup
-    integer :: totalParticleCount,templateCount,templateCellCount,nc,nr,nl,row,column
+    integer :: totalParticleCount,templateCount,templateCellCount,nc,nr,nl,row,column,idmax
     integer :: count,np,face,i,j,k,layerCount,rowCount,columnCount,       &    
                subCellCount,cell,offset,npcell
     doubleprecision :: dx,dy,dz,x,y,z,faceCoord,rowCoord,columnCoord,dr,dc 
@@ -218,6 +218,9 @@ contains
         if ( grid%LayerCount .gt. 1 )  dimensionMask(3) = 1 ! this dimension is active
         nDim = sum(dimensionMask)
 
+        print *, 'NDIM IS : ', nDim
+
+
 
         ! Write header to the listing file
         write(outUnit, *)
@@ -258,18 +261,18 @@ contains
 
             ! Initial condition format
             ! 1: concentration
-            ! 2: particles (classic)
             read(inUnit, *) initialConditionFormat
 
             select case ( initialConditionFormat )
-            ! Read initial condition as concentration 
+
+            ! Read initial condition as concentration times 
+            ! porosity  (ML^-3)
             case (1) 
-              ! Read as resident concentration (ML^-3)
+
               ! Given a value for the mass of particles, 
               ! use flowModelData to compute cellvolume
               ! and a shape factor from which the number 
               ! of particles per cell is estimated
-
 
               ! Density/concentration arrays are expected 
               ! to be consistent with flow model grid.
@@ -298,6 +301,9 @@ contains
 
               ! Read particles mass
               read(inUnit, *) particleMass
+        
+              print *, 'PARTICLE MASS: ', particleMass
+              print *, 'INT(0,0.5,0.8,1,1.2)', int(0d0), int(0.5), int(0.8), int(1d0), int(1.2) 
 
               if ( ( simulationData%ParticlesMassOption .eq. 2 ) .or. & 
                    ( simulationData%SolutesOption .eq. 1 ) ) then 
@@ -321,7 +327,7 @@ contains
               end if
            
               ! Validity of initial density distribution 
-              if( all(abs(densityDistribution).le.0d0) ) then
+              if( all(abs(densityDistribution).eq.0d0) ) then
                 write(outUnit,*) 'Warning: initial condition ',&
                     particleGroups(nic)%Name,' has a densityDistribution only with zeros'
                 write(outUnit,*) 'It will not create a particle group. Continue to the next.'
@@ -352,6 +358,8 @@ contains
                   delZ = 0d0 
               end where
 
+              print *, 'DELZ ', sum(delZ)/grid%CellCount
+
               ! Compute cell volumes
               cellVolumes = 1d0
               do n =1, 3
@@ -367,7 +375,6 @@ contains
                 end if 
               end do 
 
-                
               ! Particles density 
               ! absolute value is required for the case that 
               ! densityDsitribution contains negative values
@@ -375,10 +382,10 @@ contains
 
               ! nParticles
               ! notice rawNParticles = mass/volume/mass = 1/volume: particle density
-              nParticles  = rawNParticles*flowModelData%Porosity*cellVolumes
+              nParticles  = rawNParticles*cellVolumes
 
               ! The minimum measurable absolute concentration/density 
-              minOneParticleDensity = minval(particleMass/flowModelData%Porosity/cellVolumes)
+              minOneParticleDensity = minval(particleMass/cellVolumes)
 
               ! Allocate subdivision arrays
               templateCount     = 1 
@@ -427,9 +434,9 @@ contains
                 where ( nParticles .lt. 1d0 )
                    nParticles = 0d0 
                 end where 
-                nParticlesX = shapeFactorX*(nParticles)**(1d0/nDim) 
-                nParticlesY = shapeFactorY*(nParticles)**(1d0/nDim)
-                nParticlesZ = shapeFactorZ*(nParticles)**(1d0/nDim)
+                nParticlesX = shapeFactorX*( (nParticles)**(1d0/nDim) ) 
+                nParticlesY = shapeFactorY*( (nParticles)**(1d0/nDim) )
+                nParticlesZ = shapeFactorZ*( (nParticles)**(1d0/nDim) )
 
                 ! Loop through cells and count the number of particles
                 do cell = 1, templateCellCounts(n)
@@ -469,7 +476,7 @@ contains
               ! is negative, then assign the number of particles
               ! and modify the sign of particles mass for that cell 
               ! with a negative sign 
-              particleMass = sum( abs(densityDistribution)*cellVolumes*flowModelData%Porosity )/totalParticleCount 
+              particleMass = sum( abs(densityDistribution)*cellVolumes )/totalParticleCount 
               write(outUnit,'(/A,es18.9e3)') ' Effective particleMass for initial condition = ', particleMass
 
               ! Assign to the particle group 
@@ -486,6 +493,8 @@ contains
                       sdiv(1) = int( nParticlesX(cell) ) + 1
                       sdiv(2) = int( nParticlesY(cell) ) + 1
                       sdiv(3) = int( nParticlesZ(cell) ) + 1
+                      ! For the weird requirement where density
+                      ! might be negative...
                       if ( densityDistribution(cell) .gt. 0 ) then 
                         particleMass = abs( particleMass ) 
                       else 
@@ -500,7 +509,22 @@ contains
                   offset = offset + templateCellCounts(n)
                 end do
               end if
-              
+            
+              ! Assign layer value to each particle
+              idmax = 0
+              seqNumber = 0
+              do m = 1, totalParticleCount
+                  seqNumber = seqNumber + 1
+                  if(particleGroups(nic)%Particles(m)%Id .gt. idmax) idmax = particleGroups(nic)%Particles(m)%Id
+                  particleGroups(nic)%Particles(m)%Group = particleGroups(nic)%Group
+                  particleGroups(nic)%Particles(m)%SequenceNumber = seqNumber
+                  particleGroups(nic)%Particles(m)%InitialLayer =                                   &
+                    grid%GetLayer(particleGroups(nic)%Particles(m)%InitialCellNumber)
+                  particleGroups(nic)%Particles(m)%Layer =                                          &
+                    grid%GetLayer(particleGroups(nic)%Particles(m)%CellNumber)
+              end do
+  
+
               ! Deallocate temporary arrays
               deallocate(subDiv)
               deallocate(templateSubDivisionTypes)
@@ -523,7 +547,7 @@ contains
             end if 
 
             ! Report number of particles
-            write(outUnit, '(a,i4,a,i10,a)') ' Initial condition ', n, ' contains ',   &
+            write(outUnit, '(a,i4,a,i10,a)') ' Initial condition ', nic, ' contains ',   &
               particleGroups(nic)%TotalParticleCount, ' particles.'
             particleCount = particleCount + particleGroups(nic)%TotalParticleCount
 
@@ -536,30 +560,43 @@ contains
           if ( nValidInitialConditions .gt. 0 ) then 
             newParticleGroupCount = simulationData%ParticleGroupCount + nValidInitialConditions
             allocate(newParticleGroups(newParticleGroupCount))
-            do n = 1, simulationData%ParticleGroupCount
-              newParticleGroups(n) = simulationData%ParticleGroups(n)
-            end do 
+            ! If some particle groups existed previously
+            if( simulationData%ParticleGroupCount .gt. 0 ) then 
+              do n = 1, simulationData%ParticleGroupCount
+                newParticleGroups(n) = simulationData%ParticleGroups(n)
+              end do
+            end if 
             ncount = 0
             do n = 1, nInitialConditions
               if ( particleGroups(n)%TotalParticleCount .eq. 0 ) cycle
               ncount = ncount + 1 
               newParticleGroups(ncount+simulationData%ParticleGroupCount) = particleGroups(n)
             end do 
-            call move_alloc( newParticleGroups, simulationData%ParticleGroups )
-            simulationData%ParticleGroupCount = newParticleGroupCount
+            if( simulationData%ParticleGroupCount .gt. 0 ) then 
+              call move_alloc( newParticleGroups, simulationData%ParticleGroups )
+              simulationData%ParticleGroupCount = newParticleGroupCount
+              simulationData%TotalParticleCount = simulationData%TotalParticleCount + particleCount
+            else
+              simulationData%ParticleGroupCount = newParticleGroupCount
+              simulationData%TotalParticleCount = particleCount
+              allocate(simulationData%ParticleGroups(simulationData%ParticleGroupCount))
+              call move_alloc( newParticleGroups, simulationData%ParticleGroups )
+            end if
           end if
 
           ! Will process the next at some point
           deallocate( particleGroups )
        
-
         end if ! if nInitialConditions .gt. 0
 
 
+        !-- FLUX BOUNDARIES NEED VERIFICATION REVIEW, REMOVE ? --!
+            
         ! Prescribed flux boundary conditions
         read(inUnit, *) nInjectionConditions
         write(outUnit,'(/A,I5)') ' Number of mass injection (flux) conditions = ', nInjectionConditions
         nValidInjectionConditions = 0
+
 
         ! Extends particle groups 
         if(nInjectionConditions .gt. 0) then
@@ -573,7 +610,7 @@ contains
           if(allocated(delZ)) deallocate(delZ)
           allocate(delZ(1))
           if(allocated(shapeFactorX)) deallocate(shapeFactorX)
-          allocate(shapeFactorX(1))
+      
           if(allocated(shapeFactorY)) deallocate(shapeFactorY)
           allocate(shapeFactorY(1))
           if(allocated(shapeFactorZ)) deallocate(shapeFactorZ)
@@ -589,7 +626,7 @@ contains
             read(inUnit, '(a)') particleGroups(nic)%Name
 
             ! Injection condition format 
-            ! 1: cell, constant concentration, start-end times
+            ! 1: cell, constant concentration, release times
             ! 2: cell, injection time series
             read(inUnit, *) injectionFormat
 
@@ -626,12 +663,35 @@ contains
 
                 ! Read release times data
                 read(inUnit, *) releaseTimeCount, initialReleaseTime, releaseInterval
-                call particleGroups(n)%SetReleaseOption2(initialReleaseTime, &
+                call particleGroups(nic)%SetReleaseOption2(initialReleaseTime, &
                   releaseTimeCount, releaseInterval)
 
                 ! It needs something to allocate particles, 
                 ! the read and prepare locations or something
+                allocate(subDiv(1,12))
+                subDiv(:,:) = 0
+                read(inUnit, *) (subDiv(n,i), i = 1, 3)
+                npcell = subDiv(1,1)*subDiv(1,2)*subDiv(1,3)
 
+                ! Calculate the total number of particles for all release time points.
+                totalParticleCount = npcell*particleGroups(nic)%GetReleaseTimeCount()
+                if(allocated(particleGroups(nic)%Particles)) deallocate(particleGroups(nic)%Particles)
+                allocate(particleGroups(nic)%Particles(totalParticleCount))
+                particleGroups(nic)%TotalParticleCount = totalParticleCount
+
+                call pr_CreateParticlesAsInternalArray(    & 
+                  particleGroups(nic), injectionCellNumber,&
+                  m, subDiv(1,1), subDiv(1,2), subDiv(1,3),&
+                  drape(1) )
+                ! Assign mass
+                particleGroups(nic)%Mass = particleMass
+                particleGroups(nic)%Particles(:)%Mass = particleMass
+                if ( simulationData%ParticlesMassOption .eq. 2 ) then 
+                  ! Assign the solute id 
+                  particleGroups(nic)%Solute = soluteId
+                end if 
+
+                ! Next
 
               ! Cell id and a timeseries for concentrations
               ! Note: Times should be consistent with referenceTime
