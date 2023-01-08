@@ -2518,7 +2518,7 @@ contains
       !     - x, y, z             : local cell coordinates
       !     - alphaL              : longidutinal dispersivity
       !     - alphaT              : transverse dispersivity
-      !     - Dmol                : molecular diffusion
+      !     - Dmol                : molecular diffusion (effective, corrected by tortuosity)
       !     - divDx, divDy, divDz : dispersion divergence, output 
       !----------------------------------------------------------------
       ! Specifications
@@ -2931,6 +2931,11 @@ contains
       !          ( alphaL - alphaT )*v111(2)*v111(3)/v111(4), &
       !          dDyzdz )
 
+      
+      ! The following retardation factor requires verification. 
+      ! It is likely that it should be actually applied 
+      ! to the discharges defined at the beginning of this function. 
+      ! Is not clear whether retardation should influence molecular diffusion.
       divDx = ( dDxxdx + dDxydy + dDxzdz )/this%SubCellData%Porosity/this%SubCellData%Retardation
       divDy = ( dDxydx + dDyydy + dDyzdz )/this%SubCellData%Porosity/this%SubCellData%Retardation
       divDz = ( dDxzdx + dDyzdy + dDzzdz )/this%SubCellData%Porosity/this%SubCellData%Retardation

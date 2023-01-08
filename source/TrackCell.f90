@@ -419,7 +419,41 @@ contains
             return;
           end if
       end if
-      
+     
+      ! RWPT
+      ! Originally, the hasExit check comes first than 
+      ! the verification of stopping at sinks/sources. 
+      ! This is a bit confusing. What happens if particles 
+      ! are released in a cell with sink flows, but the program detect no exit face. 
+      ! In the original code, this would qualify as a NoExitPossible status, but 
+      ! in reality, if the configuration defines that a particle should be 
+      ! removed when there is a sink flow, then face flows (hasExit) are
+      ! irrelevant. The checking for stopping at sink/source cells is moved
+      ! before the hasExit verification. Same thing might happen in cases with 
+      ! StopZones (?) 
+
+      ! Check weak sink/source stopping option
+      if(this%TrackingOptions%BackwardTracking) then
+          if(this%TrackingOptions%StopAtWeakSources) then
+              if(this%CellData%SourceFlow .ne. 0.0d0) then 
+                  trackCellResult%Status = trackCellResult%Status_StopAtWeakSource()
+                  return;
+              else
+                  if(.not. this%SteadyState) stopIfNoSubCellExit = .false.
+              end if
+          end if
+      else
+          if(this%TrackingOptions%StopAtWeakSinks) then
+              if(this%CellData%SinkFlow .ne. 0.0d0) then
+                  trackCellResult%Status = trackCellResult%Status_StopAtWeakSink()
+                  return;
+              else
+                  if(.not. this%SteadyState) stopIfNoSubCellExit = .false.
+              end if
+          end if
+      end if
+
+
       ! If the cell has no exit face then:
       !   1. If the system is steady state, set status NoExitPossible and return immediately
       !   2. If the system is transient, tracking is backward, and SourceFlow is not equal to 0, set status to 
@@ -443,28 +477,7 @@ contains
               end if
           end if
       end if
-      
-      ! Check weak sink/source stopping option
-      if(this%TrackingOptions%BackwardTracking) then
-          if(this%TrackingOptions%StopAtWeakSources) then
-              if(this%CellData%SourceFlow .ne. 0.0d0) then 
-                  trackCellResult%Status = trackCellResult%Status_StopAtWeakSource()
-                  return;
-              else
-                  if(.not. this%SteadyState) stopIfNoSubCellExit = .false.
-              end if
-          end if
-      else
-          if(this%TrackingOptions%StopAtWeakSinks) then
-              if(this%CellData%SinkFlow .ne. 0.0d0) then
-                  trackCellResult%Status = trackCellResult%Status_StopAtWeakSink()
-                  return;
-              else
-                  if(.not. this%SteadyState) stopIfNoSubCellExit = .false.
-              end if
-          end if
-      end if
-      
+          
       ! No immediate stopping condition was found, so loop through sub-cells until a stopping condition is reached.
           
       ! Find the sub-cell that contains the initial location

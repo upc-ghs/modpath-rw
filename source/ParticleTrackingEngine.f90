@@ -1161,7 +1161,7 @@ contains
 
               ! If this is an observation cell
               if ( this%TrackingOptions%isObservation(this%TrackCell%CellData%CellNumber) ) then
-
+                
                 ! Assign the obs pointer
                 no = this%TrackingOptions%idObservation(this%TrackCell%CellData%CellNumber)
                 obs => this%TrackingOptions%Observations( no )  
@@ -1658,8 +1658,6 @@ subroutine pr_FillNeighborCellsConnectionFromHorizontalFace(this, centerCellData
     integer                                  :: m
     !--------------------------------------------------------------------------------------
 
-    ! Debug
-    !print *, 'TrackingEngine: FillNeighborCellsConnectionFromHorizontalFace'
 
     ! If invalid center cell leave 
     if ( centerCellDataBuffer%CellNumber .le. 0 ) then
@@ -2212,7 +2210,6 @@ subroutine WriteObservationSinkCellRecord( this, groupIndex, particleID, trackCe
 
     ! Arrival time, particle group and cell id
     ! Flow rate is read during timeseries advance 
-
     initialTime = trackCell%TrackSubCell%TrackSubCellResult%InitialLocation%TrackingTime
     call this%Grid%ConvertToModelXYZ( trackCell%CellData%CellNumber,      &
         trackCell%TrackSubCell%TrackSubCellResult%InitialLocation%LocalX, & 
