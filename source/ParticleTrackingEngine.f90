@@ -1650,12 +1650,15 @@ subroutine pr_FillNeighborCellsConnectionFromHorizontalFace(this, centerCellData
     type(ModpathCellDataType)                :: parentCellDataBuffer
     type(ModpathCellDataType)                :: auxCellDataBuffer
     integer, dimension(2)                    :: orthogonalFaceNumbers
+    integer, dimension(2)                    :: orthogonalConnections
+    integer                                  :: directConnection
     integer, dimension(2,2)                  :: subCellIndexes
     integer                                  :: directConnectionSubRow
     integer                                  :: subCellIndexesRow
     integer                                  :: directionId
     integer                                  :: subRow, subColumn
-    integer                                  :: m
+    integer                                  :: n, m
+    logical                                  :: isBiggerCell
     !--------------------------------------------------------------------------------------
 
 
@@ -1665,6 +1668,9 @@ subroutine pr_FillNeighborCellsConnectionFromHorizontalFace(this, centerCellData
         return
     end if 
 
+    ! Store direct connection, regardless of what it might be.
+    ! Is used later
+    directConnection = centerCellDataBuffer%GetFaceConnection( faceNumber, 1 )
     
     ! Determine direction of faceNumber 
     if ( faceNumber .le. 2 ) then 
@@ -1717,7 +1723,7 @@ subroutine pr_FillNeighborCellsConnectionFromHorizontalFace(this, centerCellData
         ! Done
         return
 
-    else if ( centerCellDataBuffer%GetFaceConnection( faceNumber, 1 ) .gt. 0 ) then
+    else if ( directConnection .gt. 0 ) then
         ! Only one connection, verify if 
         ! same size or bigger size cell
 
@@ -1745,32 +1751,35 @@ subroutine pr_FillNeighborCellsConnectionFromHorizontalFace(this, centerCellData
                 subCellIndexes(2,:)        = (/2,1/) 
         end select
 
+        ! Check if connected to bigger cell
+        isBiggerCell             = .false.
+        orthogonalConnections    = 0
+        orthogonalConnections(1) = centerCellDataBuffer%GetFaceConnection( orthogonalFaceNumbers(1), 1 )
+        orthogonalConnections(2) = centerCellDataBuffer%GetFaceConnection( orthogonalFaceNumbers(2), 1 )
+        do n =1,2
+          if ( orthogonalConnections(n) .gt. 0 ) then
+            if ( directConnection .eq. &
+                this%Grid%GetFaceConnection( orthogonalConnections(n), faceNumber, 1 ) ) then
+              isBiggerCell = .true.
+              exit
+            end if 
+          end if 
+        end do
 
         ! Detect connection state
         ! Verify response when no connection 
-        if ( &
-            ( centerCellDataBuffer%GetFaceConnection( faceNumber, 1 ) .eq.                                 &
-              this%Grid%GetFaceConnection(                                                                 & 
-                  centerCellDataBuffer%GetFaceConnection( orthogonalFaceNumbers(1), 1 ), faceNumber, 1 ) ) &
-            .or.                                                                                           &
-            ( centerCellDataBuffer%GetFaceConnection( faceNumber, 1 ) .eq.                                 &
-              this%Grid%GetFaceConnection(                                                                 & 
-                  centerCellDataBuffer%GetFaceConnection( orthogonalFaceNumbers(2), 1 ), faceNumber, 1 ) ) &
-        ) then 
-
+        if ( isBiggerCell ) then 
             ! If bigger cell
+
             ! Fill the parentCellDataBuffer
             ! and force refinement
-            call pr_FillCellFromRealData( this, centerCellDataBuffer%GetFaceConnection( faceNumber, 1 ), &
-                                                                            parentCellDataBuffer, .true. )
+            call pr_FillCellFromRealData( this, directConnection, parentCellDataBuffer, .true. )
+
 
             ! Location of current TrackCell relative to bigger cell
             ! defines indexes employed for filling buffers. 
-            if ( &
-                ( centerCellDataBuffer%GetFaceConnection( faceNumber, 1 ) .eq.                               &
-                  this%Grid%GetFaceConnection(                                                               & 
-                    centerCellDataBuffer%GetFaceConnection( orthogonalFaceNumbers(1), 1 ), faceNumber, 1 ) ) &
-            ) then 
+            if ( directConnection .eq. & 
+                  this%Grid%GetFaceConnection( orthogonalConnections(1), faceNumber, 1 ) ) then 
                 subCellIndexesRow = 1
             else
                 subCellIndexesRow = 2
@@ -1812,9 +1821,8 @@ subroutine pr_FillNeighborCellsConnectionFromHorizontalFace(this, centerCellData
             if ( .not. centerCellDataBuffer%isParentCell ) then
 
                 ! If equal size cell, fill buffer and leave
-                call pr_FillCellFromRealData( this,                          &
-                    centerCellDataBuffer%GetFaceConnection( faceNumber, 1 ), &
-                                 neighborCellsBuffer(1), forceCellRefinement )
+                call pr_FillCellFromRealData( this, directConnection, &
+                          neighborCellsBuffer(1), forceCellRefinement )
                 neighborCellsBuffer(1)%requestedFromDirection = directionId
 
             else
@@ -1838,9 +1846,8 @@ subroutine pr_FillNeighborCellsConnectionFromHorizontalFace(this, centerCellData
                     end select
                 end if
 
-                call pr_FillCellFromRealData( this,                          &
-                    centerCellDataBuffer%GetFaceConnection( faceNumber, 1 ), &
-                                                parentCellDataBuffer, .true. )
+                call pr_FillCellFromRealData( this, directConnection, &
+                                         parentCellDataBuffer, .true. )
 
                 call pr_FillCellBufferFromSubCell( this, parentCellDataBuffer, &
                                                            subRow,  subColumn, & 
