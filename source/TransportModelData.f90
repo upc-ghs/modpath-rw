@@ -218,9 +218,6 @@ contains
         if ( grid%LayerCount .gt. 1 )  dimensionMask(3) = 1 ! this dimension is active
         nDim = sum(dimensionMask)
 
-        print *, 'NDIM IS : ', nDim
-
-
 
         ! Write header to the listing file
         write(outUnit, *)
@@ -302,9 +299,6 @@ contains
               ! Read particles mass
               read(inUnit, *) particleMass
         
-              print *, 'PARTICLE MASS: ', particleMass
-              print *, 'INT(0,0.5,0.8,1,1.2)', int(0d0), int(0.5), int(0.8), int(1d0), int(1.2) 
-
               if ( ( simulationData%ParticlesMassOption .eq. 2 ) .or. & 
                    ( simulationData%SolutesOption .eq. 1 ) ) then 
                 ! Read solute id
@@ -357,8 +351,6 @@ contains
               where ( delZ .le. 0d0 )
                   delZ = 0d0 
               end where
-
-              print *, 'DELZ ', sum(delZ)/grid%CellCount
 
               ! Compute cell volumes
               cellVolumes = 1d0

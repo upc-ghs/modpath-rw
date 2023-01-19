@@ -815,12 +815,11 @@ contains
     end if
 
 
-    ! Now try to read if any observation cells
-    ! limit the number of observations to two, during dev
+    ! Read observation cells
     read(inUnit, * , iostat=ioInUnit) line
     if ( ioInUnit .lt. 0 ) then 
         ! No obs 
-        write(outUnit,'(A)') 'OBS: No observation cells.'
+        write(outUnit,'(A)') 'Observation cells: No observations'
     else 
         ! Yes obs
         icol = 1
@@ -828,23 +827,23 @@ contains
         ! number of observations
         if ( n .le. 0 ) then 
             ! no obs
-            write(outUnit,'(A)') 'OBS: No observation cells.'
+            write(outUnit,'(A)') 'Observation cells: No observations'
         else
             ! ok, initialize
 
             this%anyObservation = .true.
             nObservations = n
-            write(outUnit,'(1X,A,I6,A)') 'OBS: ', nObservations, ' observation cells.'
+            write(outUnit,'(1X,A,I6,A)') 'Observation cells: ', nObservations, ' observations.'
 
             ! Allocate observation arrays
             call this%TrackingOptions%InitializeObservations( nObservations )
 
 
             ! It might be needed downstream
-            layerCount = grid%LayerCount
-            rowCount = grid%RowCount
+            layerCount  = grid%LayerCount
+            rowCount    = grid%RowCount
             columnCount = grid%ColumnCount
-            cellCount = grid%CellCount
+            cellCount   = grid%CellCount
 
             
             ! Allocate id arrays in tracking options
