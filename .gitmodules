@@ -1,0 +1,3 @@
+[submodule "gpkde"]
+	path = gpkde
+	url = git@github.com:upc-ghs/gpkde.git
