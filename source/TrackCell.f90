@@ -427,7 +427,7 @@ contains
       ! are released in a cell with sink flows, but the program detect no exit face. 
       ! In the original code, this would qualify as a NoExitPossible status, but 
       ! in reality, if the configuration defines that a particle should be 
-      ! removed when there is a sink flow, then face flows (hasExit) are
+      ! removed when there is a sink flow, then face flows (hasExit) might be
       ! irrelevant. The checking for stopping at sink/source cells is moved
       ! before the hasExit verification. Same thing might happen in cases with 
       ! StopZones (?) 
