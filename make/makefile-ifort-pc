@@ -9,15 +9,22 @@ BINDIR = .
 PROGRAM = mpathrwpt
 
 SOURCEDIR1=../source
+SOURCEDIR2=../gpkde/src
 
 VPATH = \
-${SOURCEDIR1} 
+${SOURCEDIR1} \
+${SOURCEDIR2} 
 
 .SUFFIXES: .c .cpp .f .f90 .F90 .fpp .o
 
 # Define the Fortran compile flags
 FC = ifort
+# FROM MF6
+#FFLAGS = -Ofast -traceback -qopenmp -ipo -no-heap-arrays -fpe0 -traceback -fpp
+# FROM MODPATH-OMP
 FFLAGS = -Ofast -traceback -qopenmp -ipo
+# DEBUG
+#FFLAGS = -O0 -g -debug extended -traceback -qopenmp
 
 
 # Define the C compile flags
@@ -27,13 +34,21 @@ CFLAGS = -O3 -D_UF
 # Define the libraries
 SYSLIBS = 
 
+# Start with objects from GPKDE then
+# continues to modpath
 OBJECTS = \
+$(OBJDIR)/Histogram.o \
+$(OBJDIR)/KernelMultiGaussian.o \
+$(OBJDIR)/GridCell.o \
+$(OBJDIR)/GridProjectedKDE.o \
 $(OBJDIR)/Coordinate.o \
 $(OBJDIR)/TrackCellOptions.o \
 $(OBJDIR)/BudgetListItem.o \
 $(OBJDIR)/HeadRecordHeader.o \
 $(OBJDIR)/GridLocation.o \
 $(OBJDIR)/GlobalData.o \
+$(OBJDIR)/Solute.o \
+$(OBJDIR)/Observation.o \
 $(OBJDIR)/ParticleTrackingOptions.o \
 $(OBJDIR)/compilerversion.o \
 $(OBJDIR)/openspec.o \
@@ -62,12 +77,12 @@ $(OBJDIR)/TrackPathResult.o \
 $(OBJDIR)/ModflowRectangularGrid.o \
 $(OBJDIR)/ModpathBasicData.o \
 $(OBJDIR)/RectangularGridDisMf6.o \
+$(OBJDIR)/ModpathCellData.o \
 $(OBJDIR)/TrackSubCell.o \
 $(OBJDIR)/RectangularGridDisvMf6.o \
 $(OBJDIR)/StartingLocationReader.o \
 $(OBJDIR)/RectangularGridDis.o \
 $(OBJDIR)/RectangularGridDisuMfusg.o \
-$(OBJDIR)/ModpathCellData.o \
 $(OBJDIR)/TrackCellResult.o \
 $(OBJDIR)/RectangularGridDisuMf6.o \
 $(OBJDIR)/ModpathCellDataContainer.o \
@@ -75,6 +90,7 @@ $(OBJDIR)/ModpathSimulationData.o \
 $(OBJDIR)/ParticleManager.o \
 $(OBJDIR)/TrackCell.o \
 $(OBJDIR)/FlowModelData.o \
+$(OBJDIR)/TransportModelData.o \
 $(OBJDIR)/ParticleTrackingEngine.o \
 $(OBJDIR)/MPath7.o 
 

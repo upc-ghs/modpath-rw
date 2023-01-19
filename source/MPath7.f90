@@ -70,7 +70,7 @@
     class(RectangularGridDisuMfusgType), allocatable, target :: disuMfusgGrid
 
     type(TimeDiscretizationDataType), allocatable :: tdisData
-    type(ParticleTrackingEngineType), allocatable,target :: trackingEngine
+    type(ParticleTrackingEngineType) :: trackingEngine
     type(FlowModelDataType), allocatable :: flowModelData
     type(TransportModelDataType), allocatable, target:: transportModelData  ! RWPT
     type(ModpathBasicDataType), allocatable, target :: basicData
@@ -418,7 +418,7 @@
         
     ! Initialize the particle tracking engine:
     call ulog('Allocate particle tracking engine component.', logUnit)
-    allocate(trackingEngine)
+    !allocate(trackingEngine)
     allocate(flowModelData)
     call flowModelData%Initialize(headReader, budgetReader, modelGrid,&
                                     basicData%HNoFlow, basicData%HDry )
@@ -955,7 +955,7 @@
     call ulog('Begin TRACKING_INTERVAL_LOOP', logUnit)
     TRACKING_INTERVAL_LOOP: do while (itend .eq. 0)
     itcount = itcount + 1 
-    print *, itcount, '-----------------------------------------------------------------------------------'
+    print *, itcount, '-------------------------------------------------------------------------------'
 
     itend = 1
     maxTime = tsMax
@@ -1008,6 +1008,7 @@
             !$omp shared( time, maxTime, isTimeSeriesPoint ) &
             !$omp shared( tPoint, tPointCount )              &
             !$omp shared( groupIndex )                       &
+            !$omp private( particleIndex )                   &
             !$omp private( p, traceModeOn )                  &
             !$omp private( topActiveCellNumber )             &
             !$omp private( pLoc, plCount, tsCount )          &
@@ -1888,7 +1889,7 @@
     if(allocated(headReader)) deallocate(headReader)
     if(allocated(budgetReader)) deallocate(budgetReader)
     if(allocated(tdisData)) deallocate(tdisData)
-    if(allocated(trackingEngine)) deallocate(trackingEngine)
+    !if(allocated(trackingEngine)) deallocate(trackingEngine)
     if(allocated(flowModelData)) deallocate(flowModelData)
     if(allocated(transportModelData)) deallocate(transportModelData)
     if(allocated(basicData)) deallocate(basicData)
