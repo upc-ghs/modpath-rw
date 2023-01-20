@@ -21,11 +21,11 @@
         disUnit, tdisUnit, gridMetaUnit, headUnit, headuUnit, budgetUnit,       &
         inUnit, pathlineUnit, endpointUnit, timeseriesUnit, binPathlineUnit,    &
         mplistUnit, traceUnit, budchkUnit, aobsUnit, logUnit, mpsimUnit,        &
-        dispersionUnit, gpkdeUnit, obsUnit,                                     & ! RWPT
+        dispersionUnit, gpkdeUnit, obsUnit, dspUnit, rwoptsUnit,                & ! RWPT
         traceModeUnit, mpnamFile, mplistFile, mpbasFile, disFile, tdisFile,     &
         gridFile, headFile, budgetFile, mpsimFile, traceFile,  gridMetaFile,    &
         mplogFile, logType, particleGroupCount, gridFileType,                   & 
-        gpkdeFile, obsFile                                                        ! RWPT
+        gpkdeFile, obsFile, dspFile, rwoptsFile                                 ! RWPT
     use UtilMiscModule,only : ulog
     use utl8module,only : freeunitnumber, ustop, ugetnode ! GPDKE
     use ModpathCellDataModule,only : ModpathCellDataType
@@ -189,9 +189,11 @@
     traceModeUnit = 115
     binPathlineUnit = 116
     gridMetaUnit = 117
-    dispersionUnit = 118 ! RWPT
+    dispersionUnit = 118 ! RWPT ! TO BE DEPRECATED
     gpkdeUnit      = 119 ! RWPT
     obsUnit        = 120 ! RWPT
+    dspUnit        = 121 ! RWPT ! TEMP
+    rwoptsUnit     = 122 ! RWPT ! TEMP
     baseTimeseriesUnit = 6600 ! OpenMP
     !-----------------------------------------------------------------------
 
@@ -2178,9 +2180,10 @@
     budgetFile = ' '
     gridMetaFile = ' '
     ! RWPT
-    gpkdeFile = ' ' 
-    obsFile   = ' ' 
-
+    gpkdeFile  = ' ' 
+    obsFile    = ' ' 
+    dspFile    = ' ' 
+    rwoptsFile = ' '
 
     inUnit = 99
     open(unit=inUnit, file=filename, status='old', form='formatted', access='sequential')
@@ -2278,6 +2281,16 @@
             obsFile = fname(1:iflen)
             open(unit=obsUnit,file=obsFile,status='old', form='formatted', access='sequential', err=500, iomsg=errMessage)
             write(outUnit,'(A15,A)') 'OBS File: ', obsFile(1:iflen)
+            !nfiltyp(7) = 1
+        else if(filtyp .eq. 'DSP') then 
+            dspFile = fname(1:iflen)
+            open(unit=dspUnit,file=dspFile,status='old', form='formatted', access='sequential', err=500, iomsg=errMessage)
+            write(outUnit,'(A15,A)') 'DSP File: ', dspFile(1:iflen)
+            !nfiltyp(7) = 1
+        else if(filtyp .eq. 'RWOPTS') then 
+            rwoptsFile = fname(1:iflen)
+            open(unit=rwoptsUnit,file=rwoptsFile,status='old', form='formatted', access='sequential', err=500, iomsg=errMessage)
+            write(outUnit,'(A15,A)') 'RWOPTS File: ', rwoptsFile(1:iflen)
             !nfiltyp(7) = 1
         end if
           
