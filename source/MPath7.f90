@@ -21,10 +21,11 @@
         disUnit, tdisUnit, gridMetaUnit, headUnit, headuUnit, budgetUnit,       &
         inUnit, pathlineUnit, endpointUnit, timeseriesUnit, binPathlineUnit,    &
         mplistUnit, traceUnit, budchkUnit, aobsUnit, logUnit, mpsimUnit,        &
-        dispersionUnit,                                                         & ! RWPT
+        dispersionUnit, gpkdeUnit, obsUnit,                                     & ! RWPT
         traceModeUnit, mpnamFile, mplistFile, mpbasFile, disFile, tdisFile,     &
         gridFile, headFile, budgetFile, mpsimFile, traceFile,  gridMetaFile,    &
-        mplogFile, logType, particleGroupCount, gridFileType
+        mplogFile, logType, particleGroupCount, gridFileType,                   & 
+        gpkdeFile, obsFile                                                        ! RWPT
     use UtilMiscModule,only : ulog
     use utl8module,only : freeunitnumber, ustop, ugetnode ! GPDKE
     use ModpathCellDataModule,only : ModpathCellDataType
@@ -110,6 +111,10 @@
     character(len=75) terminationMessage
     character(len=80) compilerVersionText
     logical :: isTimeSeriesPoint, timeseriesRecordWritten
+        
+    ! UTILS
+    integer :: isThisFileOpen = -1
+
 
     ! GPKDE
     doubleprecision, dimension(:,:), allocatable :: activeParticleCoordinates
@@ -185,7 +190,10 @@
     binPathlineUnit = 116
     gridMetaUnit = 117
     dispersionUnit = 118 ! RWPT
+    gpkdeUnit      = 119 ! RWPT
+    obsUnit        = 120 ! RWPT
     baseTimeseriesUnit = 6600 ! OpenMP
+    !-----------------------------------------------------------------------
 
     ! Parse the command line for simulation file name, log file name, and options
     call ParseCommandLine(mpsimFile, mplogFile, logType, parallel, tsOutputType)
@@ -205,7 +213,7 @@
 
     ! If simulation file name not on command line, prompt user for name
     if (mpsimFile == "") then
-        call ulog('Prompt for the name of the MODPATH simulation file.', logUnit)
+        call ulog('Prompt for the name of the MODPATH-RW simulation file.', logUnit)
         call PromptSimulationFile(mpsimFile)
     end if
     
@@ -221,7 +229,7 @@
     ! Open the MODPATH output listing file
     open(unit=mplistUnit, file=mplistFile, status='replace', form='formatted', access='sequential')
     
-    write(mplistUnit,'(1x/a,a)') 'MODPATH Version ', version
+    write(mplistUnit,'(1x/a,a)') 'MODPATH-RW Version ', version
     write(mplistUnit,'(a)') compilerVersionText
     write(mplistUnit, *)
     write(mplistUnit, '(a)') 'This software has been approved for release by the U.S. Geological'
@@ -238,7 +246,6 @@
     write(mplistUnit, '(a)') 'and distribution information.'    
     write(mplistUnit, *)
    
-
 
     ! Read the MODPATH name file
     call ReadNameFile(mpnamFile, mplistUnit, gridFileType)
@@ -270,6 +277,10 @@
             ! RWPT
             ! isUnstructured remains as false
 
+            ! Notice that this grid could have different (distributed)
+            ! delr, delc. Meaning that although is structured,
+            ! is not regular.
+
         case (2)
             ! MODPATH spatial(MPUGRID) and time (TDIS) discretization files 
             ! Read spatial discretization
@@ -299,7 +310,7 @@
             ! Read time discretization file
             if(len_trim(tdisFile) .gt. 0) then
                 write(mplistUnit, '(a,1x)') 'Time discretization file type: MODFLOW-6 time discretization file.'
-                call ulog('R ead time discretization data component ...', logUnit)
+                call ulog('Read time discretization data component ...', logUnit)
                 call tdisData%ReadData(tdisUnit, mplistUnit)
             else
                 call ulog('The time discretization file was not specified.', logUnit)
@@ -354,7 +365,8 @@
             stop
             
         end select
-    
+  
+
     ! Write connection data
     if (logType == 2) then
         call ulog('Skip output of cell connection data.', logUnit)
@@ -378,10 +390,12 @@
             write(logUnit, *)        
         end do
     end if
-    
+   
+
     ! Initialize the georeference data
     call geoRef%SetData(modelGrid%OriginX, modelGrid%OriginY, modelGrid%RotationAngle)
-    
+   
+
     ! Initialize the budgetReader component
     call ulog('Allocate budget reader component.', logUnit)
     allocate(budgetReader)
@@ -393,32 +407,41 @@
     else
         call ustop('An error occurred processing the budget file. Stopping.')
     end if
-    
+   
+
     ! Initialize the headReader component
     call ulog('Allocate head reader component.', logUnit)
     allocate(headReader)
     call ulog('Open head file in head reader component.', logUnit)
     call headReader%OpenFile(headFile, headUnit, mplistUnit)
-    
+   
+
     ! Read the MODPATH basic data file
     call ulog('Allocate MODPATH basic data component.', logUnit)
     allocate(basicData)
     call ulog('Read MODPATH basic data component.', logUnit)   
     call basicData%ReadData(mpbasUnit, mplistUnit, modelGrid)
 
+
     ! Read the remainder of the MODPATH simulation file
-    call ulog('Read the remainder of the MODPATH simulation data component.', logUnit)
+    call ulog('Read the remainder of the MODPATH-RW simulation data component.', logUnit)
     call simulationData%ReadData(mpsimUnit, mplistUnit, basicData%IBound, tdisData, modelGrid)
-       
+   
+    call ulog('Read specific GPKDE simulation data.', logUnit)
+    call simulationData%ReadGPKDEData(gpkdeFile, gpkdeUnit, mplistUnit)
+
+    call ulog('Read specific OBS simulation data.', logUnit)
+    call simulationData%ReadOBSData(obsFile, obsUnit, mplistUnit, modelGrid)
+
+
     ! Budget File Data Summary
     ! If budget output option = 2, then write a list of budget record headers.
     call WriteBudgetFileInfo(mplistUnit, budgetReader) 
     if(simulationData%BudgetOutputOption .eq. 2) call WriteBudgetRecordHeaders(mplistUnit, budgetReader)
 
         
-    ! Initialize the particle tracking engine:
+    ! Initialize ParticleTrackingEngine, FlowModelData, TransportModelData 
     call ulog('Allocate particle tracking engine component.', logUnit)
-    !allocate(trackingEngine)
     allocate(flowModelData)
     call flowModelData%Initialize(headReader, budgetReader, modelGrid,&
                                     basicData%HNoFlow, basicData%HDry )
@@ -433,13 +456,14 @@
         ! Initialize transportModelData
         allocate( transportModelData ) 
         call transportModelData%Initialize( modelGrid )
+        ! Needs update of dispersionUnit, and dispersion file
         call transportModelData%ReadData( dispersionUnit, simulationData%DispersionFile, mplistUnit, &
                         simulationData, flowModelData, basicData%IBound, modelGrid, simulationData%TrackingOptions )
         call trackingEngine%Initialize(modelGrid, simulationData%TrackingOptions, flowModelData, transportModelData)
     else 
         call trackingEngine%Initialize(modelGrid, simulationData%TrackingOptions, flowModelData)
     end if 
-    ! The trackingEngine initialization is complete
+
 
     ! Prepare to stop if there are no particles to track
     if(simulationData%TotalParticleCount .eq. 0) then
@@ -599,11 +623,13 @@
           modelGrid%RotationAngle)
     end if
 
+
     ! Timeseries
-    if((simulationData%SimulationType .eq. 3) .or.                              &
-       (simulationData%SimulationType .eq. 4) .or.                              &
-       (simulationData%SimulationType .eq. 5) .or.                              & ! RWPT
-       (simulationData%SimulationType .eq. 6)) then                               ! RWPT
+    if (.not.simulationData%TrackingOptions%skipTimeseriesWriter) then 
+      if((simulationData%SimulationType .eq. 3) .or.  &
+        (simulationData%SimulationType .eq. 4)  .or.  &
+        (simulationData%SimulationType .eq. 5)  .or.  & ! RWPT
+        (simulationData%SimulationType .eq. 6)) then    ! RWPT
 
         ! Allocate arrays for parallel output
         ! In serial will be allocated with 
@@ -614,72 +640,71 @@
 
         ! If not parallel 
         if ( .not. parallel ) then 
-            ! Default output 
-            open(unit=timeseriesUnit, file=simulationData%TimeseriesFile,           &
-              status='replace', form='formatted', access='sequential')
-            call WriteTimeseriesHeader(timeseriesUnit,                              &
-              simulationData%TrackingDirection, simulationData%ReferenceTime,       &
-              modelGrid%OriginX, modelGrid%OriginY, modelGrid%RotationAngle)
-            ! Assign writing interface
-            WriteTimeseries => WriteTimeseriesRecordSerial
+          ! Default output 
+          open(unit=timeseriesUnit, file=simulationData%TimeseriesFile,           &
+            status='replace', form='formatted', access='sequential')
+          call WriteTimeseriesHeader(timeseriesUnit,                              &
+            simulationData%TrackingDirection, simulationData%ReferenceTime,       &
+            modelGrid%OriginX, modelGrid%OriginY, modelGrid%RotationAngle)
+          ! Assign writing interface
+          WriteTimeseries => WriteTimeseriesRecordSerial
         else
+          ! Select parallel output protocol
+          select case( tsOutputType ) 
+            case (1)
+              ! Default critical output 
+              open(unit=timeseriesUnit, file=simulationData%TimeseriesFile,           &
+                status='replace', form='formatted', access='sequential')
+              call WriteTimeseriesHeader(timeseriesUnit,                              &
+                simulationData%TrackingDirection, simulationData%ReferenceTime,       &
+                modelGrid%OriginX, modelGrid%OriginY, modelGrid%RotationAngle)
+              ! Assign writing interface
+              WriteTimeseries => WriteTimeseriesRecordCritical 
+            case (2) 
+              ! Parallel consolidated
 
-            ! Select parallel output protocol
-            select case( tsOutputType ) 
-                case (1)
-                    ! Default critical output 
-                    open(unit=timeseriesUnit, file=simulationData%TimeseriesFile,           &
+              ! Open consolidated direct access output unit
+              ! This case does not allow file header
+              ! reclen = 2I8+es18.9e3+i10+i5+2i10+6es18.9e3+i10+jumpchar
+              reclen = 2*8+18+10+5+2*10+6*18+10+1 
+              open(unit=timeseriesUnit, file=simulationData%TimeseriesFile,     &
+                status='replace', form='formatted', access='direct', recl=reclen)
+              lastRecord = 0
+
+              ! Initialize binary temporal units 
+              do m = 1, ompNumThreads
+                  timeseriesTempUnits( m ) = baseTimeseriesUnit + m
+                  open(unit=timeseriesTempUnits( m ), status='scratch', form='unformatted', &
+                                                      access='stream', action='readwrite'   )
+              end do
+              timeseriesRecordCounts = 0
+              ! Assign writing interface
+              WriteTimeseries => WriteTimeseriesRecordConsolidate 
+            case (3) 
+              ! Parallel not consolidated
+              allocate( timeseriesTempFiles(ompNumThreads) )
+              
+              ! Initialize formatted parallel units 
+              do m = 1, ompNumThreads
+                timeseriesTempUnits( m ) = baseTimeseriesUnit + m
+                write( unit=tempChar, fmt=* )m 
+                write( unit=timeseriesTempFiles( m ), fmt='(a)')&
+                    trim(adjustl(tempChar))//'_'//trim(adjustl(simulationData%TimeseriesFile))
+                open( unit=timeseriesTempUnits( m ),     &
+                      file=timeseriesTempFiles( m ),     & 
                       status='replace', form='formatted', access='sequential')
-                    call WriteTimeseriesHeader(timeseriesUnit,                              &
-                      simulationData%TrackingDirection, simulationData%ReferenceTime,       &
-                      modelGrid%OriginX, modelGrid%OriginY, modelGrid%RotationAngle)
-                    ! Assign writing interface
-                    WriteTimeseries => WriteTimeseriesRecordCritical 
-                case (2) 
-                    ! Parallel consolidated
-
-                    ! Open consolidated direct access output unit
-                    ! This case does not allow file header
-                    ! reclen = 2I8+es18.9e3+i10+i5+2i10+6es18.9e3+i10+jumpchar
-                    reclen = 2*8+18+10+5+2*10+6*18+10+1 
-                    open(unit=timeseriesUnit, file=simulationData%TimeseriesFile,     &
-                      status='replace', form='formatted', access='direct', recl=reclen)
-                    lastRecord = 0
-
-                    ! Initialize binary temporal units 
-                    do m = 1, ompNumThreads
-                        timeseriesTempUnits( m ) = baseTimeseriesUnit + m
-                        open(unit=timeseriesTempUnits( m ), status='scratch', form='unformatted', &
-                                                            access='stream', action='readwrite'   )
-                    end do
-                    timeseriesRecordCounts = 0
-                    ! Assign writing interface
-                    WriteTimeseries => WriteTimeseriesRecordConsolidate 
-                case (3) 
-                    ! Parallel not consolidated
-                    allocate( timeseriesTempFiles(ompNumThreads) )
-                    
-                    ! Initialize formatted parallel units 
-                    do m = 1, ompNumThreads
-                        timeseriesTempUnits( m ) = baseTimeseriesUnit + m
-                        write( unit=tempChar, fmt=* )m 
-                        write( unit=timeseriesTempFiles( m ), fmt='(a)')&
-                            trim(adjustl(tempChar))//'_'//trim(adjustl(simulationData%TimeseriesFile))
-                        open( unit=timeseriesTempUnits( m ),     &
-                              file=timeseriesTempFiles( m ),     & 
-                              status='replace', form='formatted', access='sequential')
-                    end do
-                    ! Write header to file of first thread 
-                    call WriteTimeseriesHeader(timeseriesTempUnits(1),                      &
-                      simulationData%TrackingDirection, simulationData%ReferenceTime,       &
-                      modelGrid%OriginX, modelGrid%OriginY, modelGrid%RotationAngle)
-                    ! Assign writing interface
-                    WriteTimeseries => WriteTimeseriesRecordThread
-                case default 
-                    call ustop('Invalid timeseries output protocol on commmand line. Stop.')
-                end select
+              end do
+              ! Write header to file of first thread 
+              call WriteTimeseriesHeader(timeseriesTempUnits(1),                      &
+                simulationData%TrackingDirection, simulationData%ReferenceTime,       &
+                modelGrid%OriginX, modelGrid%OriginY, modelGrid%RotationAngle)
+              ! Assign writing interface
+              WriteTimeseries => WriteTimeseriesRecordThread
+            case default 
+              call ustop('Invalid timeseries output protocol on commmand line. Stop.')
+          end select
         end if
-
+      end if
     end if
 
 
@@ -848,7 +873,7 @@
             p%GlobalY = pCoord%GlobalY ! GPKDE
 
             if ( .not. &
-              simulationData%TrackingOptions%gpkdeSkipTimeseriesWriter ) then 
+              simulationData%TrackingOptions%skipTimeseriesWriter ) then 
               ! If parallel:
               !     - With consolidated output initial positions are 
               !       stored into temporal unit for first thread 
@@ -1167,7 +1192,7 @@
                         p%GlobalX = pCoordTP%GlobalX ! GPKDE
                         p%GlobalY = pCoordTP%GlobalY ! GPKDE
                         if ( .not. &
-                          simulationData%TrackingOptions%gpkdeSkipTimeseriesWriter ) then 
+                          simulationData%TrackingOptions%skipTimeseriesWriter ) then 
                             ! With interface
                             call WriteTimeseries(p%SequenceNumber, p%ID, groupIndex, & 
                                         ktime, nt, pCoordTP, geoRef, timeseriesUnit, & 
@@ -1219,7 +1244,7 @@
                       p%GlobalX = pCoord%GlobalX ! GPKDE
                       p%GlobalY = pCoord%GlobalY ! GPKDE
                       if ( .not. &
-                        simulationData%TrackingOptions%gpkdeSkipTimeseriesWriter ) then 
+                        simulationData%TrackingOptions%skipTimeseriesWriter ) then 
                           ! With interface
                           call WriteTimeseries(p%SequenceNumber, p%ID, groupIndex, & 
                                         ktime, nt, pCoord, geoRef, timeseriesUnit, &
@@ -2077,7 +2102,7 @@
 
     ! Prompt user to enter simulation file name
     icol = 1
-    write(*, *) 'Enter the MODPATH simulation file: '
+    write(*, *) 'Enter the MODPATH-RW simulation file: '
     read(*, '(a)') mpsimFile
     call urword(mpsimFile,icol,istart,istop,0,n,r,0,0)
     mpsimFile = mpsimFile(istart:istop)
@@ -2152,14 +2177,18 @@
     headFile = ' '
     budgetFile = ' '
     gridMetaFile = ' '
-    
+    ! RWPT
+    gpkdeFile = ' ' 
+    obsFile   = ' ' 
+
+
     inUnit = 99
     open(unit=inUnit, file=filename, status='old', form='formatted', access='sequential')
     
-    write(outUnit, '(1x/a)') 'MODPATH name file data'
-    write(outUnit, '(a)')    '----------------------'
+    write(outUnit, '(1x/a)') 'MODPATH-RW name file data'
+    write(outUnit, '(a)')    '-------------------------'
     
-        gridFileType = 0
+    gridFileType = 0
     do
         read(inUnit, '(a)', end=1000) line
         ! Check for comment lines or blank lines and skip over them if present
@@ -2240,6 +2269,16 @@
             open(unit=gridMetaUnit,file=gridMetaFile,status='old', form='formatted', access='sequential', err=500, iomsg=errMessage)
             write(outUnit,'(A15,A)') 'GRIDMETA File: ', gridMetaFile(1:iflen)
             nfiltyp(6) = 1
+        else if(filtyp .eq. 'GPKDE') then 
+            gpkdeFile = fname(1:iflen)
+            open(unit=gpkdeUnit,file=gpkdeFile,status='old', form='formatted', access='sequential', err=500, iomsg=errMessage)
+            write(outUnit,'(A15,A)') 'GPKDE File: ', gpkdeFile(1:iflen)
+            !nfiltyp(7) = 1
+        else if(filtyp .eq. 'OBS') then 
+            obsFile = fname(1:iflen)
+            open(unit=obsUnit,file=obsFile,status='old', form='formatted', access='sequential', err=500, iomsg=errMessage)
+            write(outUnit,'(A15,A)') 'OBS File: ', obsFile(1:iflen)
+            !nfiltyp(7) = 1
         end if
           
         cycle

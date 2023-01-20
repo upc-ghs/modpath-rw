@@ -56,6 +56,8 @@ module ModpathSimulationDataModule
   contains
     procedure :: ReadFileHeaders=>pr_ReadFileHeaders
     procedure :: ReadData=>pr_ReadData
+    procedure :: ReadGPKDEData=>pr_ReadGPKDEData ! RWPT
+    procedure :: ReadOBSData=>pr_ReadOBSData     ! RWPT
   end type
 
 
@@ -141,11 +143,11 @@ contains
   
   ! Write header to the listing file
   write(outUnit, *)
-  write(outUnit, '(1x,a)') 'MODPATH simulation file data'
-  write(outUnit, '(1x,a)') '----------------------------'
+  write(outUnit, '(1x,a)') 'MODPATH-RW simulation file data'
+  write(outUnit, '(1x,a)') '-------------------------------'
   
-  ! Rewind simulation file, then re-read comment lines and the first two non-comment lines containing the name file and listing file names
-  ! that were read previously.
+  ! Rewind simulation file, then re-read comment lines and the first two non-comment
+  ! lines containing the name file and listing file names that were read previously.
   rewind(inUnit)
   call u8rdcom(inUnit, outUnit, line, errorCode)
   read(inUnit, '(a)') line
@@ -179,6 +181,9 @@ contains
   this%TraceMode = n
 
   ! Timeseries output option
+  ! 0: Original behavior, timeseries records for active particles
+  ! 1: Timeseries records for all particles
+  ! 2: No timeseries records for any particle ! RWPT
   call urword(line, icol, istart, istop, 2, n, r, -1, 0)
   ! If error while reading the last option (could be triggered by # comments ) 
   if ( line(len(line):len(line)).eq.'E' ) then
@@ -391,7 +396,7 @@ contains
       write(outUnit,'(A)') 'Stop particles when they enter weak source cells for backtracking simulations (Weak source option = 2)'
     case default
       call ustop('Invalid weak source option.')
-    end select
+  end select
 
   ! Timeseries output option
   select case(this%TimeseriesOutputOption)
@@ -399,6 +404,8 @@ contains
       write(outUnit, '(A)') 'Timeseries output for active particles only (Timeseries output option = 0)'
     case (1)
       write(outUnit,'(A)') 'Timeseries output for all particles (Timeseries output option = 1)'
+    case (2)
+      write(outUnit,'(A)') 'No timeseries output, skip TimeseriesWriter (Timeseries output option = 2)'
     case default
       call ustop('Invalid timeseries output option.')
   end select
@@ -652,8 +659,8 @@ contains
     if(this%WeakSourceOption .eq. 2) this%TrackingOptions%StopAtWeakSources = .true.
     if(this%StoppingTimeOption .ne. 2) this%TrackingOptions%ExtendSteadyState = .false.
     if(this%StoppingTimeOption .eq. 3) this%TrackingOptions%SpecifyStoppingTime = .true.
-    if(this%ZoneDataOption .eq. 1) this%TrackingOptions%SpecifyStoppingZone = .true.
-
+    if(this%ZoneDataOption .eq. 1) this%TrackingOptions%SpecifyStoppingZone = .true. 
+    if(this%TimeseriesOutputOption .eq. 2) this%TrackingOptions%skipTimeseriesWriter = .true.
 
     ! RWPT
     ! Assign specific RWPT options 
@@ -678,379 +685,409 @@ contains
     end if
 
 
-    ! GPKDE
-    ! GPKDE requires timeseries
-    if ( &
-        (this%SimulationType .eq. 3) .or. (this%SimulationType .eq. 4) .or. &
-        (this%SimulationType .eq. 5) .or. (this%SimulationType .eq. 6) ) then
-        read(inUnit, '(a)', iostat=ioInUnit) line
-        if ( (ioInUnit .lt. 0) ) then 
-            ! No gpkde 
-            write(outUnit,'(A)') 'GPKDE Reconstruction: disabled density reconstruction stage'
-        else
-            icol = 1
-            call urword(line, icol, istart, istop, 2, n, r, 0, 0)
-
-            if (n .eq. 0) then
-                ! No gpkde 
-                write(outUnit,'(A)') 'GPKDE Reconstruction: disabled density reconstruction stage'
-            else if (n .eq. 1) then
-                ! Yes gpkde 
-                write(outUnit,'(A)') 'GPKDE Reconstruction: enabled density reconstruction stage'
-                this%TrackingOptions%GPKDEReconstruction = .true.
-
-                ! Open the GPKDE reconstruction data file
-                read(inUnit, '(a)') gpkdeFile
-                icol = 1
-                call urword(gpkdeFile,icol,istart,istop,0,n,r,0,0)
-                gpkdeFile = gpkdeFile(istart:istop)
-                open( gpkdeUnit, file=gpkdeFile, status='old', access='sequential')
-
-                ! Read gpkde output file
-                read(gpkdeUnit, '(a)') this%TrackingOptions%gpkdeOutputFile
-                icol = 1
-                call urword(this%TrackingOptions%gpkdeOutputFile,icol,istart,istop,0,n,r,0,0)
-                this%TrackingOptions%gpkdeOutputFile = this%TrackingOptions%gpkdeOutputFile(istart:istop)
-
-
-                ! Read skip timeseries writer
-                read(gpkdeUnit, '(a)') line
-                icol = 1
-                call urword(line, icol, istart, istop, 2, n, r, 0, 0)
-                if ( n .eq. 1 ) then
-                  ! Is initialized as .false.
-                  this%TrackingOptions%gpkdeSkipTimeseriesWriter = .true.
-                end if
-
-
-                ! Read domainOrigin
-                read(gpkdeUnit, '(a)') line
-                icol = 1
-                call urword(line, icol, istart, istop, 3, n, r, 0, 0)
-                this%TrackingOptions%gpkdeDomainOrigin(1) = r
-                call urword(line, icol, istart, istop, 3, n, r, 0, 0)
-                this%TrackingOptions%gpkdeDomainOrigin(2) = r
-                call urword(line, icol, istart, istop, 3, n, r, 0, 0)
-                this%TrackingOptions%gpkdeDomainOrigin(3) = r
-
-
-                ! Read domainSize
-                read(gpkdeUnit, '(a)') line
-                icol = 1
-                call urword(line, icol, istart, istop, 3, n, r, 0, 0)
-                this%TrackingOptions%gpkdeDomainSize(1) = r
-                call urword(line, icol, istart, istop, 3, n, r, 0, 0)
-                this%TrackingOptions%gpkdeDomainSize(2) = r
-                call urword(line, icol, istart, istop, 3, n, r, 0, 0)
-                this%TrackingOptions%gpkdeDomainSize(3) = r
-
-
-                ! Read binSize
-                read(gpkdeUnit, '(a)') line
-                icol = 1
-                call urword(line, icol, istart, istop, 3, n, r, 0, 0)
-                this%TrackingOptions%gpkdeBinSize(1) = r
-                call urword(line, icol, istart, istop, 3, n, r, 0, 0)
-                this%TrackingOptions%gpkdeBinSize(2) = r
-                call urword(line, icol, istart, istop, 3, n, r, 0, 0)
-                this%TrackingOptions%gpkdeBinSize(3) = r
-
-
-                ! Read nOptimizationLoops
-                read(gpkdeUnit, '(a)') line
-                icol = 1
-                call urword(line, icol, istart, istop, 2, n, r, 0, 0)
-                this%TrackingOptions%gpkdeNOptLoops = n
-
-
-                ! Read reconstruction method
-                ! 0: without kernel database, brute force
-                ! 1: with kernel database and read parameters
-                read(gpkdeUnit, '(a)') line
-                icol = 1
-                call urword(line, icol, istart, istop, 2, n, r, 0, 0)
-                if (n.eq.0) then 
-                  this%TrackingOptions%gpkdeKernelDatabase = .false.
-                else
-                  this%TrackingOptions%gpkdeKernelDatabase = .true.
-                end if
-
-                if ( this%TrackingOptions%gpkdeKernelDatabase ) then 
-                    write(outUnit,'(A)') 'GPKDE Reconstruction: reconstruction with kernel database'
-                    ! Read kernel database params
-                    ! - min   h/lambda
-                    ! - delta h/lambda
-                    ! - max   h/lambda
-                    read(gpkdeUnit, '(a)') line
-                    icol = 1
-                    call urword(line, icol, istart, istop, 3, n, r, 0, 0)
-                    this%TrackingOptions%gpkdeKDBParams(1) = r
-                    call urword(line, icol, istart, istop, 3, n, r, 0, 0)
-                    this%TrackingOptions%gpkdeKDBParams(2) = r
-                    call urword(line, icol, istart, istop, 3, n, r, 0, 0)
-                    this%TrackingOptions%gpkdeKDBParams(3) = r
-                else
-                    write(outUnit,'(A)') 'GPKDE Reconstruction: brute force reconstruction, no kernel database'
-                    ! Defaults to brute force
-                    this%TrackingOptions%gpkdeKernelDatabase = .false.
-                    ! Read kernel params
-                    ! - min   h/lambda
-                    ! - max   h/lambda
-                    read(gpkdeUnit, '(a)') line
-                    icol = 1
-                    call urword(line, icol, istart, istop, 3, n, r, 0, 0)
-                    this%TrackingOptions%gpkdeKDBParams(1) = r
-                    this%TrackingOptions%gpkdeKDBParams(2) = 0d0
-                    call urword(line, icol, istart, istop, 3, n, r, 0, 0)
-                    this%TrackingOptions%gpkdeKDBParams(3) = r
-                end if 
-
-                ! Close gpkde data file
-                close( gpkdeUnit )
-
-            end if
-
-        end if 
-
-    end if
-
-
-    ! Read observation cells
-    read(inUnit, * , iostat=ioInUnit) line
-    if ( ioInUnit .lt. 0 ) then 
-        ! No obs 
-        write(outUnit,'(A)') 'Observation cells: No observations'
-    else 
-        ! Yes obs
-        icol = 1
-        call urword(line, icol, istart, istop, 2, n, r, 0, 0)
-        ! number of observations
-        if ( n .le. 0 ) then 
-            ! no obs
-            write(outUnit,'(A)') 'Observation cells: No observations'
-        else
-            ! ok, initialize
-
-            this%anyObservation = .true.
-            nObservations = n
-            write(outUnit,'(1X,A,I6,A)') 'Observation cells: ', nObservations, ' observations.'
-
-            ! Allocate observation arrays
-            call this%TrackingOptions%InitializeObservations( nObservations )
-
-
-            ! It might be needed downstream
-            layerCount  = grid%LayerCount
-            rowCount    = grid%RowCount
-            columnCount = grid%ColumnCount
-            cellCount   = grid%CellCount
-
-            
-            ! Allocate id arrays in tracking options
-            if(allocated(this%TrackingOptions%isObservation)) & 
-                deallocate(this%TrackingOptions%isObservation)
-            allocate(this%TrackingOptions%isObservation(cellCount))
-            if(allocated(this%TrackingOptions%idObservation)) & 
-                deallocate(this%TrackingOptions%idObservation)
-            allocate(this%TrackingOptions%idObservation(cellCount))
-            this%TrackingOptions%isObservation(:) = .false.
-            this%TrackingOptions%idObservation(:) = -999
-
-            ! Read observation cells and assign 
-            ! proper variables
-            do nc = 1, nObservations
-
-              ! A pointer
-              obs => this%TrackingOptions%Observations(nc) 
-
-              ! Read observation id
-              read(inUnit, '(a)', iostat=ioInUnit) line
-              icol = 1
-              call urword(line, icol, istart, istop, 2, n, r, 0, 0)
-              obs%id = n 
-             
-
-              ! Read observation filename and assign an output unit 
-              read(inUnit, '(a)') obs%outputFileName
-              icol = 1
-              call urword(obs%outputFileName,icol,istart,istop,0,n,r,0,0)
-              obs%outputFileName = obs%outputFileName(istart:istop)
-              obs%outputUnit     = 5500 + nc
-              obs%auxOutputUnit  = 7700 + nc
-              tempChar           = 'temp'
-              write( unit=obs%auxOutputFileName, fmt='(a)')&
-                  trim(adjustl(tempChar))//'_'//trim(adjustl(obs%outputFileName))
-
-              ! Read observation style (sink obs, normal count of particles obs)
-              read(inUnit, '(a)', iostat=ioInUnit) line
-              icol = 1
-              call urword(line, icol, istart, istop, 2, n, r, 0, 0)
-              obs%style = n 
-
-
-              ! Is the style that requires flow-rates ?
-              if ( obs%style .eq. 2 ) then 
-                this%TrackingOptions%anySinkObservation = .true.
-              end if 
-
-
-              ! Read observation cell option
-              ! Determine how to read cells
-              read(inUnit, '(a)', iostat=ioInUnit) line
-              icol = 1
-              call urword(line, icol, istart, istop, 2, n, r, 0, 0)
-              obs%cellOption = n 
-
-
-              ! Load observation cells
-              select case( obs%cellOption )
-                ! In case 1, a list of cell ids is specified, that 
-                ! compose the observation.  
-                case (1)
-                  ! Read number of observation cells 
-                  read(inUnit, '(a)', iostat=ioInUnit) line
-                  icol = 1
-                  call urword(line, icol, istart, istop, 2, n, r, 0, 0)
-                  obs%nCells = n 
-                  
-                  ! Depending on the number of cells 
-                  ! allocate array for cell ids
-                  if ( allocated( obs%cells ) ) deallocate( obs%cells )
-                  allocate( obs%cells(obs%nCells) )
-                  if ( allocated( obs%nRecordsCell ) ) deallocate( obs%nRecordsCell )
-                  allocate( obs%nRecordsCell(obs%nCells) )
-                  obs%nRecordsCell(:) = 0
-
-                  ! Are these ids as (lay,row,col) or (cellid) ?
-                  read(inUnit, '(a)', iostat=ioInUnit) line
-                  icol = 1
-                  call urword(line, icol, istart, istop, 2, n, r, 0, 0)
-                  readStyle = n
-
-                  ! Load the observation cells
-                  if( readStyle .eq. 1) then
-                    ! Read as layer, row, column
-                    do no = 1, obs%nCells
-                        read(inUnit, *) layer, row, column
-                        call ugetnode(layerCount, rowCount, columnCount, layer, row, column,cellNumber)
-                        obs%cells(no) = cellNumber
-                    end do 
-                  else if ( readStyle .eq. 2 ) then 
-                      do no = 1, obs%nCells
-                        read(inUnit,*)  cellNumber
-                        obs%cells(no) = cellNumber
-                      end do 
-                  else
-                      call ustop('Invalid observation kind. Stop.')
-                  end if
-
-
-                case (2)
-                  ! In case 2, observation cells are given by specifying a 3D array
-                  ! with 0 (not observation) and 1 (observation) 
-
-                  ! Required for u3d
-                  if(allocated(obsCells)) deallocate(obsCells)
-                  allocate(obsCells(grid%CellCount))
-                  obsCells(:) = 0
-               
-                  ! OBSCELLS
-                  if((grid%GridType .eq. 1) .or. (grid%GridType .eq. 3)) then
-                      call u3dintmp(inUnit, outUnit, grid%LayerCount, grid%RowCount,      &
-                        grid%ColumnCount, grid%CellCount, obsCells, aname(3))                      
-                  else if((grid%GridType .eq. 2) .or. (grid%GridType .eq. 4)) then
-                      call u3dintmpusg(inUnit, outUnit, grid%CellCount, grid%LayerCount,  &
-                        obsCells, aname(3), cellsPerLayer)
-                  else
-                      write(outUnit,*) 'Invalid grid type specified when reading OBSCELLS array data.'
-                      write(outUnit,*) 'Stopping.'
-                      call ustop(' ')          
-                  end if
-
-                  ! Count how many obs cells specified 
-                  obs%nCells = count(obsCells/=0)
-
-                  if ( obs%nCells .eq. 0 ) then 
-                    write(outUnit,*) 'No observation cells in the array of cells for observation:', obs%id
-                    write(outUnit,*) 'Stopping.'
-                    call ustop('No observation cells in the array of cells. Stop.')
-                  end if
-
-                  ! Depending on the number of cells 
-                  ! allocate array for cell ids
-                  if ( allocated( obs%cells ) ) deallocate( obs%cells )
-                  allocate( obs%cells(obs%nCells) )
-                  if ( allocated( obs%nRecordsCell ) ) deallocate( obs%nRecordsCell )
-                  allocate( obs%nRecordsCell(obs%nCells) )
-                  obs%nRecordsCell(:) = 0
-
-                  ! Fill obs%cells with the corresponding cell numbers
-                  ocount = 0
-                  do n =1,grid%CellCount
-                    if(obsCells(n).eq.0) cycle
-                    ocount = ocount + 1
-                    obs%cells(ocount) = n 
-                  end do
-
-
-                case default
-                    ! Invalid option
-                    call ustop('Invalid observation cells reading option. Stop.')
-
-              end select
-
-
-              ! Assign into id arrays
-              do no =1, obs%nCells
-                this%TrackingOptions%isObservation(obs%cells(no)) = .true.
-                ! The id on the list of cells !
-                this%TrackingOptions%idObservation(obs%cells(no)) = nc
-              end do
-
-
-              ! Read observation cell time option
-              ! Determine how to reconstruct timeseries
-              read(inUnit, '(a)', iostat=ioInUnit) line
-              icol = 1
-              call urword(line, icol, istart, istop, 2, n, r, 0, 0)
-              obs%timeOption = n 
-
-
-              ! Timeoption determine from where 
-              ! to obtain the timeseries considered for 
-              ! reconstruction
-              select case(obs%timeOption)
-                case(1)
-                  ! Get it from the timeseries run 
-                  ! Is there any gpkde config for this ?
-                  continue
-                case (2)
-                  ! Create it by reading input 
-                  ! params like for example the 
-                  ! number of datapoints
-
-                  ! Needs reading
-
-                  continue
-                case default
-                  ! Get it from the timeseries run 
-                  continue
-              end select
-
-            end do 
-
-
-            ! Depending on the simulation kind initialize observation file as 
-            ! binary or plain-text 
-
-
-        end if  
-    end if 
-
-
-
   end subroutine pr_ReadData
 
 
+  ! Read specific GPKDE data
+  subroutine pr_ReadGPKDEData( this, gpkdeFile, gpkdeUnit, outUnit )
+    use UTL8MODULE,only : urword
+    !--------------------------------------------------------------
+    ! Specifications
+    !--------------------------------------------------------------
+    implicit none
+    class(ModpathSimulationDataType), target :: this
+    character(len=200), intent(in)           :: gpkdeFile
+    integer, intent(in)                      :: gpkdeUnit
+    integer, intent(in)                      :: outUnit
+    ! local
+    integer :: isThisFileOpen = -1
+    integer :: icol,istart,istop,n
+    doubleprecision    :: r
+    character(len=200) :: line
+    !--------------------------------------------------------------
 
+    write(outUnit, *)
+    write(outUnit, '(1x,a)') 'MODPATH-RW GPKDE file data'
+    write(outUnit, '(1x,a)') '--------------------------'
+
+    ! Verify if GPKDE unit is open 
+    inquire( file=gpkdeFile, number=isThisFileOpen )
+    if ( isThisFileOpen .lt. 0 ) then 
+      ! No gpkde 
+      write(outUnit,'(A)') 'GPKDE reconstruction is disabled'
+      return
+    end if
+
+    ! Yes gpkde 
+    ! Requires a timeseries simulation
+    if ( &
+      (this%SimulationType .eq. 3) .or. (this%SimulationType .eq. 4) .or. &
+      (this%SimulationType .eq. 5) .or. (this%SimulationType .eq. 6) ) then
+
+      write(outUnit,'(A)') 'GPKDE reconstruction is enabled'
+      this%TrackingOptions%GPKDEReconstruction = .true.
+    
+      ! Read gpkde output file
+      read(gpkdeUnit, '(a)') this%TrackingOptions%gpkdeOutputFile
+      icol = 1
+      call urword(this%TrackingOptions%gpkdeOutputFile,icol,istart,istop,0,n,r,0,0)
+      this%TrackingOptions%gpkdeOutputFile = this%TrackingOptions%gpkdeOutputFile(istart:istop)
+    
+      ! Read domainOrigin
+      read(gpkdeUnit, '(a)') line
+      icol = 1
+      call urword(line, icol, istart, istop, 3, n, r, 0, 0)
+      this%TrackingOptions%gpkdeDomainOrigin(1) = r
+      call urword(line, icol, istart, istop, 3, n, r, 0, 0)
+      this%TrackingOptions%gpkdeDomainOrigin(2) = r
+      call urword(line, icol, istart, istop, 3, n, r, 0, 0)
+      this%TrackingOptions%gpkdeDomainOrigin(3) = r
+    
+      ! Read domainSize
+      read(gpkdeUnit, '(a)') line
+      icol = 1
+      call urword(line, icol, istart, istop, 3, n, r, 0, 0)
+      this%TrackingOptions%gpkdeDomainSize(1) = r
+      call urword(line, icol, istart, istop, 3, n, r, 0, 0)
+      this%TrackingOptions%gpkdeDomainSize(2) = r
+      call urword(line, icol, istart, istop, 3, n, r, 0, 0)
+      this%TrackingOptions%gpkdeDomainSize(3) = r
+    
+      ! Read binSize
+      read(gpkdeUnit, '(a)') line
+      icol = 1
+      call urword(line, icol, istart, istop, 3, n, r, 0, 0)
+      this%TrackingOptions%gpkdeBinSize(1) = r
+      call urword(line, icol, istart, istop, 3, n, r, 0, 0)
+      this%TrackingOptions%gpkdeBinSize(2) = r
+      call urword(line, icol, istart, istop, 3, n, r, 0, 0)
+      this%TrackingOptions%gpkdeBinSize(3) = r
+    
+      ! Read nOptimizationLoops
+      read(gpkdeUnit, '(a)') line
+      icol = 1
+      call urword(line, icol, istart, istop, 2, n, r, 0, 0)
+      this%TrackingOptions%gpkdeNOptLoops = n
+    
+      ! Read reconstruction method
+      ! 0: without kernel database, brute force
+      ! 1: with kernel database and read parameters
+      read(gpkdeUnit, '(a)') line
+      icol = 1
+      call urword(line, icol, istart, istop, 2, n, r, 0, 0)
+      if (n.eq.0) then 
+        this%TrackingOptions%gpkdeKernelDatabase = .false.
+      else
+        this%TrackingOptions%gpkdeKernelDatabase = .true.
+      end if
+    
+      if ( this%TrackingOptions%gpkdeKernelDatabase ) then 
+        write(outUnit,'(A)') 'GPKDE reconstruction with kernel database'
+        ! Read kernel database params
+        ! - min   h/lambda
+        ! - delta h/lambda
+        ! - max   h/lambda
+        read(gpkdeUnit, '(a)') line
+        icol = 1
+        call urword(line, icol, istart, istop, 3, n, r, 0, 0)
+        this%TrackingOptions%gpkdeKDBParams(1) = r
+        call urword(line, icol, istart, istop, 3, n, r, 0, 0)
+        this%TrackingOptions%gpkdeKDBParams(2) = r
+        call urword(line, icol, istart, istop, 3, n, r, 0, 0)
+        this%TrackingOptions%gpkdeKDBParams(3) = r
+      else
+        write(outUnit,'(A)') 'GPKDE reconstruction with brute force, no kernel database'
+        this%TrackingOptions%gpkdeKernelDatabase = .false.
+        ! Read kernel params
+        ! - min   h/lambda
+        ! - max   h/lambda
+        read(gpkdeUnit, '(a)') line
+        icol = 1
+        call urword(line, icol, istart, istop, 3, n, r, 0, 0)
+        this%TrackingOptions%gpkdeKDBParams(1) = r
+        this%TrackingOptions%gpkdeKDBParams(2) = 0d0 ! NOT USED
+        call urword(line, icol, istart, istop, 3, n, r, 0, 0)
+        this%TrackingOptions%gpkdeKDBParams(3) = r
+      end if 
+    
+      ! Close gpkde data file
+      close( gpkdeUnit )
+
+    else
+      ! If simulation is not timeseries
+      write(outUnit,'(A)') 'GPKDE reconstruction requires a timeseries. Will remain disabled.'
+      
+      ! Close gpkde data file
+      close( gpkdeUnit )
+    end if
+
+  end subroutine pr_ReadGPKDEData
+
+
+  ! Read specific OBS data
+  subroutine pr_ReadOBSData( this, obsFile, obsUnit, outUnit, grid )
+    use UTL8MODULE,only : urword,ustop,ugetnode,u3dintmp, u3dintmpusg
+    use ObservationModule, only: ObservationType
+    !--------------------------------------------------------------
+    ! Specifications
+    !--------------------------------------------------------------
+    implicit none
+    class(ModpathSimulationDataType), target :: this
+    character(len=200), intent(in)           :: obsFile
+    integer, intent(in)                      :: obsUnit
+    integer, intent(in)                      :: outUnit
+    class(ModflowRectangularGridType),intent(in) :: grid
+    ! local
+    integer :: nObservations  = 0
+    character(len=100) :: tempChar
+    integer :: layerCount, rowCount, columnCount, cellCount
+    type( ObservationType ), pointer :: obs => null()
+    integer :: readStyle, no, cellNumber, layer, row, column, ocount
+    integer,dimension(:),allocatable :: obsCells
+    integer,dimension(:),allocatable :: cellsPerLayer
+    integer :: isThisFileOpen = -1
+    integer :: icol,istart,istop,n,nc
+    integer :: ioInUnit = 0
+    doubleprecision    :: r
+    character(len=200) :: line
+    character(len=24)  :: aname(1)
+    DATA aname(1) /'                OBSCELLS'/
+    !--------------------------------------------------------------
+
+    write(outUnit, *)
+    write(outUnit, '(1x,a)') 'MODPATH-RW OBS file data'
+    write(outUnit, '(1x,a)') '--------------------------'
+
+    ! Verify if OBS unit is open 
+    inquire( file=obsFile, number=isThisFileOpen )
+    if ( isThisFileOpen .lt. 0 ) then 
+      ! No obs
+      write(outUnit,'(A)') 'No observations were specified'
+      return
+    end if
+
+    ! OBS unit is open
+
+    ! Read the number of observation cells
+    read(obsUnit, *, iostat=ioInUnit) line
+    icol = 1
+    call urword(line, icol, istart, istop, 2, n, r, 0, 0)
+    if ( n .le. 0 ) then 
+      ! No obs
+      write(outUnit,'(1X,A,I6,A)') 'Given number of observations: ', n, '. Default to no observations'
+    else
+      ! ok, initialize
+      nObservations = n
+      this%anyObservation = .true.
+      write(outUnit,'(1X,A,I6)') 'Given number of observations: ', nObservations
+
+      ! Allocate observation arrays
+      call this%TrackingOptions%InitializeObservations( nObservations )
+
+      ! It might be needed downstream
+      layerCount  = grid%LayerCount
+      rowCount    = grid%RowCount
+      columnCount = grid%ColumnCount
+      cellCount   = grid%CellCount
+      
+      ! Allocate id arrays in tracking options
+      if(allocated(this%TrackingOptions%isObservation)) & 
+          deallocate(this%TrackingOptions%isObservation)
+      allocate(this%TrackingOptions%isObservation(cellCount))
+      if(allocated(this%TrackingOptions%idObservation)) & 
+          deallocate(this%TrackingOptions%idObservation)
+      allocate(this%TrackingOptions%idObservation(cellCount))
+      this%TrackingOptions%isObservation(:) = .false.
+      this%TrackingOptions%idObservation(:) = -999
+
+      ! Read observation cells and assign 
+      ! proper variables
+      do nc = 1, nObservations
+
+        ! A pointer
+        obs => this%TrackingOptions%Observations(nc) 
+
+        ! Read observation id
+        read(obsUnit, '(a)', iostat=ioInUnit) line
+        icol = 1
+        call urword(line, icol, istart, istop, 2, n, r, 0, 0)
+        obs%id = n 
+       
+        ! Read observation filename and assign an output unit 
+        read(obsUnit, '(a)') obs%outputFileName
+        icol = 1
+        call urword(obs%outputFileName,icol,istart,istop,0,n,r,0,0)
+        obs%outputFileName = obs%outputFileName(istart:istop)
+        obs%outputUnit     = 5500 + nc
+        obs%auxOutputUnit  = 7700 + nc
+        tempChar           = 'temp'
+        write( unit=obs%auxOutputFileName, fmt='(a)')&
+            trim(adjustl(tempChar))//'_'//trim(adjustl(obs%outputFileName))
+
+        ! Read observation style (sink obs, normal count of particles obs)
+        read(obsUnit, '(a)', iostat=ioInUnit) line
+        icol = 1
+        call urword(line, icol, istart, istop, 2, n, r, 0, 0)
+        obs%style = n 
+
+        ! Is the style that requires flow-rates ?
+        if ( obs%style .eq. 2 ) then 
+          this%TrackingOptions%anySinkObservation = .true.
+        end if 
+
+        ! Read observation cell option
+        ! Determine how to read cells
+        read(obsUnit, '(a)', iostat=ioInUnit) line
+        icol = 1
+        call urword(line, icol, istart, istop, 2, n, r, 0, 0)
+        obs%cellOption = n 
+
+        ! Load observation cells
+        select case( obs%cellOption )
+          ! In case 1, a list of cell ids is specified, that 
+          ! compose the observation.  
+          case (1)
+            ! Read number of observation cells 
+            read(obsUnit, '(a)', iostat=ioInUnit) line
+            icol = 1
+            call urword(line, icol, istart, istop, 2, n, r, 0, 0)
+            obs%nCells = n 
+            
+            ! Depending on the number of cells 
+            ! allocate array for cell ids
+            if ( allocated( obs%cells ) ) deallocate( obs%cells )
+            allocate( obs%cells(obs%nCells) )
+            if ( allocated( obs%nRecordsCell ) ) deallocate( obs%nRecordsCell )
+            allocate( obs%nRecordsCell(obs%nCells) )
+            obs%nRecordsCell(:) = 0
+
+            ! Are these ids as (lay,row,col) or (cellid) ?
+            read(obsUnit, '(a)', iostat=ioInUnit) line
+            icol = 1
+            call urword(line, icol, istart, istop, 2, n, r, 0, 0)
+            readStyle = n
+
+            ! Load the observation cells
+            if( readStyle .eq. 1) then
+              ! Read as layer, row, column
+              do no = 1, obs%nCells
+                read(obsUnit, *) layer, row, column
+                call ugetnode(layerCount, rowCount, columnCount, layer, row, column,cellNumber)
+                obs%cells(no) = cellNumber
+              end do 
+            else if ( readStyle .eq. 2 ) then 
+              do no = 1, obs%nCells
+                read(obsUnit,*)  cellNumber
+                obs%cells(no) = cellNumber
+              end do 
+            else
+              call ustop('Invalid observation kind. Stop.')
+            end if
+
+          case (2)
+            ! In case 2, observation cells are given by specifying a 3D array
+            ! with 0 (not observation) and 1 (observation) 
+
+            ! Required for u3d
+            if(allocated(obsCells)) deallocate(obsCells)
+            allocate(obsCells(grid%CellCount))
+            obsCells(:) = 0
+         
+            ! Read cells
+            if((grid%GridType .eq. 1) .or. (grid%GridType .eq. 3)) then
+              call u3dintmp(obsUnit, outUnit, grid%LayerCount, grid%RowCount,      &
+                grid%ColumnCount, grid%CellCount, obsCells, aname(1)) 
+            else if((grid%GridType .eq. 2) .or. (grid%GridType .eq. 4)) then
+              call u3dintmpusg(obsUnit, outUnit, grid%CellCount, grid%LayerCount,  &
+                obsCells, aname(1), cellsPerLayer)
+            else
+              write(outUnit,*) 'Invalid grid type specified when reading OBSCELLS array data.'
+              write(outUnit,*) 'Stopping.'
+              call ustop(' ')          
+            end if
+
+            ! Count how many obs cells specified 
+            obs%nCells = count(obsCells/=0)
+
+            if ( obs%nCells .eq. 0 ) then 
+              write(outUnit,*) 'No observation cells in the array of cells for observation:', obs%id
+              write(outUnit,*) 'Stopping.'
+              call ustop('No observation cells in the array of cells. Stop.')
+            end if
+
+            ! Depending on the number of cells 
+            ! allocate array for cell ids
+            if ( allocated( obs%cells ) ) deallocate( obs%cells )
+            allocate( obs%cells(obs%nCells) )
+            if ( allocated( obs%nRecordsCell ) ) deallocate( obs%nRecordsCell )
+            allocate( obs%nRecordsCell(obs%nCells) )
+            obs%nRecordsCell(:) = 0
+
+            ! Fill obs%cells with the corresponding cell numbers
+            ocount = 0
+            do n =1,grid%CellCount
+              if(obsCells(n).eq.0) cycle
+              ocount = ocount + 1
+              obs%cells(ocount) = n 
+            end do
+
+          case default
+            ! Invalid option
+            call ustop('Invalid observation cells reading option. Stop.')
+
+        end select
+
+
+        ! Assign into id arrays
+        do no =1, obs%nCells
+          this%TrackingOptions%isObservation(obs%cells(no)) = .true.
+          ! The id on the list of cells !
+          this%TrackingOptions%idObservation(obs%cells(no)) = nc
+        end do
+
+
+        ! Read observation cell time option
+        ! Determine how to reconstruct timeseries
+        read(obsUnit, '(a)', iostat=ioInUnit) line
+        icol = 1
+        call urword(line, icol, istart, istop, 2, n, r, 0, 0)
+        obs%timeOption = n 
+
+        ! Timeoption determine from where 
+        ! to obtain the timeseries considered for 
+        ! reconstruction
+        select case(obs%timeOption)
+          case(1)
+            ! Get it from the timeseries run 
+            ! Is there any gpkde config for this ?
+            continue
+          case (2)
+            ! Create it by reading input 
+            ! params like for example the 
+            ! number of datapoints
+
+            ! Needs reading
+
+            continue
+          case default
+            ! Get it from the timeseries run 
+            continue
+        end select
+
+        ! Depending on parameters, initialize observation file as 
+        ! binary or plain-text 
+
+      end do 
+
+      ! Close the OBS unit
+      close( obsUnit ) 
+
+    end if  
+
+
+  end subroutine pr_ReadOBSData
+
+
+
+    
 end module ModpathSimulationDataModule
