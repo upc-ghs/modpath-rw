@@ -1,7 +1,7 @@
 !  MPath7.f90 
 !  PROGRAM: MPath7
 
-!  This software is preliminary or provisional and is subject to revision.       ! kluge provisional
+!  This software is preliminary or provisional and is subject to revision.       
 !  It is being provided to meet the need for timely best science. The software
 !  has not received final approval by the U.S. Geological Survey (USGS).
 !  No warranty, expressed or implied, is made by the USGS or the U.S. Government
@@ -21,11 +21,11 @@
         disUnit, tdisUnit, gridMetaUnit, headUnit, headuUnit, budgetUnit,       &
         inUnit, pathlineUnit, endpointUnit, timeseriesUnit, binPathlineUnit,    &
         mplistUnit, traceUnit, budchkUnit, aobsUnit, logUnit, mpsimUnit,        &
-        dispersionUnit, gpkdeUnit, obsUnit, dspUnit, rwoptsUnit,                & ! RWPT
+        dispersionUnit, gpkdeUnit, obsUnit, dspUnit, rwoptsUnit, spcUnit,       & ! RWPT
         traceModeUnit, mpnamFile, mplistFile, mpbasFile, disFile, tdisFile,     &
         gridFile, headFile, budgetFile, mpsimFile, traceFile,  gridMetaFile,    &
         mplogFile, logType, particleGroupCount, gridFileType,                   & 
-        gpkdeFile, obsFile, dspFile, rwoptsFile                                 ! RWPT
+        gpkdeFile, obsFile, dspFile, rwoptsFile, spcFile                        ! RWPT
     use UtilMiscModule,only : ulog
     use utl8module,only : freeunitnumber, ustop, ugetnode ! GPDKE
     use ModpathCellDataModule,only : ModpathCellDataType
@@ -193,7 +193,8 @@
     gpkdeUnit      = 119 ! RWPT
     obsUnit        = 120 ! RWPT
     dspUnit        = 121 ! RWPT ! TEMP
-    rwoptsUnit     = 122 ! RWPT ! TEMP
+    rwoptsUnit     = 122 ! RWPT
+    spcUnit        = 123 
     baseTimeseriesUnit = 6600 ! OpenMP
     !-----------------------------------------------------------------------
 
@@ -2184,6 +2185,7 @@
     obsFile    = ' ' 
     dspFile    = ' ' 
     rwoptsFile = ' '
+    spcFile    = ' '
 
     inUnit = 99
     open(unit=inUnit, file=filename, status='old', form='formatted', access='sequential')
@@ -2291,6 +2293,11 @@
             rwoptsFile = fname(1:iflen)
             open(unit=rwoptsUnit,file=rwoptsFile,status='old', form='formatted', access='sequential', err=500, iomsg=errMessage)
             write(outUnit,'(A15,A)') 'RWOPTS File: ', rwoptsFile(1:iflen)
+            !nfiltyp(7) = 1
+        else if(filtyp .eq. 'SPC') then 
+            spcFile = fname(1:iflen)
+            open(unit=spcUnit,file=spcFile,status='old', form='formatted', access='sequential', err=500, iomsg=errMessage)
+            write(outUnit,'(A15,A)') 'SPC File: ', spcFile(1:iflen)
             !nfiltyp(7) = 1
         end if
           

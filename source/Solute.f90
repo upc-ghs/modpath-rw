@@ -17,7 +17,8 @@ module SoluteModule
     integer :: dispersionModel = 0
     integer :: nParticleGroups = 0
     integer, dimension(:), allocatable :: pGroups
-    ! Dispersivities ?
+
+    ! Dispersivities 
     ! Not necessarily consistent with definition 
     ! of dispersivity as medium property, but
     ! allows to implement species specific dispersion
@@ -33,12 +34,9 @@ module SoluteModule
 
 contains
 
-!!!!!!!! Some subroutines
 
     subroutine pr_Initialize( this, cellCount ) 
-      !*************************************************************************
-      !
-      !*************************************************************************
+      !-------------------------------------------------------------------------
       ! Specifications
       !-------------------------------------------------------------------------
       implicit none
@@ -58,9 +56,7 @@ contains
 
 
     subroutine pr_Reset( this )
-      !*************************************************************************
-      !
-      !*************************************************************************
+      !-------------------------------------------------------------------------
       ! Specifications
       !-------------------------------------------------------------------------
       implicit none

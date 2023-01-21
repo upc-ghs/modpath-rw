@@ -995,12 +995,12 @@ contains
             this%DMol = this%BaseSolute%dAqueous
 
             if (simulationData%ParticlesMassOption .eq. 2) then
-                ! Create different solutes for id purposes
-                ! However, they are all displaced with the 
-                ! same transport properties
-                ! Extracted from particles groups defined until 
-                ! this very moment. 
-                continue
+              ! Create different solutes for id purposes
+              ! However, they are all displaced with the 
+              ! same transport properties
+              ! Extracted from particles groups defined until 
+              ! this very moment. 
+              continue
             else
               ! If not solute id, then assumes
               ! all pgroups are the same solute
@@ -1012,124 +1012,124 @@ contains
 
           ! 1: Multiple solute, multidispersion
           case (1)
-              ! How many ?
+            ! How many ?
+            read(inUnit, '(a)') line
+            icol = 1
+            call urword(line, icol, istart, istop, 2, n, r, 0, 0)
+            this%nSolutes = n 
+            
+            ! Lets trust the user, but some checking should be done
+            ! on the value of n 
+            if ( allocated(this%Solutes) ) deallocate( this%Solutes )
+            allocate( this%Solutes(this%nSolutes) )
+
+            ! Initialize these guys
+            do ns =1,this%nSolutes
+              ! Of course needs some attributes 
+              ! of the solute
+
+              ! Read the integer id 
               read(inUnit, '(a)') line
               icol = 1
               call urword(line, icol, istart, istop, 2, n, r, 0, 0)
-              this%nSolutes = n 
+              this%Solutes(ns)%id = n 
               
-              ! Lets trust the user, but some checking should be done
-              ! on the value of n 
-              if ( allocated(this%Solutes) ) deallocate( this%Solutes )
-              allocate( this%Solutes(this%nSolutes) )
+              ! Read the string id
+              read(inUnit, '(a)') line
+              icol = 1
+              call urword(line, icol, istart, istop, 0, n, r, 0, 0)
+              this%Solutes(ns)%stringid = line(istart:istop)
 
-              ! Initialize these guys
-              do ns =1,this%nSolutes
-                ! Of course needs some attributes 
-                ! of the solute
+              ! If the soluteId was assigned to each 
+              ! particle group due to particlessmassoption 2 
+              ! then respect those assignments
+              if ( simulationData%ParticlesMassOption .ne. 2 ) then
 
-                ! Read the integer id 
+                ! Read how many pgroups
                 read(inUnit, '(a)') line
                 icol = 1
                 call urword(line, icol, istart, istop, 2, n, r, 0, 0)
-                this%Solutes(ns)%id = n 
+                this%Solutes(ns)%nParticleGroups = n 
                 
-                ! Read the string id
-                read(inUnit, '(a)') line
-                icol = 1
-                call urword(line, icol, istart, istop, 0, n, r, 0, 0)
-                this%Solutes(ns)%stringid = line(istart:istop)
-
-                ! If the soluteId was assigned to each 
-                ! particle group due to particlessmassoption 2 
-                ! then respect those assignments
-                if ( simulationData%ParticlesMassOption .ne. 2 ) then
-
-                  ! Read how many pgroups
+                if ( allocated( this%Solutes(ns)%pGroups ) ) deallocate( this%Solutes(ns)%pGroups )
+                allocate( this%Solutes(ns)%pGroups( &
+                   this%Solutes(ns)%nParticleGroups ) )
+                
+                ! Read related particle groups
+                do npg =1,this%Solutes(ns)%nParticleGroups
+                  ! Read the pgroups
                   read(inUnit, '(a)') line
                   icol = 1
                   call urword(line, icol, istart, istop, 2, n, r, 0, 0)
-                  this%Solutes(ns)%nParticleGroups = n 
-                  
+                  this%Solutes(ns)%pGroups(npg) = n
+
+                  ! It needs to assign the soluteId back to the 
+                  ! corresponding pgroup for simulations 
+                  ! where the solute is not specified in the pgroup
+                  simulationData%ParticleGroups(&
+                      this%Solutes(ns)%pGroups(npg) )%Solute = ns
+                end do
+
+              else if ( simulationData%ParticlesMassOption .eq. 2 ) then
+
+                ! Read the INDEXES in simulationData%ParticleGroup list
+                ! and count how many for this solute
+                ncount = 0
+                do npg =1,simulationData%ParticleGroupCount
+                  if ( simulationData%ParticleGroups( npg )%Solute .eq. ns ) then
+                    ncount = ncount + 1
+                  end if 
+                end do
+
+                ! If no pgroups, let it continue
+                if ( ncount .eq. 0 ) then 
+                  write(outUnit,*) 'Warning: no particle groups associated to solute id ', ns
+                else
+                  ! Initialize pgroups for the solute
+                  this%Solutes(ns)%nParticleGroups = ncount
+              
                   if ( allocated( this%Solutes(ns)%pGroups ) ) deallocate( this%Solutes(ns)%pGroups )
                   allocate( this%Solutes(ns)%pGroups( &
                      this%Solutes(ns)%nParticleGroups ) )
-                  
-                  ! Read related particle groups
-                  do npg =1,this%Solutes(ns)%nParticleGroups
-                    ! Read the pgroups
-                    read(inUnit, '(a)') line
-                    icol = 1
-                    call urword(line, icol, istart, istop, 2, n, r, 0, 0)
-                    this%Solutes(ns)%pGroups(npg) = n
 
-                    ! It needs to assign the soluteId back to the 
-                    ! corresponding pgroup for simulations 
-                    ! where the solute is not specified in the pgroup
-                    simulationData%ParticleGroups(&
-                        this%Solutes(ns)%pGroups(npg) )%Solute = ns
-                  end do
-
-                else if ( simulationData%ParticlesMassOption .eq. 2 ) then
-
-                  ! Read the INDEXES in simulationData%ParticleGroup list
-                  ! and count how many for this solute
-                  ncount = 0
+                  ncount = 0 
                   do npg =1,simulationData%ParticleGroupCount
                     if ( simulationData%ParticleGroups( npg )%Solute .eq. ns ) then
                       ncount = ncount + 1
+                      this%Solutes(ns)%pGroups(ncount) = npg
                     end if 
                   end do
-
-                  ! If no pgroups, let it continue
-                  if ( ncount .eq. 0 ) then 
-                      write(outUnit,*) 'Warning: no particle groups associated to solute id ', ns
-                  else
-                      ! Initialize pgroups for the solute
-                      this%Solutes(ns)%nParticleGroups = ncount
-                
-                      if ( allocated( this%Solutes(ns)%pGroups ) ) deallocate( this%Solutes(ns)%pGroups )
-                      allocate( this%Solutes(ns)%pGroups( &
-                         this%Solutes(ns)%nParticleGroups ) )
-
-                      ncount = 0 
-                      do npg =1,simulationData%ParticleGroupCount
-                        if ( simulationData%ParticleGroups( npg )%Solute .eq. ns ) then
-                          ncount = ncount + 1
-                          this%Solutes(ns)%pGroups(ncount) = npg
-                        end if 
-                      end do
-                  end if 
-
                 end if 
-               
-                ! Read dispersion model kind
-                read(inUnit, '(a)') line
-                icol = 1
-                call urword(line, icol, istart, istop, 2, n, r, 0, 0)
-                this%Solutes(ns)%dispersionModel = n
 
-                ! Read dispersion data
-                call this%LoadSoluteDispersion(&
-                    inUnit, outUnit, this%Solutes(ns), grid, &
-                              cellsPerLayer, trackingOptions )
+              end if 
+             
+              ! Read dispersion model kind
+              read(inUnit, '(a)') line
+              icol = 1
+              call urword(line, icol, istart, istop, 2, n, r, 0, 0)
+              this%Solutes(ns)%dispersionModel = n
 
+              ! Read dispersion data
+              call this%LoadSoluteDispersion(&
+                  inUnit, outUnit, this%Solutes(ns), grid, &
+                            cellsPerLayer, trackingOptions )
 
-              end do  
+            end do  
 
-              !! At some point something need to done 
-              !! with particlemassoption ? 
-              !else if (simulationData%ParticlesMassOption .eq. 2) then
-              !   ! Link particle groups to recently created solutes
-              !   ! Already done by requesting pgroups 
-              !   continue
-              !end if
+            !! At some point something need to done 
+            !! with particlemassoption ? 
+            !else if (simulationData%ParticlesMassOption .eq. 2) then
+            !   ! Link particle groups to recently created solutes
+            !   ! Already done by requesting pgroups 
+            !   continue
+            !end if
 
-              ! In this case, dispersivities and other 
-              ! parameters are asigned during the loop 
-              ! over particle groups
-
-
+            ! In this case, dispersivities and other 
+            ! parameters are asigned during the loop 
+            ! over particle groups
+          case default
+            ! Some error handling
+            print *, 'NOT IMPLEMENTED'
         end select
 
 
@@ -1223,10 +1223,98 @@ contains
     end subroutine pr_ReadData
 
 
+    !subroutine pr_ReadRWOpts( this )
+    !    ! Time Step kind 
+    !    read(inUnit, '(a)') line
+    !    icol = 1
+    !    call urword(line,icol,istart,istop,1,n,r,0,0)
+    !    line = line(istart:istop)
+    !    ! Give a Courant
+    !    if ( line .eq. 'CONSTANT_CU' ) then
+    !        trackingOptions%timeStepKind = 1
+    !        read( inUnit, * ) line
+    !        icol = 1
+    !        call urword(line,icol,istart,istop,3,n,r,0,0)
+    !        trackingOptions%timeStepParameters(1) = r
+    !    ! Give a Peclet
+    !    else if ( line .eq. 'CONSTANT_PE' ) then
+    !        trackingOptions%timeStepKind = 2
+    !        read( inUnit, * ) line
+    !        icol = 1
+    !        call urword(line,icol,istart,istop,3,n,r,0,0)
+    !        trackingOptions%timeStepParameters(2) = r
+    !    ! Minimum between Courant and Peclet 
+    !    else if ( line .eq. 'MIN_ADV_DISP' ) then
+    !        trackingOptions%timeStepKind = 3
+    !        read( inUnit, * ) line
+    !        icol = 1
+    !        call urword(line,icol,istart,istop,3,n,r,0,0)
+    !        trackingOptions%timeStepParameters(1) = r
+    !        read( inUnit, * ) line
+    !        icol = 1
+    !        call urword(line,icol,istart,istop,3,n,r,0,0)
+    !        trackingOptions%timeStepParameters(2) = r
+    !    else
+    !        call ustop('RWPT: Invalid options for time step selection. Stop.')
+    !    end if
+
+
+    !    ! Advection Integration Kind
+    !    read(inUnit, '(a)', iostat=iodispersion) line
+    !    if ( iodispersion .lt. 0 ) then 
+    !        ! end of file
+    !        trackingOptions%advectionKind = 1
+    !        write(outUnit,'(A)') 'RWPT: Advection integration not specified. Default to EXPONENTIAL.'
+    !    else
+    !        icol = 1
+    !        call urword(line,icol,istart,istop,1,n,r,0,0)
+    !        line = line(istart:istop)
+    !        select case(line)
+    !            case('EXPONENTIAL')
+    !                trackingOptions%advectionKind = 1
+    !                write(outUnit,'(A)') 'RWPT: Advection integration is EXPONENTIAL.'
+    !            case('EULERIAN')
+    !                trackingOptions%advectionKind = 2
+    !                write(outUnit,'(A)') 'RWPT: Advection integration is EULERIAN.'
+    !            case default
+    !                trackingOptions%advectionKind = 2
+    !                write(outUnit,'(A)') 'RWPT: Advection integration not specified. Default to EULERIAN.'
+    !        end select
+    !    end if
+
+
+    !    ! Domain dimensions option
+    !    read(inUnit, '(a)', iostat=iodispersion) line
+    !    if ( iodispersion .lt. 0 ) then 
+    !        ! end of file
+    !        trackingOptions%twoDimensions = .false.
+    !        write(outUnit,'(A)') 'RWPT: Number of dimensions not specified. Defaults to 3D.'
+    !    else
+    !        icol = 1
+    !        call urword(line,icol,istart,istop,1,n,r,0,0)
+    !        line = line(istart:istop)
+    !        select case(line)
+    !            case('2D')
+    !                trackingOptions%twoDimensions = .true.
+    !                write(outUnit,'(A)') 'RWPT: Selected 2D domain solver.'
+    !            case('3D')
+    !                trackingOptions%twoDimensions = .false.
+    !                write(outUnit,'(A)') 'RWPT: Selected 3D domain solver.'
+    !            case default
+    !                trackingOptions%twoDimensions = .false.
+    !                write(outUnit,'(A)') 'RWPT: Invalid option for domain solver, defaults to 3D.'
+    !        end select
+    !    end if 
+    !end subroutine pr_ReadRWOpts
+
+
+    !subroutine pr_ReadDSPData( this )
+
+    !end subroutine pr_ReadDSPData
+
+
     subroutine pr_Reset(this)
-    !***************************************************************************************************************
-    !
-    !***************************************************************************************************************
+    !---------------------------------------------------------------------------------------------------------------
     ! Specifications
     !---------------------------------------------------------------------------------------------------------------
     implicit none
@@ -1245,12 +1333,10 @@ contains
     end subroutine pr_Reset
 
 
-
     subroutine pr_LoadTimeStep(this, stressPeriod, timeStep)
-    !***************************************************************************************************************
-    !
-    !***************************************************************************************************************
+    !---------------------------------------------------------------------------------------------------------------
     ! Specifications:
+    !---------------------------------------------------------------------------------------------------------------
     !   - Huge simplification from flowModelData%LoadTimeStep
     !   - It could be employed for loading time variable data for dispersion
     !   - In the meantime, only update time references and ICBOUND 
@@ -1267,28 +1353,27 @@ contains
     real :: HDryTol, HDryDiff
     !---------------------------------------------------------------------------------------------------------------
 
-        cellCount = this%Grid%CellCount
-        if(this%Grid%GridType .gt. 2) then
-            do n = 1, cellCount
-                this%ICBoundTS(n) = this%ICBound(n)
-            end do
-        else
-            do n = 1, cellCount
-                this%ICBoundTS(n) = this%ICBound(n)
-            end do
-        end if
+      cellCount = this%Grid%CellCount
+      if(this%Grid%GridType .gt. 2) then
+          do n = 1, cellCount
+              this%ICBoundTS(n) = this%ICBound(n)
+          end do
+      else
+          do n = 1, cellCount
+              this%ICBoundTS(n) = this%ICBound(n)
+          end do
+      end if
 
-        this%CurrentStressPeriod = stressPeriod
-        this%CurrentTimeStep = timeStep
-    
+      this%CurrentStressPeriod = stressPeriod
+      this%CurrentTimeStep = timeStep
+   
+
     end subroutine pr_LoadTimeStep
 
     
     subroutine pr_LoadSoluteDispersion( this, inUnit, outUnit, solute, &
                                    grid, cellsPerLayer, trackingOptions) 
-    !***********************************************************************************
-    !
-    !***********************************************************************************
+    !-----------------------------------------------------------------------------------
     ! Specifications
     !-----------------------------------------------------------------------------------
     use UTL8MODULE,only : urword, ustop, u1dint, u1drel, u1ddbl, u8rdcom, &
@@ -1309,125 +1394,124 @@ contains
     integer :: icol, istart, istop, n , ns
     !-----------------------------------------------------------------------------------
     
-        ! Initialize dispersion properties 
-        call solute%Initialize( grid%CellCount ) 
+      ! Initialize dispersion properties 
+      call solute%Initialize( grid%CellCount ) 
 
-        ! Aqueous diffusion 
-        read( inUnit, * ) line
-        icol = 1
-        call urword(line,icol,istart,istop,3,n,r,0,0)
-        solute%dAqueous = r
+      ! Aqueous diffusion 
+      read( inUnit, * ) line
+      icol = 1
+      call urword(line,icol,istart,istop,3,n,r,0,0)
+      solute%dAqueous = r
 
-        ! Dispersivities
-        select case( solute%dispersionModel )
+      ! Dispersivities
+      select case( solute%dispersionModel )
 
-          case( 1 ) ! Linear
-            ! Read dispersivities
-            ! These methods follor OPEN/CLOSE, CONSTANT input format
-            ! and variables are expected to be defined for each layer
-            ! ALPHALONG
-            if((grid%GridType .eq. 1) .or. (grid%GridType .eq. 3)) then
-                call u3ddblmp(inUnit, outUnit, grid%LayerCount, grid%RowCount,      &
-                  grid%ColumnCount, grid%CellCount, solute%AlphaLong, aname(1))                      
-            else if((grid%GridType .eq. 2) .or. (grid%GridType .eq. 4)) then
-                call u3ddblmpusg(inUnit, outUnit, grid%CellCount, grid%LayerCount,  &
-                  solute%AlphaLong, aname(1), cellsPerLayer)
-            else
-                write(outUnit,*) 'Invalid grid type specified when reading ALPHALONG array data.'
-                write(outUnit,*) 'Stopping.'
-                call ustop(' ')          
-            end if
-            
-            ! ALPHATRANS
-            if((grid%GridType .eq. 1) .or. (grid%GridType .eq. 3)) then
-                call u3ddblmp(inUnit, outUnit, grid%LayerCount, grid%RowCount,      &
-                  grid%ColumnCount, grid%CellCount, solute%AlphaTran, aname(2))                      
-            else if((grid%GridType .eq. 2) .or. (grid%GridType .eq. 4)) then
-                call u3ddblmpusg(inUnit, outUnit, grid%CellCount, grid%LayerCount,  &
-                  solute%AlphaTran, aname(2), cellsPerLayer)
-            else
-                  write(outUnit,*) 'Invalid grid type specified when reading ALPHATRANS array data.'
-                  write(outUnit,*) 'Stopping.'
-                  call ustop(' ')          
-            end if
-
-
-          case( 2 ) ! Nonlinear
-            ! NONLINEAR
-
-            ! Nonlinear model
-            if(allocated(this%MediumDistance)) deallocate(this%MediumDistance)
-            allocate(this%MediumDistance(grid%CellCount))
-
-            ! betaLong
-            read( inUnit, * ) line
-            icol = 1
-            call urword(line,icol,istart,istop,3,n,r,0,0)
-            trackingOptions%betaLong  = r
-            solute%betaLong  = r
-
-            ! betaTrans
-            read( inUnit, * ) line
-            icol = 1
-            call urword(line,icol,istart,istop,3,n,r,0,0)
-            trackingOptions%betaTrans = r
-            solute%betaTrans  = r
-
-            ! mediumDelta
-            read( inUnit, * ) line
-            icol = 1
-            call urword(line,icol,istart,istop,3,n,r,0,0)
-            trackingOptions%mediumDelta = r
-
-            ! MEDIUMDISTANCE
-            if((grid%GridType .eq. 1) .or. (grid%GridType .eq. 3)) then
-                call u3ddblmp(inUnit, outUnit, grid%LayerCount, grid%RowCount,      &
-                  grid%ColumnCount, grid%CellCount, this%MediumDistance, aname(5)) 
-            else if((grid%GridType .eq. 2) .or. (grid%GridType .eq. 4)) then
-                call u3ddblmpusg(inUnit, outUnit, grid%CellCount, grid%LayerCount,  &
-                  this%MediumDistance, aname(5), cellsPerLayer)
-            else
-                write(outUnit,*) 'Invalid grid type specified when reading MEDIUMDISTANCE array data.'
-                write(outUnit,*) 'Stopping.'
-                call ustop(' ')          
-            end if
-
-            ! TEMPORAL 
-            trackingOptions%mediumDistance = this%MediumDistance(1)
-
-            ! END NONLINEAR
-
-          case default
-            write(outUnit,*) 'Invalid dispersion model. Accepts 1 or 2, given ', solute%dispersionModel
+        case( 1 ) ! Linear
+          ! Read dispersivities
+          ! These methods follow OPEN/CLOSE, CONSTANT input format
+          ! and variables are expected to be defined for each layer
+          ! ALPHALONG
+          if((grid%GridType .eq. 1) .or. (grid%GridType .eq. 3)) then
+            call u3ddblmp(inUnit, outUnit, grid%LayerCount, grid%RowCount,      &
+              grid%ColumnCount, grid%CellCount, solute%AlphaLong, aname(1))                      
+          else if((grid%GridType .eq. 2) .or. (grid%GridType .eq. 4)) then
+            call u3ddblmpusg(inUnit, outUnit, grid%CellCount, grid%LayerCount,  &
+              solute%AlphaLong, aname(1), cellsPerLayer)
+          else
+            write(outUnit,*) 'Invalid grid type specified when reading ALPHALONG array data.'
             write(outUnit,*) 'Stopping.'
-            call ustop('Invalid dispersion model. Stop')          
-        end select
+            call ustop(' ')          
+          end if
+          
+          ! ALPHATRANS
+          if((grid%GridType .eq. 1) .or. (grid%GridType .eq. 3)) then
+            call u3ddblmp(inUnit, outUnit, grid%LayerCount, grid%RowCount,      &
+              grid%ColumnCount, grid%CellCount, solute%AlphaTran, aname(2))                      
+          else if((grid%GridType .eq. 2) .or. (grid%GridType .eq. 4)) then
+            call u3ddblmpusg(inUnit, outUnit, grid%CellCount, grid%LayerCount,  &
+              solute%AlphaTran, aname(2), cellsPerLayer)
+          else
+            write(outUnit,*) 'Invalid grid type specified when reading ALPHATRANS array data.'
+            write(outUnit,*) 'Stopping.'
+            call ustop(' ')          
+          end if
+
+
+        case( 2 ) ! Nonlinear
+          ! NONLINEAR
+
+          ! Nonlinear model
+          if(allocated(this%MediumDistance)) deallocate(this%MediumDistance)
+          allocate(this%MediumDistance(grid%CellCount))
+
+          ! betaLong
+          read( inUnit, * ) line
+          icol = 1
+          call urword(line,icol,istart,istop,3,n,r,0,0)
+          trackingOptions%betaLong  = r
+          solute%betaLong  = r
+
+          ! betaTrans
+          read( inUnit, * ) line
+          icol = 1
+          call urword(line,icol,istart,istop,3,n,r,0,0)
+          trackingOptions%betaTrans = r
+          solute%betaTrans  = r
+
+          ! mediumDelta
+          read( inUnit, * ) line
+          icol = 1
+          call urword(line,icol,istart,istop,3,n,r,0,0)
+          trackingOptions%mediumDelta = r
+
+          ! MEDIUMDISTANCE
+          if((grid%GridType .eq. 1) .or. (grid%GridType .eq. 3)) then
+              call u3ddblmp(inUnit, outUnit, grid%LayerCount, grid%RowCount,      &
+                grid%ColumnCount, grid%CellCount, this%MediumDistance, aname(5)) 
+          else if((grid%GridType .eq. 2) .or. (grid%GridType .eq. 4)) then
+              call u3ddblmpusg(inUnit, outUnit, grid%CellCount, grid%LayerCount,  &
+                this%MediumDistance, aname(5), cellsPerLayer)
+          else
+              write(outUnit,*) 'Invalid grid type specified when reading MEDIUMDISTANCE array data.'
+              write(outUnit,*) 'Stopping.'
+              call ustop(' ')          
+          end if
+
+          ! TEMPORAL 
+          trackingOptions%mediumDistance = this%MediumDistance(1)
+
+          ! END NONLINEAR
+
+        case default
+          write(outUnit,*) 'Invalid dispersion model. Accepts 1 or 2, given ', solute%dispersionModel
+          write(outUnit,*) 'Stopping.'
+          call ustop('Invalid dispersion model. Stop')          
+      end select
+
 
     end subroutine pr_LoadSoluteDispersion 
 
 
     subroutine pr_SetSoluteDispersion( this, soluteId )
-    !***********************************************************************************
-    !
-    !***********************************************************************************
+    !-----------------------------------------------------------------------------------
     ! Specifications:
-    !   - Need to assign transport model data dispersivities
+    !   - Assigns transport model data dispersivities
     !     with values from the corresponding soluteId
-    !   - Runs only if SolutesOption .eq. 2, Multidispersion
+    !   - Runs only if SolutesOption .eq. 1, Multidispersion
     !-----------------------------------------------------------------------------------
     implicit none
     class(TransportModelDataType), target :: this
     integer, intent(in) :: soluteId
     !-----------------------------------------------------------------------------------
 
-        ! Some sanity check
+      ! Some sanity check
 
-        this%AlphaLong => this%Solutes(soluteId)%AlphaLong
-        this%AlphaTran => this%Solutes(soluteId)%AlphaTran
+      this%AlphaLong => this%Solutes(soluteId)%AlphaLong
+      this%AlphaTran => this%Solutes(soluteId)%AlphaTran
 
-        ! Note this, needs clarification of the actual values 
-        ! of diffusion to be used in displacements
-        this%DMol = this%Solutes(soluteId)%dAqueous 
+      ! Note this, needs clarification of the actual values 
+      ! of diffusion to be used in displacements
+      this%DMol = this%Solutes(soluteId)%dAqueous 
 
 
     end subroutine pr_SetSoluteDispersion
