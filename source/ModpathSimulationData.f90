@@ -673,12 +673,12 @@ contains
         ! reading mass from pgroups reading 
         this%TrackingOptions%RandomWalkParticleTracking = .true.
 
-        ! Open the dispersion data file
-        ! Requires error handling
-        read(inUnit, '(a)') this%DispersionFile
-        icol = 1
-        call urword(this%DispersionFile,icol,istart,istop,0,n,r,0,0)
-        this%DispersionFile = this%DispersionFile(istart:istop)
+        !! Open the dispersion data file
+        !! Requires error handling
+        !read(inUnit, '(a)') this%DispersionFile
+        !icol = 1
+        !call urword(this%DispersionFile,icol,istart,istop,0,n,r,0,0)
+        !this%DispersionFile = this%DispersionFile(istart:istop)
 
         ! Initialization and reading of dispersion file data is handled in TransportModelData.f90        
 
@@ -810,16 +810,15 @@ contains
         this%TrackingOptions%gpkdeKDBParams(3) = r
       end if 
     
-      ! Close gpkde data file
-      close( gpkdeUnit )
-
     else
+
       ! If simulation is not timeseries
       write(outUnit,'(A)') 'GPKDE reconstruction requires a timeseries. Will remain disabled.'
-      
-      ! Close gpkde data file
-      close( gpkdeUnit )
+
     end if
+
+    ! Close gpkde data file
+    close( gpkdeUnit )
 
   end subroutine pr_ReadGPKDEData
 

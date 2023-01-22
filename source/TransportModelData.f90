@@ -44,6 +44,7 @@ module TransportModelDataModule
       procedure :: Initialize=>pr_Initialize
       procedure :: Reset=>pr_Reset
       procedure :: ReadData=>pr_ReadData
+      procedure :: ReadRWOPTSData=>pr_ReadRWOPTSData
       procedure :: LoadTimeStep=>pr_LoadTimeStep
       procedure :: LoadSoluteDispersion=>pr_LoadSoluteDispersion
       procedure :: SetSoluteDispersion=>pr_SetSoluteDispersion
@@ -55,9 +56,7 @@ contains
 
 
     subroutine pr_Initialize( this, grid )
-    !***************************************************************************************************************
-    !
-    !***************************************************************************************************************
+    !---------------------------------------------------------------------------------------------------------------
     ! Specifications
     !---------------------------------------------------------------------------------------------------------------
     implicit none
@@ -90,6 +89,26 @@ contains
 
 
     end subroutine pr_Initialize
+
+
+    subroutine pr_Reset(this)
+    !---------------------------------------------------------------------------------------------------------------
+    ! Specifications
+    !---------------------------------------------------------------------------------------------------------------
+    implicit none
+    class(TransportModelDataType) :: this
+    !---------------------------------------------------------------------------------------------------------------
+       
+        this%Grid => null()
+        this%DMol = 0
+        !if(allocated(this%AlphaLong)) deallocate( this%AlphaLong )
+        !if(allocated(this%AlphaTran)) deallocate( this%AlphaTran )
+        this%AlphaLong  => null()
+        this%AlphaTran => null()
+        if(allocated(this%ICBoundTS)) deallocate( this%ICBoundTS )
+        if(allocated(this%ICBound)) deallocate( this%ICBound )
+
+    end subroutine pr_Reset
 
 
     subroutine pr_ReadData(this, inUnit, inFile, outUnit, simulationData, flowModelData, ibound, grid, trackingOptions )
@@ -1223,89 +1242,197 @@ contains
     end subroutine pr_ReadData
 
 
-    !subroutine pr_ReadRWOpts( this )
-    !    ! Time Step kind 
-    !    read(inUnit, '(a)') line
-    !    icol = 1
-    !    call urword(line,icol,istart,istop,1,n,r,0,0)
-    !    line = line(istart:istop)
-    !    ! Give a Courant
-    !    if ( line .eq. 'CONSTANT_CU' ) then
-    !        trackingOptions%timeStepKind = 1
-    !        read( inUnit, * ) line
-    !        icol = 1
-    !        call urword(line,icol,istart,istop,3,n,r,0,0)
-    !        trackingOptions%timeStepParameters(1) = r
-    !    ! Give a Peclet
-    !    else if ( line .eq. 'CONSTANT_PE' ) then
-    !        trackingOptions%timeStepKind = 2
-    !        read( inUnit, * ) line
-    !        icol = 1
-    !        call urword(line,icol,istart,istop,3,n,r,0,0)
-    !        trackingOptions%timeStepParameters(2) = r
-    !    ! Minimum between Courant and Peclet 
-    !    else if ( line .eq. 'MIN_ADV_DISP' ) then
-    !        trackingOptions%timeStepKind = 3
-    !        read( inUnit, * ) line
-    !        icol = 1
-    !        call urword(line,icol,istart,istop,3,n,r,0,0)
-    !        trackingOptions%timeStepParameters(1) = r
-    !        read( inUnit, * ) line
-    !        icol = 1
-    !        call urword(line,icol,istart,istop,3,n,r,0,0)
-    !        trackingOptions%timeStepParameters(2) = r
-    !    else
-    !        call ustop('RWPT: Invalid options for time step selection. Stop.')
-    !    end if
+    ! Read specific RWOPTS data
+    subroutine pr_ReadRWOPTSData( this, rwoptsFile, rwoptsUnit, outUnit, trackingOptions )
+      use UTL8MODULE,only : urword,ustop
+      !--------------------------------------------------------------
+      ! Specifications
+      !--------------------------------------------------------------
+      implicit none
+      class(TransportModelDataType), target :: this
+      character(len=200), intent(in)           :: rwoptsFile
+      integer, intent(in)                      :: rwoptsUnit
+      integer, intent(in)                      :: outUnit
+      type(ParticleTrackingOptionsType),intent(inout) :: trackingOptions
+      ! local
+      integer :: isThisFileOpen = -1
+      integer :: icol,istart,istop,n,nd,currentDim
+      doubleprecision    :: r
+      character(len=200) :: line
+      !--------------------------------------------------------------
+
+      write(outUnit, *)
+      write(outUnit, '(1x,a)') 'MODPATH-RW RWOPTS file data'
+      write(outUnit, '(1x,a)') '---------------------------'
+
+      ! Verify if GPKDE unit is open 
+      inquire( file=rwoptsFile, number=isThisFileOpen )
+      if ( isThisFileOpen .lt. 0 ) then 
+        ! No rwopts file
+        write(outUnit,'(A)') 'RWOPTS were not specified in name file and are required for RW simulation.'
+        call ustop('RWOPTS were not specified in name file and are required for RW simulation. Stop.')
+      end if
+
+      ! Time Step kind 
+      read(rwoptsUnit, '(a)') line
+      icol = 1
+      call urword(line,icol,istart,istop,1,n,r,0,0)
+      line = line(istart:istop)
+      ! Advection 
+      if ( line .eq. 'ADV' ) then
+        trackingOptions%timeStepKind = 1
+        read( rwoptsUnit, * ) line
+        icol = 1
+        call urword(line,icol,istart,istop,3,n,r,0,0)
+        trackingOptions%timeStepParameters(1) = r
+        write(outUnit,'(A)') 'RW time step will be selected with the ADV criteria.'
+      ! Dispersion 
+      else if ( line .eq. 'DISP' ) then
+        trackingOptions%timeStepKind = 2
+        read( rwoptsUnit, * ) line
+        icol = 1
+        call urword(line,icol,istart,istop,3,n,r,0,0)
+        trackingOptions%timeStepParameters(2) = r
+        write(outUnit,'(A)') 'RW time step will be selected with the DISP criteria.'
+      ! Minimum between advection and dispersion 
+      else if ( line .eq. 'MIN_ADV_DISP' ) then
+        trackingOptions%timeStepKind = 3
+        read( rwoptsUnit, * ) line
+        icol = 1
+        call urword(line,icol,istart,istop,3,n,r,0,0)
+        trackingOptions%timeStepParameters(1) = r
+        read( rwoptsUnit, * ) line
+        icol = 1
+        call urword(line,icol,istart,istop,3,n,r,0,0)
+        trackingOptions%timeStepParameters(2) = r
+        write(outUnit,'(A)') 'RW time step will be selected with the MIN_ADV_DISP criteria.'
+      ! Fixed 
+      else if ( line .eq. 'FIXED' ) then
+        trackingOptions%timeStepKind = 4
+        read( rwoptsUnit, * ) line
+        icol = 1
+        call urword(line,icol,istart,istop,3,n,r,0,0)
+        trackingOptions%timeStepParameters(1) = r
+        write(outUnit,'(A)') 'RW time step is given with FIXED criteria.'
+      else
+        call ustop('Invalid option for time step selection. Stop.')
+      end if
 
 
-    !    ! Advection Integration Kind
-    !    read(inUnit, '(a)', iostat=iodispersion) line
-    !    if ( iodispersion .lt. 0 ) then 
-    !        ! end of file
-    !        trackingOptions%advectionKind = 1
-    !        write(outUnit,'(A)') 'RWPT: Advection integration not specified. Default to EXPONENTIAL.'
-    !    else
-    !        icol = 1
-    !        call urword(line,icol,istart,istop,1,n,r,0,0)
-    !        line = line(istart:istop)
-    !        select case(line)
-    !            case('EXPONENTIAL')
-    !                trackingOptions%advectionKind = 1
-    !                write(outUnit,'(A)') 'RWPT: Advection integration is EXPONENTIAL.'
-    !            case('EULERIAN')
-    !                trackingOptions%advectionKind = 2
-    !                write(outUnit,'(A)') 'RWPT: Advection integration is EULERIAN.'
-    !            case default
-    !                trackingOptions%advectionKind = 2
-    !                write(outUnit,'(A)') 'RWPT: Advection integration not specified. Default to EULERIAN.'
-    !        end select
-    !    end if
+      ! Advection Integration Kind
+      read(rwoptsUnit, '(a)') line
+      icol = 1
+      call urword(line,icol,istart,istop,1,n,r,0,0)
+      line = line(istart:istop)
+      select case(line)
+        case('EXPONENTIAL')
+          trackingOptions%advectionKind = 1
+          write(outUnit,'(A)') 'RW advection integration is EXPONENTIAL.'
+        case('EULERIAN')
+          trackingOptions%advectionKind = 2
+          write(outUnit,'(A)') 'RW advection integration is EULERIAN.'
+        case default
+          trackingOptions%advectionKind = 2
+          write(outUnit,'(A)') 'Given RW advection integration is not valid. Defaults to EULERIAN.'
+      end select
+
+      ! Read RW dimensionsmask. Determines to which dimensions apply RW displacements
+      read(rwoptsUnit, '(a)') line
+      
+      ! X
+      icol = 1
+      call urword(line, icol, istart, istop, 2, n, r, 0, 0)
+      trackingOptions%dimensionMask(1) = n
+
+      ! Y
+      call urword(line, icol, istart, istop, 2, n, r, 0, 0)
+      trackingOptions%dimensionMask(2) = n
+
+      ! Z
+      call urword(line, icol, istart, istop, 2, n, r, 0, 0)
+      trackingOptions%dimensionMask(3) = n
+
+      ! Health check
+      if ( any( trackingOptions%dimensionMask.gt.1 ) ) then 
+        ! Invalid dimensions
+        write(outUnit,'(A)') 'Invalid value for dimensions mask. Should 0 or 1.'
+        call ustop('Invalid value for dimensions mask. Should 0 or 1. Stop.')
+      end if 
+      if ( any( trackingOptions%dimensionMask.lt.0 ) ) then 
+        ! Invalid dimensions
+        write(outUnit,'(A)') 'Invalid value for dimensions mask. Should 0 or 1.'
+        call ustop('Invalid value for dimensions mask. Should 0 or 1. Stop.')
+      end if 
 
 
-    !    ! Domain dimensions option
-    !    read(inUnit, '(a)', iostat=iodispersion) line
-    !    if ( iodispersion .lt. 0 ) then 
-    !        ! end of file
-    !        trackingOptions%twoDimensions = .false.
-    !        write(outUnit,'(A)') 'RWPT: Number of dimensions not specified. Defaults to 3D.'
-    !    else
-    !        icol = 1
-    !        call urword(line,icol,istart,istop,1,n,r,0,0)
-    !        line = line(istart:istop)
-    !        select case(line)
-    !            case('2D')
-    !                trackingOptions%twoDimensions = .true.
-    !                write(outUnit,'(A)') 'RWPT: Selected 2D domain solver.'
-    !            case('3D')
-    !                trackingOptions%twoDimensions = .false.
-    !                write(outUnit,'(A)') 'RWPT: Selected 3D domain solver.'
-    !            case default
-    !                trackingOptions%twoDimensions = .false.
-    !                write(outUnit,'(A)') 'RWPT: Invalid option for domain solver, defaults to 3D.'
-    !        end select
-    !    end if 
-    !end subroutine pr_ReadRWOpts
+      ! Set nDim
+      trackingOptions%nDim = sum(trackingOptions%dimensionMask)
+      if ( trackingOptions%nDim .eq. 0 ) then
+        ! No dimensions
+        write(outUnit,'(A)') 'No dimensions were given for RW displacements at RWOPTS, nDim .eq. 0.'
+        call ustop('No dimensions were given for RW displacements at RWOPTS, nDim .eq. 0. Stop.')
+      end if 
+
+      ! Detect idDim and report dimensions
+      ! where displacements will be applied
+      select case(trackingOptions%nDim)
+        ! 1D
+        case(1)
+          trackingOptions%twoDimensions = .true. ! TEMP
+          write(outUnit,'(A)') 'RW displacements for 1 dimension.'
+          ! Relate x,y,z dimensions to 1 dimensions
+          do nd = 1,3
+            if ( trackingOptions%dimensionMask( nd ) .eq. 0 ) cycle
+            select case(nd) 
+              case (1)
+                trackingOptions%idDim1 = nd
+                write(outUnit,'(A)') 'RW displacements for X dimension.'
+              case (2)
+                trackingOptions%idDim1 = nd
+                write(outUnit,'(A)') 'RW displacements for Y dimension.'
+              case (3)
+                trackingOptions%idDim1 = nd
+                write(outUnit,'(A)') 'RW displacements for Z dimension.'
+            end select   
+            ! Use the first found
+            exit
+          end do
+        ! 2D
+        case(2)
+          trackingOptions%twoDimensions = .true. ! TEMP
+          write(outUnit,'(A)') 'RW displacements for 2 dimensions.'
+          ! Relate x,y,z dimensions to 1,2 dimensions
+          do nd = 1,3
+            if ( trackingOptions%dimensionMask( nd ) .eq. 0 ) cycle
+            currentDim = sum( trackingOptions%dimensionMask(1:nd) )
+            select case(nd) 
+              case (1)
+                trackingOptions%idDim1 = nd
+                write(outUnit,'(A)') 'RW displacements for X dimension.'
+              case (2)
+                if ( currentDim .eq. 1 ) then 
+                  trackingOptions%idDim1 = nd
+                else if ( currentDim .eq. 2 ) then
+                  trackingOptions%idDim2 = nd
+                end if
+                write(outUnit,'(A)') 'RW displacements for Y dimension.'
+              case (3)
+                trackingOptions%idDim2 = nd
+                write(outUnit,'(A)') 'RW displacements for Z dimension.'
+            end select   
+          end do
+        ! 3D
+        case(3)
+          trackingOptions%twoDimensions = .false.! TEMP
+          write(outUnit,'(A)') 'RW displacements for 3 dimensions.'
+      end select
+
+
+      ! Close rwopts data file
+      close( rwoptsUnit )
+
+
+    end subroutine pr_ReadRWOPTSData
 
 
     !subroutine pr_ReadDSPData( this )
@@ -1313,24 +1440,6 @@ contains
     !end subroutine pr_ReadDSPData
 
 
-    subroutine pr_Reset(this)
-    !---------------------------------------------------------------------------------------------------------------
-    ! Specifications
-    !---------------------------------------------------------------------------------------------------------------
-    implicit none
-    class(TransportModelDataType) :: this
-    !---------------------------------------------------------------------------------------------------------------
-       
-        this%Grid => null()
-        this%DMol = 0
-        !if(allocated(this%AlphaLong)) deallocate( this%AlphaLong )
-        !if(allocated(this%AlphaTran)) deallocate( this%AlphaTran )
-        this%AlphaLong  => null()
-        this%AlphaTran => null()
-        if(allocated(this%ICBoundTS)) deallocate( this%ICBoundTS )
-        if(allocated(this%ICBound)) deallocate( this%ICBound )
-
-    end subroutine pr_Reset
 
 
     subroutine pr_LoadTimeStep(this, stressPeriod, timeStep)

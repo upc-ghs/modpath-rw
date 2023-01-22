@@ -20,12 +20,22 @@ module ParticleTrackingOptionsModule
 
     ! RWPT
     logical                       :: RandomWalkParticleTracking = .false.
-    doubleprecision               :: Dmol = 0
     integer                       :: timeStepKind
     doubleprecision, dimension(2) :: timeStepParameters = 0
     integer                       :: advectionKind
+
+    ! RW displacements, defaults to 3D
+    integer, dimension(3)         :: dimensionMask = 1
+    integer                       :: nDim = 3
     logical                       :: twoDimensions = .false.
+    integer                       :: idDim1, idDim2
+
+
     integer                       :: dispersionModel
+    doubleprecision               :: Dmol = 0
+
+
+
     ! NONLINEAR DISPERSION RWPT (TEMP)
     doubleprecision :: betaTrans, betaLong
     doubleprecision :: mediumDistance, mediumDelta
@@ -63,7 +73,6 @@ module ParticleTrackingOptionsModule
 
      procedure :: Reset=>pr_Reset
      procedure :: InitializeObservations=>pr_InitializeObservations 
-     !procedure :: IsObservationCell=>pr_IsObservationCell
      procedure :: IdObservationCell=>pr_IdObservationCell
 
   end type
