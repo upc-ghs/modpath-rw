@@ -432,11 +432,22 @@
     call ulog('Read the remainder of the MODPATH-RW simulation data component.', logUnit)
     call simulationData%ReadData(mpsimUnit, mplistUnit, basicData%IBound, tdisData, modelGrid)
    
-    call ulog('Read specific GPKDE simulation data.', logUnit)
-    call simulationData%ReadGPKDEData(gpkdeFile, gpkdeUnit, mplistUnit)
+    if ( simulationData%TrackingOptions%RandomWalkParticleTracking ) then 
+      call ulog('Read specific GPKDE simulation data.', logUnit)
+      call simulationData%ReadGPKDEData(gpkdeFile, gpkdeUnit, mplistUnit)
 
-    call ulog('Read specific OBS simulation data.', logUnit)
-    call simulationData%ReadOBSData(obsFile, obsUnit, mplistUnit, modelGrid)
+      call ulog('Read specific OBS simulation data.', logUnit)
+      call simulationData%ReadOBSData(obsFile, obsUnit, mplistUnit, modelGrid)
+
+      call ulog('Read specific RWOPTS simulation data.', logUnit)
+      call simulationData%ReadRWOPTSData( rwoptsFile, rwoptsUnit, mpListUnit )
+
+      call ulog('Read specific IC simulation data.', logUnit)
+      call simulationData%ReadICData( icFile, icUnit, mpListUnit, modelGrid, basicData%Porosity )
+
+      print *, 'PROGRAMMED EARLY LEAVING'
+      call exit(0)
+    end if
 
 
     ! Budget File Data Summary
@@ -446,7 +457,7 @@
 
         
     ! Initialize ParticleTrackingEngine, FlowModelData, TransportModelData 
-    call ulog('Allocate particle tracking engine component.', logUnit)
+    call ulog('Initialize flow model data component.', logUnit)
     allocate(flowModelData)
     call flowModelData%Initialize(headReader, budgetReader, modelGrid,&
                                     basicData%HNoFlow, basicData%HDry )
@@ -456,89 +467,86 @@
     call flowModelData%SetRetardation(simulationData%Retardation, modelGrid%CellCount)
     call flowModelData%SetDefaultIface(basicData%DefaultIfaceLabels, &
             basicData%DefaultIfaceValues, basicData%DefaultIfaceCount)
-    call ulog('Initialize particle tracking engine component.', logUnit)
     if ( simulationData%TrackingOptions%RandomWalkParticleTracking ) then 
-        ! Initialize transportModelData
-        allocate( transportModelData ) 
-        call transportModelData%Initialize( modelGrid )
+      call ulog('Initialize transport model data component.', logUnit)
+      ! Initialize transportModelData
+      allocate( transportModelData ) 
+      call transportModelData%Initialize( modelGrid )
 
-        call ulog('Read specific RWOPTS simulation data.', logUnit)
-        call transportModelData%ReadRWOPTSData( rwoptsFile, rwoptsUnit, mpListUnit, simulationData%TrackingOptions )
 
-        print *, 'PROGRAMMED EARLY LEAVING'
-        call exit(0)
-
-        ! Needs update of dispersionUnit, and dispersion file
-        call transportModelData%ReadData( dispersionUnit, simulationData%DispersionFile, mplistUnit, &
-                        simulationData, flowModelData, basicData%IBound, modelGrid, simulationData%TrackingOptions )
-        call trackingEngine%Initialize(modelGrid, simulationData%TrackingOptions, flowModelData, transportModelData)
+      ! Needs update of dispersionUnit, and dispersion file
+      call transportModelData%ReadData( dispersionUnit, simulationData%DispersionFile, mplistUnit, &
+                      simulationData, flowModelData, basicData%IBound, modelGrid, simulationData%TrackingOptions )
+      call ulog('Initialize particle tracking engine component.', logUnit)
+      call trackingEngine%Initialize(modelGrid, simulationData%TrackingOptions, flowModelData, transportModelData)
     else 
-        call trackingEngine%Initialize(modelGrid, simulationData%TrackingOptions, flowModelData)
+      call ulog('Initialize particle tracking engine component.', logUnit)
+      call trackingEngine%Initialize(modelGrid, simulationData%TrackingOptions, flowModelData)
     end if 
 
 
     ! Prepare to stop if there are no particles to track
     if(simulationData%TotalParticleCount .eq. 0) then
-        terminationMessage = 'The simulation was terminated because there are no particles to track.'
-        goto 100
+      terminationMessage = 'The simulation was terminated because there are no particles to track.'
+      goto 100
     end if
 
     ! Initialize GPKDE reconstruction 
     if ( simulationData%TrackingOptions%GPKDEReconstruction ) then
-        allocate( gpkde )
-        ! Initialization should be performed once grid properties are known.
-        ! Moreover, reconstruction can employ a grid different than flow model grid.
-        ! So for USG grids, reconstructed information could be obtained in a regular
-        ! rectangular grid, given particles position.
-        call ulog('Initialize GPKDE object and output unit', logUnit)
-        call gpkde%Initialize(& 
-            simulationData%TrackingOptions%gpkdeDomainSize,                          &
-            simulationData%TrackingOptions%gpkdeBinSize,                             &
-            domainOrigin=simulationData%TrackingOptions%gpkdeDomainOrigin,           &
-            nOptimizationLoops=simulationData%TrackingOptions%gpkdeNOptLoops,        &
-            databaseOptimization=simulationData%TrackingOptions%gpkdeKernelDatabase, &
-            minHOverLambda=simulationData%TrackingOptions%gpkdeKDBParams(1),         &
-            deltaHOverLambda=simulationData%TrackingOptions%gpkdeKDBParams(2),       &
-            maxHOverLambda=simulationData%TrackingOptions%gpkdeKDBParams(3)          &
-        )
-        ! Initialize output unit/file
-        open(unit=simulationData%TrackingOptions%gpkdeOutputUnit, &
-             file=simulationData%TrackingOptions%gpkdeOutputFile, &
-           status='replace', form='formatted', access='sequential')
-        
-        !! Is there a way to verify whether gpkde and the flow-model have the
-        !! same cells structure ?
-        !select case (gridFileType)
-        !    case (1)
-        !      ! MODFLOW-2005 discretization file (DIS)
-        !      if(&
-        !        ( gpkde%nBins(1) .eq. modelGrid%columnCount ) .and. &
-        !        ( gpkde%nBins(2) .eq. modelGrid%rowCount    ) .and. &
-        !        ( gpkde%nBins(3) .eq. modelGrid%layerCount  ) )
-        !        ! Is the same grid
-        !        print *, 'MF62005DIS: YES IS THE SAME !'
-        !        continue
-        !      end if
-        !    case (2)
-        !      ! MODPATH spatial(MPUGRID) and time (TDIS) discretization files 
-        !      continue
-        !    case (3) 
-        !      ! MODFLOW-6 DIS binary grid file
-        !      if(&
-        !        ( gpkde%nBins(1) .eq. modelGrid%columnCount ) .and. &
-        !        ( gpkde%nBins(2) .eq. modelGrid%rowCount    ) .and. &
-        !        ( gpkde%nBins(3) .eq. modelGrid%layerCount  ) )
-        !        ! Is the same grid
-        !        print *, 'MF6DIS: YES IS THE SAME !'
-        !        continue
-        !      end if 
-        !    case (4)
-        !      ! MODFLOW-6 DISV binary grid file
-        !      continue
-        !    case (5)
-        !      ! MODFLOW-6 DISU binary grid file
-        !      continue
-        !end select
+      allocate( gpkde )
+      ! Initialization should be performed once grid properties are known.
+      ! Moreover, reconstruction can employ a grid different than flow model grid.
+      ! So for USG grids, reconstructed information could be obtained in a regular
+      ! rectangular grid, given particles position.
+      call ulog('Initialize GPKDE object and output unit', logUnit)
+      call gpkde%Initialize(& 
+          simulationData%TrackingOptions%gpkdeDomainSize,                          &
+          simulationData%TrackingOptions%gpkdeBinSize,                             &
+          domainOrigin=simulationData%TrackingOptions%gpkdeDomainOrigin,           &
+          nOptimizationLoops=simulationData%TrackingOptions%gpkdeNOptLoops,        &
+          databaseOptimization=simulationData%TrackingOptions%gpkdeKernelDatabase, &
+          minHOverLambda=simulationData%TrackingOptions%gpkdeKDBParams(1),         &
+          deltaHOverLambda=simulationData%TrackingOptions%gpkdeKDBParams(2),       &
+          maxHOverLambda=simulationData%TrackingOptions%gpkdeKDBParams(3)          &
+      )
+      ! Initialize output unit/file
+      open(unit=simulationData%TrackingOptions%gpkdeOutputUnit, &
+           file=simulationData%TrackingOptions%gpkdeOutputFile, &
+         status='replace', form='formatted', access='sequential')
+      
+      !! Is there a way to verify whether gpkde and the flow-model have the
+      !! same cells structure ?
+      !select case (gridFileType)
+      !    case (1)
+      !      ! MODFLOW-2005 discretization file (DIS)
+      !      if(&
+      !        ( gpkde%nBins(1) .eq. modelGrid%columnCount ) .and. &
+      !        ( gpkde%nBins(2) .eq. modelGrid%rowCount    ) .and. &
+      !        ( gpkde%nBins(3) .eq. modelGrid%layerCount  ) )
+      !        ! Is the same grid
+      !        print *, 'MF62005DIS: YES IS THE SAME !'
+      !        continue
+      !      end if
+      !    case (2)
+      !      ! MODPATH spatial(MPUGRID) and time (TDIS) discretization files 
+      !      continue
+      !    case (3) 
+      !      ! MODFLOW-6 DIS binary grid file
+      !      if(&
+      !        ( gpkde%nBins(1) .eq. modelGrid%columnCount ) .and. &
+      !        ( gpkde%nBins(2) .eq. modelGrid%rowCount    ) .and. &
+      !        ( gpkde%nBins(3) .eq. modelGrid%layerCount  ) )
+      !        ! Is the same grid
+      !        print *, 'MF6DIS: YES IS THE SAME !'
+      !        continue
+      !      end if 
+      !    case (4)
+      !      ! MODFLOW-6 DISV binary grid file
+      !      continue
+      !    case (5)
+      !      ! MODFLOW-6 DISU binary grid file
+      !      continue
+      !end select
 
     end if
 
