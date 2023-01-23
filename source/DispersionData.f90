@@ -1,38 +1,33 @@
-module SoluteModule
-  use DispersionDataModule,only : DispersionDataType
+module DIspersionDataModule
 
   implicit none
   
   ! Set default access status to private
   private
 
-  type, public :: SoluteType
+  type, public :: DispersionDataType
     integer :: id
     character(len=300) :: stringid
-    class(DispersionDataType), pointer :: dispersion
-    integer :: dispersionId 
-    character(len=300) :: dispersionStringId
-    
+    integer :: dispersionModel = 0
 
-    ! Maybe a dispersion model foreign key ?
+    ! Dispersivities for linear dispersion model
+    doubleprecision,dimension(:),allocatable :: AlphaL
+    doubleprecision,dimension(:),allocatable :: AlphaTH
+    doubleprecision,dimension(:),allocatable :: AlphaTV
+    ! Effective molecular diffusion, corrected by tortuosity,
+    ! in case is spatially distributed 
+    doubleprecision,dimension(:),allocatable :: DMEff
+    ! Ideally there is something to identify whether
+    ! effective molecular diffusion is distributed or not
+
 
     ! Transport properties
     doubleprecision :: dAqueous
     doubleprecision :: aqueousDiffusion
     doubleprecision :: poreDiffusion  ! or effective diffusion
     doubleprecision :: effectiveDiffusion  ! Aqueous diffusion with tortuosity correction
-    logical :: initialized =.false.
-    integer :: dispersionModel = 0
-    integer :: nParticleGroups = 0
-    integer, dimension(:), allocatable :: pGroups
 
-    ! Dispersivities 
-    ! Not necessarily consistent with definition 
-    ! of dispersivity as medium property, but
-    ! allows to implement species specific dispersion
-    doubleprecision,dimension(:),allocatable :: AlphaLong
-    doubleprecision,dimension(:),allocatable :: AlphaTran
-    doubleprecision :: betaLong, betaTrans
+    logical :: initialized =.false.
 
   contains
     procedure :: Initialize => pr_Initialize
@@ -48,14 +43,16 @@ contains
       ! Specifications
       !-------------------------------------------------------------------------
       implicit none
-      class(SoluteType) :: this
+      class(DispersionDataType) :: this
       integer :: cellCount
       !-------------------------------------------------------------------------
 
-      if(allocated(this%AlphaLong)) deallocate(this%AlphaLong)
-      if(allocated(this%AlphaTran)) deallocate(this%AlphaTran)
-      allocate(this%AlphaTran(cellCount))
-      allocate(this%AlphaLong(cellCount))
+      if(allocated(this%AlphaL)) deallocate(this%AlphaL)
+      if(allocated(this%AlphaTH)) deallocate(this%AlphaTH)
+      if(allocated(this%AlphaTV)) deallocate(this%AlphaTV)
+      allocate(this%AlphaL(cellCount))
+      allocate(this%AlphaTH(cellCount))
+      allocate(this%AlphaTV(cellCount))
 
       this%initialized = .true.
 
@@ -68,17 +65,18 @@ contains
       ! Specifications
       !-------------------------------------------------------------------------
       implicit none
-      class(SoluteType) :: this
+      class(DispersionDataType) :: this
       !-------------------------------------------------------------------------
 
-      this%dAqueous = 0d0
+      this%initialized = .false.
       this%id       = 0
       this%stringid = '' 
-      if(allocated(this%AlphaLong)) deallocate(this%AlphaLong)
-      if(allocated(this%AlphaTran)) deallocate(this%AlphaTran)
-      this%initialized = .false.
+      if(allocated(this%AlphaL)) deallocate(this%AlphaL)
+      if(allocated(this%AlphaTH)) deallocate(this%AlphaTH)
+      if(allocated(this%AlphaTV)) deallocate(this%AlphaTV)
+      if(allocated(this%DMEff)) deallocate(this%DMEff)
 
     end subroutine pr_Reset
 
 
-end module SoluteModule
+end module DispersionDataModule

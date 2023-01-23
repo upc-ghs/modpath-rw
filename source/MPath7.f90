@@ -447,10 +447,13 @@
 
       ! ICBOUND =?
 
+    end if
 
 
-      print *, 'PROGRAMMED EARLY LEAVING'
-      call exit(0)
+    ! Prepare to stop if there are no particles to track
+    if(simulationData%TotalParticleCount .eq. 0) then
+      terminationMessage = 'The simulation was terminated because there are no particles to track.'
+      goto 100
     end if
 
 
@@ -475,12 +478,20 @@
       call ulog('Initialize transport model data component.', logUnit)
       ! Initialize transportModelData
       allocate( transportModelData ) 
-      call transportModelData%Initialize( modelGrid )
+      call transportModelData%Initialize( modelGrid, simulationData )
 
+      call ulog('Read specific SPC data.', logUnit)
+      call transportModelData%ReadSPCData( spcFile, spcUnit, mpListUnit )
+
+      print *, 'PROGRAMMED EARLY LEAVING'
+      call exit(0)
 
       ! Needs update of dispersionUnit, and dispersion file
       call transportModelData%ReadData( dispersionUnit, simulationData%DispersionFile, mplistUnit, &
                       simulationData, flowModelData, basicData%IBound, modelGrid, simulationData%TrackingOptions )
+
+
+
       call ulog('Initialize particle tracking engine component.', logUnit)
       call trackingEngine%Initialize(modelGrid, simulationData%TrackingOptions, flowModelData, transportModelData)
     else 
@@ -489,11 +500,6 @@
     end if 
 
 
-    ! Prepare to stop if there are no particles to track
-    if(simulationData%TotalParticleCount .eq. 0) then
-      terminationMessage = 'The simulation was terminated because there are no particles to track.'
-      goto 100
-    end if
 
     ! Initialize GPKDE reconstruction 
     if ( simulationData%TrackingOptions%GPKDEReconstruction ) then
@@ -1031,6 +1037,7 @@
     if(simulationData%ParticleGroupCount .gt. 0) then
         ! -- Particles groups loop -- !
         do groupIndex = 1, simulationData%ParticleGroupCount
+            ! Needs something to verify if RWPT
             if ( simulationData%SolutesOption .eq. 1 ) then 
                 ! Assign pointers to dispersivities 
                 ! in transportModelData

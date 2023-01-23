@@ -785,6 +785,7 @@ contains
     ! Close gpkde data file
     close( gpkdeUnit )
 
+
   end subroutine pr_ReadGPKDEData
 
 
@@ -1372,12 +1373,9 @@ contains
         ! Read particles mass
         read(icUnit, *) particleMass
 
-        if ( ( this%ParticlesMassOption .eq. 2 ) .or. & 
-             ( this%SolutesOption .eq. 1 ) ) then 
+        if ( ( this%ParticlesMassOption .eq. 2 ) ) then 
           ! Read solute id
-          ! Some validation
-          ! Maybe read solutes before the IC's and 
-          ! and validate against that information 
+          ! Requires some validation/health check
           read(icUnit, *) soluteId
         end if
 
@@ -1626,7 +1624,262 @@ contains
   end subroutine pr_ReadICData
 
 
+  ! Read specific SPC data
+  subroutine pr_ReadSPCData( this, spcFile, spcUnit, outUnit )
+    use UTL8MODULE,only : urword,ustop
+    !--------------------------------------------------------------
+    ! Specifications
+    !--------------------------------------------------------------
+    implicit none
+    class(ModpathSimulationDataType), target :: this
+    character(len=200), intent(in)           :: spcFile
+    integer, intent(in)                      :: spcUnit
+    integer, intent(in)                      :: outUnit
+    ! local
+    type(ParticleTrackingOptionsType), pointer :: trackingOptions
+    integer :: isThisFileOpen = -1
+    integer :: icol,istart,istop,n,nd,currentDim
+    doubleprecision    :: r
+    character(len=200) :: line
+    !--------------------------------------------------------------
 
+    write(outUnit, *)
+    write(outUnit, '(1x,a)') 'MODPATH-RW SPC file data'
+    write(outUnit, '(1x,a)') '------------------------'
+
+    ! Verify if unit is open 
+    inquire( file=spcFile, number=isThisFileOpen )
+    if ( isThisFileOpen .lt. 0 ) then 
+      ! No spc file
+      write(outUnit,'(A)') 'SPC package was not specified in name file.'
+      return
+      !call ustop('RWOPTS were not specified in name file and are required for RW simulation. Stop.')
+    end if
+
+
+    ! If not SPC package was specified, then verify 
+    ! if ParticlesMassOption .eq. 2 and soluteIds where specified
+    ! in particle groups and create solutes according 
+    ! to this specification, all with the same dispersion
+
+
+
+
+  !use SoluteModule,only : SoluteType
+
+
+
+    ! Close spc data file
+    close( spcUnit )
+
+    !type, public :: SoluteType
+    !  integer :: id
+    !  character(len=300) :: stringid
+    !  ! Transport properties
+    !  doubleprecision :: dAqueous
+    !  doubleprecision :: aqueousDiffusion
+    !  doubleprecision :: poreDiffusion  ! or effective diffusion
+    !  doubleprecision :: effectiveDiffusion  ! Aqueous diffusion with tortuosity correction
+    !  logical :: initialized =.false.
+    !  integer :: dispersionModel = 0
+    !  integer :: nParticleGroups = 0
+    !  integer, dimension(:), allocatable :: pGroups
+
+    !  ! Dispersivities 
+    !  ! Not necessarily consistent with definition 
+    !  ! of dispersivity as medium property, but
+    !  ! allows to implement species specific dispersion
+    !  doubleprecision,dimension(:),allocatable :: AlphaLong
+    !  doubleprecision,dimension(:),allocatable :: AlphaTran
+    !  doubleprecision :: betaLong, betaTrans
+
+    !contains
+    !  procedure :: Initialize => pr_Initialize
+    !  procedure :: Reset => pr_Reset
+    !end type
+
+
+        !! Define dispersion according to solutes option 
+        !select case( simulationData%SolutesOption )
+        !  ! 0: Single solute dispersion 
+        !  case (0)
+        !    ! A single virtual solute storing the same 
+        !    ! transport parameters for all pgroups
+        !    this%BaseSolute%id = 0
+        !    this%BaseSolute%stringid = 'S0' 
+
+        !    ! Trust at least one particle group
+        !    if ( allocated(this%BaseSolute%pGroups) ) deallocate(this%BaseSolute%pGroups)
+        !    allocate(this%BaseSolute%pGroups(simulationData%ParticleGroupCount))
+        !    do n=1,simulationData%ParticleGroupCount
+        !      this%BaseSolute%pGroups(n) = n 
+        !    end do 
+        !    this%BaseSolute%nParticleGroups = simulationData%ParticleGroupCount
+
+        !    ! Read dispersion model kind
+        !    read(inUnit, '(a)') line
+        !    icol = 1
+        !    call urword(line, icol, istart, istop, 2, n, r, 0, 0)
+        !    this%BaseSolute%dispersionModel = n 
+        !    ! In the meantime this is neede because 
+        !    ! this variable determines the dispersion 
+        !    ! function 
+        !    trackingOptions%dispersionModel = n 
+
+        !    ! Read dispersion data
+        !    call this%LoadSoluteDispersion(&
+        !        inUnit, outUnit, this%BaseSolute, grid, &
+        !                  cellsPerLayer, trackingOptions )
+
+        !    ! Assign dispersion pointers
+        !    ! Something different if nonlinear dispersion ?
+        !    this%AlphaLong => this%BaseSolute%AlphaLong
+        !    this%AlphaTran => this%BaseSolute%AlphaTran
+
+        !    ! Needs clarification
+        !    this%DMol = this%BaseSolute%dAqueous
+
+        !    if (simulationData%ParticlesMassOption .eq. 2) then
+        !      ! Create different solutes for id purposes
+        !      ! However, they are all displaced with the 
+        !      ! same transport properties
+        !      ! Extracted from particles groups defined until 
+        !      ! this very moment. 
+        !      continue
+        !    else
+        !      ! If not solute id, then assumes
+        !      ! all pgroups are the same solute
+        !      this%nSolutes = 1
+        !      if ( allocated(this%Solutes) ) deallocate( this%Solutes )
+        !      allocate( this%Solutes(this%nSolutes) )
+        !      this%Solutes = this%BaseSolute
+        !    end if
+
+        !  ! 1: Multiple solute, multidispersion
+        !  case (1)
+        !    ! How many ?
+        !    read(inUnit, '(a)') line
+        !    icol = 1
+        !    call urword(line, icol, istart, istop, 2, n, r, 0, 0)
+        !    this%nSolutes = n 
+        !    
+        !    ! Lets trust the user, but some checking should be done
+        !    ! on the value of n 
+        !    if ( allocated(this%Solutes) ) deallocate( this%Solutes )
+        !    allocate( this%Solutes(this%nSolutes) )
+
+        !    ! Initialize these guys
+        !    do ns =1,this%nSolutes
+        !      ! Of course needs some attributes 
+        !      ! of the solute
+
+        !      ! Read the integer id 
+        !      read(inUnit, '(a)') line
+        !      icol = 1
+        !      call urword(line, icol, istart, istop, 2, n, r, 0, 0)
+        !      this%Solutes(ns)%id = n 
+        !      
+        !      ! Read the string id
+        !      read(inUnit, '(a)') line
+        !      icol = 1
+        !      call urword(line, icol, istart, istop, 0, n, r, 0, 0)
+        !      this%Solutes(ns)%stringid = line(istart:istop)
+
+        !      ! If the soluteId was assigned to each 
+        !      ! particle group due to particlessmassoption 2 
+        !      ! then respect those assignments
+        !      if ( simulationData%ParticlesMassOption .ne. 2 ) then
+
+        !        ! Read how many pgroups
+        !        read(inUnit, '(a)') line
+        !        icol = 1
+        !        call urword(line, icol, istart, istop, 2, n, r, 0, 0)
+        !        this%Solutes(ns)%nParticleGroups = n 
+        !        
+        !        if ( allocated( this%Solutes(ns)%pGroups ) ) deallocate( this%Solutes(ns)%pGroups )
+        !        allocate( this%Solutes(ns)%pGroups( &
+        !           this%Solutes(ns)%nParticleGroups ) )
+        !        
+        !        ! Read related particle groups
+        !        do npg =1,this%Solutes(ns)%nParticleGroups
+        !          ! Read the pgroups
+        !          read(inUnit, '(a)') line
+        !          icol = 1
+        !          call urword(line, icol, istart, istop, 2, n, r, 0, 0)
+        !          this%Solutes(ns)%pGroups(npg) = n
+
+        !          ! It needs to assign the soluteId back to the 
+        !          ! corresponding pgroup for simulations 
+        !          ! where the solute is not specified in the pgroup
+        !          simulationData%ParticleGroups(&
+        !              this%Solutes(ns)%pGroups(npg) )%Solute = ns
+        !        end do
+
+        !      else if ( simulationData%ParticlesMassOption .eq. 2 ) then
+
+        !        ! Read the INDEXES in simulationData%ParticleGroup list
+        !        ! and count how many for this solute
+        !        ncount = 0
+        !        do npg =1,simulationData%ParticleGroupCount
+        !          if ( simulationData%ParticleGroups( npg )%Solute .eq. ns ) then
+        !            ncount = ncount + 1
+        !          end if 
+        !        end do
+
+        !        ! If no pgroups, let it continue
+        !        if ( ncount .eq. 0 ) then 
+        !          write(outUnit,*) 'Warning: no particle groups associated to solute id ', ns
+        !        else
+        !          ! Initialize pgroups for the solute
+        !          this%Solutes(ns)%nParticleGroups = ncount
+        !      
+        !          if ( allocated( this%Solutes(ns)%pGroups ) ) deallocate( this%Solutes(ns)%pGroups )
+        !          allocate( this%Solutes(ns)%pGroups( &
+        !             this%Solutes(ns)%nParticleGroups ) )
+
+        !          ncount = 0 
+        !          do npg =1,simulationData%ParticleGroupCount
+        !            if ( simulationData%ParticleGroups( npg )%Solute .eq. ns ) then
+        !              ncount = ncount + 1
+        !              this%Solutes(ns)%pGroups(ncount) = npg
+        !            end if 
+        !          end do
+        !        end if 
+
+        !      end if 
+        !     
+        !      ! Read dispersion model kind
+        !      read(inUnit, '(a)') line
+        !      icol = 1
+        !      call urword(line, icol, istart, istop, 2, n, r, 0, 0)
+        !      this%Solutes(ns)%dispersionModel = n
+
+        !      ! Read dispersion data
+        !      call this%LoadSoluteDispersion(&
+        !          inUnit, outUnit, this%Solutes(ns), grid, &
+        !                    cellsPerLayer, trackingOptions )
+
+        !    end do  
+
+        !    !! At some point something need to done 
+        !    !! with particlemassoption ? 
+        !    !else if (simulationData%ParticlesMassOption .eq. 2) then
+        !    !   ! Link particle groups to recently created solutes
+        !    !   ! Already done by requesting pgroups 
+        !    !   continue
+        !    !end if
+
+        !    ! In this case, dispersivities and other 
+        !    ! parameters are asigned during the loop 
+        !    ! over particle groups
+        !  case default
+        !    ! Some error handling
+        !    print *, 'NOT IMPLEMENTED'
+        !end select
+
+
+
+  end subroutine pr_ReadSPCData
 
 
 
