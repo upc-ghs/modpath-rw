@@ -434,16 +434,20 @@
    
     if ( simulationData%TrackingOptions%RandomWalkParticleTracking ) then 
       call ulog('Read specific GPKDE simulation data.', logUnit)
-      call simulationData%ReadGPKDEData(gpkdeFile, gpkdeUnit, mplistUnit)
+      call simulationData%ReadGPKDEData(gpkdeFile, gpkdeUnit, mpListUnit )
 
       call ulog('Read specific OBS simulation data.', logUnit)
-      call simulationData%ReadOBSData(obsFile, obsUnit, mplistUnit, modelGrid)
+      call simulationData%ReadOBSData(obsFile, obsUnit, mplistUnit, modelGrid )
 
       call ulog('Read specific RWOPTS simulation data.', logUnit)
       call simulationData%ReadRWOPTSData( rwoptsFile, rwoptsUnit, mpListUnit )
 
       call ulog('Read specific IC simulation data.', logUnit)
       call simulationData%ReadICData( icFile, icUnit, mpListUnit, modelGrid, basicData%Porosity )
+
+      ! ICBOUND =?
+
+
 
       print *, 'PROGRAMMED EARLY LEAVING'
       call exit(0)
@@ -977,8 +981,8 @@
 
           ! Reconstruction still needs some review. 
           ! When giving an initial condition for a quasi-2D layer
-          ! and the dimension in the "compressed" dimension is 
-          ! non-zero, the output of gpkde needs to be normalized 
+          ! and the "compressed" dimension is 
+          ! non-zero, output from gpkde needs to be normalized 
           ! by this distance. Verify if this happens for other
           ! conditions. 
 
