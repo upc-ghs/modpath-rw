@@ -22,11 +22,11 @@
         inUnit, pathlineUnit, endpointUnit, timeseriesUnit, binPathlineUnit,    &
         mplistUnit, traceUnit, budchkUnit, aobsUnit, logUnit, mpsimUnit,        &
         dispersionUnit, gpkdeUnit, obsUnit, dspUnit, rwoptsUnit, spcUnit,       & ! RWPT
-        icUnit,       & ! RWPT
+        icUnit, bcUnit,       & ! RWPT
         traceModeUnit, mpnamFile, mplistFile, mpbasFile, disFile, tdisFile,     &
         gridFile, headFile, budgetFile, mpsimFile, traceFile,  gridMetaFile,    &
         mplogFile, logType, particleGroupCount, gridFileType,                   & 
-        gpkdeFile, obsFile, dspFile, rwoptsFile, spcFile, icFile                ! RWPT
+        gpkdeFile, obsFile, dspFile, rwoptsFile, spcFile, icFile, bcFile        ! RWPT
     use UtilMiscModule,only : ulog
     use utl8module,only : freeunitnumber, ustop, ugetnode ! GPDKE
     use ModpathCellDataModule,only : ModpathCellDataType
@@ -197,6 +197,7 @@
     rwoptsUnit     = 122 ! RWPT
     spcUnit        = 123 ! RWPT
     icUnit         = 124 ! RWPT
+    bcUnit         = 125 ! RWPT
     baseTimeseriesUnit = 6600 ! OpenMP
     !-----------------------------------------------------------------------
 
@@ -440,12 +441,13 @@
       call simulationData%ReadOBSData(obsFile, obsUnit, mplistUnit, modelGrid )
 
       call ulog('Read specific RWOPTS simulation data.', logUnit)
-      call simulationData%ReadRWOPTSData( rwoptsFile, rwoptsUnit, mpListUnit )
+      call simulationData%ReadRWOPTSData( rwoptsFile, rwoptsUnit, mpListUnit, modelGrid )
 
       call ulog('Read specific IC simulation data.', logUnit)
       call simulationData%ReadICData( icFile, icUnit, mpListUnit, modelGrid, basicData%Porosity )
 
-      ! ICBOUND =?
+      call ulog('Read specific BC simulation data.', logUnit)
+      call simulationData%ReadBCData( bcFile, bcUnit, mpListUnit, modelGrid )
 
     end if
 
@@ -489,15 +491,12 @@
 
       ! Validate if given relations for 
       ! SPC and DSP and PGROUPS are consistent/well defined.
+      call ulog('Validate data relations for DSP and SPC.', logUnit)
       call transportModelData%ValidateDataRelations( mpListUnit )
-
-      print *, 'PROGRAMMED EARLY LEAVING'
-      call exit(0)
 
       !! Needs update of dispersionUnit, and dispersion file
       !call transportModelData%ReadData( dispersionUnit, simulationData%DispersionFile, mplistUnit, &
       !                simulationData, flowModelData, basicData%IBound, modelGrid, simulationData%TrackingOptions )
-
 
 
       call ulog('Initialize particle tracking engine component.', logUnit)
@@ -1040,6 +1039,7 @@
         end if
     end if
    
+
     ! Track particles
     pendingCount = 0
     activeCount = 0
@@ -1055,7 +1055,7 @@
                 ! depending on dispersion model 
                 call trackingEngine%UpdateDispersionFunction( &
                   transportModelData%Solutes(&
-                  simulationData%ParticleGroups(groupIndex)%Solute )%dispersionModel )
+                  simulationData%ParticleGroups(groupIndex)%Solute )%Dispersion%modelKind )
             end if 
             ! -- Particles loop -- !
             !$omp parallel do schedule( dynamic,1 )          &
@@ -2223,6 +2223,7 @@
     rwoptsFile = ' '
     spcFile    = ' '
     icFile     = ' '
+    bcFile     = ' '
 
     inUnit = 99
     open(unit=inUnit, file=filename, status='old', form='formatted', access='sequential')
@@ -2340,6 +2341,11 @@
             icFile = fname(1:iflen)
             open(unit=icUnit,file=icFile,status='old', form='formatted', access='sequential', err=500, iomsg=errMessage)
             write(outUnit,'(A15,A)') 'IC File: ', icFile(1:iflen)
+            !nfiltyp(7) = 1
+        else if(filtyp .eq. 'BC') then 
+            bcFile = fname(1:iflen)
+            open(unit=bcUnit,file=bcFile,status='old', form='formatted', access='sequential', err=500, iomsg=errMessage)
+            write(outUnit,'(A15,A)') 'BC File: ', bcFile(1:iflen)
             !nfiltyp(7) = 1
         end if
           

@@ -386,94 +386,100 @@ contains
 
 
     subroutine pr_Initialize(this, grid, trackingOptions, flowModelData, transportModelData)
-    !***************************************************************************************************************
-    !
-    !***************************************************************************************************************
+    !------------------------------------------------------------------------------------------
     ! Specifications
-    !---------------------------------------------------------------------------------------------------------------
+    !------------------------------------------------------------------------------------------
     implicit none
     class(ParticleTrackingEngineType) :: this
     class(ModflowRectangularGridType), intent(inout), pointer :: grid
     type(ParticleTrackingOptionsType), intent(in) :: trackingOptions
     type(FlowModelDataType), intent(in), target :: flowModelData
     type(TransportModelDataType), optional, target :: transportModelData
-    !---------------------------------------------------------------------------------------------------------------
+    !------------------------------------------------------------------------------------------
    
-        ! Call Reset to make sure that all arrays are initially unallocated
-        call this%Reset()
-        
-        ! Initialize pointers and tracking options
-        this%FlowModelData => flowModelData
-        this%Grid => grid
-        this%TrackingOptions = trackingOptions
-       
-        if (this%TrackingOptions%RandomWalkParticleTracking) then
+      ! Call Reset to make sure that all arrays are initially unallocated
+      call this%Reset()
+      
+      ! Initialize pointers and tracking options
+      this%FlowModelData => flowModelData
+      this%Grid => grid
+      this%TrackingOptions = trackingOptions
+      
+      if (this%TrackingOptions%RandomWalkParticleTracking) then
 
-            ! RWPT
-            if ( .not. present( transportModelData ) ) then
-                ! REQUIRES Proper error handling
-                print *, 'Error: ParticleTrackingEngine:Initialize: RWPT requires transportModelData, not given.'
-            end if 
+        ! RWPT
+        if ( .not. present( transportModelData ) ) then
+          ! REQUIRES Proper error handling
+          print *, 'Error: ParticleTrackingEngine:Initialize: RWPT requires transportModelData, not given.'
+        end if 
 
-            ! Define transport data pointer 
-            this%TransportModelData => transportModelData
+        ! Define transport data pointer 
+        this%TransportModelData => transportModelData
 
-            ! Assign interfaces for FillCellBuffer and FillNeighborCellData
-            select case( this%Grid%GridType ) 
-                case (1)
-                    ! Set for structured grid
-                    this%FillCellBuffer=>pr_FillTransportCellBufferStructured
-                    this%FillNeighborCellData=> pr_FillNeighborCellDataStructured
-                case (2)
-                    ! Set for MODFLOW-USG unstructured grid
-                    this%FillCellBuffer=>pr_FillTransportCellBufferUnstructured
-                    this%FillNeighborCellData=> pr_FillNeighborCellDataUnstructured
-                case (3)
-                    ! Set for MODFLOW-6 structured grid (DIS)
-                    this%FillCellBuffer=>pr_FillTransportCellBufferUnstructured
-                    this%FillNeighborCellData=> pr_FillNeighborCellDataStructured
-                case (4)
-                    ! Set for MODFLOW-6 unstructured grid (DISV)
-                    this%FillCellBuffer=>pr_FillTransportCellBufferUnstructured
-                    this%FillNeighborCellData=> pr_FillNeighborCellDataUnstructured
-            end select
+        ! Assign interfaces for FillCellBuffer and FillNeighborCellData
+        select case( this%Grid%GridType ) 
+            case (1)
+                ! Set for structured grid
+                this%FillCellBuffer=>pr_FillTransportCellBufferStructured
+                this%FillNeighborCellData=> pr_FillNeighborCellDataStructured
+            case (2)
+                ! Set for MODFLOW-USG unstructured grid
+                this%FillCellBuffer=>pr_FillTransportCellBufferUnstructured
+                this%FillNeighborCellData=> pr_FillNeighborCellDataUnstructured
+            case (3)
+                ! Set for MODFLOW-6 structured grid (DIS)
+                this%FillCellBuffer=>pr_FillTransportCellBufferUnstructured
+                this%FillNeighborCellData=> pr_FillNeighborCellDataStructured
+            case (4)
+                ! Set for MODFLOW-6 unstructured grid (DISV)
+                this%FillCellBuffer=>pr_FillTransportCellBufferUnstructured
+                this%FillNeighborCellData=> pr_FillNeighborCellDataUnstructured
+        end select
 
-            ! Assign tracking function with RWPT
-            this%TrackPath => pr_RWPTrackPath
+        ! Assign tracking function with RWPT
+        this%TrackPath => pr_RWPTrackPath
 
-            !! Assign methods for RWPT tracking in tracksubcell
-            call this%TrackCell%TrackSubCell%InitializeRandomWalk( &
-                this%TrackingOptions )
-
-
-        else 
-            ! MODPATH
-
-            ! Assign interface for FillCellBuffer
-            select case( this%Grid%GridType ) 
-                case (1)
-                    ! Set for structured grid
-                    this%FillCellBuffer=>pr_FillCellBufferStructured
-                case (2)
-                    ! Set for MODFLOW-USG unstructured grid
-                    this%FillCellBuffer=>pr_FillCellBufferUnstructured
-                case (3)
-                    ! Set for MODFLOW-6 structured grid (DIS)
-                    this%FillCellBuffer=>pr_FillCellBufferUnstructured
-                case (4)
-                    ! Set for MODFLOW-6 unstructured grid (DISV)
-                    this%FillCellBuffer=>pr_FillCellBufferUnstructured
-            end select
-        
-            ! Assign tracking function  with classical modpath
-            this%TrackPath => pr_TrackPath
-        
+        ! If simulation is single dispersion
+        ! Set in trackingoptions the dispersion modelKind 
+        ! of the only solute. It is required for the 
+        ! function InitializeRandomWalk 
+        if (this%TransportModelData%simulationData%SolutesOption .eq. 0 ) then 
+          this%TrackingOptions%dispersionModel = & 
+            this%TransportModelData%Solutes(1)%Dispersion%modelKind
         end if
 
+        ! Assign methods for RWPT tracking in tracksubcell
+        call this%TrackCell%TrackSubCell%InitializeRandomWalk( &
+            this%TrackingOptions )
 
-        ! Properties 
-        this%Initialized = .true.
-       
+      else 
+        ! MODPATH
+
+        ! Assign interface for FillCellBuffer
+        select case( this%Grid%GridType ) 
+            case (1)
+                ! Set for structured grid
+                this%FillCellBuffer=>pr_FillCellBufferStructured
+            case (2)
+                ! Set for MODFLOW-USG unstructured grid
+                this%FillCellBuffer=>pr_FillCellBufferUnstructured
+            case (3)
+                ! Set for MODFLOW-6 structured grid (DIS)
+                this%FillCellBuffer=>pr_FillCellBufferUnstructured
+            case (4)
+                ! Set for MODFLOW-6 unstructured grid (DISV)
+                this%FillCellBuffer=>pr_FillCellBufferUnstructured
+        end select
+      
+        ! Assign tracking function  with classical modpath
+        this%TrackPath => pr_TrackPath
+      
+      end if
+
+
+      ! Properties 
+      this%Initialized = .true.
+      
 
     end subroutine pr_Initialize
 
@@ -491,6 +497,7 @@ contains
 
       ! Assign methods for RWPT tracking in tracksubcell
       call this%TrackCell%TrackSubCell%SetDispersionDisplacement( dispersionModel )
+
 
     end subroutine pr_UpdateDispersionFunction 
     
@@ -1055,7 +1062,7 @@ contains
             end if
             isMaximumTime = .false.
             if(stopTime .eq. maximumTrackingTime) isMaximumTime = .true.
-            
+        
             ! RWPT: apply tracking
             ! Start with the particle loacion loc and track it through the cell until it reaches
             ! an exit face or the tracking time reaches the value specified by stopTime

@@ -7,25 +7,21 @@ module SoluteModule
   private
 
   type, public :: SoluteType
+    ! Id's
     integer :: id
     character(len=300) :: stringid
+    logical            :: initialized =.false.
+    ! Disperion model foreign key
     class(DispersionDataType), pointer :: dispersion
-    integer :: dispersionId 
-    character(len=300) :: dispersionStringId
-    
-
-    ! Maybe a dispersion model foreign key ?
-
-    ! Transport properties
-    doubleprecision :: dAqueous
-    doubleprecision :: aqueousDiffusion
-    doubleprecision :: poreDiffusion  ! or effective diffusion
-    doubleprecision :: effectiveDiffusion  ! Aqueous diffusion with tortuosity correction
-    logical :: initialized =.false.
-    integer :: dispersionModel = 0
-    integer :: nParticleGroups = 0
+    integer                            :: dispersionId 
+    character(len=300)                 :: dispersionStringId
+    ! PGroups foreign key
+    integer                            :: nParticleGroups = 0
     integer, dimension(:), allocatable :: pGroups
 
+
+
+    ! TO BE DEPRECATED
     ! Dispersivities 
     ! Not necessarily consistent with definition 
     ! of dispersivity as medium property, but
@@ -33,6 +29,13 @@ module SoluteModule
     doubleprecision,dimension(:),allocatable :: AlphaLong
     doubleprecision,dimension(:),allocatable :: AlphaTran
     doubleprecision :: betaLong, betaTrans
+    ! Transport properties
+    doubleprecision :: dAqueous
+    doubleprecision :: aqueousDiffusion
+    doubleprecision :: poreDiffusion  ! or effective diffusion
+    doubleprecision :: effectiveDiffusion  ! Aqueous diffusion with tortuosity correction
+    integer :: dispersionModel = 0
+
 
   contains
     procedure :: Initialize => pr_Initialize

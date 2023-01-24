@@ -32,7 +32,7 @@ module ParticleTrackingOptionsModule
 
 
     integer                       :: dispersionModel
-    doubleprecision               :: Dmol = 0
+    doubleprecision               :: Dmol = 0d0
 
 
 

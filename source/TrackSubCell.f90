@@ -490,14 +490,16 @@ contains
 
       ! Assign displacement pointers
       if ( dispersionModel .eq. 1 ) then 
-          !  Linear
-          this%ComputeRWPTDisplacements => pr_RWPTDisplacementsLinear 
+        !  Linear
+        this%ComputeRWPTDisplacements => pr_RWPTDisplacementsLinear 
       else if ( dispersionModel .eq.2 ) then
-          ! Non linear 
-          this%ComputeRWPTDisplacements => pr_RWPTDisplacementsNonlinear
+        ! Non linear 
+        this%ComputeRWPTDisplacements => pr_RWPTDisplacementsNonlinear
       else 
-          ! Not set !
-          continue
+        ! Not set !
+        ! Some kind of error handling
+        print *, 'Error: TrackSubCell:SetDispersionDisplacement: dispersionModel id not found, it will crash!.'
+        continue
       end if
 
       ! Done
@@ -609,11 +611,7 @@ contains
       ! Function moves particles following RWPT protocol.
       ! It has been adapted from ExecuteTracking but logic
       ! differs significantly as particles are moved numerically 
-      ! instead of analytically
-      ! 
-      ! Params:
-      !     - ToDo
-      !
+      ! instead of semi-analytically
       !------------------------------------------------------------
       ! Specifications
       !------------------------------------------------------------
@@ -738,11 +736,13 @@ contains
       ! Initialize kind of domain solver
       twoDimensions = trackingOptions%twoDimensions
 
+
       ! DIMENSION MASK
 
 
       ! Compute time step for RWPT
       call this%ComputeRandomWalkTimeStep( trackingOptions, dt )
+
 
 
       ! Initializes current time
@@ -785,7 +785,7 @@ contains
               dt = max( maximumTime - t, 0d0 ) ! avoids numerical error effects
               t  = maximumTime
               reachedMaximumTime = .true.
-          end if 
+          end if
 
           ! Compute RWPT movement
           call this%ComputeRWPTDisplacements(       &

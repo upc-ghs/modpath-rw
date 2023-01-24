@@ -22,7 +22,7 @@ module DispersionDataModule
     ! effective molecular diffusion is distributed or not
 
     ! Parameters for nonlinear dispersion model 
-    doubleprecision :: dmaqueous
+    doubleprecision :: dmaqueous = 0d0
     doubleprecision,dimension(:),allocatable :: BetaL
     doubleprecision,dimension(:),allocatable :: BetaTH
     doubleprecision,dimension(:),allocatable :: BetaTV

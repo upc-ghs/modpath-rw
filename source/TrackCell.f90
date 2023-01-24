@@ -399,7 +399,9 @@ contains
           trackCellResult%Status = trackCellResult%Status_InactiveCell()
           return
       end if
-      
+     
+
+
       ! Add the initial location to the TrackingPoints list
       call trackCellResult%TrackingPoints%AddItem(initialLocation)
      
@@ -410,7 +412,7 @@ contains
       this%TrackSubCell%TrackSubCellResult = subCellResult
 
       ! Check for stopping conditions
-      
+
       ! Check to see if this cell is an automatic stop zone cell
       stopZone = this%TrackingOptions%StopZone;
       if(stopZone .gt. 0) then

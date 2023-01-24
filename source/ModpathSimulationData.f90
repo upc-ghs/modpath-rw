@@ -51,6 +51,7 @@ module ModpathSimulationDataModule
     integer,dimension(:),allocatable :: BudgetCells
     integer,dimension(:),allocatable :: Zones
     doubleprecision,dimension(:),allocatable :: Retardation
+    integer,dimension(:),allocatable         :: ICBound     ! RWPT
     doubleprecision,dimension(:),allocatable :: TimePoints
     type(ParticleGroupType),dimension(:),allocatable :: ParticleGroups
     type(ParticleTrackingOptionsType),allocatable :: TrackingOptions
@@ -61,6 +62,7 @@ module ModpathSimulationDataModule
     procedure :: ReadOBSData=>pr_ReadOBSData       ! RWPT
     procedure :: ReadRWOPTSData=>pr_ReadRWOPTSData ! RWPT
     procedure :: ReadICData=>pr_ReadICData         ! RWPT
+    procedure :: ReadBCData=>pr_ReadBCData         ! RWPT
   end type
 
 
@@ -1067,23 +1069,27 @@ contains
 
 
   ! Read specific RWOPTS data
-  subroutine pr_ReadRWOPTSData( this, rwoptsFile, rwoptsUnit, outUnit )
-    use UTL8MODULE,only : urword,ustop
+  subroutine pr_ReadRWOPTSData( this, rwoptsFile, rwoptsUnit, outUnit, grid )
+    use UTL8MODULE,only : urword,ustop,u3dintmpusg, u3dintmp
     !--------------------------------------------------------------
     ! Specifications
     !--------------------------------------------------------------
     implicit none
     ! input 
-    class(ModpathSimulationDataType), target :: this
-    character(len=200), intent(in)           :: rwoptsFile
-    integer, intent(in)                      :: rwoptsUnit
-    integer, intent(in)                      :: outUnit
+    class(ModpathSimulationDataType), target     :: this
+    character(len=200), intent(in)               :: rwoptsFile
+    integer, intent(in)                          :: rwoptsUnit
+    integer, intent(in)                          :: outUnit
+    class(ModflowRectangularGridType),intent(in) :: grid
     ! local
     type(ParticleTrackingOptionsType), pointer :: trackingOptions
     integer :: isThisFileOpen = -1
     integer :: icol,istart,istop,n,nd,currentDim
     doubleprecision    :: r
     character(len=200) :: line
+    integer, dimension(:), allocatable :: cellsPerLayer
+    character(len=24),dimension(1) :: aname
+    data aname(1) /'       ICBOUND'/
     !--------------------------------------------------------------
 
     write(outUnit, *)
@@ -1634,6 +1640,75 @@ contains
   end subroutine pr_ReadICData
 
 
+  ! Read specific BC data
+  subroutine pr_ReadBCData( this, bcFile, bcUnit, outUnit, grid )
+    use UTL8MODULE,only : urword,ustop,u3dintmpusg, u3dintmp
+    !--------------------------------------------------------------
+    ! Specifications
+    !--------------------------------------------------------------
+    implicit none
+    ! input 
+    class(ModpathSimulationDataType), target     :: this
+    character(len=200), intent(in)               :: bcFile
+    integer, intent(in)                          :: bcUnit
+    integer, intent(in)                          :: outUnit
+    class(ModflowRectangularGridType),intent(in) :: grid
+    ! local
+    type(ParticleTrackingOptionsType), pointer :: trackingOptions
+    integer :: isThisFileOpen = -1
+    integer :: icol,istart,istop,n,nd,currentDim
+    doubleprecision    :: r
+    character(len=200) :: line
+    integer, dimension(:), allocatable :: cellsPerLayer
+    character(len=24),dimension(1) :: aname
+    data aname(1) /'       ICBOUND'/
+    !--------------------------------------------------------------
+
+    write(outUnit, *)
+    write(outUnit, '(1x,a)') 'MODPATH-RW BC file data'
+    write(outUnit, '(1x,a)') '-----------------------'
+
+    ! CellsPerLayer, required for u3d reader
+    allocate(cellsPerLayer(grid%LayerCount))
+    do n = 1, grid%LayerCount
+      cellsPerLayer(n) = grid%GetLayerCellCount(n)
+    end do
+    ! Allocate ICBound array, is needed downstream
+    if(allocated(this%ICBound)) deallocate(this%ICBound)
+    allocate(this%ICBound(grid%CellCount))
+
+    ! Verify if unit is open 
+    inquire( file=bcFile, number=isThisFileOpen )
+    if ( isThisFileOpen .lt. 0 ) then 
+      ! No bc file
+      write(outUnit,'(A)') 'BC package was not specified in name file.'
+      ! Initialize ICBound with only zeroes
+      this%ICBound(:) = 0
+      ! And leave
+      return
+    end if
+
+
+    ! Read ICBOUND
+    if((grid%GridType .eq. 1) .or. (grid%GridType .eq. 3)) then
+      call u3dintmp(bcUnit, outUnit, grid%LayerCount, grid%RowCount,      &
+        grid%ColumnCount, grid%CellCount, this%ICBound, aname(1))
+    else if((grid%GridType .eq. 2) .or. (grid%GridType .eq. 4)) then
+      call u3dintmpusg(bcUnit, outUnit, grid%CellCount, grid%LayerCount,  &
+        this%ICBound, aname(1), cellsPerLayer)
+    else
+      write(outUnit,*) 'Invalid grid type specified when reading ICBOUND array data.'
+      write(outUnit,*) 'Stopping.'
+      call ustop(' ')          
+    end if
+
+  
+
+    ! Close bc data file
+    close( bcUnit )
+
+
+  end subroutine pr_ReadBCData
 
 
 end module ModpathSimulationDataModule
