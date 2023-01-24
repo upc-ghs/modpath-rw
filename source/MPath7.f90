@@ -483,12 +483,15 @@
       call ulog('Read specific SPC data.', logUnit)
       call transportModelData%ReadSPCData( spcFile, spcUnit, mpListUnit )
 
+      call ulog('Read specific DSP data.', logUnit)
+      call transportModelData%ReadDSPData( dspFile, dspUnit, mpListUnit )
+
       print *, 'PROGRAMMED EARLY LEAVING'
       call exit(0)
 
-      ! Needs update of dispersionUnit, and dispersion file
-      call transportModelData%ReadData( dispersionUnit, simulationData%DispersionFile, mplistUnit, &
-                      simulationData, flowModelData, basicData%IBound, modelGrid, simulationData%TrackingOptions )
+      !! Needs update of dispersionUnit, and dispersion file
+      !call transportModelData%ReadData( dispersionUnit, simulationData%DispersionFile, mplistUnit, &
+      !                simulationData, flowModelData, basicData%IBound, modelGrid, simulationData%TrackingOptions )
 
 
 
@@ -988,7 +991,8 @@
           ! Reconstruction still needs some review. 
           ! When giving an initial condition for a quasi-2D layer
           ! and the "compressed" dimension is 
-          ! non-zero, output from gpkde needs to be normalized 
+          ! non-zero (reconstruction for quasi-2D layer with non-zero height)
+          ! output from gpkde needs to be normalized 
           ! by this distance. Verify if this happens for other
           ! conditions. 
 
@@ -1037,8 +1041,7 @@
     if(simulationData%ParticleGroupCount .gt. 0) then
         ! -- Particles groups loop -- !
         do groupIndex = 1, simulationData%ParticleGroupCount
-            ! Needs something to verify if RWPT
-            if ( simulationData%SolutesOption .eq. 1 ) then 
+            if ( simulationData%shouldUpdateDispersion ) then 
                 ! Assign pointers to dispersivities 
                 ! in transportModelData
                 call transportModelData%SetSoluteDispersion( &
