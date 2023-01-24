@@ -474,10 +474,11 @@
     call flowModelData%SetRetardation(simulationData%Retardation, modelGrid%CellCount)
     call flowModelData%SetDefaultIface(basicData%DefaultIfaceLabels, &
             basicData%DefaultIfaceValues, basicData%DefaultIfaceCount)
-    if ( simulationData%TrackingOptions%RandomWalkParticleTracking ) then 
-      call ulog('Initialize transport model data component.', logUnit)
+    if ( simulationData%TrackingOptions%RandomWalkParticleTracking ) then
+
       ! Initialize transportModelData
       allocate( transportModelData ) 
+      call ulog('Initialize transport model data component.', logUnit)
       call transportModelData%Initialize( modelGrid, simulationData )
 
       call ulog('Read specific SPC data.', logUnit)
@@ -485,6 +486,10 @@
 
       call ulog('Read specific DSP data.', logUnit)
       call transportModelData%ReadDSPData( dspFile, dspUnit, mpListUnit )
+
+      ! Validate if given relations for 
+      ! SPC and DSP and PGROUPS are consistent/well defined.
+      call transportModelData%ValidateDataRelations( mpListUnit )
 
       print *, 'PROGRAMMED EARLY LEAVING'
       call exit(0)
@@ -2597,7 +2602,9 @@
     end subroutine WriteParticleSummaryInfo
 
 
+
     ! OBSERVATION CELLS
+    ! Candidate to be deprecated
     subroutine WriteObservationHeader(outUnit, cellNumber, referenceTime,   &
                                              originX, originY, rotationAngle)
         !---------------------------------------------------------------------

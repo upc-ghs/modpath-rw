@@ -62,12 +62,16 @@ module TransportModelDataModule
 
       procedure :: Initialize=>pr_Initialize
       procedure :: Reset=>pr_Reset
-      procedure :: ReadData=>pr_ReadData ! DEPRECATION WARNING
       procedure :: ReadSPCData=>pr_ReadSPCData
       procedure :: ReadDSPData=>pr_ReadDSPData
+      procedure :: ValidateDataRelations => pr_ValidateDataRelations
+
       procedure :: LoadTimeStep=>pr_LoadTimeStep
       procedure :: LoadSoluteDispersion=>pr_LoadSoluteDispersion
       procedure :: SetSoluteDispersion=>pr_SetSoluteDispersion
+
+
+      procedure :: ReadData=>pr_ReadData ! DEPRECATION WARNING
 
     end type
 
@@ -615,6 +619,7 @@ contains
             write(outUnit,*) 'Stopping.'
             call ustop(' ')          
           end if
+
         case default
           write(outUnit,*) 'Invalid dispersion model. Accepts 1 or 2, given ', disp%modelKind
           write(outUnit,*) 'Stopping.'
@@ -631,6 +636,75 @@ contains
   end subroutine pr_ReadDSPData
 
 
+  subroutine pr_ValidateDataRelations(this, outUnit)
+    use UTL8MODULE,only : ustop
+    !--------------------------------------------------------------
+    ! Specifications
+    !--------------------------------------------------------------
+    ! - Verify whether SPC and DSP data relations are consistent,
+    !   meaning, that given dispersionIds while defining solutes 
+    !   exist in this%DispersionData
+    !--------------------------------------------------------------
+    implicit none
+    ! input
+    class(TransportModelDataType) :: this
+    integer, intent(in)                      :: outUnit
+    ! local 
+    class(ModpathSimulationDataType), pointer :: simulationData
+    integer :: ns, ndis, did
+    character(len=300) :: dsid
+    logical :: validRelation 
+    !--------------------------------------------------------------
+
+    write(outUnit, *)
+    write(outUnit, '(1x,a)') 'TransportModelData: verify SPC-DSP relations '
+    write(outUnit, '(1x,a)') '---------------------------------------------'
+
+
+    simulationData => this%simulationData
+
+    if ( simulationData%SolutesOption .eq. 0 ) then
+     ! If simulation is single dispersion 
+     write(outUnit,'(A)') 'Simulation is single dispersion. Is consistent. '
+     ! Is valid
+     return
+    else if ( simulationData%SolutesOption .eq. 1 ) then
+     ! If simulation is multidispersion
+     write(outUnit,'(A)') 'Simulation is multidispersion... '
+
+     ! Should confirm that dispersion models 
+     ! specified for the different solutes
+     ! exist in dispersiondata array
+
+     do ns = 1, this%nSolutes
+
+      did  = this%Solutes(ns)%dispersionId
+      dsid = this%Solutes(ns)%dispersionStringId
+
+      validRelation = .false.
+      ! Loop over dispersion models
+      do ndis = 1, this%nDispersion
+       if ( this%DispersionData(ndis)%id .eq. did ) then
+       write(outUnit,'(A,I3,A,I3)') 'Solute ', ns, ' relation with dispersion ', did, ' is consistent.'
+       validRelation = .true.
+       exit      
+       end if 
+      end do 
+
+      if ( .not. validRelation ) then 
+       write(outUnit,'(A,I4,A,A)') 'Invalid dispersion id ',did,' for solute ', this%Solutes(ns)%stringid
+       call ustop('Invalid relation between dispersion model and solute. Stop.')
+      end if 
+
+     end do
+     
+     ! Consistent relations, report 
+     write(outUnit,'(A)') 'Relations between dispersion data and species/solutes are consistent.'
+
+    end if
+    
+
+  end subroutine pr_ValidateDataRelations
 
 
     subroutine pr_LoadTimeStep(this, stressPeriod, timeStep)
