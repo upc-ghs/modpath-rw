@@ -994,8 +994,7 @@
           ! Reconstruction still needs some review. 
           ! When giving an initial condition for a quasi-2D layer
           ! and the "compressed" dimension is 
-          ! non-zero (reconstruction for quasi-2D layer with non-zero height)
-          ! output from gpkde needs to be normalized 
+          ! non-zero output from gpkde needs to be normalized 
           ! by this distance. Verify if this happens for other
           ! conditions. 
 

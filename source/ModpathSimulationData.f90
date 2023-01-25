@@ -113,11 +113,10 @@ contains
     doubleprecision :: initialReleaseTime, releaseInterval
     doubleprecision,dimension(:),allocatable :: releaseTimes
     doubleprecision :: frac, r, tinc
-    character*24 aname(3)
+    character*24 aname(2)
     character(len=200) line
     DATA aname(1) /'              ZONE ARRAY'/
     DATA aname(2) /'                 RFACTOR'/
-    DATA aname(3) /'                OBSCELLS'/
     !---------------------------------------------
 
     ! Deallocate arrays
@@ -543,7 +542,7 @@ contains
       write(outUnit,'(/A)') 'The retardation factor array will be read.'
       if((grid%GridType .eq. 1) .or. (grid%GridType .eq. 3)) then
         call u3ddblmp(inUnit, outUnit, grid%LayerCount, grid%RowCount,     &
-          grid%ColumnCount, grid%CellCount, this%Retardation, ANAME(2))           
+          grid%ColumnCount, grid%CellCount, this%Retardation, aname(2)) 
       else if((grid%GridType .eq. 2) .or. (grid%GridType .eq. 4)) then
         call u3ddblmpusg(inUnit, outUnit, grid%CellCount, grid%LayerCount, &
           this%Retardation, aname(2), cellsPerLayer)
@@ -1466,9 +1465,8 @@ contains
           ! for the cell using the specified mass 
           nParticlesCell = cellTotalMass/particleMass
 
-          ! Yes ?
-          ! If less than one particle, cycle to the next cell
-          if ( nParticlesCell .lt. 1d0 ) cycle
+          ! If less than 0.5 particle, cycle to the next cell
+          if ( nParticlesCell .lt. 0.5 ) cycle
 
           ! Compute shapeFactors only if dimension is active
           ! If not, will remain as zero
@@ -1535,6 +1533,9 @@ contains
           if ( densityDistribution(nc) .eq. 0d0 ) cycle
 
           cellCounter = cellCounter + 1
+
+          ! Skip this cell if all subDivisions remained as zero
+          if ( all( subDivisions( cellCounter, : ) .eq. 0 ) ) cycle
 
           ! For the weird requirement where density
           ! might be negative...
@@ -1707,9 +1708,9 @@ contains
 
     ! Preparations for interpreting additional BC's
 
-    ! RW dimensionality vars
-    dimensionMask => this%TrackingOptions%dimensionMask
-    nDim => this%TrackingOptions%nDim
+    !! RW dimensionality vars
+    !dimensionMask => this%TrackingOptions%dimensionMask
+    !nDim => this%TrackingOptions%nDim
     
     !! Read FLUX BC's
     !read(bcUnit, *) nFluxConditions
