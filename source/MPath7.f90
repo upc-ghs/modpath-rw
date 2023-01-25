@@ -428,12 +428,16 @@
     call ulog('Read MODPATH basic data component.', logUnit)   
     call basicData%ReadData(mpbasUnit, mplistUnit, modelGrid)
 
-
     ! Read the remainder of the MODPATH simulation file
     call ulog('Read the remainder of the MODPATH-RW simulation data component.', logUnit)
     call simulationData%ReadData(mpsimUnit, mplistUnit, basicData%IBound, tdisData, modelGrid)
    
     if ( simulationData%TrackingOptions%RandomWalkParticleTracking ) then 
+      
+      ! Transfer flag from basicData to indicate 
+      ! uniformity of porosities
+      simulationData%isUniformPorosity = basicData%isUniformPorosity
+
       call ulog('Read specific GPKDE simulation data.', logUnit)
       call simulationData%ReadGPKDEData(gpkdeFile, gpkdeUnit, mpListUnit )
 

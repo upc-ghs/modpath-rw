@@ -51,6 +51,7 @@ module ParticleTrackingOptionsModule
     character(len=200)            :: gpkdeOutputFile
     integer                       :: gpkdeOutputUnit = 125
     logical                       :: gpkdeKernelDatabase
+    logical                       :: gpkdeAsConcentration = .false.
     doubleprecision, dimension(3) :: gpkdeKDBParams  ! minHLambda, deltaHLambda, maxHLambda
 
     ! TIMESERIES

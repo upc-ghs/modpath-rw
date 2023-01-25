@@ -18,6 +18,9 @@ module ModpathBasicDataModule
       integer,dimension(:),allocatable :: DefaultIfaceValues
       character(len=16),dimension(:),allocatable :: DefaultIFaceLabels
       doubleprecision,dimension(:),allocatable :: Porosity
+
+      !  RWPT
+      logical :: isUniformPorosity = .false.
   contains
     procedure :: ReadData=>pr_ReadData
   end type
@@ -191,7 +194,13 @@ contains
             write(outUnit,*) 'Stopping.'
             call ustop(' ')          
       end if
-  
+
+      ! RWPT
+      ! Check if all cells have the same porosity
+      ! Requires something to address the case in which the first cell
+      ! is inactive.
+      if (all(this%Porosity.eq.this%Porosity(1))) this%isUniformPorosity = .true.
+
   end subroutine pr_ReadData
 
 end module  ModpathBasicDataModule     

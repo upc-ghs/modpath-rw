@@ -55,6 +55,8 @@ module ModpathSimulationDataModule
     doubleprecision,dimension(:),allocatable :: TimePoints
     type(ParticleGroupType),dimension(:),allocatable :: ParticleGroups
     type(ParticleTrackingOptionsType),allocatable :: TrackingOptions
+    logical :: isUniformPorosity =.false.     ! RWPT
+    logical :: isUniformRetardation = .false. ! RWPT
   contains
     procedure :: ReadFileHeaders=>pr_ReadFileHeaders
     procedure :: ReadData=>pr_ReadData
@@ -551,11 +553,15 @@ contains
         write(outUnit,*) 'Stopping.'
         call ustop(' ')            
       end if
+      ! RWPT
+      ! Check if all cells have the same retardation factor
+      if (all(this%Retardation.eq.this%Retardation(1))) this%isUniformRetardation = .true.
     else
       write(outUnit,'(/A)') 'The retardation factor for all cells = 1'
       do n = 1, grid%CellCount
         this%Retardation(n) = 1.0d0
       end do
+      this%isUniformRetardation = .true.
     end if
       
     ! Particle data
@@ -788,6 +794,26 @@ contains
         this%TrackingOptions%gpkdeKDBParams(3) = r
       end if 
     
+      ! Read kind of reconstruction output
+      ! 0: as total mass density. Smoothed phi*R*c_r
+      ! 1: as resident concentration
+      read(gpkdeUnit, '(a)') line
+      icol = 1
+      call urword(line, icol, istart, istop, 2, n, r, 0, 0)
+      if (n.eq.0) then 
+        write(outUnit,'(A)') 'GPKDE output is expressed as smoothed total mass (phi*R*c_r).'
+        this%TrackingOptions%gpkdeAsConcentration = .false.
+      else
+        ! If requested as resident concentration, 
+        ! verifies whether porosities and retardation 
+        ! are spatially uniform.
+        write(outUnit,'(A)') 'GPKDE output is requested to be expressed as resident concentration.'
+        if ( this%isUniformPorosity .and. this%isUniformRetardation ) then 
+          write(outUnit,'(A)') 'Porosity and retardation are spatially uniform, GPKDE output is given as concentration.'
+          this%TrackingOptions%gpkdeAsConcentration = .true.
+        end if
+      end if
+
     else
 
       ! If simulation is not timeseries
