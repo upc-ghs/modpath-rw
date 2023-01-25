@@ -1662,6 +1662,8 @@ contains
     integer, dimension(:), allocatable :: cellsPerLayer
     character(len=24),dimension(1) :: aname
     data aname(1) /'       ICBOUND'/
+    integer :: nFluxConditions, nValidFluxConditions, particleCount
+    integer :: nfc
     !--------------------------------------------------------------
 
     write(outUnit, *)
@@ -1702,7 +1704,40 @@ contains
       call ustop(' ')          
     end if
 
-  
+
+    ! Preparations for interpreting additional BC's
+
+    ! RW dimensionality vars
+    dimensionMask => this%TrackingOptions%dimensionMask
+    nDim => this%TrackingOptions%nDim
+    
+    !! Read FLUX BC's
+    !read(bcUnit, *) nFluxConditions
+    !write(outUnit,'(A,I5)') 'Given number of flux boundary conditions = ', nFluxConditions
+    !nValidFluxConditions = 0 ! Monitors whether the boundary has any particle
+    !particleCount = 0
+
+    !if(nFluxConditions .le. 0) then
+    !  ! No flux  
+    !  ! It shall continue to the next BC kind
+    !  write(outUnit,'(A)') 'Number of given flux conditions is .le. 0. Leaving the function.'
+    !  return
+    !end if
+
+    !! Carrier for candidate particle groups 
+    !allocate(particleGroups(nFluxConditions))
+ 
+    !! Loop over flux conditions
+    !do nfc = 1, nFluxConditions
+    !  
+    !  ! Report which FLUX BC will be processed
+    !  write(outUnit,'(A,I5)') 'Processing flux boundary condition: ', nfc
+
+    !  ! Increase pgroup counter
+    !  particleGroups(nfc)%Group = this%ParticleGroupCount + nfc
+
+    !end do
+
 
     ! Close bc data file
     close( bcUnit )

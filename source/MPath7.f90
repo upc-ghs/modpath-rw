@@ -476,6 +476,7 @@
     call flowModelData%SetRetardation(simulationData%Retardation, modelGrid%CellCount)
     call flowModelData%SetDefaultIface(basicData%DefaultIfaceLabels, &
             basicData%DefaultIfaceValues, basicData%DefaultIfaceCount)
+
     if ( simulationData%TrackingOptions%RandomWalkParticleTracking ) then
 
       ! Initialize transportModelData
@@ -494,18 +495,16 @@
       call ulog('Validate data relations for DSP and SPC.', logUnit)
       call transportModelData%ValidateDataRelations( mpListUnit )
 
-      !! Needs update of dispersionUnit, and dispersion file
-      !call transportModelData%ReadData( dispersionUnit, simulationData%DispersionFile, mplistUnit, &
-      !                simulationData, flowModelData, basicData%IBound, modelGrid, simulationData%TrackingOptions )
-
-
       call ulog('Initialize particle tracking engine component.', logUnit)
       call trackingEngine%Initialize(modelGrid, simulationData%TrackingOptions, flowModelData, transportModelData)
+
     else 
+
+      ! Classical init
       call ulog('Initialize particle tracking engine component.', logUnit)
       call trackingEngine%Initialize(modelGrid, simulationData%TrackingOptions, flowModelData)
-    end if 
 
+    end if 
 
 
     ! Initialize GPKDE reconstruction 
