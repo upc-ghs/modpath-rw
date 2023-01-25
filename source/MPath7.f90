@@ -436,7 +436,8 @@
       
       ! Transfer flag from basicData to indicate 
       ! uniformity of porosities
-      simulationData%isUniformPorosity = basicData%isUniformPorosity
+      call ulog('Inform simulationData if porosity is spatially uniform.', logUnit)
+      call simulationData%SetUniformPorosity( basicData )
 
       call ulog('Read specific GPKDE simulation data.', logUnit)
       call simulationData%ReadGPKDEData(gpkdeFile, gpkdeUnit, mpListUnit )
@@ -985,22 +986,17 @@
           ! GPKDE
           ! Compute density for the particles linked to a given 
           ! solute. These may have different mass
-          call gpkde%ComputeDensity(                                              &
-             activeParticleCoordinates,                                           &
-             outputFileUnit     = simulationData%TrackingOptions%gpkdeOutputUnit, &
-             outputDataId       = 0,                                              & ! timeindex
-             particleGroupId    = solute%id,                                      &
-             unitVolume         = .true.,                                         &
-             weightedHistogram  = .true.,                                         &
-             weights            = activeParticleMasses                            &
+          call gpkde%ComputeDensity(                                                  &
+           activeParticleCoordinates,                                                 &
+           outputFileUnit    = simulationData%TrackingOptions%gpkdeOutputUnit,        &
+           outputDataId      = 0,                                                     & ! timeindex
+           particleGroupId   = solute%id,                                             &
+           unitVolume        = .true.,                                                &
+           weightedHistogram = .true.,                                                &
+           weights           = activeParticleMasses,                                  &
+           scalingFactor     = simulationData%TrackingOptions%gpkdeScalingFactor,     &
+           histogramScalingFactor = simulationData%TrackingOptions%gpkdeScalingFactor &
           )
-
-          ! Reconstruction still needs some review. 
-          ! When giving an initial condition for a quasi-2D layer
-          ! and the "compressed" dimension is 
-          ! non-zero output from gpkde needs to be normalized 
-          ! by this distance. Verify if this happens for other
-          ! conditions. 
 
         end do 
 
@@ -1372,29 +1368,17 @@
             ! GPKDE
             ! Compute density for the particles linked to a given 
             ! solute. These may have different mass
-            call gpkde%ComputeDensity(                                              &
-               activeParticleCoordinates,                                           &
-               outputFileUnit     = simulationData%TrackingOptions%gpkdeOutputUnit, &
-               outputDataId       = nt,                                             & ! timeindex
-               particleGroupId    = solute%id,                                      &
-               unitVolume         = .true.,                                         &
-               weightedHistogram  = .true.,                                         &
-               weights            = activeParticleMasses                            &
+            call gpkde%ComputeDensity(                                                  &
+             activeParticleCoordinates,                                                 &
+             outputFileUnit    = simulationData%TrackingOptions%gpkdeOutputUnit,        &
+             outputDataId      = nt,                                                    & ! timeindex
+             particleGroupId   = solute%id,                                             &
+             unitVolume        = .true.,                                                &
+             weightedHistogram = .true.,                                                &
+             weights           = activeParticleMasses,                                  &
+             scalingFactor     = simulationData%TrackingOptions%gpkdeScalingFactor,     &
+             histogramScalingFactor = simulationData%TrackingOptions%gpkdeScalingFactor &
             )
-            
-            ! And needs volume correction for 
-            ! cells, considering porosities and so on
-            ! It would work only for structured grids
-            ! sharing the same discretization than GPKDE
-
-            ! if( modelGrid%isUnstructured ) then 
-            !   ! It could do some kind of histogram reconstruction
-            ! else
-            !  ! Run over the active 
-            !  read(inUnit, *) layer, row, column
-            !  call ugetnode(layerCount, rowCount, columnCount, layer, row, column,cellNumber)
-            !  obs%cells(no) = cellNumber
-            ! end if
 
           end do 
 
@@ -1632,8 +1616,7 @@
             ! Timeseries reconstruction    
             call gpkde%ComputeDensity(   &
               gpkdeDataCarrier,          &
-              unitVolume = .true.,       &
-              histogramScalingFactor=1d0,&
+              computeRawDensity = .true.,&
               weightedHistogram = .true.,&
               weights = gpkdeWeightsCarrier )
 
@@ -1827,8 +1810,7 @@
             ! Timeseries reconstruction    
             call gpkde%ComputeDensity(   &
               gpkdeDataCarrier,          &
-              unitVolume = .false.,      &
-              histogramScalingFactor=1d0,&
+              computeRawDensity = .true.,&
               weightedHistogram = .true.,&
               weights = gpkdeWeightsCarrier )
 

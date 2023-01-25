@@ -17,7 +17,6 @@ module ParticleTrackingOptionsModule
     doubleprecision :: Stoptime = 1.0d+30
     integer :: StopZone = 0
 
-
     ! RWPT
     logical                       :: RandomWalkParticleTracking = .false.
     integer                       :: timeStepKind
@@ -30,16 +29,16 @@ module ParticleTrackingOptionsModule
     logical                       :: twoDimensions = .false.
     integer                       :: idDim1, idDim2
 
-
+    ! Needed while initializing RWPT displacements
     integer                       :: dispersionModel
-    doubleprecision               :: Dmol = 0d0
 
 
-
+    ! DEPRECATION WARNNING
     ! NONLINEAR DISPERSION RWPT (TEMP)
     doubleprecision :: betaTrans, betaLong
     doubleprecision :: mediumDistance, mediumDelta
-
+    doubleprecision :: Dmol = 0d0
+    ! DEPRECATION WARNING
 
 
     ! GPKDE
@@ -52,12 +51,14 @@ module ParticleTrackingOptionsModule
     integer                       :: gpkdeOutputUnit = 125
     logical                       :: gpkdeKernelDatabase
     logical                       :: gpkdeAsConcentration = .false.
+    doubleprecision               :: gpkdeBinVolume
+    doubleprecision               :: gpkdeScalingFactor
     doubleprecision, dimension(3) :: gpkdeKDBParams  ! minHLambda, deltaHLambda, maxHLambda
 
-    ! TIMESERIES
+    ! TimeseriesOutputOption
     logical                       :: skipTimeseriesWriter = .false.
 
-    ! OBSERVATION CELLS
+    ! Observation Cells 
     integer :: nObservations
     logical :: observationSimulation = .false.
     integer, allocatable, dimension(:) :: observationCells

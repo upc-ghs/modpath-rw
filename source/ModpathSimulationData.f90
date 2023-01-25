@@ -55,8 +55,10 @@ module ModpathSimulationDataModule
     doubleprecision,dimension(:),allocatable :: TimePoints
     type(ParticleGroupType),dimension(:),allocatable :: ParticleGroups
     type(ParticleTrackingOptionsType),allocatable :: TrackingOptions
-    logical :: isUniformPorosity =.false.     ! RWPT
-    logical :: isUniformRetardation = .false. ! RWPT
+    logical :: isUniformPorosity =.false.       ! RWPT
+    logical :: isUniformRetardation = .false.   ! RWPT
+    doubleprecision :: uniformPorosity = 1d0    ! RWPT
+    doubleprecision :: uniformRetardation = 1d0 ! RWPT
   contains
     procedure :: ReadFileHeaders=>pr_ReadFileHeaders
     procedure :: ReadData=>pr_ReadData
@@ -65,6 +67,7 @@ module ModpathSimulationDataModule
     procedure :: ReadRWOPTSData=>pr_ReadRWOPTSData ! RWPT
     procedure :: ReadICData=>pr_ReadICData         ! RWPT
     procedure :: ReadBCData=>pr_ReadBCData         ! RWPT
+    procedure :: SetUniformPorosity=>pr_SetUniformPorosity ! RWPT
   end type
 
 
@@ -93,7 +96,28 @@ contains
     read(inUnit, '(a)') this%ListingFile
   
   end subroutine pr_ReadFileHeaders
+
+
+  ! Inform simulationData about uniform porosity
+  subroutine pr_SetUniformPorosity(this, basicData)
+    use ModpathBasicDataModule,only : ModpathBasicDataType
+    !--------------------------------------------------------------
+    ! Specifications
+    !--------------------------------------------------------------
+    implicit none
+    class(ModpathSimulationDataType) :: this
+    type(ModpathBasicDataType),intent(in) :: basicData
+    !--------------------------------------------------------------
  
+    this%isUniformPorosity = basicData%isUniformPorosity
+    if ( this%isUniformPorosity ) then 
+      ! Needs something to handle the case were ibound(1) != 0 ?
+      this%uniformPorosity = basicData%Porosity(1)
+    end if
+ 
+
+  end subroutine pr_SetUniformPorosity
+
 
   ! Read simulation data 
   subroutine pr_ReadData(this, inUnit, outUnit, ibound, timeDiscretization, grid)
@@ -555,7 +579,10 @@ contains
       end if
       ! RWPT
       ! Check if all cells have the same retardation factor
-      if (all(this%Retardation.eq.this%Retardation(1))) this%isUniformRetardation = .true.
+      if (all(this%Retardation.eq.this%Retardation(1))) then
+          this%isUniformRetardation = .true.
+          this%uniformRetardation = this%Retardation(1) 
+      end if
     else
       write(outUnit,'(/A)') 'The retardation factor for all cells = 1'
       do n = 1, grid%CellCount
@@ -673,7 +700,7 @@ contains
 
   ! Read specific GPKDE data
   subroutine pr_ReadGPKDEData( this, gpkdeFile, gpkdeUnit, outUnit )
-    use UTL8MODULE,only : urword
+    use UTL8MODULE,only : urword, ustop
     !--------------------------------------------------------------
     ! Specifications
     !--------------------------------------------------------------
@@ -746,7 +773,17 @@ contains
       this%TrackingOptions%gpkdeBinSize(2) = r
       call urword(line, icol, istart, istop, 3, n, r, 0, 0)
       this%TrackingOptions%gpkdeBinSize(3) = r
-    
+     
+      ! Health control
+      if ( any(this%TrackingOptions%gpkdeBinSize.lt.0d0) ) then 
+        write(outUnit,'(A)') 'One of the GPKDE binSizes is negative. They should be positive.'
+        call ustop('One of the GPKDE binSizes is negative. They should be positive. Stop.')
+      end if 
+
+      ! Set binVolume, cannot be zero
+      this%TrackingOptions%gpkdeBinVolume = product(&
+          this%TrackingOptions%gpkdeBinSize, mask=this%TrackingOptions%gpkdeBinSize.ne.0d0)
+
       ! Read nOptimizationLoops
       read(gpkdeUnit, '(a)') line
       icol = 1
@@ -801,7 +838,7 @@ contains
       icol = 1
       call urword(line, icol, istart, istop, 2, n, r, 0, 0)
       if (n.eq.0) then 
-        write(outUnit,'(A)') 'GPKDE output is expressed as smoothed total mass (phi*R*c_r).'
+        write(outUnit,'(A)') 'GPKDE output is expressed as smoothed total mass density.'
         this%TrackingOptions%gpkdeAsConcentration = .false.
       else
         ! If requested as resident concentration, 
@@ -811,6 +848,12 @@ contains
         if ( this%isUniformPorosity .and. this%isUniformRetardation ) then 
           write(outUnit,'(A)') 'Porosity and retardation are spatially uniform, GPKDE output is given as concentration.'
           this%TrackingOptions%gpkdeAsConcentration = .true.
+          this%TrackingOptions%gpkdeScalingFactor =&
+            1d0/(this%uniformPorosity*this%uniformRetardation*this%TrackingOptions%gpkdeBinVolume)
+        else
+          write(outUnit,'(A)') 'Porosity and retardation are NOT spatially uniform, GPKDE output is total mass density.'
+          this%TrackingOptions%gpkdeScalingFactor =&
+            1d0/(this%TrackingOptions%gpkdeBinVolume)
         end if
       end if
 
