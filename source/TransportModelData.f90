@@ -195,8 +195,8 @@ contains
 
         ! A single virtual solute storing the same 
         ! transport parameters for all pgroups
-        this%Solutes(1)%id = 0
-        this%Solutes(1)%stringid = 'SPC0' 
+        this%Solutes(1)%id = 1
+        this%Solutes(1)%stringid = 'SPC1'
 
         ! All pgroups to base solute 
         if ( allocated(this%Solutes(1)%pGroups) ) deallocate(this%Solutes(1)%pGroups)
@@ -228,8 +228,8 @@ contains
 
         ! A single virtual solute storing the same 
         ! transport parameters for all pgroups
-        this%Solutes(1)%id = 0
-        this%Solutes(1)%stringid = 'SPC0' 
+        this%Solutes(1)%id = 1
+        this%Solutes(1)%stringid = 'SPC1'
 
         ! All pgroups to base solute 
         if ( allocated(this%Solutes(1)%pGroups) ) deallocate(this%Solutes(1)%pGroups)

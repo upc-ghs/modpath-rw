@@ -528,7 +528,8 @@
           databaseOptimization=simulationData%TrackingOptions%gpkdeKernelDatabase, &
           minHOverLambda=simulationData%TrackingOptions%gpkdeKDBParams(1),         &
           deltaHOverLambda=simulationData%TrackingOptions%gpkdeKDBParams(2),       &
-          maxHOverLambda=simulationData%TrackingOptions%gpkdeKDBParams(3)          &
+          maxHOverLambda=simulationData%TrackingOptions%gpkdeKDBParams(3),         &
+          outFileName=mplistFile &
       )
       ! Initialize output unit/file
       open(unit=simulationData%TrackingOptions%gpkdeOutputUnit, &
@@ -982,6 +983,7 @@
               end if
             end do
           end do
+
 
           ! GPKDE
           ! Compute density for the particles linked to a given 
@@ -1474,6 +1476,9 @@
     ! Process observation cells for reconstruction
     if ( simulationData%TrackingOptions%observationSimulation ) then
 
+      write(mplistUnit, *) 
+      write(mplistUnit, '(A)') ' Postprocess OBS cells '
+      write(mplistUnit, '(A)') '-----------------------'
 
       ! If so, reset gpkde
       call ulog('Reset and reinitialize GPKDE for observation cells ', logUnit)
@@ -1492,6 +1497,9 @@
         ! If this is a normal obs cell
         if ( obs%style .eq. 1 ) then 
 
+          write(mplistUnit, *) 
+          write(mplistUnit, '(A,I3,A,I3)') 'OBS style 1, nobs ', nobs ,', sink obs id ', obs%id
+
           ! The length of the timeseries is needed
 
           ! This would work only for timeseries simulations
@@ -1508,16 +1516,7 @@
           ! run, hand craft a timeseries sim writing records
           ! at the specified times
 
-          ! Initialize gpkde for timeseries reconstruction
-          call gpkde%Initialize(& 
-              (/maxval(simulationData%TimePoints(:)),0d0,0d0/),                  &
-              (/dtObsSeries,0d0,0d0/),                                           &
-              domainOrigin=(/simulationData%ReferenceTime,0d0,0d0/),             &
-              nOptimizationLoops=simulationData%TrackingOptions%gpkdeNOptLoops,  &
-              databaseOptimization=.false.                                       &
-          )
-
-          ! Then read the observation file
+          ! Read the observation file
           ! and pass it to gpkde for reconstruction
       
           ! It needs some obs record count or something
@@ -1529,6 +1528,12 @@
             nlines = nlines + 1
           end do
 
+          ! If no records, don't even try
+          if ( nlines .eq. 0 ) then 
+            write(mplistUnit, '(A)') 'No records for this observation, continue to the next'
+            cycle ! nobs
+          end if
+
           ! Allocate active particles coordinates (temporary)
           if ( allocated( activeParticleCoordinates ) ) deallocate( activeParticleCoordinates )
           allocate( activeParticleCoordinates(nlines,2) )
@@ -1537,11 +1542,9 @@
           allocate( activeParticleMasses(nlines) )
           activeParticleMasses = 0d0
 
-
           ! It seems that the most reasonable 
           ! approach would be to read solute id
           ! from records. 
-
 
           ! Load file records into array
           rewind( obs%auxOutputUnit )
@@ -1564,7 +1567,20 @@
                 simulationData%ParticleGroups(groupIndex)%Particles(particleID)%Mass
           end do 
 
+
+          ! Initialize gpkde for timeseries reconstruction
+          call gpkde%Initialize(& 
+              (/maxval(simulationData%TimePoints(:)),0d0,0d0/),                  &
+              (/dtObsSeries,0d0,0d0/),                                           &
+              domainOrigin=(/simulationData%ReferenceTime,0d0,0d0/),             &
+              nOptimizationLoops=simulationData%TrackingOptions%gpkdeNOptLoops,  &
+              databaseOptimization=.false.,                                      &
+              outFileName=mplistFile &
+          )
+
+
           ! idColFormat for observations output
+          ! Should come from the obs input
           idColFormat = 2
 
           ! For storing the BTCS
@@ -1603,8 +1619,8 @@
               anyFromThisSolute = .false.
               do npg=1,solute%nParticleGroups
                 if (activeParticleCoordinates(n,2).eq.solute%pGroups(npg)) then 
-                    anyFromThisSolute = .true.
-                    exit
+                  anyFromThisSolute = .true.
+                  exit
                 end if
               end do
               if ( .not. anyFromThisSolute ) cycle
@@ -1703,6 +1719,9 @@
         ! If this is is a sink obs cell
         if ( obs%style .eq. 2 ) then 
 
+          write(mplistUnit, *) 
+          write(mplistUnit, '(A,I3,A,I3)') 'OBS style 2, nobs ', nobs ,', sink obs id ', obs%id
+
           ! The length of the timeseries is needed
 
           ! This would work only for timeseries simulations
@@ -1714,17 +1733,8 @@
           ! create an histogram based on stoptime for example 
           ! and given number of bins
 
-          ! Initialize gpkde for timeseries reconstruction
-          call gpkde%Initialize(& 
-              (/maxval(simulationData%TimePoints(:)),0d0,0d0/),                  &
-              (/dtObsSeries,0d0,0d0/),                                           &
-              domainOrigin=(/simulationData%ReferenceTime,0d0,0d0/),             &
-              nOptimizationLoops=simulationData%TrackingOptions%gpkdeNOptLoops,  &
-              databaseOptimization=.false.                                       &
-          )
-
-          ! Then read the observation file to extract arrival times
-          ! and pass it to gkde for reconstruction
+          ! Read the observation file to extract arrival times
+          ! and pass it to gpkde for reconstruction
       
           ! It needs some obs record count or something
           rewind( obs%outputUnit )
@@ -1735,8 +1745,13 @@
             nlines = nlines + 1
           end do
 
+          ! If no records, don't even try
+          if ( nlines .eq. 0 ) then 
+            write(mplistUnit, '(A)') 'No records for this observation, continue to the next'
+            cycle ! nobs
+          end if
 
-          ! Allocate active particles coordinates (temporary)
+          ! Allocate data carrier (active particles coordinates, temporary)
           if ( allocated( activeParticleCoordinates ) ) deallocate( activeParticleCoordinates )
           allocate( activeParticleCoordinates(nlines,2) )
           activeParticleCoordinates = 0d0
@@ -1763,7 +1778,22 @@
                 simulationData%ParticleGroups(groupIndex)%Particles(particleID)%Mass
           end do 
 
+
+          ! Initialize gpkde for timeseries reconstruction
+          call gpkde%Initialize(& 
+              (/maxval(simulationData%TimePoints(:)),0d0,0d0/),                  &
+              (/dtObsSeries,0d0,0d0/),                                           &
+              domainOrigin=(/simulationData%ReferenceTime,0d0,0d0/),             &
+              nOptimizationLoops=simulationData%TrackingOptions%gpkdeNOptLoops,  &
+              databaseOptimization=.false.,                                      &
+              outFileName=mplistFile     &
+          )
+
+
+
+
           ! idColFormat for observations output
+          ! Should come as input param
           idColFormat = 2
 
           ! For storign the BTCS
@@ -1904,6 +1934,11 @@
 
 
       end do ! obsLoop
+
+
+      write(mplistUnit, '(A)') ' Finished Postprocess OBS cells '
+      write(mplistUnit, '(A)') '--------------------------------'
+      write(mplistUnit,  *   ) 
 
 
     end if ! process obs cells 

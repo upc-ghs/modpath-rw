@@ -47,7 +47,7 @@ module ModpathSimulationDataModule
     logical            :: anyObservation =.false. ! RWPT
     integer            :: ParticlesMassOption     ! RWPT
     integer            :: SolutesOption           ! RWPT
-    logical            :: shouldUpdateDispersion  ! RWPT
+    logical            :: shouldUpdateDispersion = .false.  ! RWPT
     integer,dimension(:),allocatable :: BudgetCells
     integer,dimension(:),allocatable :: Zones
     doubleprecision,dimension(:),allocatable :: Retardation
