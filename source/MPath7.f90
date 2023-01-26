@@ -1406,6 +1406,7 @@
           end do
           write(qSinkFormat,*) '(1I10,', obs%nCells, 'es18.9e3)'
           write(obs%auxOutputUnit,qSinkFormat) nt, qSinkBuffer(:)
+          obs%nAuxRecords = obs%nAuxRecords + 1 ! Count aux records
         end do
 
     end if
@@ -1498,7 +1499,7 @@
         if ( obs%style .eq. 1 ) then 
 
           write(mplistUnit, *) 
-          write(mplistUnit, '(A,I3,A,I3)') 'OBS style 1, nobs ', nobs ,', sink obs id ', obs%id
+          write(mplistUnit, '(A,I3,A,I3)') 'OBS style 1, nobs ', nobs ,', obs id ', obs%id
 
           ! The length of the timeseries is needed
 
@@ -1727,6 +1728,10 @@
           write(mplistUnit, '(A,I3,A,I3)') 'OBS style 2, nobs ', nobs ,', sink obs id ', obs%id
 
           ! The length of the timeseries is needed
+          if ( size(simulationData%TimePoints) .lt. 2 ) then 
+            write(mplistUnit, '(A)') 'Not enough timepoints for processing this observation, continue to the next'
+            cycle ! nobs
+          end if
 
           ! This would work only for timeseries simulations
           dTObsSeries = simulationData%TimePoints(2)-simulationData%TimePoints(1)  ! binSize
@@ -1754,6 +1759,13 @@
             write(mplistUnit, '(A)') 'No records for this observation, continue to the next'
             cycle ! nobs
           end if
+
+          ! If no aux records, don't even try
+          if ( obs%nAuxRecords .lt. 2 ) then 
+            write(mplistUnit, '(A)') 'Not enough aux records for this observation, continue to the next'
+            cycle ! nobs
+          end if
+
 
           ! Allocate data carrier (active particles coordinates, temporary)
           if ( allocated( activeParticleCoordinates ) ) deallocate( activeParticleCoordinates )
@@ -1783,9 +1795,10 @@
           end do 
 
 
+
           ! Initialize gpkde for timeseries reconstruction
           call gpkde%Initialize(& 
-              (/maxval(simulationData%TimePoints(:)),0d0,0d0/),                  &
+              (/simulationData%TimePoints(obs%nAuxRecords),0d0,0d0/),            &
               (/dtObsSeries,0d0,0d0/),                                           &
               domainOrigin=(/simulationData%ReferenceTime,0d0,0d0/),             &
               nOptimizationLoops=simulationData%TrackingOptions%gpkdeNOptLoops,  &
@@ -1800,11 +1813,11 @@
 
           ! For storign the BTCS
           if (allocated(BTCPerSolute)) deallocate(BTCPerSolute)
-          allocate(BTCPerSolute(simulationData%TimePointCount, transportModelData%nSolutes))
+          allocate(BTCPerSolute(obs%nAuxRecords, transportModelData%nSolutes))
           BTCPerSolute = 0d0
           if (idColFormat.eq.2) then 
             if (allocated(BTCHistPerSolute)) deallocate(BTCHistPerSolute)
-            allocate(BTCHistPerSolute(simulationData%TimePointCount, transportModelData%nSolutes))
+            allocate(BTCHistPerSolute(obs%nAuxRecords, transportModelData%nSolutes))
           end if
           BTCHistPerSolute = 0d0
 
@@ -1860,12 +1873,12 @@
           if ( allocated(obsSinkFlowInTime) ) deallocate(obsSinkFlowInTime)
           ! With as many columns as cells
           ! composing the observation
-          allocate(obsSinkFlowInTime(simulationData%TimePointCount, obs%nCells))
+          allocate(obsSinkFlowInTime(obs%nAuxRecords, obs%nCells))
           obsSinkFlowInTime = 0d0
 
           ! Fill flow-rate timeseries for each cell
-          rewind( obs%auxOutputUnit ) 
-          do n =1, simulationData%TimePointCount
+          rewind( obs%auxOutputUnit )
+          do n =1, obs%nAuxRecords
             read(obs%auxOutputUnit,*) timeIndex, obsSinkFlowInTime( n, : )
           end do
 
@@ -1892,7 +1905,7 @@
             write (colFormat,*) '(1I8,',&
                 2 + transportModelData%nSolutes, 'es18.9e3)'
             ! And write
-            do nit = 1, simulationData%TimePointCount
+            do nit = 1, obs%nAuxRecords
                if ( obsAccumSinkFlowInTime(nit) .gt. 0d0 ) then 
                   ! idTime, time, QSink, CFlux-GPKDE(t,:)
                   write(obs%outputUnit, colFormat) nit, simulationData%TimePoints(nit), &
@@ -1910,7 +1923,7 @@
             write (colFormat,*) '(1I8,',&
                 2 + 2*transportModelData%nSolutes, 'es18.9e3)'
             ! And write
-            do nit = 1, simulationData%TimePointCount
+            do nit = 1, obs%nAuxRecords
                if ( obsAccumSinkFlowInTime(nit) .gt. 0d0 ) then 
                   ! idTime, time, QSink, CFlux-GPKDE(t,:), CFlux-HIST(t,:)
                   write(obs%outputUnit, colFormat) nit, simulationData%TimePoints(nit), &

@@ -8,6 +8,7 @@ module ObservationModule
     integer, allocatable, dimension(:) :: cells
     integer                            :: nCells
     integer, allocatable, dimension(:) :: nRecordsCell
+    integer                            :: nAuxRecords = 0
     integer                            :: id
     integer                            :: style
     integer                            :: cellOption
