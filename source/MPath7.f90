@@ -1482,14 +1482,7 @@
       write(mplistUnit, '(A)') '-----------------------'
 
       ! If so, reset gpkde
-      call ulog('Reset and reinitialize GPKDE for observation cells ', logUnit)
-      ! If it was allocated from spatial reconstruction
-      if( allocated( gpkde ) ) then 
-         call gpkde%Reset()
-      else
-         allocate( gpkde )
-      end if  
-
+      !call ulog('Reset and reinitialize GPKDE for observation cells ', logUnit)
 
       ! Loop over observations
       do nobs=1, simulationData%TrackingOptions%nObservations
@@ -1499,7 +1492,7 @@
         if ( obs%style .eq. 1 ) then 
 
           write(mplistUnit, *) 
-          write(mplistUnit, '(A,I3,A,I3)') 'OBS style 1, nobs ', nobs ,', obs id ', obs%id
+          write(mplistUnit, '(A,I3,A,I3)') 'Resident concentration OBS, nobs ', nobs ,', obs id ', obs%id
 
           ! The length of the timeseries is needed
 
@@ -1572,6 +1565,9 @@
                                               simulationData%Retardation(cellNumber)
           end do 
 
+          ! Allocate gpkde
+          if( allocated( gpkde ) ) deallocate(gpkde)
+          allocate( gpkde )
 
           ! Initialize gpkde for timeseries reconstruction
           call gpkde%Initialize(& 
@@ -1637,6 +1633,7 @@
             ! Timeseries reconstruction    
             call gpkde%ComputeDensity(   &
               gpkdeDataCarrier,          &
+              unitVolume        = .true.,&
               computeRawDensity = .true.,&
               weightedHistogram = .true.,&
               weights = gpkdeWeightsCarrier )
@@ -1714,8 +1711,8 @@
           end if 
 
 
-          ! And reset gpkde 
-          call gpkde%Reset()
+          ! Deallocate 
+          deallocate( gpkde )
 
 
         end if ! If obs%style.eq.1
@@ -1725,7 +1722,7 @@
         if ( obs%style .eq. 2 ) then 
 
           write(mplistUnit, *) 
-          write(mplistUnit, '(A,I3,A,I3)') 'OBS style 2, nobs ', nobs ,', sink obs id ', obs%id
+          write(mplistUnit, '(A,I3,A,I3)') 'Strong sink OBS, nobs ', nobs ,', obs id ', obs%id
 
           ! The length of the timeseries is needed
           if ( size(simulationData%TimePoints) .lt. 2 ) then 
@@ -1794,7 +1791,9 @@
                 simulationData%ParticleGroups(groupIndex)%Particles(particleID)%Mass
           end do 
 
-
+          ! Allocate gpkde
+          if( allocated( gpkde ) ) deallocate(gpkde)
+          allocate( gpkde )
 
           ! Initialize gpkde for timeseries reconstruction
           call gpkde%Initialize(& 
@@ -1940,10 +1939,12 @@
               continue
           end select 
 
-
+          ! RESET SEEMS TO NOT BE WORKING PROPERLY
           ! And reset gpkde 
-          call gpkde%Reset()
+          !call gpkde%Reset()
 
+          ! Deallocate 
+          deallocate( gpkde )
 
         end if ! If obs%style.eq.2
 
