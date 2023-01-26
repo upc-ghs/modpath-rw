@@ -1494,7 +1494,7 @@
       do nobs=1, simulationData%TrackingOptions%nObservations
         obs => simulationData%TrackingOptions%Observations(nobs)
 
-        ! If this is a normal obs cell
+        ! Observation cell of resident concentration 
         if ( obs%style .eq. 1 ) then 
 
           write(mplistUnit, *) 
@@ -1553,7 +1553,7 @@
               ! Based on TS record, it could be reduced 
               read( obs%auxOutputUnit, '(2I8,es18.9e3,i10,i5,2i10,6es18.9e3,i10)')          &
                 timePointIndex, timeStep, initialTime, sequenceNumber, groupIndex,  &
-                particleID, pCoord%CellNumber, pCoord%LocalX, pCoord%LocalY, pCoord%LocalZ, &
+                particleID, cellNumber, pCoord%LocalX, pCoord%LocalY, pCoord%LocalZ, &
                 modelX, modelY, pCoord%GlobalZ, pCoord%Layer
               ! Needs some kind of understanding of the particle group, and that it
               ! means another solute ( column? )
@@ -1563,8 +1563,12 @@
               ! A similar access could be used for getting soluteId from 
               ! the particle directly, avoiding the identification stage 
               ! coming further down
+
+              ! Particle mass corrected by retardation factor,
+              ! dissolved mass 
               activeParticleMasses(n) = &
-                simulationData%ParticleGroups(groupIndex)%Particles(particleID)%Mass
+              simulationData%ParticleGroups(groupIndex)%Particles(particleID)%Mass/&
+                                              simulationData%Retardation(cellNumber)
           end do 
 
 
@@ -1716,7 +1720,7 @@
         end if ! If obs%style.eq.1
 
 
-        ! If this is is a sink obs cell
+        ! Observation cell for strong sinks
         if ( obs%style .eq. 2 ) then 
 
           write(mplistUnit, *) 
@@ -1788,8 +1792,6 @@
               databaseOptimization=.false.,                                      &
               outFileName=mplistFile     &
           )
-
-
 
 
           ! idColFormat for observations output
