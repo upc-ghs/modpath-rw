@@ -62,6 +62,10 @@ module TrackSubCellModule
     logical :: moveY = .true.
     logical :: moveZ = .true.
 
+    ! Point towards trackingOptions
+    integer, dimension(:), pointer :: dimensions
+    integer, pointer :: nDim
+
   contains
     procedure,private :: CalculateDT=>pr_CalculateDT
     procedure,private :: NewXYZ=>pr_NewXYZ
@@ -442,7 +446,7 @@ contains
       !------------------------------------------------------------
       implicit none
       class(TrackSubCellType) :: this
-      type(ParticleTrackingOptionsType),intent(in) :: trackingOptions
+      type(ParticleTrackingOptionsType),intent(in), target :: trackingOptions
       !------------------------------------------------------------
       ! Specifications
       !------------------------------------------------------------
@@ -472,6 +476,8 @@ contains
       if ( trackingOptions%dimensionMask(2) .eq. 0 ) this%moveY = .false.
       if ( trackingOptions%dimensionMask(3) .eq. 0 ) this%moveZ = .false.
 
+      this%dimensions => trackingOptions%dimensions
+      this%nDim => trackingOptions%nDim
 
       ! Done
       return
@@ -528,6 +534,8 @@ contains
       doubleprecision, intent(inout) :: divDx, divDy, divDz  
       ! local
       doubleprecision :: alphaL, alphaT, dMEff
+      ! dev
+      integer :: nd, did
       !------------------------------------------------------------
       ! Specifications
       !------------------------------------------------------------
@@ -541,9 +549,46 @@ contains
       call this%DisplacementRandomDischarge( x, y, z, alphaL, alphaT, dMEff, dBx, dBy, dBz )
       call this%AdvectionDisplacement( x, y, z, dt, vx, vy, vz, dAdvx, dAdvy, dAdvz )
 
+      !do nd=1,this%nDim
+      !  did = this%disableDimensions(nd)
+      !  select case(did)
+      !    case(1)
+      !      dAdvx = 0
+      !      divDx = 0
+      !      dBx   = 0
+      !    case(2)
+      !      dAdvy = 0
+      !      divDy = 0
+      !      dBy   = 0
+      !    case(3)
+      !      dAdvz = 0
+      !      divDz = 0
+      !      dBz   = 0
+      !  end select
+      !end do
+
+
+      ! Another alternative/prototype
+      if ( .not. this%moveX ) then 
+          dAdvx = 0
+          divDx = 0
+          dBx   = 0
+      end if
+
+      if ( .not. this%moveY ) then 
+          dAdvy = 0
+          divDy = 0
+          dBy   = 0
+      end if
+
+      if ( .not. this%moveZ ) then 
+          dAdvz = 0
+          divDz = 0
+          dBz   = 0
+      end if
+
 
       return
-
 
   end subroutine pr_RWPTDisplacementsLinear
 
@@ -805,18 +850,24 @@ contains
 
           ! Improve elegance
           ! Vectorize coordinates maybe ?
-          if ( moveX ) then 
-            dxrw = dAdvx + divDx*dt + dBx*sqrt( dt )
-            nx   = x + dxrw/dx
-          end if
-          if ( moveY ) then 
-            dyrw = dAdvy + divDy*dt + dBy*sqrt( dt )
-            ny   = y + dyrw/dy
-          end if
-          if ( moveZ ) then 
-            dzrw = dAdvz + divDz*dt + dBz*sqrt( dt )
-            nz   = z + dzrw/dz
-          end if
+          dxrw = dAdvx + divDx*dt + dBx*sqrt( dt )
+          nx   = x + dxrw/dx
+          dyrw = dAdvy + divDy*dt + dBy*sqrt( dt )
+          ny   = y + dyrw/dy
+          dzrw = dAdvz + divDz*dt + dBz*sqrt( dt )
+          nz   = z + dzrw/dz
+          !if ( moveX ) then 
+          !  dxrw = dAdvx + divDx*dt + dBx*sqrt( dt )
+          !  nx   = x + dxrw/dx
+          !end if
+          !if ( moveY ) then 
+          !  dyrw = dAdvy + divDy*dt + dBy*sqrt( dt )
+          !  ny   = y + dyrw/dy
+          !end if
+          !if ( moveZ ) then 
+          !  dzrw = dAdvz + divDz*dt + dBz*sqrt( dt )
+          !  nz   = z + dzrw/dz
+          !end if
 
           ! particleLeavingCell:
           ! Detect if particle leaving the cell
@@ -867,6 +918,9 @@ contains
               ! Given new dt, recompute advection displacements
               call this%AdvectionDisplacement( x, y, z, dt, vx, vy, vz, & 
                                                     dAdvx, dAdvy, dAdvz )
+              if ( .not. this%moveX ) dAdvx = 0
+              if ( .not. this%moveY ) dAdvy = 0
+              if ( .not. this%moveZ ) dAdvz = 0
 
               ! If maximumTime was reached, but particle left
               ! the cell, then the condition is resetted
@@ -881,14 +935,18 @@ contains
                   nx   = 1.0d0
                   if ( exitFace .eq. 1 ) nx=0d0
 
-                  if ( moveY ) then 
-                    dyrw = dAdvy + divDy*dt + dBy*sqrt( dt )
-                    ny   = y + dyrw/dy
-                  end if
-                  if ( moveZ ) then
-                    dzrw = dAdvz + divDz*dt + dBz*sqrt( dt )
-                    nz   = z + dzrw/dz
-                  end if
+                  dyrw = dAdvy + divDy*dt + dBy*sqrt( dt )
+                  ny   = y + dyrw/dy
+                  dzrw = dAdvz + divDz*dt + dBz*sqrt( dt )
+                  nz   = z + dzrw/dz
+                  !if ( moveY ) then 
+                  !  dyrw = dAdvy + divDy*dt + dBy*sqrt( dt )
+                  !  ny   = y + dyrw/dy
+                  !end if
+                  !if ( moveZ ) then
+                  !  dzrw = dAdvz + divDz*dt + dBz*sqrt( dt )
+                  !  nz   = z + dzrw/dz
+                  !end if
                 ! Y Face
                 case(3,4)
                   if ( moveX ) then 
@@ -1128,9 +1186,17 @@ contains
                           call this%AdvectionDisplacement( x, y, z, dt, vx, vy, vz, dAdvx, dAdvy, dAdvz )
 
                           ! Recompute RWPT displacements for new dt
-                          if ( moveX ) dxrw = dAdvx + divDx*dt + dBx*sqrt( dt )
-                          if ( moveY ) dyrw = dAdvy + divDy*dt + dBy*sqrt( dt )
-                          if ( moveZ ) dzrw = dAdvz + divDz*dt + dBz*sqrt( dt )
+                          if ( .not. this%moveX ) dAdvx = 0
+                          if ( .not. this%moveY ) dAdvy = 0
+                          if ( .not. this%moveZ ) dAdvz = 0
+                          dxrw = dAdvx + divDx*dt + dBx*sqrt( dt )
+                          dyrw = dAdvy + divDy*dt + dBy*sqrt( dt )
+                          dzrw = dAdvz + divDz*dt + dBz*sqrt( dt )
+
+                          !! Recompute RWPT displacements for new dt
+                          !if ( moveX ) dxrw = dAdvx + divDx*dt + dBx*sqrt( dt )
+                          !if ( moveY ) dyrw = dAdvy + divDy*dt + dBy*sqrt( dt )
+                          !if ( moveZ ) dzrw = dAdvz + divDz*dt + dBz*sqrt( dt )
 
                           ! OLD
                           !dxrw = dAdvx + divDx*dt + dBx*sqrt( dt )
@@ -1151,19 +1217,28 @@ contains
                       select case ( exitFace )
                         ! X Face
                         case(1,2)
-                          if ( moveX ) nx = nx - dxrw/dx
-                          if ( moveY ) ny = ny + dyrw/dy
-                          if ( moveZ ) nz = nz + dzrw/dz
+                          nx = nx - dxrw/dx
+                          ny = ny + dyrw/dy
+                          nz = nz + dzrw/dz
+                          !if ( moveX ) nx = nx - dxrw/dx
+                          !if ( moveY ) ny = ny + dyrw/dy
+                          !if ( moveZ ) nz = nz + dzrw/dz
                         ! Y Face
                         case(3,4)
-                          if ( moveX ) nx = nx + dxrw/dx
-                          if ( moveY ) ny = ny - dyrw/dy
-                          if ( moveZ ) nz = nz + dzrw/dz
+                          nx = nx + dxrw/dx
+                          ny = ny - dyrw/dy
+                          nz = nz + dzrw/dz
+                          !if ( moveX ) nx = nx + dxrw/dx
+                          !if ( moveY ) ny = ny - dyrw/dy
+                          !if ( moveZ ) nz = nz + dzrw/dz
                         ! Z Face
                         case(5,6)
-                         if ( moveX ) nx = nx + dxrw/dx
-                         if ( moveY ) ny = ny + dyrw/dy
-                         if ( moveZ ) nz = nz - dzrw/dz
+                          nx = nx + dxrw/dx
+                          ny = ny + dyrw/dy
+                          nz = nz - dzrw/dz
+                         !if ( moveX ) nx = nx + dxrw/dx
+                         !if ( moveY ) ny = ny + dyrw/dy
+                         !if ( moveZ ) nz = nz - dzrw/dz
                        end select
 
                       ! OLD
@@ -1212,21 +1287,19 @@ contains
                           ! These are going to be used in determining 
                           ! time step and exact exit position at interface loop
                           if ( ( exitFace .eq. 1 ) .or. ( exitFace .eq. 2 ) ) then 
-                              vx    = -vx
-                              divDx = -divDx
-                              dBx   = -dBx
+                            vx    = -vx
+                            divDx = -divDx
+                            dBx   = -dBx
                           end if 
                           if ( ( exitFace .eq. 3 ) .or. ( exitFace .eq. 4 ) ) then 
-                              vy    = -vy
-                              divDy = -divDy
-                              dBy   = -dBy
+                            vy    = -vy
+                            divDy = -divDy
+                            dBy   = -dBy
                           end if
-                          if ( .not. twoDimensions ) then  
-                              if ( ( exitFace .eq. 5 ) .or. ( exitFace .eq. 6 ) ) then 
-                                  vz    = -vz
-                                  divDz = -divDz
-                                  dBz   = -dBz
-                              end if 
+                          if ( ( exitFace .eq. 5 ) .or. ( exitFace .eq. 6 ) ) then 
+                            vz    = -vz
+                            divDz = -divDz
+                             dBz   = -dBz
                           end if 
 
                           ! Go to: particleLeavingCell
@@ -1247,12 +1320,25 @@ contains
                               ( ny .eq. 0d0 ) .or. ( ny .eq. 1d0 ) .or. & 
                               ( nz .eq. 0d0 ) .or. ( nz .eq. 1d0 )      & 
                           ) then
-                              if ( nx .eq. 0d0 ) exitFace = 1 
-                              if ( nx .eq. 1d0 ) exitFace = 2
-                              if ( ny .eq. 0d0 ) exitFace = 3
-                              if ( ny .eq. 1d0 ) exitFace = 4
-                              if ( nz .eq. 0d0 ) exitFace = 5
-                              if ( nz .eq. 1d0 ) exitFace = 6
+                              if ( this%moveX ) then 
+                                if ( nx .eq. 0d0 ) exitFace = 1 
+                                if ( nx .eq. 1d0 ) exitFace = 2
+                              end if
+                              if ( this%moveY ) then 
+                                if ( ny .eq. 0d0 ) exitFace = 3
+                                if ( ny .eq. 1d0 ) exitFace = 4
+                              end if
+                              if ( this%moveZ ) then 
+                                if ( nz .eq. 0d0 ) exitFace = 5
+                                if ( nz .eq. 1d0 ) exitFace = 6
+                              end if
+
+                              !if ( nx .eq. 0d0 ) exitFace = 1 
+                              !if ( nx .eq. 1d0 ) exitFace = 2
+                              !if ( ny .eq. 0d0 ) exitFace = 3
+                              !if ( ny .eq. 1d0 ) exitFace = 4
+                              !if ( nz .eq. 0d0 ) exitFace = 5
+                              !if ( nz .eq. 1d0 ) exitFace = 6
                           end if
 
                       end if ! outsideInterfaces  
