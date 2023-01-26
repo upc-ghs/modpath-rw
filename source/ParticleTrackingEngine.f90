@@ -635,10 +635,12 @@ contains
           this%FlowModelData%Heads(cellNumber), cellType, this%FlowModelData%Zones(cellNumber),   &
                               this%TransportModelData%ICBound, this%TransportModelData%ICBoundTS  ) 
 
+
         ! If AlphaLong or AlphaTran are constants, then 
         ! it should handle said scenario to avoid unnecessary memory usage
         cellBuffer%alphaL = this%TransportModelData%AlphaLong(cellNumber)
         cellBuffer%alphaT = this%TransportModelData%AlphaTran(cellNumber)
+        cellBuffer%dMEff  = this%TransportModelData%DMEff(cellNumber)
         
 
         return
@@ -688,68 +690,49 @@ contains
 
 
     subroutine pr_FillTransportCellBufferStructured(this, cellNumber, cellBuffer)
-    !***************************************************************************************************************
-    !
-    !***************************************************************************************************************
+    !----------------------------------------------------------------------------
     ! Specifications
-    !---------------------------------------------------------------------------------------------------------------
+    !----------------------------------------------------------------------------
     implicit none
     class(ParticleTrackingEngineType) :: this
     integer,intent(in) :: cellNumber
     type(ModpathCellDataType),intent(inout) :: cellBuffer
     doubleprecision,dimension(6) :: boundaryFlows
-    !integer :: n, layer, boundaryFlowsOffset, gridType, cellType
-    !---------------------------------------------------------------------------------------------------------------
+    !----------------------------------------------------------------------------
    
+      call pr_FillCellBufferStructured(this, cellNumber, cellBuffer)
 
-        call pr_FillCellBufferStructured(this, cellNumber, cellBuffer)
+      ! If AlphaLong or AlphaTran are constants, then 
+      ! it should handle said scenario to avoid unnecessary memory usage
+      cellBuffer%alphaL = this%TransportModelData%AlphaLong(cellNumber)
+      cellBuffer%alphaT = this%TransportModelData%AlphaTran(cellNumber)
+      cellBuffer%dMEff  = this%TransportModelData%DMEff(cellNumber)
 
-        ! If AlphaLong or AlphaTran are constants, then 
-        ! it should handle said scenario to avoid unnecessary memory usage
-        cellBuffer%alphaL = this%TransportModelData%AlphaLong(cellNumber)
-        cellBuffer%alphaT = this%TransportModelData%AlphaTran(cellNumber)
-        
-        
-        !! Something to check whether or not this cell 
-        !! is observation and which one
-        !if ( this%TransportModelData%Observation(cellNumber) ) then 
-        !    continue
-        !end if 
-
-
-
-        return
-
+      return
 
     end subroutine pr_FillTransportCellBufferStructured
 
 
 
-
     subroutine pr_Reset(this)
-    !***************************************************************************************************************
-    !
-    !***************************************************************************************************************
-    !
+    !---------------------------------------------------------------
     ! Specifications
-    !---------------------------------------------------------------------------------------------------------------
+    !---------------------------------------------------------------
     implicit none
     class(ParticleTrackingEngineType) :: this
-    !---------------------------------------------------------------------------------------------------------------
-  
+    !---------------------------------------------------------------
 
-        this%Initialized = .false.
+      this%Initialized = .false.
 
-        ! Object pointers
-        this%Grid => null()
-        this%FlowModelData => null()
-        this%TransportModelData => null()
-        
-        ! Interfaces
-        this%FillNeighborCellData=>null()
-        this%FillCellBuffer=>null()
-        this%TrackPath=>null()
-
+      ! Object pointers
+      this%Grid => null()
+      this%FlowModelData => null()
+      this%TransportModelData => null()
+      
+      ! Interfaces
+      this%FillNeighborCellData=>null()
+      this%FillCellBuffer=>null()
+      this%TrackPath=>null()
 
     end subroutine pr_Reset
 

@@ -15,7 +15,7 @@ module ModpathSubCellDataModule
 
     !RWPT
     doubleprecision :: Porosity, Retardation
-    doubleprecision :: alphaL, alphaT
+    doubleprecision :: alphaL, alphaT, dMEff
     logical :: dry
     logical :: partiallyDry
     doubleprecision :: Head, Top, Bottom 

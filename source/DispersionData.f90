@@ -11,15 +11,14 @@ module DispersionDataModule
     ! 1: linear, 2: nonlinear
     integer            :: modelKind = 1
 
+    ! Ideally there is something to identify whether
+    ! parameters are distributed or not 
     ! Dispersivities for linear dispersion model
     doubleprecision,dimension(:),allocatable :: AlphaL
-    doubleprecision,dimension(:),allocatable :: AlphaTH
+    doubleprecision,dimension(:),allocatable :: AlphaTH ! AlphaTran is pointing HERE!
     doubleprecision,dimension(:),allocatable :: AlphaTV
-    ! Effective molecular diffusion, corrected by tortuosity,
-    ! in case is spatially distributed 
-    doubleprecision,dimension(:),allocatable :: DMEff
-    ! Ideally there is something to identify whether
-    ! effective molecular diffusion is distributed or not
+    doubleprecision,dimension(:),allocatable :: DMEff   ! Effective, corrected by tortuosity
+
 
     ! Parameters for nonlinear dispersion model 
     doubleprecision :: dmaqueous = 0d0
