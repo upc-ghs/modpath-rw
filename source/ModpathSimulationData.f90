@@ -1152,7 +1152,7 @@ contains
     ! local
     type(ParticleTrackingOptionsType), pointer :: trackingOptions
     integer :: isThisFileOpen = -1
-    integer :: icol,istart,istop,n,nd,currentDim
+    integer :: icol,istart,istop,n,nd,currentDim,dcount
     doubleprecision    :: r
     character(len=200) :: line
     integer, dimension(:), allocatable :: cellsPerLayer
@@ -1269,11 +1269,23 @@ contains
 
     ! Set nDim
     trackingOptions%nDim = sum(trackingOptions%dimensionMask)
-    if ( trackingOptions%nDim .eq. 0 ) then
+    if ( trackingOptions%nDim .le. 0 ) then
       ! No dimensions
       write(outUnit,'(A)') 'No dimensions were given for RW displacements at RWOPTS, nDim .eq. 0.'
       call ustop('No dimensions were given for RW displacements at RWOPTS, nDim .eq. 0. Stop.')
     end if 
+
+
+    ! Save dim mask into dimensions 
+    if ( allocated( trackingOptions%dimensions ) ) deallocate( trackingOptions%dimensions ) 
+    allocate( trackingOptions%dimensions( trackingOptions%nDim  ) )
+    dcount= 0
+    do nd = 1, 3
+      if ( trackingOptions%dimensionMask(nd) .eq. 0 ) cycle
+      dcount = dcount + 1 
+      trackingOptions%dimensions(dcount) = nd
+    end do 
+
 
     ! Detect idDim and report dimensions
     ! where displacements will be applied

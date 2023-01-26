@@ -24,10 +24,13 @@ module ParticleTrackingOptionsModule
     integer                       :: advectionKind
 
     ! RW displacements, defaults to 3D
-    integer, dimension(3)         :: dimensionMask = 1
-    integer                       :: nDim = 3
-    logical                       :: twoDimensions = .false.
-    integer                       :: idDim1, idDim2
+    integer, dimension(3)              :: dimensionMask = 1
+    integer                            :: nDim = 3
+    integer                            :: idDim1, idDim2
+    integer, dimension(:), allocatable :: dimensions
+    logical                            :: twoDimensions = .false. ! DEPRECATE
+    
+    
 
     ! Needed while initializing RWPT displacements
     integer                       :: dispersionModel
