@@ -780,9 +780,18 @@ contains
         call ustop('One of the GPKDE binSizes is negative. They should be positive. Stop.')
       end if 
 
+      if ( all(this%TrackingOptions%gpkdeBinSize.eq.0d0) ) then
+        ! No gpkde 
+        write(outUnit,'(A)') 'GPKDE binSizes are zero, will disable spatial reconstruction. They should be positive.'
+        write(outUnit,'(A)') 'GPKDE reconstruction is disabled'
+        this%TrackingOptions%GPKDEReconstruction = .false.
+        return
+      end if 
+
       ! Set binVolume, cannot be zero
       this%TrackingOptions%gpkdeBinVolume = product(&
           this%TrackingOptions%gpkdeBinSize, mask=this%TrackingOptions%gpkdeBinSize.ne.0d0)
+
 
       ! Read nOptimizationLoops
       read(gpkdeUnit, '(a)') line
