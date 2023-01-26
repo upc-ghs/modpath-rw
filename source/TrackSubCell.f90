@@ -16,17 +16,6 @@ module TrackSubCellModule
     type(ModpathSubCellDataType) :: SubCellData
 
     ! RWPT
-    ! DEPRECATION WARNING
-    ! vx, vy, vz, vnorm
-    doubleprecision, dimension(4) :: vCorner000
-    doubleprecision, dimension(4) :: vCorner100
-    doubleprecision, dimension(4) :: vCorner010
-    doubleprecision, dimension(4) :: vCorner110
-    doubleprecision, dimension(4) :: vCorner001
-    doubleprecision, dimension(4) :: vCorner101
-    doubleprecision, dimension(4) :: vCorner011
-    doubleprecision, dimension(4) :: vCorner111
-
     ! qx, qy, qz, qnorm
     doubleprecision, dimension(4) :: qCorner000
     doubleprecision, dimension(4) :: qCorner100
@@ -47,25 +36,31 @@ module TrackSubCellModule
     doubleprecision :: porosity011
     doubleprecision :: porosity111
 
+    ! Interpolation indexes !
     ! Corner discharge components indexes
     ! 8 corners, 3 subcell indexes, 1 face id
     integer, dimension(8,4) :: cornerXComponentIndexes, &
                                cornerYComponentIndexes, & 
                                cornerZComponentIndexes
-    
     ! Corner porosity sub cell indexes
     integer, dimension(8,6)  :: cornerPorosityIndexes ! 8 corners, 6 neighbor subcells
-
-    ! Prototype that might be used in production 
-    !doubleprecision, dimension(0:1,0:1,0:1) :: cornerPorosity
 
     ! RWPT Pointers
     procedure(Advection), pass, pointer :: AdvectionDisplacement=>null()
     procedure(ExitFaceAndTimeStep), pass, pointer :: ExitFaceAndUpdateTimeStep=>null()
     procedure(DispersionModel), pass, pointer :: ComputeRWPTDisplacements=>null()
 
-    ! OBS
+    ! Needed for OBS (?)
     type(TrackSubCellResultType) :: TrackSubCellResult
+
+    ! Flags to indicate whether or not 
+    ! to move particles on a given dimension
+    ! Probably temporary as a more elegant 
+    ! way to compute displacements for 
+    ! a given dimensionality is designed
+    logical :: moveX = .true.
+    logical :: moveY = .true.
+    logical :: moveZ = .true.
 
   contains
     procedure,private :: CalculateDT=>pr_CalculateDT
@@ -471,6 +466,13 @@ contains
       ! Should set dispersion model (linear vs nonlinear)
       call this%SetDispersionDisplacement( trackingOptions%dispersionModel )
 
+      ! Initialize displacement flags
+      ! Temporary (?)
+      if ( trackingOptions%dimensionMask(1) .eq. 0 ) this%moveX = .false.
+      if ( trackingOptions%dimensionMask(2) .eq. 0 ) this%moveY = .false.
+      if ( trackingOptions%dimensionMask(3) .eq. 0 ) this%moveZ = .false.
+
+
       ! Done
       return
 
@@ -647,6 +649,9 @@ contains
       doubleprecision, dimension(3) :: dtxyz
       integer :: dtLoopCounter, posRestartCounter
       integer :: reboundCounter, intLoopCounter
+      integer, dimension(:), pointer :: dimensions
+      integer, dimension(:), pointer :: dimmask
+      logical :: moveX, moveY, moveZ
       !------------------------------------------------------------
 
       ! Needs cleaning
@@ -719,11 +724,10 @@ contains
 
       end if 
 
-
+      ! In case somehing needs to be done 
+      ! for partially dry cells
       if ( this%SubCellData%partiallyDry ) then
-
           continue
-
       end if 
 
 
@@ -732,16 +736,21 @@ contains
       dyrw = 0d0
       dzrw = 0d0
 
+
       ! Initialize kind of domain solver
+      ! WILL BE DEPRECATED
       twoDimensions = trackingOptions%twoDimensions
 
 
       ! DIMENSION MASK
+      !dimmask => trackingOptions%dimensionMask
+      moveX = this%moveX  
+      moveY = this%moveY
+      moveZ = this%moveZ
 
 
       ! Compute time step for RWPT
       call this%ComputeRandomWalkTimeStep( trackingOptions, dt )
-
 
 
       ! Initializes current time
@@ -794,13 +803,19 @@ contains
                                      dBx, dBy, dBz, &
                                divDx, divDy, divDz  )
 
-          dxrw = dAdvx + divDx*dt + dBx*sqrt( dt )
-          nx   = x + dxrw/dx
-          dyrw = dAdvy + divDy*dt + dBy*sqrt( dt )
-          ny   = y + dyrw/dy
-          if ( .not. twoDimensions ) then 
-              dzrw = dAdvz + divDz*dt + dBz*sqrt( dt )
-              nz   = z + dzrw/dz
+          ! Improve elegance
+          ! Vectorize coordinates maybe ?
+          if ( moveX ) then 
+            dxrw = dAdvx + divDx*dt + dBx*sqrt( dt )
+            nx   = x + dxrw/dx
+          end if
+          if ( moveY ) then 
+            dyrw = dAdvy + divDy*dt + dBy*sqrt( dt )
+            ny   = y + dyrw/dy
+          end if
+          if ( moveZ ) then 
+            dzrw = dAdvz + divDz*dt + dBz*sqrt( dt )
+            nz   = z + dzrw/dz
           end if
 
           ! particleLeavingCell:
@@ -823,8 +838,7 @@ contains
                                        dBx, dBy, dBz, t, dt, dtxyz, exitFace )
 
               if ( intLoopCounter .gt. 3 ) then
-                  !print *, '######### RESTARTING', cellNumber, intLoopCounter
-                  !! Restart new coordinates 
+                  ! Restart new coordinates 
                   nx = initialLocation%LocalX
                   ny = initialLocation%LocalY
                   nz = initialLocation%LocalZ
@@ -861,63 +875,50 @@ contains
               end if
 
               ! Find new RWPT displacements
-              if ( ( exitFace .eq. 1 ) .or. ( exitFace .eq. 2 ) ) then
-                  dxrw = dAdvx + divDx*dt + dBx*sqrt( dt )
-                  !nx   = x + dxrw/dx
-                  !if ( exitFace .eq. 1 ) then 
-                  !    if ( abs( nx ) .lt. drwtol ) nx = 0d0 
-                  !else
-                  !    if ( abs( nx - 1d0 ) .lt. drwtol ) nx = 1d0 
-                  !end if 
+              select case (exitFace)
+                ! X Face
+                case(1,2)
                   nx   = 1.0d0
                   if ( exitFace .eq. 1 ) nx=0d0
-                  dyrw = dAdvy + divDy*dt + dBy*sqrt( dt )
-                  ny   = y + dyrw/dy
-                  if ( .not. twoDimensions ) then
-                      dzrw = dAdvz + divDz*dt + dBz*sqrt( dt )
-                      nz   = z + dzrw/dz
+
+                  if ( moveY ) then 
+                    dyrw = dAdvy + divDy*dt + dBy*sqrt( dt )
+                    ny   = y + dyrw/dy
                   end if
-              else if ( ( exitFace .eq. 3 ) .or. ( exitFace .eq. 4 ) ) then 
-                  dxrw = dAdvx + divDx*dt + dBx*sqrt( dt )
-                  nx   = x + dxrw/dx
-                  dyrw = dAdvy + divDy*dt + dBy*sqrt( dt )
-                  !ny   = y + dyrw/dy
-                  !if ( exitFace .eq. 3 ) then 
-                  !    if ( abs( ny ) .lt. drwtol ) ny = 0d0 
-                  !else
-                  !    if ( abs( ny - 1d0 ) .lt. drwtol ) ny = 1d0 
-                  !end if 
+                  if ( moveZ ) then
+                    dzrw = dAdvz + divDz*dt + dBz*sqrt( dt )
+                    nz   = z + dzrw/dz
+                  end if
+                ! Y Face
+                case(3,4)
+                  if ( moveX ) then 
+                    dxrw = dAdvx + divDx*dt + dBx*sqrt( dt )
+                    nx   = x + dxrw/dx
+                  end if
+
                   ny   = 1.0d0
                   if ( exitFace .eq. 3 ) ny=0d0
-                  if ( .not. twoDimensions ) then 
-                      dzrw = dAdvz + divDz*dt + dBz*sqrt( dt )
-                      nz   = z + dzrw/dz
+
+                  if ( moveZ ) then 
+                    dzrw = dAdvz + divDz*dt + dBz*sqrt( dt )
+                    nz   = z + dzrw/dz
                   end if
-              else if ( ( exitFace .eq. 5 ) .or. ( exitFace .eq. 6 ) ) then
-                  dxrw = dAdvx + divDx*dt + dBx*sqrt( dt )
-                  nx   = x + dxrw/dx
-                  dyrw = dAdvy + divDy*dt + dBy*sqrt( dt )
-                  ny   = y + dyrw/dy
-                  dzrw = dAdvz + divDz*dt + dBz*sqrt( dt )
-                  !nz   = z + dzrw/dz
-                  !if ( exitFace .eq. 5 ) then 
-                  !    if ( abs( nz ) .lt. drwtol ) nz = 0d0 
-                  !else
-                  !    if ( abs( nz - 1d0 ) .lt. drwtol ) nz = 1d0 
-                  !end if 
+                ! Z Face
+                case(5,6)
+                  if ( moveX ) then 
+                    dxrw = dAdvx + divDx*dt + dBx*sqrt( dt )
+                    nx   = x + dxrw/dx
+                  end if
+                  if ( moveY ) then 
+                    dyrw = dAdvy + divDy*dt + dBy*sqrt( dt )
+                    ny   = y + dyrw/dy
+                  end if
                   nz   = 1.0d0
                   if ( exitFace .eq. 5 ) nz=0d0
-              else
+                ! No exit
+                case(0)
+                  ! Fallback
                   ! If exitFace .eq. 0
-                  !print *, '######### RESTARTING EXIT FACE 0', cellNumber, intLoopCounter
-                  !print *, x, y, z
-                  !print *, nx, ny, nz
-                  !print *, dt, dtxyz
-                  !print *, dAdvx, dAdvy, dAdvz
-                  !print *, dBx, dBy, dBz
-                  !print *, divDx, divDy, divDz
-                  !call exit(0)
-
                   ! Restart new coordinates 
                   nx = initialLocation%LocalX
                   ny = initialLocation%LocalY
@@ -926,7 +927,6 @@ contains
                   t  = t - dt
                   dt = dtold
                   posRestartCounter = posRestartCounter + 1
-
                   if ( posRestartCounter .gt. 5 ) then 
                     ! Something wrong, leave
                     trackingResult%ExitFace = 0
@@ -938,11 +938,70 @@ contains
                     trackingResult%FinalLocation%TrackingTime = t
                     return
                   end if
-                  
+
                   ! Exit interface loop and try again,
                   ! new random displacements
                   exit
-              end if
+
+              end select
+
+              !! OLD
+              !if ( ( exitFace .eq. 1 ) .or. ( exitFace .eq. 2 ) ) then
+              !  nx   = 1.0d0
+              !  if ( exitFace .eq. 1 ) nx=0d0
+
+              !  dyrw = dAdvy + divDy*dt + dBy*sqrt( dt )
+              !  ny   = y + dyrw/dy
+              !  if ( .not. twoDimensions ) then 
+              !    dzrw = dAdvz + divDz*dt + dBz*sqrt( dt )
+              !    nz   = z + dzrw/dz
+              !  end if
+              !else if ( ( exitFace .eq. 3 ) .or. ( exitFace .eq. 4 ) ) then 
+              !    dxrw = dAdvx + divDx*dt + dBx*sqrt( dt )
+              !    nx   = x + dxrw/dx
+              !    dyrw = dAdvy + divDy*dt + dBy*sqrt( dt )
+              !    ny   = 1.0d0
+              !    if ( exitFace .eq. 3 ) ny=0d0
+              !    if ( .not. twoDimensions ) then 
+              !        dzrw = dAdvz + divDz*dt + dBz*sqrt( dt )
+              !        nz   = z + dzrw/dz
+              !    end if
+              !else if ( ( exitFace .eq. 5 ) .or. ( exitFace .eq. 6 ) ) then
+              !    dxrw = dAdvx + divDx*dt + dBx*sqrt( dt )
+              !    nx   = x + dxrw/dx
+              !    dyrw = dAdvy + divDy*dt + dBy*sqrt( dt )
+              !    ny   = y + dyrw/dy
+              !    dzrw = dAdvz + divDz*dt + dBz*sqrt( dt )
+              !    nz   = 1.0d0
+              !    if ( exitFace .eq. 5 ) nz=0d0
+              !else
+              !    ! Fallback
+              !    ! If exitFace .eq. 0
+              !    ! Restart new coordinates 
+              !    nx = initialLocation%LocalX
+              !    ny = initialLocation%LocalY
+              !    nz = initialLocation%LocalZ
+              !    ! Restart time 
+              !    t  = t - dt
+              !    dt = dtold
+              !    posRestartCounter = posRestartCounter + 1
+
+              !    if ( posRestartCounter .gt. 5 ) then 
+              !      ! Something wrong, leave
+              !      trackingResult%ExitFace = 0
+              !      trackingResult%Status = trackingResult%Status_Undefined()
+              !      trackingResult%FinalLocation%CellNumber = cellNumber
+              !      trackingResult%FinalLocation%LocalX = x
+              !      trackingResult%FinalLocation%LocalY = y
+              !      trackingResult%FinalLocation%LocalZ = z
+              !      trackingResult%FinalLocation%TrackingTime = t
+              !      return
+              !    end if
+              !    
+              !    ! Exit interface loop and try again,
+              !    ! new random displacements
+              !    exit
+              !end if
              
 
               ! Think how to integrate these conditions into single 
@@ -972,28 +1031,24 @@ contains
                   ! Boundary conditions
                   ! Logic should be: 
                   ! Is there an interface and which kind
-
-
                   ! At this point, program already 
                   ! found an exitFace
-
                   ! By default, if a cell is not active from 
                   ! the flow model data, 
                   
 
+                  ! Consider a flag indicating whether the
+                  ! center is connected to ANY rebound boundary 
+
 
                   ! elasticRebound:
-                  !
                   ! Verify if particle has to rebound 
-                  ! against boundary face 
-                  !
-                  ! note: one of the possible outputs
+                  ! against boundary face.
+                  ! Note: one of the possible outputs
                   ! from a reboundBoundary relies on 
                   ! the interface processing 
                   ! being inside the interface detection loop
                   reboundCounter = 0
-
-                  ! could be redundant 
                   do while( ( exitFace .gt. 0 ) )
 
                       ! If not connected to rebound boundary cell, leave
@@ -1073,45 +1128,69 @@ contains
                           call this%AdvectionDisplacement( x, y, z, dt, vx, vy, vz, dAdvx, dAdvy, dAdvz )
 
                           ! Recompute RWPT displacements for new dt
-                          dxrw = dAdvx + divDx*dt + dBx*sqrt( dt )
-                          dyrw = dAdvy + divDy*dt + dBy*sqrt( dt )
-                          if ( .not. twoDimensions ) then 
-                              dzrw = dAdvz + divDz*dt + dBz*sqrt( dt )
-                          end if
+                          if ( moveX ) dxrw = dAdvx + divDx*dt + dBx*sqrt( dt )
+                          if ( moveY ) dyrw = dAdvy + divDy*dt + dBy*sqrt( dt )
+                          if ( moveZ ) dzrw = dAdvz + divDz*dt + dBz*sqrt( dt )
+
+                          ! OLD
+                          !dxrw = dAdvx + divDx*dt + dBx*sqrt( dt )
+                          !dyrw = dAdvy + divDy*dt + dBy*sqrt( dt )
+                          !if ( .not. twoDimensions ) then 
+                          !    dzrw = dAdvz + divDz*dt + dBz*sqrt( dt )
+                          !end if
+
 
                           ! If particle lands outside cell, 
                           ! entering interface loop will modify
                           ! reachedMaximumTime back to .false.
                           !exitFace = 0 ! It is used later so dont' reset yet
 
-
                       end if ! maximumTime 
 
-
                       ! Particle rebounds with elastic reflection
-                      if ( ( exitFace .eq. 1 ) .or. ( exitFace .eq. 2 ) ) then 
-                         ! x-direction
-                         nx = nx - dxrw/dx
-                         !nx = x
-                         ny = ny + dyrw/dy
-                         if ( .not. twoDimensions ) then
-                             nz = nz + dzrw/dz
-                         end if
-                      else if ( ( exitFace .eq. 3 ) .or. ( exitFace .eq. 4 ) ) then 
-                         ! y-direction
-                         nx = nx + dxrw/dx
-                         ny = ny - dyrw/dy
-                         !ny = y
-                         if ( .not. twoDimensions ) then
-                             nz = nz + dzrw/dz
-                         end if
-                      else
-                         ! z-direction
-                         nx = nx + dxrw/dx
-                         ny = ny + dyrw/dy
-                         nz = nz - dzrw/dz
-                         !nz = z
-                      end if
+                      select case ( exitFace )
+                        ! X Face
+                        case(1,2)
+                          if ( moveX ) nx = nx - dxrw/dx
+                          if ( moveY ) ny = ny + dyrw/dy
+                          if ( moveZ ) nz = nz + dzrw/dz
+                        ! Y Face
+                        case(3,4)
+                          if ( moveX ) nx = nx + dxrw/dx
+                          if ( moveY ) ny = ny - dyrw/dy
+                          if ( moveZ ) nz = nz + dzrw/dz
+                        ! Z Face
+                        case(5,6)
+                         if ( moveX ) nx = nx + dxrw/dx
+                         if ( moveY ) ny = ny + dyrw/dy
+                         if ( moveZ ) nz = nz - dzrw/dz
+                       end select
+
+                      ! OLD
+                      !! Particle rebounds with elastic reflection
+                      !if ( ( exitFace .eq. 1 ) .or. ( exitFace .eq. 2 ) ) then 
+                      !   ! x-direction
+                      !   nx = nx - dxrw/dx
+                      !   !nx = x
+                      !   ny = ny + dyrw/dy
+                      !   if ( .not. twoDimensions ) then
+                      !       nz = nz + dzrw/dz
+                      !   end if
+                      !else if ( ( exitFace .eq. 3 ) .or. ( exitFace .eq. 4 ) ) then 
+                      !   ! y-direction
+                      !   nx = nx + dxrw/dx
+                      !   ny = ny - dyrw/dy
+                      !   !ny = y
+                      !   if ( .not. twoDimensions ) then
+                      !       nz = nz + dzrw/dz
+                      !   end if
+                      !else
+                      !   ! z-direction
+                      !   nx = nx + dxrw/dx
+                      !   ny = ny + dyrw/dy
+                      !   nz = nz - dzrw/dz
+                      !   !nz = z
+                      !end if
 
 
                       ! If nx, ny or nz are outside cell interfaces, 
@@ -1162,21 +1241,18 @@ contains
                           exitFace = 0
 
                           ! If one of the positions is exactly an interface
+                          ! Not the most beautiful way
                           if (                                          & 
                               ( nx .eq. 0d0 ) .or. ( nx .eq. 1d0 ) .or. & 
                               ( ny .eq. 0d0 ) .or. ( ny .eq. 1d0 ) .or. & 
                               ( nz .eq. 0d0 ) .or. ( nz .eq. 1d0 )      & 
                           ) then
-
                               if ( nx .eq. 0d0 ) exitFace = 1 
-                              if ( nx .eq. 1d0 ) exitFace = 2 
+                              if ( nx .eq. 1d0 ) exitFace = 2
                               if ( ny .eq. 0d0 ) exitFace = 3
                               if ( ny .eq. 1d0 ) exitFace = 4
-                              if ( .not. twoDimensions ) then 
-                                if ( nz .eq. 0d0 ) exitFace = 5
-                                if ( nz .eq. 1d0 ) exitFace = 6
-                              end if
-
+                              if ( nz .eq. 0d0 ) exitFace = 5
+                              if ( nz .eq. 1d0 ) exitFace = 6
                           end if
 
                       end if ! outsideInterfaces  
@@ -1253,6 +1329,89 @@ contains
   end subroutine pr_ExecuteRandomWalkParticleTracking
 
 
+  ! RWPT
+  subroutine pr_ComputeRandomWalkTimeStep( this, trackingOptions, dt )
+      !----------------------------------------------------------------
+      ! From user defined options and cell properties, 
+      ! compute time step  
+      ! 
+      ! Params:
+      !     - trackingOptions : simulation options
+      !     - dt              : time step, output
+      !----------------------------------------------------------------
+      ! Specifications
+      !----------------------------------------------------------------
+      implicit none
+      class (TrackSubCellType) :: this
+      ! input
+      type(ParticleTrackingOptionsType),intent(in) :: trackingOptions
+      ! output
+      doubleprecision, intent(inout) :: dt
+      ! local
+      doubleprecision :: vx1, vx2, vy1, vy2, vz1, vz2 
+      doubleprecision :: dx, dy, dz
+      doubleprecision :: alphaL, alphaT
+      doubleprecision, dimension(2) :: dts
+      !----------------------------------------------------------------
+
+      ! Initialize
+      dts(:) = 0d0
+
+      ! Make local copies of face velocities for convenience
+      vx1 = this%SubCellData%VX1
+      vx2 = this%SubCellData%VX2
+      vy1 = this%SubCellData%VY1
+      vy2 = this%SubCellData%VY2
+      vz1 = this%SubCellData%VZ1
+      vz2 = this%SubCellData%VZ2
+   
+      ! Local copies of cell size
+      dx = this%SubCellData%DX
+      dy = this%SubCellData%DY
+      dz = this%SubCellData%DZ
+
+      ! Local copies of dispersivities 
+      alphaL = this%SubCellData%alphaL
+      alphaT = this%SubCellData%alphaT
+
+      ! Compute time step
+      select case (trackingOptions%timeStepKind)
+        case (1)
+          ! Advection criteria
+          dt = trackingOptions%timeStepParameters(1)/( &
+              max(abs(vx1), abs(vx2))/dx +             &
+              max(abs(vy1), abs(vy2))/dy +             &
+              max(abs(vz1), abs(vz2))/dz )
+        case (2)
+          ! Dispersion criteria
+          ! dt = c_T dx**2/D
+          dt = trackingOptions%timeStepParameters(2)/(        &
+                   alphaL*max(abs(vx1), abs(vx2))/( dx**2 ) + & 
+                   alphaT*max(abs(vy1), abs(vy2))/( dy**2 ) + &
+                   alphaT*max(abs(vz1), abs(vz2))/( dz**2 ) )
+        case (3)
+          ! Advection condition
+          ! dt = CFL dx / v 
+          dts(1) = trackingOptions%timeStepParameters(1)/( & 
+              max(abs(vx1), abs(vx2))/dx +                 &
+              max(abs(vy1), abs(vy2))/dy +                 &
+              max(abs(vz1), abs(vz2))/dz )
+          ! Dispersion condition
+          ! dt = c_T dx**2/D
+          dts(2) = trackingOptions%timeStepParameters(2)/(    &
+                   alphaL*max(abs(vx1), abs(vx2))/( dx**2 ) + & 
+                   alphaT*max(abs(vy1), abs(vy2))/( dy**2 ) + &
+                   alphaT*max(abs(vz1), abs(vz2))/( dz**2 ) )
+          ! Compute minimum
+          dt     = minval( dts, dts > 0 )
+        case (4)
+          ! Fixed
+          dt = trackingOptions%timeStepParameters(1)
+      end select
+
+
+  end subroutine pr_ComputeRandomWalkTimeStep
+
 
   ! RWPT
   subroutine pr_LinearInterpolationVelocities( this, x, y, z, vx, vy, vz )
@@ -1277,6 +1436,22 @@ contains
       vx = ( 1.0d0 - x )*this%SubCellData%vx1 + x*this%SubCellData%vx2
       vy = ( 1.0d0 - y )*this%SubCellData%vy1 + y*this%SubCellData%vy2
       vz = ( 1.0d0 - z )*this%SubCellData%vz1 + z*this%SubCellData%vz2
+
+      ! Imagine dimmask is received
+      ! or dimensions. 
+      ! vvec ! velocities
+      ! cvec ! coordinates
+      ! do nd = 1, nDim
+      !   did = dimensions(nd)
+      !   select case( did )
+      !    case (1)
+      !     vvec(did) = (1.0d0 - cvec(1) )*this%SubCellData%vx1 + cvec(1)*this%SubCellData%vx2
+      !    case (2)
+      !     vvec(did) = (1.0d0 - cvec(2) )*this%SubCellData%vy1 + cvec(2)*this%SubCellData%vy2
+      !    case (3)
+      !     vvec(did) = (1.0d0 - cvec(3) )*this%SubCellData%vz1 + cvec(3)*this%SubCellData%vz2
+      !   end select
+      ! end if
 
   end subroutine pr_LinearInterpolationVelocities
 
@@ -1369,88 +1544,11 @@ contains
       ! z
       dAdvz = vz*dt
 
+      ! Prototype
+      !dAdv = vVec*dt
+
   end subroutine pr_AdvectionDisplacementEulerian
 
-
-  ! RWPT
-  subroutine pr_ComputeRandomWalkTimeStep( this, trackingOptions, dt )
-      !----------------------------------------------------------------
-      ! From user defined options and cell properties, 
-      ! compute time step  
-      ! 
-      ! Params:
-      !     - trackingOptions : simulation options
-      !     - dt              : time step, output
-      !----------------------------------------------------------------
-      ! Specifications
-      !----------------------------------------------------------------
-      implicit none
-      class (TrackSubCellType) :: this
-      ! input
-      type(ParticleTrackingOptionsType),intent(in) :: trackingOptions
-      ! output
-      doubleprecision, intent(inout) :: dt
-      ! local
-      doubleprecision :: vx1, vx2, vy1, vy2, vz1, vz2 
-      doubleprecision :: dx, dy, dz
-      doubleprecision :: alphaL, alphaT
-      doubleprecision, dimension(2) :: dts
-      !----------------------------------------------------------------
-
-      ! Initialize
-      dts(:) = 0d0
-
-      ! Make local copies of face velocities for convenience
-      vx1 = this%SubCellData%VX1
-      vx2 = this%SubCellData%VX2
-      vy1 = this%SubCellData%VY1
-      vy2 = this%SubCellData%VY2
-      vz1 = this%SubCellData%VZ1
-      vz2 = this%SubCellData%VZ2
-   
-      ! Local copies of cell size
-      dx = this%SubCellData%DX
-      dy = this%SubCellData%DY
-      dz = this%SubCellData%DZ
-
-      ! Local copies of dispersivities 
-      alphaL = this%SubCellData%alphaL
-      alphaT = this%SubCellData%alphaT
-
-      ! Compute time step
-      select case (trackingOptions%timeStepKind)
-          case (1)
-              ! Fix Courant 
-              dt = trackingOptions%timeStepParameters(1)/( &
-                  max(abs(vx1), abs(vx2))/dx +             &
-                  max(abs(vy1), abs(vy2))/dy +             &
-                  max(abs(vz1), abs(vz2))/dz )
-          case (2)
-              ! Dispersion condition 
-              ! dt = c_T dx**2/D
-              dt = trackingOptions%timeStepParameters(2)/(        &
-                       alphaL*max(abs(vx1), abs(vx2))/( dx**2 ) + & 
-                       alphaT*max(abs(vy1), abs(vy2))/( dy**2 ) + &
-                       alphaT*max(abs(vz1), abs(vz2))/( dz**2 ) )
-          case (3)
-              ! Advection condition
-              ! dt = CFL dx / v 
-              dts(1) = trackingOptions%timeStepParameters(1)/( & 
-                  max(abs(vx1), abs(vx2))/dx +                 &
-                  max(abs(vy1), abs(vy2))/dy +                 &
-                  max(abs(vz1), abs(vz2))/dz )
-              ! Dispersion condition
-              ! dt = c_T dx**2/D
-              dts(2) = trackingOptions%timeStepParameters(2)/(    &
-                       alphaL*max(abs(vx1), abs(vx2))/( dx**2 ) + & 
-                       alphaT*max(abs(vy1), abs(vy2))/( dy**2 ) + &
-                       alphaT*max(abs(vz1), abs(vz2))/( dz**2 ) )
-              ! Compute minimum
-              dt     = minval( dts, dts > 0 )
-      end select
-
-
-  end subroutine pr_ComputeRandomWalkTimeStep
 
 
   ! RWPT
@@ -1778,7 +1876,7 @@ contains
   end subroutine pr_DetectExitFaceAndUpdateTimeStepQuadratic
 
 
-
+  ! NEEDS UPDATE
   subroutine pr_DetectExitFaceAndUpdateTimeStepNewton( this, x, y, z, nx, ny, nz, & 
             vx, vy, vz, divDx, divDy, divDz, dBx, dBy, dBz, t, dt, dtxyz, exitFace )
       !----------------------------------------------------------------
@@ -2590,11 +2688,9 @@ contains
       p011 = this%porosity011
       p111 = this%porosity111
 
+      ! Is there a more elegant way ? 
 
-      ! SOMETHING MORE ELEGANT !
-
-
-      ! Direction, coordinates, corner values
+      ! For X displacement
       D000 = p000*dMEff
       D100 = p100*dMEff
       D010 = p010*dMEff
@@ -2611,7 +2707,6 @@ contains
       if( v101(4) .gt. 0d0 ) D101 = ( alphaT*v101(4) + p101*dMEff ) + ( alphaL - alphaT )*v101(1)**2/v101(4)
       if( v011(4) .gt. 0d0 ) D011 = ( alphaT*v011(4) + p011*dMEff ) + ( alphaL - alphaT )*v011(1)**2/v011(4)
       if( v111(4) .gt. 0d0 ) D111 = ( alphaT*v111(4) + p111*dMEff ) + ( alphaL - alphaT )*v111(1)**2/v111(4)
-
       call this%TrilinearDerivative( 1, x, y, z, &
                 D000, & 
                 D100, &
@@ -2622,6 +2717,7 @@ contains
                 D011, &
                 D111, &
                 dDxxdx )
+      ! For Y displacement
       D000 = p000*dMEff
       D100 = p100*dMEff
       D010 = p010*dMEff
@@ -2648,6 +2744,7 @@ contains
                 D011, &
                 D111, &
                 dDyydy )
+      ! For Z displacement
       D000 = p000*dMEff
       D100 = p100*dMEff
       D010 = p010*dMEff
@@ -2674,8 +2771,7 @@ contains
                 D011, &
                 D111, &
                 dDzzdz )
-
-
+      ! For Y displacement
       D000 = 0d0
       D100 = 0d0
       D010 = 0d0
@@ -2702,6 +2798,7 @@ contains
                 D011, &
                 D111, &
                 dDxydx )
+      ! For Z displacement
       D000 = 0d0
       D100 = 0d0
       D010 = 0d0
@@ -2728,6 +2825,7 @@ contains
                 D011, &
                 D111, &
                 dDxzdx )
+      ! For X displacement
       D000 = 0d0
       D100 = 0d0
       D010 = 0d0
@@ -2754,6 +2852,7 @@ contains
                 D011, &
                 D111, &
                 dDxydy )
+      ! For Z displacement
       D000 = 0d0
       D100 = 0d0
       D010 = 0d0
@@ -2780,6 +2879,7 @@ contains
                 D011, &
                 D111, &
                 dDyzdy )
+      ! For X displacement
       D000 = 0d0
       D100 = 0d0
       D010 = 0d0
@@ -2806,6 +2906,7 @@ contains
                 D011, &
                 D111, &
                 dDxzdz )
+      ! For Y displacement
       D000 = 0d0
       D100 = 0d0
       D010 = 0d0
@@ -2926,7 +3027,6 @@ contains
       B23 = 0d0
       B31 = 0d0
       B32 = 0d0
-
       if ( vBnorm .gt. 0d0 ) then
 
           B11 =       vBx*sqrt( 2*( alphaL*vBnorm + dMEff )/RFactor )/vBnorm
