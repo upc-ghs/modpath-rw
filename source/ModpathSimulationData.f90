@@ -1411,7 +1411,7 @@ contains
     inquire( file=icFile, number=isThisFileOpen )
     if ( isThisFileOpen .lt. 0 ) then 
       ! No ic 
-      write(outUnit,'(A)') 'No IC package for the RW simulation was specified.'
+      write(outUnit,'(A)') 'IC package was not specified in name file.'
       return
     end if
 
