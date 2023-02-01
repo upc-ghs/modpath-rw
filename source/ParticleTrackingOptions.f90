@@ -1,5 +1,6 @@
 module ParticleTrackingOptionsModule
   use ObservationModule, only : ObservationType
+  use BoundaryConditionsModule, only : PrescribedType
   implicit none
   
 ! Set default access status to private
@@ -30,18 +31,8 @@ module ParticleTrackingOptionsModule
     integer, dimension(:), allocatable :: dimensions
     logical                            :: twoDimensions = .false. ! DEPRECATE
     
-    
-
     ! Needed while initializing RWPT displacements
-    integer                       :: dispersionModel
-
-
-    ! DEPRECATION WARNNING
-    ! NONLINEAR DISPERSION RWPT (TEMP)
-    doubleprecision :: betaTrans, betaLong
-    doubleprecision :: mediumDistance, mediumDelta
-    doubleprecision :: Dmol = 0d0
-    ! DEPRECATION WARNING
+    integer :: dispersionModel
 
 
     ! GPKDE
@@ -73,13 +64,29 @@ module ParticleTrackingOptionsModule
     logical :: anySinkObservation = .false.
     type( ObservationType ), allocatable, dimension(:) :: Observations
 
+    ! Prescribed concentration boundaries
+    type( PrescribedType ), allocatable, dimension(:) :: PrescribedBoundaries
+    logical, allocatable, dimension(:) :: isPrescribed
+    integer, allocatable, dimension(:) :: idPrescribed
+    integer :: nPrescribed
+    integer :: npcs
+
+    ! DEPRECATION WARNNING
+    ! NONLINEAR DISPERSION RWPT (TEMP)
+    doubleprecision :: betaTrans, betaLong
+    doubleprecision :: mediumDistance, mediumDelta
+    doubleprecision :: Dmol = 0d0
+    ! DEPRECATION WARNING
 
   contains
 
      procedure :: Reset=>pr_Reset
+
+     ! Observations
      procedure :: InitializeObservations=>pr_InitializeObservations 
      procedure :: IdObservationCell=>pr_IdObservationCell
-
+     ! Prescribed boundaries
+     procedure :: InitializePrescribedBoundaries=>pr_InitializePrescribedBoundaries 
   end type
   
 contains
@@ -169,6 +176,28 @@ contains
       return 
 
   end function pr_IdObservationCell 
+
+
+  ! TEMPORARY, find a better place
+  subroutine pr_InitializePrescribedBoundaries( this, nPrescribed )
+    !-----------------------------------------------------
+    ! Initialize observation cells data
+    !-----------------------------------------------------
+    ! Specifications
+    !-----------------------------------------------------
+    implicit none
+    class(ParticleTrackingOptionsType) :: this
+    ! input
+    integer, intent(in) :: nPrescribed
+    integer :: n 
+    !-------------------------
+
+    ! Allocate observation files arrays
+    this%nPrescribed = nPrescribed
+
+    allocate(this%PrescribedBoundaries(nPrescribed))
+
+  end subroutine pr_InitializePrescribedBoundaries
 
 
 end module ParticleTrackingOptionsModule

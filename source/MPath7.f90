@@ -57,6 +57,7 @@
     use SoluteModule, only : SoluteType ! RWPT
     use ObservationModule, only : ObservationType ! OBS
     use GridProjectedKDEModule, only : GridProjectedKDEType ! GPKDE
+    use BoundaryConditionsModule, only : PrescribedType ! BC's
     use omp_lib ! OpenMP
     !--------------------------------------------------------------------------
     implicit none
@@ -124,7 +125,7 @@
     doubleprecision, dimension(:,:), allocatable :: gpkdeDataCarrier
     doubleprecision, dimension(:), allocatable :: gpkdeWeightsCarrier
 
-    ! OBSERVATIONS
+    ! Observations
     integer :: nlines, io, irow, krow, nobs, nit, countTS, nTimesHigher, cellNumber 
     integer :: baserow, lastrow, srow, timeIndex, solCount
     doubleprecision :: dTObsSeries
@@ -143,6 +144,12 @@
     doubleprecision, allocatable, dimension(:,:) :: BTCPerSolute
     doubleprecision, allocatable, dimension(:,:) :: BTCHistPerSolute
     logical :: anyFromThisSolute = .false.
+
+
+    ! Boundary conditions
+    integer :: npcb
+    type( PrescribedType ), pointer :: pcb => null()
+
 
     ! Parallel variables
     integer :: ompNumThreads
@@ -452,15 +459,17 @@
       call simulationData%ReadICData( icFile, icUnit, mpListUnit, modelGrid, basicData%Porosity )
 
       call ulog('Read specific BC simulation data.', logUnit)
-      call simulationData%ReadBCData( bcFile, bcUnit, mpListUnit, modelGrid )
+      call simulationData%ReadBCData( bcFile, bcUnit, mpListUnit, modelGrid, basicData%Porosity )
 
     end if
 
 
     ! Prepare to stop if there are no particles to track
     if(simulationData%TotalParticleCount .eq. 0) then
+      terminationMessage = 'The simulation was terminated because there are no particles to track. Stop.'
+      call ustop(terminationMessage)
       terminationMessage = 'The simulation was terminated because there are no particles to track.'
-      goto 100
+      goto 100 ! Requires initialized clock, so far it has not
     end if
 
 
@@ -1081,7 +1090,9 @@
             !$omp private( trackPathResult, status )         &
             !$omp private( timeseriesRecordWritten )         &
             !$omp private( ompThreadId )                     &
-            !$omp private( cellDataBuffer, obs, nobs )       &
+            !$omp private( cellDataBuffer )                  &
+            !$omp private( obs, nobs )                       &
+            !$omp private( pcb, npcb )                       &
             !$omp firstprivate( trackingEngine )             &
             !$omp firstprivate( WriteTimeseries )            &
             !$omp reduction( +:pendingCount )                &
@@ -1260,6 +1271,34 @@
                           end if
                         end if
 
+                        ! Prototype prescribed concentration 
+                        if ( simulationData%anyPrescribedConcentration ) then  
+                          ! Write info for prescribed concentrations
+                          ! Count mass ?
+                          if ( &
+                            simulationData%TrackingOptions%isPrescribed(pCoordTP%CellNumber) ) then 
+                            pcb => simulationData%TrackingOptions%PrescribedBoundaries(&
+                                simulationData%TrackingOptions%idPrescribed(pCoordTP%CellNumber) )
+                              do npcb=1,pcb%nCells
+                                if( pcb%cells(npcb) .ne. pCoordTP%CellNumber ) cycle
+                                ! If it is part of the cells in the obs, write
+                                ! record to auxOutputUnit
+                                ! Temp proxy !
+                                !call WriteTimeseriesRecordCritical(& 
+                                !    p%SequenceNumber, p%ID, groupIndex, ktime, &
+                                !      nt, pCoordTP, geoRef, obs%auxOutputUnit, & 
+                                !  timeseriesRecordCounts, timeseriesTempUnits  )
+
+                                ! Prescribed concentrations should write 
+                                ! something simpler: particleID, soluteID, mass
+                                pcb%nAuxRecords = pcb%nAuxRecords + 1
+                                pcb%totalMassCounter = pcb%totalMassCounter + p%Mass
+
+                              end do 
+                          end if
+                        end if
+
+
                       end if
                     end if
                 end if
@@ -1309,13 +1348,34 @@
                           end if
                         end if
                       end if
-
                 end if
 
             end do
             !$omp end parallel do
 
         end do
+
+        
+        ! Prescribed concentration cells
+        ! Should be processed before GPKDE reconstruction
+        ! to apply necessary corrections
+        if ( simulationData%anyPrescribedConcentration ) then  
+          print *, 'PROTOTYPE PRESCRIBED CONCENTRATIONS: '
+          ! Loop over prescribed boundaries
+          do npcb=1, simulationData%TrackingOptions%nPrescribed
+            pcb => simulationData%TrackingOptions%PrescribedBoundaries(npcb)
+
+            ! Prescribed concentration boundary
+            print *, 'PCB ID ', pcb%id , ' HAS N PARTICLES', pcb%nAuxRecords, ' OF ', pcb%nParticles
+            print *, 'PCB ID ', pcb%id , ' HAS MASS ', pcb%totalMassCounter, ' OF ', pcb%totalPrescribedMass
+
+            ! It should be restarted to count once again in the next tracking loop
+            pcb%nAuxRecords = 0
+            pcb%totalMassCounter = 0d0
+          
+          end do
+
+        end if 
 
 
         ! Once it finished transporting all 

@@ -45,6 +45,7 @@ $(OBJDIR)/GlobalData.o \
 $(OBJDIR)/DispersionData.o \
 $(OBJDIR)/Solute.o \
 $(OBJDIR)/Observation.o \
+$(OBJDIR)/BoundaryConditions.o \
 $(OBJDIR)/ParticleTrackingOptions.o \
 $(OBJDIR)/compilerversion.o \
 $(OBJDIR)/openspec.o \
