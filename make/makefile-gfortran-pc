@@ -20,7 +20,10 @@ ${SOURCEDIR2}
 # Define the Fortran compile flags
 FC = gfortran
 #FFLAGS = -O2 -fbacktrace -fopenmp 
+#FFLAGS = -g -fbacktrace -fopenmp -ffpe-trap=invalid,zero,overflow
 FFLAGS = -g -fbacktrace -fopenmp -Wall -fbounds-check -fcheck=all -ffpe-trap=invalid,zero,overflow
+#FFLAGS = -g -fbacktrace -fopenmp -Wall -fbounds-check -fcheck=all -ffpe-trap=invalid,zero,overflow -Wextra -pedantic
+
 
 # Define the C compile flags
 CC = gcc
@@ -83,10 +86,10 @@ $(OBJDIR)/RectangularGridDisuMfusg.o \
 $(OBJDIR)/TrackCellResult.o \
 $(OBJDIR)/RectangularGridDisuMf6.o \
 $(OBJDIR)/ModpathCellDataContainer.o \
+$(OBJDIR)/FlowModelData.o \
 $(OBJDIR)/ModpathSimulationData.o \
 $(OBJDIR)/ParticleManager.o \
 $(OBJDIR)/TrackCell.o \
-$(OBJDIR)/FlowModelData.o \
 $(OBJDIR)/TransportModelData.o \
 $(OBJDIR)/ParticleTrackingEngine.o \
 $(OBJDIR)/MPath7.o 

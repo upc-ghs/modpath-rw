@@ -5,6 +5,8 @@ module ModpathSimulationDataModule
   use StartingLocationReaderModule,only : ReadAndPrepareLocations, &
                                CreateMassParticlesAsInternalArray, &
                                 pr_CreateParticlesAsInternalArray
+  use TimeDiscretizationDataModule,only : TimeDiscretizationDataType
+  use FlowModelDataModule,only : FlowModelDataType
   implicit none
   
 ! Set default access status to private
@@ -49,7 +51,8 @@ module ModpathSimulationDataModule
     integer            :: ParticlesMassOption     ! RWPT
     integer            :: SolutesOption           ! RWPT
     logical            :: shouldUpdateDispersion = .false.     ! RWPT
-    logical            :: anyPrescribedConcentration = .false.  ! RWPT
+    logical            :: anyPrescribedConcentration = .false. ! RWPT
+    logical            :: isMF6 = .false.                      ! RWPT
     integer,dimension(:),allocatable :: BudgetCells
     integer,dimension(:),allocatable :: Zones
     doubleprecision,dimension(:),allocatable :: Retardation
@@ -61,6 +64,7 @@ module ModpathSimulationDataModule
     logical :: isUniformRetardation = .false.   ! RWPT
     doubleprecision :: uniformPorosity = 1d0    ! RWPT
     doubleprecision :: uniformRetardation = 1d0 ! RWPT
+    type(TimeDiscretizationDataType), pointer :: tdisData ! RWPT
   contains
     procedure :: ReadFileHeaders=>pr_ReadFileHeaders
     procedure :: ReadData=>pr_ReadData
@@ -69,6 +73,7 @@ module ModpathSimulationDataModule
     procedure :: ReadRWOPTSData=>pr_ReadRWOPTSData ! RWPT
     procedure :: ReadICData=>pr_ReadICData         ! RWPT
     procedure :: ReadBCData=>pr_ReadBCData         ! RWPT
+    procedure :: ReadSRCData=>pr_ReadSRCData       ! RWPT
     procedure :: SetUniformPorosity=>pr_SetUniformPorosity ! RWPT
   end type
 
@@ -125,7 +130,6 @@ contains
   subroutine pr_ReadData(this, inUnit, outUnit, ibound, timeDiscretization, grid)
     use UTL8MODULE,only : urword, ustop, u1dint, u1drel, u1ddbl, u8rdcom, &
                           u3ddblmpusg, u3dintmp, u3dintmpusg, u3ddblmp, ugetnode
-    use TimeDiscretizationDataModule,only : TimeDiscretizationDataType
     !--------------------------------------------------------------
     ! Specifications
     !--------------------------------------------------------------
@@ -135,7 +139,7 @@ contains
     integer,intent(in) :: inUnit, outUnit
     integer,dimension(:),allocatable :: cellsPerLayer
     integer,dimension(grid%CellCount),intent(in) :: ibound
-    type(TimeDiscretizationDataType),intent(in) :: timeDiscretization
+    type(TimeDiscretizationDataType),intent(in),target :: timeDiscretization
     integer :: icol, istart, istop, n, nc, kper, kstp, seqNumber, particleCount, nn, slocUnit, errorCode
     integer :: releaseOption, releaseTimeCount
     doubleprecision :: initialReleaseTime, releaseInterval
@@ -472,6 +476,10 @@ contains
       case default
         call ustop('Invalid reference time option.')
     end select
+    ! Regardless of time specifications
+    ! save the pointer to timeDiscretization
+    this%tdisData => timeDiscretization
+
 
     ! Read stopping option
     this%StopTime = 1.0E+30
@@ -694,6 +702,13 @@ contains
       ( this%SolutesOption .eq. 1 ) .and. & 
       ( this%TrackingOptions%RandomWalkParticleTracking ) ) then 
       this%shouldUpdateDispersion = .true.
+    end if 
+
+    ! Set flag to indicate whether flow model is MF6
+    if ( &
+      ( grid%GridType .eq. 3 ) .or. &
+      ( grid%GridType .eq. 4 ) ) then 
+      this%isMF6 = .true.
     end if 
 
 
@@ -1788,6 +1803,8 @@ contains
     integer :: releaseTimeCount
     integer, allocatable, dimension(:,:) :: subDivisions
     integer :: m,cellCounter,offset,idmax,seqNumber
+    ! DEV
+    integer :: kfirst, period, step
     !--------------------------------------------------------------
 
     write(outUnit, *)
@@ -1847,7 +1864,10 @@ contains
       write(outUnit,'(A)') 'Number of given flux conditions is .le. 0. Will not interpret flux boundaries.'
       continue
     end if
-        
+
+
+    ! FORCING 1 NOW !    
+    nFluxConditions = 1
     if ( nFluxConditions .gt. 0 ) then 
 
       nValidFluxConditions = 0 ! Monitors whether the boundary has any particle
@@ -1866,6 +1886,28 @@ contains
       !  particleGroups(nfc)%Group = this%ParticleGroupCount + nfc
 
       !end do
+      print *, 'AT MODPATHSIMDATA...'
+      kfirst = this%tdisData%FindContainingTimeStep(this%ReferenceTime)
+      call this%tdisData%GetPeriodAndStep(this%tdisData%CumulativeTimeStepCount, period, step)
+      print *, 'REFERENCE TIME          : ', this%ReferenceTime
+      print *, 'CUMULATIVETIMESTEPCOUNT : ', this%tdisData%CumulativeTimeStepCount
+      print *, 'PERIOD,STEP             : ', period, step
+      print *, 'TIMESTEPCOUNTS : ', this%tdisData%TimeStepCounts
+
+      !this%BudgetReader%GetRecordHeaderRange(stressPeriod, timeStep, firstRecord, lastRecord)
+      !call thistdisData%GetPeriodAndStep(tdisData%CumulativeTimeStepCount, period, step)
+      !print *, 'EARLY LEAVING AT FLUX'
+      !call exit(0)
+
+
+      ! So when defining a prescribed-flux boundary condition
+
+      ! Request the number of stress periods 
+      print *, 'STRESSPERIODSCOUNT : ', this%tdisData%StressPeriodCount
+      print *, 'STRESSPERIODTYPES : ', this%tdisData%StressPeriodTypes
+      !print *, 'TOTALTIMES: ', this%tdisData%TotalTimes
+
+
     end if 
 
 
@@ -1881,7 +1923,7 @@ contains
       continue
     end if
 
-    ! FORCE 1
+    ! Process prescribed boundaries
     if ( nPrescribedConditions .gt. 0 ) then 
 
       ! ok, initialize
@@ -2242,8 +2284,6 @@ contains
             ! Skip this cell if all subDivisions remained as zero
             if ( all( subDivisions( nc, : ) .eq. 0 ) ) cycle
 
-            ! A LOOP OVER TIME IS NEEDED TO DEFINE RELEASETIME 
-
             ! 0: is for drape. TEMPORARY
             ! Drape = 0: particle placed in the cell. If dry, status to unreleased
             ! Drape = 1: particle placed in the uppermost active cell
@@ -2373,6 +2413,304 @@ contains
 
 
   end subroutine pr_ReadBCData
+
+
+  ! Read specific SRC data
+  subroutine pr_ReadSRCData( this, srcFile, srcUnit, outUnit, grid, flowModelData )
+    use UTL8MODULE,only : urword,ustop,u3dintmpusg,u3dintmp,ugetnode
+    !--------------------------------------------------------------
+    ! Specifications
+    !--------------------------------------------------------------
+    implicit none
+    ! input 
+    class(ModpathSimulationDataType), target     :: this
+    character(len=200), intent(in)               :: srcFile
+    integer, intent(in)                          :: srcUnit
+    integer, intent(in)                          :: outUnit
+    class(ModflowRectangularGridType),intent(in) :: grid
+    class(FlowModelDataType),intent(in)          :: flowModelData
+    ! local
+    integer :: isThisFileOpen = -1
+    integer :: nSources, nValidSources
+    integer :: particleCount
+    integer :: nsrc, nSrcBudgets, nsb
+    character(len=20) :: srcName
+    character(len=20) :: srcSpecKind, srcPkgName
+    integer :: nAuxNames, naux
+    character(len=16),allocatable,dimension(:) :: srcPkgTypes
+    character(len=16),allocatable,dimension(:) :: srcPkgNames
+    character(len=16),allocatable,dimension(:) :: auxNames
+    logical :: validAuxNames = .false.
+    doubleprecision, allocatable, dimension(:) :: auxMasses
+    integer, allocatable, dimension(:,:)       :: auxSubDivisions
+    type(ParticleGroupType),dimension(:),allocatable :: particleGroups
+    type(ParticleGroupType),dimension(:),allocatable :: newParticleGroups
+    ! urword
+    character(len=200) :: line
+    integer :: icol,istart,istop,n
+    doubleprecision :: r
+
+
+
+    !type(ParticleTrackingOptionsType), pointer :: trackingOptions
+    !integer :: icol,istart,istop,n,nd,currentDim
+    !doubleprecision    :: r
+    !character(len=200) :: line
+    !integer, dimension(:), allocatable :: cellsPerLayer
+    !integer :: particleCount
+    !integer :: cellCount,rowCount,columnCount,layerCount
+    !integer :: nFluxConditions, nValidFluxConditions, nfc
+    !doubleprecision :: nParticlesCell,cellVolume
+    !doubleprecision :: cellTotalMass,celLDissolvedMass
+    !doubleprecision :: sX,sY,sZ
+    !doubleprecision :: nPX,nPY,nPZ
+    !doubleprecision :: particlesMass, effParticlesMass
+    !integer         :: iNPX, iNPY, iNPZ, NPCELL
+    !integer         :: newParticleGroupCount
+    !integer         :: pgCount
+    !integer         :: totalParticleCount, singleReleaseParticleCount
+    !integer         :: soluteId
+    !doubleprecision :: initialReleaseTime, releaseInterval 
+    !integer :: releaseTimeCount
+    !integer, allocatable, dimension(:,:) :: subDivisions
+    !integer :: m,cellCounter,offset,idmax,seqNumber
+    !integer, dimension(:), pointer :: dimensionMask
+    !integer, pointer               :: nDim
+    !integer :: kfirst, period, step
+    !--------------------------------------------------------------
+
+    write(outUnit, *)
+    write(outUnit, '(1x,a)') 'MODPATH-RW SRC file data'
+    write(outUnit, '(1x,a)') '------------------------'
+
+    ! Verify if unit is open 
+    inquire( file=srcFile, number=isThisFileOpen )
+    if ( isThisFileOpen .lt. 0 ) then 
+      ! No bc file
+      write(outUnit,'(A)') 'SRC package was not specified in name file.'
+      ! And leave
+      return
+    end if
+
+    ! Read number of specs
+    read(srcUnit, *) nSources
+    write(outUnit,'(A,I5)') 'Given number of source specifications = ', nSources
+
+    if(nSources  .le. 0) then
+      ! Report
+      write(outUnit,'(A)') 'Number of given source specifications is .le. 0. Will not interpret the file .'
+      ! And leave
+      return
+    end if
+
+
+    nValidSources = 0 
+    particleCount = 0
+
+    ! Loop over source specs
+    do nsrc = 1, nSources
+      
+      ! Report which SRC specification will be processed
+      write(outUnit,'(A,I5)') 'Processing SRC specification : ', nsrc
+
+      read(srcUnit, '(a)') line
+      icol = 1
+      call urword(line,icol,istart,istop,0,n,r,0,0)
+      srcName = line(istart:istop)
+
+      read(srcUnit, '(a)') line
+      icol = 1
+      call urword(line,icol,istart,istop,0,n,r,0,0)
+      srcSpecKind = line(istart:istop)
+
+      select case (srcSpecKind ) 
+      case ('AUX','AUXILIARY')
+
+        ! Process reading auxiliary variables
+        write(outUnit,'(A,I5)') 'SRC specification will be read from AUXILIARY variables.'
+
+        read(srcUnit, '(a)') line
+        icol = 1
+        call urword(line,icol,istart,istop,2,n,r,0,0)
+        nSrcBudgets = n
+        
+        if ( nSrcBudgets .lt. 1 ) then
+          write(outUnit,'(A,A,A)') 'Number of source budgets for spec ', srcName ,' is .lt. 1. It should be at least 1.'
+          call ustop('Number of source budgets is .lt. 1. It should be at least 1.')
+        end if 
+
+        if( allocated( srcPkgTypes ) ) deallocate( srcPkgTypes ) 
+        allocate( srcPkgTypes( nSrcBudgets ) ) 
+        if ( this%isMF6 ) then 
+          if( allocated( srcPkgNames ) ) deallocate( srcPkgNames ) 
+          allocate( srcPkgNames( nSrcBudgets ) ) 
+        end if 
+
+
+        ! Interpret source budgets
+        do nsb=1,nSrcBudgets
+          read(srcUnit, '(a)') line
+          icol = 1
+          call urword(line,icol,istart,istop,0,n,r,0,0)
+          srcPkgTypes(nsb) = line(istart:istop)
+
+          if ( this%isMF6 ) then 
+            call urword(line,icol,istart,istop,0,n,r,0,0)
+            srcPkgNames(nsb) = line(istart:istop)
+          end if
+
+          read(srcUnit, '(a)') line
+          icol = 1
+          call urword(line,icol,istart,istop,2,n,r,0,0)
+          nAuxNames = n 
+
+          if ( nAuxNames .lt. 1 ) then
+            write(outUnit,'(A,A,A)') 'Number of aux variables source ', srcPkgTypes(nsb) ,' is .lt. 1. It should be at least 1.'
+            call ustop('Number of aux variables is .lt. 1. It should be at least 1. Stop.')
+          end if 
+
+          if ( allocated( auxNames ) ) deallocate( auxNames ) 
+          allocate( auxNames( nAuxNames ) )
+          if ( allocated( auxMasses ) ) deallocate( auxMasses ) 
+          allocate( auxMasses( nAuxNames ) )
+          if ( allocated( auxSubDivisions ) ) deallocate( auxSubDivisions ) 
+          allocate( auxSubDivisions( nAuxNames,3 ) )
+
+          ! Loop over aux names and interpret data
+          ! Requires some health checks
+          do naux = 1, nAuxNames
+            ! read the complete line and then extract specific params
+            read(srcUnit, '(a)') line
+
+            ! auxName
+            icol = 1
+            call urword(line,icol,istart,istop,0,n,r,0,0)
+            auxNames(naux) = line(istart:istop)
+
+            ! particles mass
+            call urword(line,icol,istart,istop,3,n,r,0,0)
+            auxMasses(naux) = r
+            
+            ! template
+            call urword(line,icol,istart,istop,2,n,r,0,0)
+            auxSubDivisions(naux,1) = n 
+            call urword(line,icol,istart,istop,2,n,r,0,0)
+            auxSubDivisions(naux,2) = n 
+            call urword(line,icol,istart,istop,2,n,r,0,0)
+            auxSubDivisions(naux,3) = n 
+                
+
+            ! solute id depending on solutes option
+
+            print *, srcName, srcPkgTypes(nsb), srcPkgNames(nsb), auxNames(naux),auxMasses(naux), auxSubDivisions(naux,:) 
+          
+            
+          end do 
+        
+
+          ! Until this point, necessary data for reading auxiliary 
+          ! variables and transforming into particles is available
+          ! for this source budget
+
+          ! Validate given aux names
+          validAuxNames = flowModelData%ValidateAuxVarNames( srcPkgTypes( nsb ), auxNames )
+          if ( .not. validAuxNames ) then 
+            write(outUnit,'(A,A,A)') 'Aux names for source ', trim(adjustl(srcPkgTypes(nsb))) ,' were not found in budget header.'
+            call ustop('Given aux names for source were not found in budget header. Stop.')
+            print *, 'INVALID!'
+          end if 
+
+
+          ! If the model is MF6, then srcPkgName can be used 
+          ! to be compared against TXT2ID2
+
+
+          !call flowModelData%LoadFlowTimeSeries(&
+          !        simulationData%ReferenceTime, &
+          !        stoptime, fluxCellNumbers, tdisData )
+
+
+
+        end do  
+
+
+
+
+      case default
+              print *, 'NOT IMPLEMENTED !'
+      end select
+    end do
+
+
+    print *, 'EARLIEST LEAVING... '
+    call exit(0)
+
+
+
+    !! CellsPerLayer, required for u3d reader
+    !allocate(cellsPerLayer(grid%LayerCount))
+    !do n = 1, grid%LayerCount
+    !  cellsPerLayer(n) = grid%GetLayerCellCount(n)
+    !end do
+
+
+    !! Preparations for interpreting SRC specs
+
+    !! RW dimensionality vars
+    !dimensionMask => this%TrackingOptions%dimensionMask
+    !nDim => this%TrackingOptions%nDim
+    
+
+
+    !! FORCING 1 NOW !    
+    !nFluxConditions = 1
+    !if ( nFluxConditions .gt. 0 ) then 
+
+    !  nValidFluxConditions = 0 ! Monitors whether the boundary has any particle
+    !  particleCount = 0
+
+    !  !! Carrier for candidate particle groups 
+    !  !allocate(particleGroups(nFluxConditions))
+ 
+    !  !! Loop over flux conditions
+    !  !do nfc = 1, nFluxConditions
+    !  !  
+    !  !  ! Report which FLUX BC will be processed
+    !  !  write(outUnit,'(A,I5)') 'Processing flux boundary condition: ', nfc
+
+    !  !  ! Increase pgroup counter
+    !  !  particleGroups(nfc)%Group = this%ParticleGroupCount + nfc
+
+    !  !end do
+    !  print *, 'AT MODPATHSIMDATA...'
+    !  kfirst = this%tdisData%FindContainingTimeStep(this%ReferenceTime)
+    !  call this%tdisData%GetPeriodAndStep(this%tdisData%CumulativeTimeStepCount, period, step)
+    !  print *, 'REFERENCE TIME          : ', this%ReferenceTime
+    !  print *, 'CUMULATIVETIMESTEPCOUNT : ', this%tdisData%CumulativeTimeStepCount
+    !  print *, 'PERIOD,STEP             : ', period, step
+    !  print *, 'TIMESTEPCOUNTS : ', this%tdisData%TimeStepCounts
+
+    !  !this%BudgetReader%GetRecordHeaderRange(stressPeriod, timeStep, firstRecord, lastRecord)
+    !  !call thistdisData%GetPeriodAndStep(tdisData%CumulativeTimeStepCount, period, step)
+    !  !print *, 'EARLY LEAVING AT FLUX'
+    !  !call exit(0)
+
+    !  ! So when defining a prescribed-flux boundary condition
+
+    !  ! Request the number of stress periods 
+    !  print *, 'STRESSPERIODSCOUNT : ', this%tdisData%StressPeriodCount
+    !  print *, 'STRESSPERIODTYPES : ', this%tdisData%StressPeriodTypes
+    !  !print *, 'TOTALTIMES: ', this%tdisData%TotalTimes
+
+
+    !end if 
+
+        
+    ! Close data file
+    close( srcUnit )
+
+
+  end subroutine pr_ReadSRCData
 
 
 end module ModpathSimulationDataModule

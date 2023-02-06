@@ -22,11 +22,11 @@
         inUnit, pathlineUnit, endpointUnit, timeseriesUnit, binPathlineUnit,    &
         mplistUnit, traceUnit, budchkUnit, aobsUnit, logUnit, mpsimUnit,        &
         dispersionUnit, gpkdeUnit, obsUnit, dspUnit, rwoptsUnit, spcUnit,       & ! RWPT
-        icUnit, bcUnit,       & ! RWPT
+        icUnit, bcUnit, srcUnit,                                                & ! RWPT
         traceModeUnit, mpnamFile, mplistFile, mpbasFile, disFile, tdisFile,     &
         gridFile, headFile, budgetFile, mpsimFile, traceFile,  gridMetaFile,    &
-        mplogFile, logType, particleGroupCount, gridFileType,                   & 
-        gpkdeFile, obsFile, dspFile, rwoptsFile, spcFile, icFile, bcFile        ! RWPT
+        mplogFile, logType, particleGroupCount, gridFileType, gpkdeFile,        & ! RWPT
+        obsFile, dspFile, rwoptsFile, spcFile, icFile, bcFile, srcFile            ! RWPT
     use UtilMiscModule,only : ulog
     use utl8module,only : freeunitnumber, ustop, ugetnode ! GPDKE
     use ModpathCellDataModule,only : ModpathCellDataType
@@ -104,7 +104,7 @@
     integer :: stressPeriodCount, recordHeaderCount
     integer :: n, m, ktime, kfirst, klast, kincr, period, step, nt, count,      &
       plCount, tsCount, status, itend, particleID, topActiveCellNumber,         &
-      auxCount
+      auxCount, kstoptime
     integer :: bufferSize, cellConnectionCount
     integer,dimension(:),allocatable :: buffer
     doubleprecision :: t, stoptime, maxTime, tsMax, time
@@ -149,7 +149,11 @@
     ! Boundary conditions
     integer :: npcb
     type( PrescribedType ), pointer :: pcb => null()
-
+    doubleprecision :: effectiveTime = 0d0 ! Effective flow sim time (stoptime-reftime)
+    integer :: nEffectiveTimes
+    doubleprecision, allocatable, dimension(:) :: effectiveTimes ! Relative to reftime
+    integer, allocatable, dimension(:) :: fluxCellNumbers
+    integer :: nFluxCells
 
     ! Parallel variables
     integer :: ompNumThreads
@@ -205,6 +209,7 @@
     spcUnit        = 123 ! RWPT
     icUnit         = 124 ! RWPT
     bcUnit         = 125 ! RWPT
+    srcUnit        = 126 ! RWPT
     baseTimeseriesUnit = 6600 ! OpenMP
     !-----------------------------------------------------------------------
 
@@ -438,7 +443,68 @@
     ! Read the remainder of the MODPATH simulation file
     call ulog('Read the remainder of the MODPATH-RW simulation data component.', logUnit)
     call simulationData%ReadData(mpsimUnit, mplistUnit, basicData%IBound, tdisData, modelGrid)
-   
+  
+
+    ! Initialize flowModelData
+    ! It is required to be initialized in order to read information from SRC package
+    call ulog('Initialize flow model data component.', logUnit)
+    allocate(flowModelData)
+    call flowModelData%Initialize(headReader, budgetReader, modelGrid,&
+                                    basicData%HNoFlow, basicData%HDry )
+    call flowModelData%SetIBound(basicData%IBound,modelGrid%CellCount)
+    call flowModelData%SetPorosity(basicData%Porosity, modelGrid%CellCount)
+    call flowModelData%SetZones(simulationData%Zones, modelGrid%CellCount)
+    call flowModelData%SetRetardation(simulationData%Retardation, modelGrid%CellCount)
+    call flowModelData%SetDefaultIface(basicData%DefaultIfaceLabels, &
+            basicData%DefaultIfaceValues, basicData%DefaultIfaceCount)
+    
+
+    ! Compute range of time steps to use in the time step loop
+    message ='Compute range of time steps to be used in time step loop.'
+    call ulog(message, logUnit)
+    !
+    kfirst = tdisData%FindContainingTimeStep(simulationData%ReferenceTime)
+    if(simulationData%TrackingDirection .eq. 1) then
+        klast = tdisData%CumulativeTimeStepCount
+        kincr = 1
+    else
+        klast = 1
+        kincr = -1
+    end if 
+
+    ! Set the appropriate value of stoptime. Start by setting stoptime to correspond to the start or the
+    ! end of the simulation (depending on the tracking direction)
+    if(simulationData%TrackingDirection .eq. 1) then
+        stoptime = tdisData%TotalTimes(tdisData%CumulativeTimeStepCount) -      &
+          simulationData%ReferenceTime
+        call tdisData%GetPeriodAndStep(tdisData%CumulativeTimeStepCount, period, step)
+        call flowModelData%LoadTimeStep(period, step)
+    else
+        stoptime = simulationData%ReferenceTime
+        call tdisData%GetPeriodAndStep(tdisData%CumulativeTimeStepCount, period, step)
+        call flowModelData%LoadTimeStep(1, 1)
+    end if
+    !
+    if(simulationData%StoppingTimeOption .eq. 2) then
+      ! Set stoptime to 1.0d+30 if the EXTEND option is on and the boundary time step is steady state.
+      ! If the boundary time step is transient, leave stoptime set to correspond to the beginning or 
+      ! end of the simulation.
+      if(flowModelData%SteadyState) stoptime = 1.0d+30
+    else if(simulationData%StoppingTimeOption .eq. 3) then
+      ! If a specific stoptime was specified, always apply it if there is a steady-state time step at the beginning
+      ! or end of the time domain of the simulation.
+      if(flowModelData%SteadyState) then
+        stoptime = simulationData%StopTime
+      else
+        ! If the boundary time step is transient, do not set stoptime to the specified value if it would extend beyond
+        ! the time domain of the simulation.
+        if(simulationData%StopTime .lt. stoptime) stoptime = simulationData%StopTime
+      end if
+    end if
+    write(mplistUnit, '(1x/a,e15.7)')                       &
+      'The simulation will be run with stoptime = ', stoptime
+
+
     if ( simulationData%TrackingOptions%RandomWalkParticleTracking ) then 
       
       ! Transfer flag from basicData to indicate 
@@ -460,6 +526,10 @@
 
       call ulog('Read specific BC simulation data.', logUnit)
       call simulationData%ReadBCData( bcFile, bcUnit, mpListUnit, modelGrid, basicData%Porosity )
+      
+      call ulog('Read specific SRC simulation data.', logUnit)
+      call simulationData%ReadSRCData( srcFile, srcUnit, mpListUnit, modelGrid, flowModelData )
+
 
     end if
 
@@ -469,7 +539,7 @@
       terminationMessage = 'The simulation was terminated because there are no particles to track. Stop.'
       call ustop(terminationMessage)
       terminationMessage = 'The simulation was terminated because there are no particles to track.'
-      goto 100 ! Requires initialized clock, so far it has not
+      goto 100 ! Requires initialized clock, so far it is not
     end if
 
 
@@ -479,21 +549,9 @@
     if(simulationData%BudgetOutputOption .eq. 2) call WriteBudgetRecordHeaders(mplistUnit, budgetReader)
 
         
-    ! Initialize ParticleTrackingEngine, FlowModelData, TransportModelData 
-    call ulog('Initialize flow model data component.', logUnit)
-    allocate(flowModelData)
-    call flowModelData%Initialize(headReader, budgetReader, modelGrid,&
-                                    basicData%HNoFlow, basicData%HDry )
-    call flowModelData%SetIBound(basicData%IBound,modelGrid%CellCount)
-    call flowModelData%SetPorosity(basicData%Porosity, modelGrid%CellCount)
-    call flowModelData%SetZones(simulationData%Zones, modelGrid%CellCount)
-    call flowModelData%SetRetardation(simulationData%Retardation, modelGrid%CellCount)
-    call flowModelData%SetDefaultIface(basicData%DefaultIfaceLabels, &
-            basicData%DefaultIfaceValues, basicData%DefaultIfaceCount)
-
+    ! Initialize transportModelData
     if ( simulationData%TrackingOptions%RandomWalkParticleTracking ) then
 
-      ! Initialize transportModelData
       allocate( transportModelData ) 
       call ulog('Initialize transport model data component.', logUnit)
       call transportModelData%Initialize( modelGrid, simulationData )
@@ -509,12 +567,13 @@
       call ulog('Validate data relations for DSP and SPC.', logUnit)
       call transportModelData%ValidateDataRelations( mpListUnit )
 
+      ! Initialize trackingEngine
       call ulog('Initialize particle tracking engine component.', logUnit)
       call trackingEngine%Initialize(modelGrid, simulationData%TrackingOptions, flowModelData, transportModelData)
 
     else 
 
-      ! Classical init
+      ! Classical initialize trackingEngine
       call ulog('Initialize particle tracking engine component.', logUnit)
       call trackingEngine%Initialize(modelGrid, simulationData%TrackingOptions, flowModelData)
 
@@ -582,66 +641,15 @@
     end if
 
 
-    ! Compute range of time steps to use in the time step loop
-    message ='Compute range of time steps. Prepare for time step loop'
-    call ulog(message, logUnit)
-    !
-    kfirst = tdisData%FindContainingTimeStep(simulationData%ReferenceTime)
-    if(simulationData%TrackingDirection .eq. 1) then
-        klast = tdisData%CumulativeTimeStepCount
-        kincr = 1
-    else
-        klast = 1
-        kincr = -1
-    end if 
 
-
-    ! Set the appropriate value of stoptime. Start by setting stoptime to correspond to the start or the
-    ! end of the simulation (depending on the tracking direction)
-    if(simulationData%TrackingDirection .eq. 1) then
-        stoptime = tdisData%TotalTimes(tdisData%CumulativeTimeStepCount) -      &
-          simulationData%ReferenceTime
-        call tdisData%GetPeriodAndStep(tdisData%CumulativeTimeStepCount, period, step)
-        call flowModelData%LoadTimeStep(period, step)
-        if ( simulationData%TrackingOptions%RandomWalkParticleTracking ) then 
-            call transportModelData%LoadTimeStep(period, step)
-        end if
-    else
-        stoptime = simulationData%ReferenceTime
-        call tdisData%GetPeriodAndStep(tdisData%CumulativeTimeStepCount, period, step)
-        call flowModelData%LoadTimeStep(1, 1)
-        if ( simulationData%TrackingOptions%RandomWalkParticleTracking ) then 
-            call transportModelData%LoadTimeStep(1, 1)
-        end if
-    end if
-    !
-    if(simulationData%StoppingTimeOption .eq. 2) then
-        ! Set stoptime to 1.0d+30 if the EXTEND option is on and the boundary time step is steady state.
-        ! If the boundary time step is transient, leave stoptime set to correspond to the beginning or 
-        ! end of the simulation.
-        if(flowModelData%SteadyState) stoptime = 1.0d+30
-    else if(simulationData%StoppingTimeOption .eq. 3) then
-        ! If a specific stoptime was specified, always apply it if there is a steady-state time step at the beginning
-        ! or end of the time domain of the simulation.
-        if(flowModelData%SteadyState) then
-            stoptime = simulationData%StopTime
-        else
-        ! If the boundary time step is transient, do not set stoptime to the specified value if it would extend beyond
-        ! the time domain of the simulation.
-            if(simulationData%StopTime .lt. stoptime)                           &
-              stoptime = simulationData%StopTime
-        end if
-    end if
-    
-    write(mplistUnit, '(1x/a,e15.7)')                                           &
-      'The simulation will be run with stoptime = ', stoptime
 
     write(*,*)
     write(*,'(A)') 'Run particle tracking simulation ...'    
     write(mplistUnit, *)
     write(mplistUnit, *)
     write(mplistUnit,'(1X,A)') 'Run particle tracking simulation ...'
-    
+
+
     ! Allocate tPoint array
     tPointCount = 0
     if(simulationData%SimulationType .eq. 2) then
@@ -654,7 +662,9 @@
     end if
     if(allocated(tPoint)) deallocate(tPoint)
     allocate(tPoint(tPointCount))
-    
+   
+    ! These OPENING operations could be moved UP
+
     ! Open particle output files
 
     ! Endpoint
@@ -812,6 +822,93 @@
     if(allocated(cellData)) deallocate(cellData)
     allocate(cellData)
     
+    !call system_clock(clockCountStart, clockCountRate, clockCountMax)
+    !do nt = 1, tdisData%CumulativeTimeStepCount
+    !  ! Get the stress period and time step from the cummulative time step
+    !  call tdisData%GetPeriodAndStep(nt, period, step)
+    !  print *, nt, period, step 
+    !  ! Load data for the current time step
+    !  call flowModelData%LoadTimeStep(period, step)
+    !end do 
+    !call system_clock(clockCountStop, clockCountRate, clockCountMax)
+    print *, '----------------------------------------------------------------------------'
+    print *, 'REFERENCE TIME  : ',simulationData%ReferenceTime
+    print *, 'SIMDATASTOPTIME : ',simulationData%StopTime
+    print *, 'STOPTIME        : ',stoptime
+    print *, 'TOTALTIMES(1)   : ',tdisData%TotalTimes(1)
+    print *, 'TOTALTIMES(END) : ',tdisData%TotalTimes(tdisData%CumulativeTimeStepCount)
+    print *, 'KFIRST          : ',kfirst
+    print *, 'KLAST           : ',klast
+    print *, 'NT              : ',nt
+    print *, 'TIME            : ',time
+    print *, 'KSTOPTIME       : ',tdisData%FindContainingTimeStep(stoptime)
+    kstoptime = tdisData%FindContainingTimeStep(stoptime)
+    print *, 'TOTALTIMES(kstoptime-1)   : ', tdisData%TotalTimes(kstoptime-1)
+    print *, 'TOTALTIMES(kstoptime)     : ', tdisData%TotalTimes(kstoptime)
+    print *, 'DIFF-TOTALTIMES(kstoptime): ', stoptime-tdisData%TotalTimes(kstoptime)
+    print *, 'TOTALTIMES(kfirst)        : ', tdisData%TotalTimes(kfirst)
+    if ( kfirst .gt. 1 ) then 
+    print *, 'TOTALTIMES(kfirst-1): ', tdisData%TotalTimes(kfirst-1)
+    print *, 'TOTALTIMES(kfirst)  : ', tdisData%TotalTimes(kfirst)
+    print *, 'DIFFREFTOTALTIMES(kfirst): ', simulationData%ReferenceTime-tdisData%TotalTimes(kfirst)
+    else
+    print *, 'DIFFREFTOTALTIMES(kfirst): ', simulationData%ReferenceTime
+    end if 
+    print *, 'FINDTIMESTEP(0)    :', tdisData%FindContainingTimeStep(0d0)
+    !elapsedTime = dble(clockCountStop - clockCountStart) / dble(clockCountRate)
+    !write(*, '(1X,A,E15.5,A)') 'Elapsed time = ', elapsedTime, ' seconds'
+    effectiveTime = stoptime - simulationData%ReferenceTime
+    nEffectiveTimes = kstoptime - kfirst
+
+    ! Notice that the index returned by tdisData%FindContainingTimeStep 
+    ! means that the actual time is somewhere in between index-1,index
+
+
+    print *, ' nEFFECTIVETIMES: ', nEffectiveTimes
+    print *, ' nEFFECTIVETIMES+first+last: ', nEffectiveTimes + 2
+    print *, '----------------------------------------------------------------------------'
+
+    !if( allocated(effectiveTimes) ) deallocate(effectiveTimes)
+    !if ( nEffectiveTimes .gt. 0 ) then
+    !  allocate(effectiveTimes(nEffectiveTimes+1))
+    !  ! IT WORKS IT SEEMS BETTER THE NEXT WAY
+    !  do ktime=0,nEffectiveTimes
+    !    if ( ktime .gt. 0 ) print *, 'KTIME=',ktime, tdisData%TotalTimes(ktime+kfirst-1)
+    !    if ( ktime .eq. 0 ) print *, 'KTIME=',ktime, simulationData%ReferenceTime
+    !    if ( ktime .eq. nEffectiveTimes ) print *, 'KTIME=',ktime+1, stoptime
+    !    !if ( ktime .gt. 0 ) effectiveTimes(ktime) = tdisData%TotalTimes(ktime+kfirst-1)
+    !    !if ( ktime .eq. 0 ) effectiveTimes(ktime) = simulationData%ReferenceTime
+    !  end do 
+    print *, '----------------------------------------------------------------------------'
+      do ktime=kfirst,kstoptime
+        if ( ktime .eq. kfirst )    print *, 'INITIAL::',simulationData%ReferenceTime
+        if ( ktime .lt. kstoptime ) print *, 'KTIME  ::',tdisData%TotalTimes(ktime)
+        if ( ktime .eq. kstoptime ) print *, 'END    ::', stoptime 
+        !if ( ktime .gt. 0 ) effectiveTimes(ktime) = tdisData%TotalTimes(ktime+kfirst-1)
+        !if ( ktime .eq. 0 ) effectiveTimes(ktime) = simulationData%ReferenceTime
+      end do 
+    !end if
+    print *, ' EFFECTIVE TIME: ', effectiveTime
+    !print *, effectiveTimes(1:5)
+    !print *, effectiveTimes(nEffectiveTimes:nEffectiveTimes-5:-1)
+    print *, '----------------------------------------------------------------------------'
+
+    nFluxCells = 1
+    if ( allocated( fluxCellNumbers ) ) deallocate( fluxCellNumbers ) 
+    allocate( fluxCellNumbers(nFluxCells) )
+    fluxCellNumbers(1) = 49 ! The injection cell
+
+
+    call flowModelData%LoadFlowTimeSeries(&
+            simulationData%ReferenceTime, &
+            stoptime, fluxCellNumbers, tdisData )
+
+
+    call exit(0)
+
+
+
+
     call ulog('Begin TIME_STEP_LOOP', logUnit)
     ! Call system_clock to get the start of the time step loop
     call system_clock(clockCountStart, clockCountRate, clockCountMax)
@@ -870,53 +967,57 @@
     message = 'Compute TSMAX'
     call ulog(message, logUnit)
     if(simulationData%TrackingDirection .eq. 1) then
-      ! Forward trackine
+      ! Forward tracking
       tsMax = tdisData%TotalTimes(ktime) - simulationData%ReferenceTime
       if(simulationData%StoppingTimeOption .eq. 2) then
-          if(ktime .eq. tdisData%CumulativeTimeStepCount) tsMax = stoptime
+        if(ktime .eq. tdisData%CumulativeTimeStepCount) tsMax = stoptime
       else if(simulationData%StoppingTimeOption .eq. 3) then
-          if(ktime .eq. tdisData%CumulativeTimeStepCount) then
-              tsMax = stoptime
-          else
-              if(tsMax .gt. stoptime) tsMax = stoptime    
-          end if 
+        if(ktime .eq. tdisData%CumulativeTimeStepCount) then
+          tsMax = stoptime
+        else
+          if(tsMax .gt. stoptime) tsMax = stoptime    
+        end if 
       end if
     else
       ! Backward tracking
       if(ktime .gt. 1) then
-          tsMax = simulationData%ReferenceTime - tdisData%TotalTimes(ktime-1)
+        tsMax = simulationData%ReferenceTime - tdisData%TotalTimes(ktime-1)
       else
-          tsMax = simulationData%ReferenceTime
+        tsMax = simulationData%ReferenceTime
       end if
       if(simulationData%StoppingTimeOption .eq. 2) then
-          if(ktime .eq. 1) tsMax = stoptime
+        if(ktime .eq. 1) tsMax = stoptime
       else if(simulationData%StoppingTimeOption .eq. 3) then
-          if(ktime .eq. 1) then
-              tsMax = stoptime
-          else
-              if(tsMax .gt. stoptime) tsMax = stoptime    
-          end if 
+        if(ktime .eq. 1) then
+          tsMax = stoptime
+        else
+          if(tsMax .gt. stoptime) tsMax = stoptime    
+        end if 
       end if
     end if
     
     ! If simulation type is TIMESERIES, write initial locations of all particles active at tracking time = 0,
     ! or all particles regardless of status if that option is set
     ! RWPT
-    if((simulationData%SimulationType .ge. 3) .and. & 
-      (simulationData%SimulationType .lt. 7) .and. (ktime .eq. kfirst) ) then
+    if(&
+      (simulationData%SimulationType .ge. 3) .and. & 
+      (simulationData%SimulationType .lt. 7) .and. & 
+      (ktime .eq. kfirst) ) then
       do groupIndex =1, simulationData%ParticleGroupCount
         do particleIndex = 1, simulationData%ParticleGroups(groupIndex)%TotalParticleCount
           p => simulationData%ParticleGroups(groupIndex)%Particles(particleIndex)
-          if(((p%Status .eq. 0) .and. (p%InitialTrackingTime .eq. 0.0d0)) .or.    &
+          ! Should this InitialTrackingTime be the ReferenceTime ?
+          if(&
+            ((p%Status .eq. 0) .and. (p%InitialTrackingTime .eq. 0.0d0)) .or. &
             (simulationData%TimeseriesOutputOption .eq. 1) ) then
             pCoord%CellNumber = p%CellNumber
             pCoord%Layer = p%Layer
             pCoord%LocalX = p%LocalX
             pCoord%LocalY = p%LocalY
             pCoord%LocalZ = p%LocalZ
-            pCoord%TrackingTime = 0.0d0
-            call modelGrid%ConvertToModelXYZ(pCoord%CellNumber,        &
-              pCoord%LocalX, pCoord%LocalY, pCoord%LocalZ,            &
+            pCoord%TrackingTime = 0.0d0 ! Again, should be ReferenceTime ?
+            call modelGrid%ConvertToModelXYZ(pCoord%CellNumber, &
+              pCoord%LocalX, pCoord%LocalY, pCoord%LocalZ,      &
               pCoord%GlobalX, pCoord%GlobalY, pCoord%GlobalZ)
             p%InitialGlobalZ = pCoord%GlobalZ
             p%GlobalZ = p%InitialGlobalZ
@@ -941,32 +1042,28 @@
         end do
       end do
 
-
       ! GPKDE reconstruction for initial 
-      ! particles distribution 
-      ! reconstruction grouped by solute
+      ! particles distribution, grouped by solute
       if ( simulationData%TrackingOptions%GPKDEReconstruction ) then
 
         do ns=1,transportModelData%nSolutes
 
           solute => transportModelData%Solutes(ns)
 
-          ! Count how many active, considering
-          ! all the particle groups linked to a given solute 
+          ! Count the number of particles linked to the current solute 
           activeCounter = 0
           do npg=1,solute%nParticleGroups
             groupIndex = solute%pGroups(npg)
             do particleIndex = 1, simulationData%ParticleGroups(groupIndex)%TotalParticleCount
               p => simulationData%ParticleGroups(groupIndex)%Particles(particleIndex)
-              ! If active, to the array for GPKDE
-              !if( (p%Status .eq. 1) ) then
+              ! Check against ReferenceTime ?
               if((p%Status .eq. 0) .and. (p%InitialTrackingTime .eq. 0.0d0)) then 
                 activeCounter = activeCounter + 1
               end if
             end do
           end do
 
-          ! Allocate active particles coordinates
+          ! Allocate particles coordinates and mass
           if ( allocated( activeParticleCoordinates ) ) deallocate( activeParticleCoordinates )
           allocate( activeParticleCoordinates(activeCounter,3) )
           activeParticleCoordinates = 0d0
@@ -975,14 +1072,14 @@
           activeParticleMasses = 0d0
 
           ! Could be parallelized ?
-          ! Restart active counter and fill coordinates array
+          ! Fill coordinates array
           activeCounter = 0 
           do npg=1,solute%nParticleGroups
             groupIndex = solute%pGroups(npg)
             do particleIndex = 1, simulationData%ParticleGroups(groupIndex)%TotalParticleCount
               p => simulationData%ParticleGroups(groupIndex)%Particles(particleIndex)
-              ! If active, to the array for GPKDE
-              !if( (p%Status .eq. 1) ) then
+              ! To the array for GPKDE
+              ! Check against ReferenceTime ?
               if((p%Status .eq. 0) .and. (p%InitialTrackingTime .eq. 0.0d0)) then 
                 activeCounter = activeCounter + 1
                 activeParticleCoordinates( activeCounter, 1 ) = p%GlobalX
@@ -1010,8 +1107,7 @@
           )
 
         end do 
-
-      end if
+      end if ! simulationData%TrackingOptions%GPKDEReconstruction
 
     end if
 
@@ -1034,18 +1130,18 @@
     isTimeSeriesPoint = .false.
     ! RWPT
     if( (simulationData%SimulationType .gt. 1) .and. (simulationData%SimulationType .lt. 7) ) then     
-        ! For timeseries and pathline runs, find out if maxTime should be set to the value of the
-        ! next time point or the time at the end of the time step
-        if (nt+1 .le. simulationData%TimePointCount) then
-            if (simulationData%TimePoints(nt+1) .le. tsMax) then
-              nt = nt + 1
-              maxTime = simulationData%TimePoints(nt)
-              tPoint(1) = maxTime
-              itend = 0
-              if(maxTime .eq. tsMax) itend = 1
-              isTimeSeriesPoint = .true.
-            end if
+      ! For timeseries and pathline runs, find out if maxTime should be set to the value of the
+      ! next time point or the time at the end of the time step
+      if (nt+1 .le. simulationData%TimePointCount) then
+        if (simulationData%TimePoints(nt+1) .le. tsMax) then
+          nt = nt + 1
+          maxTime = simulationData%TimePoints(nt)
+          tPoint(1) = maxTime
+          itend = 0
+          if(maxTime .eq. tsMax) itend = 1
+          isTimeSeriesPoint = .true.
         end if
+      end if
     end if
    
 
@@ -1053,400 +1149,395 @@
     pendingCount = 0
     activeCount = 0
     if(simulationData%ParticleGroupCount .gt. 0) then
-        ! -- Particles groups loop -- !
-        do groupIndex = 1, simulationData%ParticleGroupCount
-            if ( simulationData%shouldUpdateDispersion ) then 
-                ! Assign pointers to dispersivities 
-                ! in transportModelData
-                call transportModelData%SetSoluteDispersion( &
-                  simulationData%ParticleGroups(groupIndex)%Solute )
-                ! Update dispersion function interface
-                ! depending on dispersion model 
-                call trackingEngine%UpdateDispersionFunction( &
-                  transportModelData%Solutes(&
-                  simulationData%ParticleGroups(groupIndex)%Solute )%Dispersion%modelKind )
-            end if 
-            ! -- Particles loop -- !
-            !$omp parallel do schedule( dynamic,1 )          &
-            !$omp default( none )                            &
-            !$omp shared( simulationData, modelGrid )        &
-            !$omp shared( flowModelData )                    &
-            !$omp shared( geoRef )                           &
-            !$omp shared( pathlineUnit, binPathlineUnit )    &
-            !$omp shared( timeseriesUnit, traceModeUnit )    &
-            !$omp shared( timeseriesTempUnits )              &
-            !$omp shared( timeseriesRecordCounts )           &
-            !$omp shared( timeseriesTempFiles )              &
-            !$omp shared( period, step, ktime, nt )          &
-            !$omp shared( time, maxTime, isTimeSeriesPoint ) &
-            !$omp shared( tPoint, tPointCount )              &
-            !$omp shared( groupIndex )                       &
-            !$omp private( particleIndex )                   &
-            !$omp private( p, traceModeOn )                  &
-            !$omp private( topActiveCellNumber )             &
-            !$omp private( pLoc, plCount, tsCount )          &
-            !$omp private( pCoordLast, pCoordFirst )         &
-            !$omp private( pCoordTP, pCoord )                &
-            !$omp private( trackPathResult, status )         &
-            !$omp private( timeseriesRecordWritten )         &
-            !$omp private( ompThreadId )                     &
-            !$omp private( cellDataBuffer )                  &
-            !$omp private( obs, nobs )                       &
-            !$omp private( pcb, npcb )                       &
-            !$omp firstprivate( trackingEngine )             &
-            !$omp firstprivate( WriteTimeseries )            &
-            !$omp reduction( +:pendingCount )                &
-            !$omp reduction( +:activeCount )                 &
-            !$omp reduction( +:pathlineRecordCount ) 
-            do particleIndex = 1, simulationData%ParticleGroups(groupIndex)%TotalParticleCount
-                timeseriesRecordWritten = .false.
-                p => simulationData%ParticleGroups(groupIndex)%Particles(particleIndex)
-!!                ! Check particle status. 
-!!                ! Skip over particles unless they are active or pending release.
-!!                if(p%Status .gt. 1) then
-!!                    ! Add code here later to deal with advective observations
-!!                    ! For now, just cycle to the next particle
-!!                    cycle
-!!                end if
-                
-                ! Check to see if trace mode should be turned on for this particle
-                traceModeOn = .false.
-                if(simulationData%TraceMode .gt. 0) then 
-                    if((p%Group .eq. simulationData%TraceGroup) .and.           &
-                      (p%ID .eq. simulationData%TraceID)) traceModeOn = .true.
-                end if
-                
-                ! If a particle is pending release (STATUS = 0), check to see if it should
-                ! be set to active and released on this pass. If the particle is pending
-                ! release and its release time is earlier than the starting time of this
-                ! pass, then mark the particle status as permanently unreleased 
-                ! (STATUS = 8).
-                if(p%Status .eq. 0) then
-                    if(p%InitialTrackingTime .lt. time) then
-                        p%Status = 8
-                    else if(p%InitialTrackingTime .le. maxTime) then
-                        p%Status = 1
-                        if(p%Drape .eq. 0) then
-                            ! Drape option is not in effect.
-                            if(trackingEngine%FlowModelData%IBoundTS(p%CellNumber) .eq. 0) then
-                                p%Status = 7
-                            end if
-                        else
-                            ! Drape option is in effect. Find the top-most active cell starting with the initial cell number. 
-                            ! If no active cell is found, leave the cell number set to its original value and set the Status = 7
-                            ! to indicate it is stranded in an inactive cell.
-                            topActiveCellNumber = trackingEngine%GetTopMostActiveCell(p%CellNumber)
-                            if(topActiveCellNumber .gt. 0) then
-                                p%CellNumber = topActiveCellNumber
-                            else
-                                p%Status = 7
-                            end if
-                        end if
-                        call modelGrid%ConvertToModelZ(p%InitialCellNumber, &
-                          p%InitialLocalZ, p%InitialGlobalZ, .true.)
-                        p%GlobalZ = p%InitialGlobalZ
+      ! -- Particles groups loop -- !
+      do groupIndex = 1, simulationData%ParticleGroupCount
+          if ( simulationData%shouldUpdateDispersion ) then 
+              ! Assign pointers to dispersivities 
+              ! in transportModelData
+              call transportModelData%SetSoluteDispersion( &
+                simulationData%ParticleGroups(groupIndex)%Solute )
+              ! Update dispersion function interface
+              ! depending on dispersion model 
+              call trackingEngine%UpdateDispersionFunction( &
+                transportModelData%Solutes(&
+                simulationData%ParticleGroups(groupIndex)%Solute )%Dispersion%modelKind )
+          end if 
+          ! -- Particles loop -- !
+          !$omp parallel do schedule( dynamic,1 )          &
+          !$omp default( none )                            &
+          !$omp shared( simulationData, modelGrid )        &
+          !$omp shared( flowModelData )                    &
+          !$omp shared( geoRef )                           &
+          !$omp shared( pathlineUnit, binPathlineUnit )    &
+          !$omp shared( timeseriesUnit, traceModeUnit )    &
+          !$omp shared( timeseriesTempUnits )              &
+          !$omp shared( timeseriesRecordCounts )           &
+          !$omp shared( timeseriesTempFiles )              &
+          !$omp shared( period, step, ktime, nt )          &
+          !$omp shared( time, maxTime, isTimeSeriesPoint ) &
+          !$omp shared( tPoint, tPointCount )              &
+          !$omp shared( groupIndex )                       &
+          !$omp private( particleIndex )                   &
+          !$omp private( p, traceModeOn )                  &
+          !$omp private( topActiveCellNumber )             &
+          !$omp private( pLoc, plCount, tsCount )          &
+          !$omp private( pCoordLast, pCoordFirst )         &
+          !$omp private( pCoordTP, pCoord )                &
+          !$omp private( trackPathResult, status )         &
+          !$omp private( timeseriesRecordWritten )         &
+          !$omp private( ompThreadId )                     &
+          !$omp private( cellDataBuffer )                  &
+          !$omp private( obs, nobs )                       &
+          !$omp private( pcb, npcb )                       &
+          !$omp firstprivate( trackingEngine )             &
+          !$omp firstprivate( WriteTimeseries )            &
+          !$omp reduction( +:pendingCount )                &
+          !$omp reduction( +:activeCount )                 &
+          !$omp reduction( +:pathlineRecordCount ) 
+          do particleIndex = 1, simulationData%ParticleGroups(groupIndex)%TotalParticleCount
+              timeseriesRecordWritten = .false.
+              p => simulationData%ParticleGroups(groupIndex)%Particles(particleIndex)
+!!              ! Check particle status. 
+!!              ! Skip over particles unless they are active or pending release.
+!!              if(p%Status .gt. 1) then
+!!                  ! Add code here later to deal with advective observations
+!!                  ! For now, just cycle to the next particle
+!!                  cycle
+!!              end if
+              
+              ! Check to see if trace mode should be turned on for this particle
+              traceModeOn = .false.
+              if(simulationData%TraceMode .gt. 0) then 
+                if((p%Group .eq. simulationData%TraceGroup) .and.  &
+                   (p%ID .eq. simulationData%TraceID)) traceModeOn = .true.
+              end if
+              
+              ! If a particle is pending release (STATUS = 0), check to see if it should
+              ! be set to active and released on this pass. If the particle is pending
+              ! release and its release time is earlier than the starting time of this
+              ! pass, then mark the particle status as permanently unreleased 
+              ! (STATUS = 8).
+              if(p%Status .eq. 0) then
+                if(p%InitialTrackingTime .lt. time) then
+                  p%Status = 8
+                else if(p%InitialTrackingTime .le. maxTime) then
+                  p%Status = 1
+                  if(p%Drape .eq. 0) then
+                    ! Drape option is not in effect.
+                    if(trackingEngine%FlowModelData%IBoundTS(p%CellNumber) .eq. 0) then
+                      p%Status = 7
                     end if
-                end if
-        
-                ! RWPT
-                ! Verify cell not dry anymore
-                if (p%Status .eq. 7 ) then 
-                    ! Initialize cellBuffer cellNumber
-                    call trackingEngine%FillCellBuffer( p%CellNumber, cellDataBuffer )
-
-                    ! Verify dry/partially dried cells
-                    call cellDataBuffer%VerifyDryCell()
-
-                    ! If partially dried restore active/track status, otherwise keep Status = 7
-                    if ( cellDataBuffer%partiallyDry ) p%Status = 1 ! Track particle
-
-                end if 
-
-                ! Count the number of particles that are currently active or pending
-                ! release at the beginning of this pass.         
-                if(p%Status .EQ. 0) pendingCount = pendingCount + 1
-                if(p%Status .EQ. 1) activeCount = activeCount + 1
-                
-                ! Track the particle if it is active
-                if(p%Status .eq. 1) then
-                    ! Set particle location buffer
-                    pLoc%CellNumber = p%CellNumber
-                    pLoc%Layer = p%Layer
-                    pLoc%LocalX = p%LocalX
-                    pLoc%LocalY = p%LocalY
-                    pLoc%LocalZ = p%LocalZ
-                    pLoc%TrackingTime = p%TrackingTime
-                   
-                    ! Call TrackPath
-                    call trackingEngine%TrackPath(trackPathResult, traceModeOn, &
-                      traceModeUnit, p%Group, p%ID, p%SequenceNumber, pLoc,     &
-                      maxTime, tPoint, tPointCount)
-                    
-                    ! Update endpoint data. The Face property will only be updated when the endpoint file is written
-                    plCount = trackPathResult%ParticlePath%Pathline%GetItemCount()
-                    tsCount = trackPathResult%ParticlePath%Timeseries%GetItemCount()
-                    pCoordLast => trackPathResult%ParticlePath%Pathline%Items(plCount)
-                    pCoordFirst => trackPathResult%ParticlePath%Pathline%Items(1)
-                    p%CellNumber =  pCoordLast%CellNumber
-                    p%Layer = pCoordLast%Layer
-                    p%LocalX = pCoordLast%LocalX
-                    p%LocalY = pCoordLast%LocalY
-                    p%LocalZ = pCoordLast%LocalZ
-                    p%GlobalZ = pCoordLast%GlobalZ
-                    p%TrackingTime = pCoordLast%TrackingTime
-                    
-                    ! Update particle status
-                    status = trackPathResult%Status
-                    if(  status .eq. trackPathResult%Status_ReachedBoundaryFace()) then
-                        p%Status = 2
-                    else if(status .eq. trackPathResult%Status_StopAtWeakSink()) then
-                        p%Status = 3
-                    else if(status .eq. trackPathResult%Status_StopAtWeakSource()) then
-                        p%Status = 4
-                    else if(status .eq. trackPathResult%Status_NoExitPossible()) then
-                        p%Status = 5
-                    else if(status .eq. trackPathResult%Status_StopZoneCell()) then
-                        p%Status = 6
-                    else if(status .eq. trackPathResult%Status_InactiveCell()) then
-                        p%Status = 7
-                    else if(status .eq. trackPathResult%Status_Undefined()) then
-                        p%Status = 9
+                  else
+                    ! Drape option is in effect. Find the top-most active cell starting with the initial cell number. 
+                    ! If no active cell is found, leave the cell number set to its original value and set the Status = 7
+                    ! to indicate it is stranded in an inactive cell.
+                    topActiveCellNumber = trackingEngine%GetTopMostActiveCell(p%CellNumber)
+                    if(topActiveCellNumber .gt. 0) then
+                      p%CellNumber = topActiveCellNumber
                     else
-                        ! Leave status set to active (status = 1)
+                      p%Status = 7
                     end if
-                    
-                    ! Write particle output
-                    if((simulationData%SimulationType .eq. 2)  .or.              &
-                       (simulationData%SimulationType .eq. 4)  .or.              & 
-                       (simulationData%SimulationType .eq. 6)) then
-                        ! Write pathline to pathline file
-                        if(plCount .gt. 1) then
-                            pathlineRecordCount = pathlineRecordCount + 1
-                            !$omp critical (pathline)
-                            select case (simulationData%PathlineFormatOption)
-                                case (1)
-                                    call WriteBinaryPathlineRecord(             &
-                                      trackPathResult, binPathlineUnit, period, &
-                                      step, geoRef)
-                                case (2)
-                                    call WritePathlineRecord(trackPathResult,   &
-                                      pathlineUnit, period, step, geoRef)
-                            end select
-                            !$omp end critical (pathline)
-                        end if
-                    end if
-                    if(simulationData%SimulationType .ge. 3) then
-                      if(tsCount .gt. 0) then
-                        ! Write timeseries record to the timeseries file
-                        pCoordTP => trackPathResult%ParticlePath%Timeseries%Items(1)
-                        p%GlobalX = pCoordTP%GlobalX ! GPKDE
-                        p%GlobalY = pCoordTP%GlobalY ! GPKDE
-                        if ( .not. &
-                          simulationData%TrackingOptions%skipTimeseriesWriter ) then 
-                            ! With interface
-                            call WriteTimeseries(p%SequenceNumber, p%ID, groupIndex, & 
-                                        ktime, nt, pCoordTP, geoRef, timeseriesUnit, & 
-                                        timeseriesRecordCounts, timeseriesTempUnits  )
-                        end if 
-                        timeseriesRecordWritten = .true. ! ?
-                        
-                        if ( simulationData%anyObservation ) then  
-                          ! Write record for resident observations
-                          if ( &
-                            simulationData%TrackingOptions%isObservation(pCoordTP%CellNumber) ) then 
-                            obs => simulationData%TrackingOptions%Observations(&
-                                simulationData%TrackingOptions%idObservation(pCoordTP%CellNumber) )
-                            if ( obs%style .eq. 1 ) then  
-                              do nobs=1,obs%nCells
-                                if( obs%cells(nobs) .ne. pCoordTP%CellNumber ) cycle
-                                ! If it is part of the cells in the obs, write
-                                ! record to auxOutputUnit
-                                ! Temp proxy !
-                                call WriteTimeseriesRecordCritical(& 
-                                    p%SequenceNumber, p%ID, groupIndex, ktime, &
-                                      nt, pCoordTP, geoRef, obs%auxOutputUnit, & 
-                                  timeseriesRecordCounts, timeseriesTempUnits  )
-                              end do 
-                            end if
-                          end if
-                        end if
+                  end if
+                  call modelGrid%ConvertToModelZ(p%InitialCellNumber, &
+                    p%InitialLocalZ, p%InitialGlobalZ, .true.)
+                  p%GlobalZ = p%InitialGlobalZ
+                end if
+              end if
+      
+              ! RWPT
+              ! Verify cell not dry anymore
+              if (p%Status .eq. 7 ) then 
+                ! Initialize cellBuffer cellNumber
+                call trackingEngine%FillCellBuffer( p%CellNumber, cellDataBuffer )
 
-                        ! Prototype prescribed concentration 
-                        if ( simulationData%anyPrescribedConcentration ) then  
-                          ! Write info for prescribed concentrations
-                          ! Count mass ?
-                          if ( &
-                            simulationData%TrackingOptions%isPrescribed(pCoordTP%CellNumber) ) then 
-                            pcb => simulationData%TrackingOptions%PrescribedBoundaries(&
-                                simulationData%TrackingOptions%idPrescribed(pCoordTP%CellNumber) )
-                              do npcb=1,pcb%nCells
-                                if( pcb%cells(npcb) .ne. pCoordTP%CellNumber ) cycle
-                                ! If it is part of the cells in the obs, write
-                                ! record to auxOutputUnit
-                                ! Temp proxy !
-                                !call WriteTimeseriesRecordCritical(& 
-                                !    p%SequenceNumber, p%ID, groupIndex, ktime, &
-                                !      nt, pCoordTP, geoRef, obs%auxOutputUnit, & 
-                                !  timeseriesRecordCounts, timeseriesTempUnits  )
+                ! Verify dry/partially dried cells
+                call cellDataBuffer%VerifyDryCell()
 
-                                ! Prescribed concentrations should write 
-                                ! something simpler: particleID, soluteID, mass
-                                pcb%nAuxRecords = pcb%nAuxRecords + 1
-                                pcb%totalMassCounter = pcb%totalMassCounter + p%Mass
+                ! If partially dried restore active/track status, otherwise keep Status = 7
+                if ( cellDataBuffer%partiallyDry ) p%Status = 1 ! Track particle
+              end if 
 
-                              end do 
-                          end if
-                        end if
-
-
-                      end if
-                    end if
+              ! Count the number of particles that are currently active or pending
+              ! release at the beginning of this pass.         
+              if(p%Status .EQ. 0) pendingCount = pendingCount + 1
+              if(p%Status .EQ. 1) activeCount = activeCount + 1
+              
+              ! Track the particle if it is active
+              if(p%Status .eq. 1) then
+                ! Set particle location buffer
+                pLoc%CellNumber = p%CellNumber
+                pLoc%Layer = p%Layer
+                pLoc%LocalX = p%LocalX
+                pLoc%LocalY = p%LocalY
+                pLoc%LocalZ = p%LocalZ
+                pLoc%TrackingTime = p%TrackingTime
+                
+                ! Call TrackPath
+                call trackingEngine%TrackPath(trackPathResult, traceModeOn, &
+                  traceModeUnit, p%Group, p%ID, p%SequenceNumber, pLoc,     &
+                  maxTime, tPoint, tPointCount)
+                
+                ! Update endpoint data. The Face property will only be updated when the endpoint file is written
+                plCount = trackPathResult%ParticlePath%Pathline%GetItemCount()
+                tsCount = trackPathResult%ParticlePath%Timeseries%GetItemCount()
+                pCoordLast => trackPathResult%ParticlePath%Pathline%Items(plCount)
+                pCoordFirst => trackPathResult%ParticlePath%Pathline%Items(1)
+                p%CellNumber =  pCoordLast%CellNumber
+                p%Layer = pCoordLast%Layer
+                p%LocalX = pCoordLast%LocalX
+                p%LocalY = pCoordLast%LocalY
+                p%LocalZ = pCoordLast%LocalZ
+                p%GlobalZ = pCoordLast%GlobalZ
+                p%TrackingTime = pCoordLast%TrackingTime
+                
+                ! Update particle status
+                status = trackPathResult%Status
+                if(  status .eq. trackPathResult%Status_ReachedBoundaryFace()) then
+                    p%Status = 2
+                else if(status .eq. trackPathResult%Status_StopAtWeakSink()) then
+                    p%Status = 3
+                else if(status .eq. trackPathResult%Status_StopAtWeakSource()) then
+                    p%Status = 4
+                else if(status .eq. trackPathResult%Status_NoExitPossible()) then
+                    p%Status = 5
+                else if(status .eq. trackPathResult%Status_StopZoneCell()) then
+                    p%Status = 6
+                else if(status .eq. trackPathResult%Status_InactiveCell()) then
+                    p%Status = 7
+                else if(status .eq. trackPathResult%Status_Undefined()) then
+                    p%Status = 9
+                else
+                    ! Leave status set to active (status = 1)
                 end if
                 
-                ! If option is set to write timeseries records for all particles
-                ! regardless of status, write the record if not done already.
-                ! RWPT
-                if((simulationData%SimulationType .ge. 3) .and.              &
-                   (simulationData%SimulationType .lt. 7) .and.              &
-                   (simulationData%TimeseriesOutputOption .eq. 1) .and.      &
-                   (isTimeSeriesPoint) .and. (.not.timeseriesRecordWritten)) then
-                      pCoord%CellNumber = p%CellNumber
-                      pCoord%Layer = p%Layer
-                      pCoord%LocalX = p%LocalX
-                      pCoord%LocalY = p%LocalY
-                      pCoord%LocalZ = p%LocalZ
-                      pCoord%TrackingTime = maxTime
-                      call modelGrid%ConvertToModelXYZ(pCoord%CellNumber,       &
-                        pCoord%LocalX, pCoord%LocalY, pCoord%LocalZ,            &
-                        pCoord%GlobalX, pCoord%GlobalY, pCoord%GlobalZ)
-                      p%GlobalX = pCoord%GlobalX ! GPKDE
-                      p%GlobalY = pCoord%GlobalY ! GPKDE
-                      if ( .not. &
-                        simulationData%TrackingOptions%skipTimeseriesWriter ) then 
-                          ! With interface
-                          call WriteTimeseries(p%SequenceNumber, p%ID, groupIndex, & 
-                                        ktime, nt, pCoord, geoRef, timeseriesUnit, &
-                                        timeseriesRecordCounts, timeseriesTempUnits)
-                      end if
-
-                      if ( simulationData%anyObservation ) then  
-                        ! Write record for resident observations
-                        if ( &
-                          simulationData%TrackingOptions%isObservation(pCoordTP%CellNumber) ) then 
-                          obs => simulationData%TrackingOptions%Observations(&
-                              simulationData%TrackingOptions%idObservation(pCoordTP%CellNumber) )
-                          if ( obs%style .eq. 1 ) then  
-                            do nobs=1,obs%nCells
-                              if( obs%cells(nobs) .ne. pCoordTP%CellNumber ) cycle
-                              ! If it is part of the cells in the obs, write
-                              ! record to auxOutputUnit
-                              call WriteTimeseriesRecordCritical(& 
-                                  p%SequenceNumber, p%ID, groupIndex, ktime, &
-                                    nt, pCoordTP, geoRef, obs%auxOutputUnit, & 
-                                timeseriesRecordCounts, timeseriesTempUnits  )
-                            end do 
-                          end if
+                ! Write particle output
+                if((simulationData%SimulationType .eq. 2)  .or.              &
+                   (simulationData%SimulationType .eq. 4)  .or.              & 
+                   (simulationData%SimulationType .eq. 6)) then
+                    ! Write pathline to pathline file
+                    if(plCount .gt. 1) then
+                        pathlineRecordCount = pathlineRecordCount + 1
+                        !$omp critical (pathline)
+                        select case (simulationData%PathlineFormatOption)
+                            case (1)
+                                call WriteBinaryPathlineRecord(             &
+                                  trackPathResult, binPathlineUnit, period, &
+                                  step, geoRef)
+                            case (2)
+                                call WritePathlineRecord(trackPathResult,   &
+                                  pathlineUnit, period, step, geoRef)
+                        end select
+                        !$omp end critical (pathline)
+                    end if
+                end if
+                if(simulationData%SimulationType .ge. 3) then
+                  if(tsCount .gt. 0) then
+                    ! Write timeseries record to the timeseries file
+                    pCoordTP => trackPathResult%ParticlePath%Timeseries%Items(1)
+                    p%GlobalX = pCoordTP%GlobalX ! GPKDE
+                    p%GlobalY = pCoordTP%GlobalY ! GPKDE
+                    if ( .not. &
+                      simulationData%TrackingOptions%skipTimeseriesWriter ) then 
+                        ! With interface
+                        call WriteTimeseries(p%SequenceNumber, p%ID, groupIndex, & 
+                                    ktime, nt, pCoordTP, geoRef, timeseriesUnit, & 
+                                    timeseriesRecordCounts, timeseriesTempUnits  )
+                    end if 
+                    timeseriesRecordWritten = .true. ! ?
+                    
+                    if ( simulationData%anyObservation ) then  
+                      ! Write record for resident observations
+                      if ( &
+                        simulationData%TrackingOptions%isObservation(pCoordTP%CellNumber) ) then 
+                        obs => simulationData%TrackingOptions%Observations(&
+                            simulationData%TrackingOptions%idObservation(pCoordTP%CellNumber) )
+                        if ( obs%style .eq. 1 ) then  
+                          do nobs=1,obs%nCells
+                            if( obs%cells(nobs) .ne. pCoordTP%CellNumber ) cycle
+                            ! If it is part of the cells in the obs, write
+                            ! record to auxOutputUnit
+                            ! Temp proxy !
+                            call WriteTimeseriesRecordCritical(& 
+                                p%SequenceNumber, p%ID, groupIndex, ktime, &
+                                  nt, pCoordTP, geoRef, obs%auxOutputUnit, & 
+                              timeseriesRecordCounts, timeseriesTempUnits  )
+                          end do 
                         end if
                       end if
+                    end if
+
+                    ! Prototype prescribed concentration 
+                    if ( simulationData%anyPrescribedConcentration ) then  
+                      ! Write info for prescribed concentrations
+                      ! Count mass ?
+                      if ( &
+                        simulationData%TrackingOptions%isPrescribed(pCoordTP%CellNumber) ) then 
+                        pcb => simulationData%TrackingOptions%PrescribedBoundaries(&
+                            simulationData%TrackingOptions%idPrescribed(pCoordTP%CellNumber) )
+                          do npcb=1,pcb%nCells
+                            if( pcb%cells(npcb) .ne. pCoordTP%CellNumber ) cycle
+                            ! If it is part of the cells in the obs, write
+                            ! record to auxOutputUnit
+                            ! Temp proxy !
+                            !call WriteTimeseriesRecordCritical(& 
+                            !    p%SequenceNumber, p%ID, groupIndex, ktime, &
+                            !      nt, pCoordTP, geoRef, obs%auxOutputUnit, & 
+                            !  timeseriesRecordCounts, timeseriesTempUnits  )
+
+                            ! Prescribed concentrations should write 
+                            ! something simpler: particleID, soluteID, mass
+                            pcb%nAuxRecords = pcb%nAuxRecords + 1
+                            pcb%totalMassCounter = pcb%totalMassCounter + p%Mass
+
+                          end do 
+                      end if
+                    end if
+
+
+                  end if
                 end if
+              end if ! p%Status .eq. 1
+              
+              ! If option is set to write timeseries records for all particles
+              ! regardless of status, write the record if not done already.
+              ! RWPT
+              if((simulationData%SimulationType .ge. 3) .and.              &
+                 (simulationData%SimulationType .lt. 7) .and.              &
+                 (simulationData%TimeseriesOutputOption .eq. 1) .and.      &
+                 (isTimeSeriesPoint) .and. (.not.timeseriesRecordWritten)) then
+                    pCoord%CellNumber = p%CellNumber
+                    pCoord%Layer = p%Layer
+                    pCoord%LocalX = p%LocalX
+                    pCoord%LocalY = p%LocalY
+                    pCoord%LocalZ = p%LocalZ
+                    pCoord%TrackingTime = maxTime
+                    call modelGrid%ConvertToModelXYZ(pCoord%CellNumber,       &
+                      pCoord%LocalX, pCoord%LocalY, pCoord%LocalZ,            &
+                      pCoord%GlobalX, pCoord%GlobalY, pCoord%GlobalZ)
+                    p%GlobalX = pCoord%GlobalX ! GPKDE
+                    p%GlobalY = pCoord%GlobalY ! GPKDE
+                    if ( .not. &
+                      simulationData%TrackingOptions%skipTimeseriesWriter ) then 
+                        ! With interface
+                        call WriteTimeseries(p%SequenceNumber, p%ID, groupIndex, & 
+                                      ktime, nt, pCoord, geoRef, timeseriesUnit, &
+                                      timeseriesRecordCounts, timeseriesTempUnits)
+                    end if
 
+                    if ( simulationData%anyObservation ) then  
+                      ! Write record for resident observations
+                      if ( &
+                        simulationData%TrackingOptions%isObservation(pCoordTP%CellNumber) ) then 
+                        obs => simulationData%TrackingOptions%Observations(&
+                            simulationData%TrackingOptions%idObservation(pCoordTP%CellNumber) )
+                        if ( obs%style .eq. 1 ) then  
+                          do nobs=1,obs%nCells
+                            if( obs%cells(nobs) .ne. pCoordTP%CellNumber ) cycle
+                            ! If it is part of the cells in the obs, write
+                            ! record to auxOutputUnit
+                            call WriteTimeseriesRecordCritical(& 
+                                p%SequenceNumber, p%ID, groupIndex, ktime, &
+                                  nt, pCoordTP, geoRef, obs%auxOutputUnit, & 
+                              timeseriesRecordCounts, timeseriesTempUnits  )
+                          end do 
+                        end if
+                      end if
+                    end if
+              end if
+
+          end do ! Particles Loop
+          !$omp end parallel do
+      end do ! ParticleGroups Loop
+
+      
+      !! Prescribed concentration cells
+      !! Should be processed before GPKDE reconstruction
+      !! to apply necessary corrections
+      !if ( simulationData%anyPrescribedConcentration ) then  
+      !  print *, 'PROTOTYPE PRESCRIBED CONCENTRATIONS: '
+      !  ! Loop over prescribed boundaries
+      !  do npcb=1, simulationData%TrackingOptions%nPrescribed
+      !    pcb => simulationData%TrackingOptions%PrescribedBoundaries(npcb)
+
+      !    ! Prescribed concentration boundary
+      !    print *, 'PCB ID ', pcb%id , ' HAS N PARTICLES', pcb%nAuxRecords, ' OF ', pcb%nParticles
+      !    print *, 'PCB ID ', pcb%id , ' HAS MASS ', pcb%totalMassCounter, ' OF ', pcb%totalPrescribedMass
+
+      !    ! It should be restarted to count once again in the next tracking loop
+      !    pcb%nAuxRecords = 0
+      !    pcb%totalMassCounter = 0d0
+      !  
+      !  end do
+      !end if 
+
+      ! Once it finished transporting all 
+      ! particle groups, reconstruction 
+      ! grouped by solute
+      if ( simulationData%TrackingOptions%GPKDEReconstruction .and. isTimeSeriesPoint ) then
+
+        do ns=1,transportModelData%nSolutes
+
+          solute => transportModelData%Solutes(ns)
+
+          ! Count how many active, considering
+          ! all the particle groups linked to a given solute 
+          activeCounter = 0
+          do npg=1,solute%nParticleGroups
+            groupIndex = solute%pGroups(npg)
+            do particleIndex = 1, simulationData%ParticleGroups(groupIndex)%TotalParticleCount
+              p => simulationData%ParticleGroups(groupIndex)%Particles(particleIndex)
+              ! If active, to the array for GPKDE
+              if( (p%Status .eq. 1) ) then
+                activeCounter = activeCounter + 1
+              end if
             end do
-            !$omp end parallel do
-
-        end do
-
-        
-        ! Prescribed concentration cells
-        ! Should be processed before GPKDE reconstruction
-        ! to apply necessary corrections
-        if ( simulationData%anyPrescribedConcentration ) then  
-          print *, 'PROTOTYPE PRESCRIBED CONCENTRATIONS: '
-          ! Loop over prescribed boundaries
-          do npcb=1, simulationData%TrackingOptions%nPrescribed
-            pcb => simulationData%TrackingOptions%PrescribedBoundaries(npcb)
-
-            ! Prescribed concentration boundary
-            print *, 'PCB ID ', pcb%id , ' HAS N PARTICLES', pcb%nAuxRecords, ' OF ', pcb%nParticles
-            print *, 'PCB ID ', pcb%id , ' HAS MASS ', pcb%totalMassCounter, ' OF ', pcb%totalPrescribedMass
-
-            ! It should be restarted to count once again in the next tracking loop
-            pcb%nAuxRecords = 0
-            pcb%totalMassCounter = 0d0
-          
           end do
 
-        end if 
+          ! Allocate active particles coordinates
+          if ( allocated( activeParticleCoordinates ) ) deallocate( activeParticleCoordinates )
+          allocate( activeParticleCoordinates(activeCounter,3) )
+          activeParticleCoordinates = 0d0
+          if ( allocated( activeParticleMasses ) ) deallocate( activeParticleMasses )
+          allocate( activeParticleMasses(activeCounter) )
+          activeParticleMasses = 0d0
 
-
-        ! Once it finished transporting all 
-        ! particle groups, reconstruction 
-        ! grouped by solute
-        if ( simulationData%TrackingOptions%GPKDEReconstruction .and. isTimeSeriesPoint ) then
-
-          do ns=1,transportModelData%nSolutes
-
-            solute => transportModelData%Solutes(ns)
-
-            ! Count how many active, considering
-            ! all the particle groups linked to a given solute 
-            activeCounter = 0
-            do npg=1,solute%nParticleGroups
-              groupIndex = solute%pGroups(npg)
-              do particleIndex = 1, simulationData%ParticleGroups(groupIndex)%TotalParticleCount
-                p => simulationData%ParticleGroups(groupIndex)%Particles(particleIndex)
-                ! If active, to the array for GPKDE
-                if( (p%Status .eq. 1) ) then
-                  activeCounter = activeCounter + 1
-                end if
-              end do
+          ! Could be parallelized ?
+          ! Restart active counter and fill coordinates array
+          activeCounter = 0 
+          do npg=1,solute%nParticleGroups
+            groupIndex = solute%pGroups(npg)
+            do particleIndex = 1, simulationData%ParticleGroups(groupIndex)%TotalParticleCount
+              p => simulationData%ParticleGroups(groupIndex)%Particles(particleIndex)
+              ! If active, to the array for GPKDE
+              if( (p%Status .eq. 1) ) then
+                activeCounter = activeCounter + 1
+                activeParticleCoordinates( activeCounter, 1 ) = p%GlobalX
+                activeParticleCoordinates( activeCounter, 2 ) = p%GlobalY
+                activeParticleCoordinates( activeCounter, 3 ) = p%GlobalZ
+                activeParticleMasses( activeCounter ) = p%Mass
+              end if
             end do
+          end do
 
-            ! Allocate active particles coordinates
-            if ( allocated( activeParticleCoordinates ) ) deallocate( activeParticleCoordinates )
-            allocate( activeParticleCoordinates(activeCounter,3) )
-            activeParticleCoordinates = 0d0
-            if ( allocated( activeParticleMasses ) ) deallocate( activeParticleMasses )
-            allocate( activeParticleMasses(activeCounter) )
-            activeParticleMasses = 0d0
+          ! GPKDE
+          ! Compute density for the particles linked to a given 
+          ! solute. These may have different mass
+          call gpkde%ComputeDensity(                                                  &
+           activeParticleCoordinates,                                                 &
+           outputFileUnit    = simulationData%TrackingOptions%gpkdeOutputUnit,        &
+           outputDataId      = nt,                                                    & ! timeindex
+           particleGroupId   = solute%id,                                             &
+           unitVolume        = .true.,                                                &
+           weightedHistogram = .true.,                                                &
+           weights           = activeParticleMasses,                                  &
+           scalingFactor     = simulationData%TrackingOptions%gpkdeScalingFactor,     &
+           histogramScalingFactor = simulationData%TrackingOptions%gpkdeScalingFactor &
+          )
 
-            ! Could be parallelized ?
-            ! Restart active counter and fill coordinates array
-            activeCounter = 0 
-            do npg=1,solute%nParticleGroups
-              groupIndex = solute%pGroups(npg)
-              do particleIndex = 1, simulationData%ParticleGroups(groupIndex)%TotalParticleCount
-                p => simulationData%ParticleGroups(groupIndex)%Particles(particleIndex)
-                ! If active, to the array for GPKDE
-                if( (p%Status .eq. 1) ) then
-                  activeCounter = activeCounter + 1
-                  activeParticleCoordinates( activeCounter, 1 ) = p%GlobalX
-                  activeParticleCoordinates( activeCounter, 2 ) = p%GlobalY
-                  activeParticleCoordinates( activeCounter, 3 ) = p%GlobalZ
-                  activeParticleMasses( activeCounter ) = p%Mass
-                end if
-              end do
-            end do
+        end do 
+      end if ! GPKDEReconstruction
 
-            ! GPKDE
-            ! Compute density for the particles linked to a given 
-            ! solute. These may have different mass
-            call gpkde%ComputeDensity(                                                  &
-             activeParticleCoordinates,                                                 &
-             outputFileUnit    = simulationData%TrackingOptions%gpkdeOutputUnit,        &
-             outputDataId      = nt,                                                    & ! timeindex
-             particleGroupId   = solute%id,                                             &
-             unitVolume        = .true.,                                                &
-             weightedHistogram = .true.,                                                &
-             weights           = activeParticleMasses,                                  &
-             scalingFactor     = simulationData%TrackingOptions%gpkdeScalingFactor,     &
-             histogramScalingFactor = simulationData%TrackingOptions%gpkdeScalingFactor &
-            )
-
-          end do 
-
-        end if
-
-    end if
+    end if ! ParticleGroupCount .gt. 0
  
 
     ! Observation cells: if any sink cell observation, 
@@ -1475,37 +1566,55 @@
     ! If timeseries simulation and parallel and consolidated output
     ! Consolidation is done at this stage to preserve
     ! sorting of time indexes
-    if( ((simulationData%SimulationType .eq. 3)  .or. (simulationData%SimulationType .eq. 4) ) .and. & 
-        parallel .and. (tsOutputType .eq. 2) ) then
-        if ( .not. all( timeseriesRecordCounts .eq. 0 ) ) then
-            call ConsolidateParallelTimeseriesRecords( timeseriesTempUnits, timeseriesUnit, timeseriesRecordCounts, lastRecord )
-            ! Restart temporal binary units and record counters
-            do m = 1, ompNumThreads
-                if ( timeseriesRecordCounts(m) .gt. 0 ) then
-                    close( timeseriesTempUnits( m ) )
-                    open(unit=timeseriesTempUnits( m ), status='scratch', form='unformatted', &
-                                                        access='stream', action='readwrite'   )
-                end if
-            end do
-            timeseriesRecordCounts = 0 
-        end if
+    if(&
+      ((simulationData%SimulationType .eq. 3)  .or. (simulationData%SimulationType .eq. 4) ) .and. & 
+      parallel .and. (tsOutputType .eq. 2) ) then
+      if ( .not. all( timeseriesRecordCounts .eq. 0 ) ) then
+        call ConsolidateParallelTimeseriesRecords( timeseriesTempUnits, timeseriesUnit, timeseriesRecordCounts, lastRecord )
+        ! Restart temporal binary units and record counters
+        do m = 1, ompNumThreads
+          if ( timeseriesRecordCounts(m) .gt. 0 ) then
+            close( timeseriesTempUnits( m ) )
+            open(unit=timeseriesTempUnits( m ), status='scratch', form='unformatted', &
+                                                access='stream', action='readwrite'   )
+          end if
+        end do
+        timeseriesRecordCounts = 0 
+      end if
     end if
 
     ! Update tracking time
     time = maxTime
     
+
     ! Check to see if there are any particles remaining to track in the next
     ! pass. If not, exit the loop.
     if(simulationData%ParticleGroupCount .gt. 0) then
-        if(activeCount .eq. 0 .and. pendingCount .eq. 0) then
-            call ulog('No active particles remain. Exit TRACKING_INTERVAL_LOOP.', logUnit)
-            exit TIME_STEP_LOOP
-        end if
+      if(activeCount .eq. 0 .and. pendingCount .eq. 0) then
+        call ulog('No active particles remain. Exit TRACKING_INTERVAL_LOOP.', logUnit)
+        exit TIME_STEP_LOOP
+      end if
     end if
 
     end do TRACKING_INTERVAL_LOOP   
     call ulog('Exit TRACKING_INTERVAL_LOOP', logUnit)
        
+    print *, '----------------------------------------------------------------------------'
+    print *, 'REFERENCE TIME  : ',simulationData%ReferenceTime
+    print *, 'SIMDATASTOPTIME : ',simulationData%StopTime
+    print *, 'STOPTIME        : ',stoptime
+    print *, 'TOTALTIMES(1)   : ',tdisData%TotalTimes(1)
+    print *, 'TOTALTIMES(END) : ',tdisData%TotalTimes(tdisData%CumulativeTimeStepCount)
+    print *, 'KFIRST          : ',kfirst
+    print *, 'KLAST           : ',klast
+    print *, 'KTIME           : ',ktime
+    print *, 'NT              : ',nt
+    print *, 'TIME            : ',time
+    !elapsedTime = dble(clockCountStop - clockCountStart) / dble(clockCountRate)
+    !write(*, '(1X,A,E15.5,A)') 'Elapsed time = ', elapsedTime, ' seconds'
+    print *, '----------------------------------------------------------------------------'
+    !call exit(0)
+
     ! Exit TIME_STEP_LOOP if the tracking time has reached the specified stop time.
     IF(time .ge. stoptime) exit TIME_STEP_LOOP
 
@@ -2319,6 +2428,7 @@
     spcFile    = ' '
     icFile     = ' '
     bcFile     = ' '
+    srcFile    = ' '
 
     inUnit = 99
     open(unit=inUnit, file=filename, status='old', form='formatted', access='sequential')
@@ -2441,6 +2551,11 @@
             bcFile = fname(1:iflen)
             open(unit=bcUnit,file=bcFile,status='old', form='formatted', access='sequential', err=500, iomsg=errMessage)
             write(outUnit,'(A15,A)') 'BC File: ', bcFile(1:iflen)
+            !nfiltyp(7) = 1
+        else if(filtyp .eq. 'SRC') then 
+            srcFile = fname(1:iflen)
+            open(unit=srcUnit,file=srcFile,status='old', form='formatted', access='sequential', err=500, iomsg=errMessage)
+            write(outUnit,'(A15,A)') 'BC File: ', srcFile(1:iflen)
             !nfiltyp(7) = 1
         end if
           
