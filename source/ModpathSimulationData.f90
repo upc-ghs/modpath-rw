@@ -2429,7 +2429,7 @@ contains
     ! local
     integer :: isThisFileOpen = -1
     integer :: nSources, nValidSources
-    integer :: particleCount
+    integer :: particleCount, totalParticleCount, currentParticleCount
     integer :: nsrc, nSrcBudgets, nsb
     integer, dimension(:), pointer :: dimensionMask
     integer, pointer               :: nDim
@@ -2459,16 +2459,21 @@ contains
     doubleprecision, allocatable, dimension(:)       :: releaseTimes
     doubleprecision, allocatable, dimension(:)       :: cummMassSeries
     doubleprecision, allocatable, dimension(:)       :: diffCummMassSeries
+    doubleprecision :: initialTime, finalTime
     doubleprecision :: effectiveMass, cummEffectiveMass, lastCummMass
-    integer :: firstnonzero, nti, nte, i 
-    integer, allocatable, dimension(:) :: indices, endindices
+    doubleprecision :: npAuxDbl
+    integer :: npAuxInt, npThisRelease, npNextRelease
+    logical :: lastRelease = .false.
+    integer :: firstnonzero, nti, nte  
+    character(len=20) :: tempChar1
+    character(len=20) :: tempChar2
+    integer :: m, idmax, seqNumber, cellCounter, offset
     type(ParticleGroupType),dimension(:),allocatable :: particleGroups
     type(ParticleGroupType),dimension(:),allocatable :: newParticleGroups
     ! urword
     character(len=200) :: line
     integer :: icol,istart,istop,n
     doubleprecision :: r
-    doubleprecision :: initialTime, finalTime
     ! linear interpolation 
     type( linear_interp_1d ) :: interp1d
     integer :: int1dstat
@@ -2539,11 +2544,10 @@ contains
           call ustop('Number of source budgets is .lt. 1. It should be at least 1.')
         end if 
 
-        if( allocated( srcPkgNames ) ) deallocate( srcPkgNames ) 
-        allocate( srcPkgNames( nSrcBudgets ) ) 
-
 
         ! Interpret source budgets
+        if( allocated( srcPkgNames ) ) deallocate( srcPkgNames ) 
+        allocate( srcPkgNames( nSrcBudgets ) ) 
         do nsb=1,nSrcBudgets
 
           read(srcUnit, '(a)') line
@@ -2592,9 +2596,13 @@ contains
             auxSubDivisions(naux,2) = n 
             call urword(line,icol,istart,istop,2,n,r,0,0)
             auxSubDivisions(naux,3) = n 
-                
+            ! Validate template
 
+            ! SOMETHING LIKE THIS
             ! solute id depending on solutes option
+            !if ( this%ParticlesMassOption .eq. 2 ) then 
+            !  particleGroups(nic)%Solute = soluteId
+            !end if
 
           end do ! naux = 1, nAuxNames 
         
@@ -2616,6 +2624,8 @@ contains
           ! What about initial Time and final Time =?
           initialTime = this%ReferenceTime
           finalTime   = this%StopTime
+          ! NEEDS TO DO SOMETHING IN THE CASE THAT STOPTIME is 1d+30
+
 
           ! Obtain flow and aux vars timeseries.
           ! Function allocates and return necessary arrays
@@ -2660,8 +2670,52 @@ contains
           if ( allocated(auxEffMasses) ) deallocate( auxEffMasses ) 
           allocate( auxEffMasses, mold=auxMasses )
 
+          ! For this source budget, it should create 
+          ! particlegroups for what specifically ? 
+
+          ! One for each aux var  ? MAYBE
+          ! One per source budget ? COULD ALSO BE
+          ! One for each cell     ? NO
+
+          ! For multidispersion or multispecies simulations,
+          ! the current program structure relates a solute with 
+          ! particle group ids. 
+
+          ! In the most likely scenario that each aux var represents 
+          ! a different solute, then it makes sense to consider 
+          ! a particle group per aux var. Also, the package structure
+          ! will request a soluteid for each auxvar in case the simulation 
+          ! is multispecies.
+
+
+          ! Carrier for candidate particle groups 
+          if ( allocated(particleGroups) ) deallocate( particleGroups )
+          allocate(particleGroups(nAuxNames))
+
+
           ! Do it for each aux var
+          print *, '++++++++++++++++++++++++++++'
+          print *, '+++++ NAUXNAMES: ', nAuxNames
           do naux=1,nAuxNames
+          print *, '++++++++++++++++++++++++++++'
+          print *, '++ AUX: ', naux
+          print *, '++++++++++++++++++++++++++++'
+
+            ! Report
+            write(outUnit,'(A,A)') 'Processing auxiliary variable: ', trim(adjustl(auxNames(naux)))
+
+            ! Give a name to the particle group
+            ! SRCname_idsrcbudget_idauxvar
+            tempChar1 = ''
+            tempChar2 = ''
+            write( unit=tempChar1, fmt=* )nsb 
+            write( unit=tempChar2, fmt=* )naux 
+            particleGroups(naux)%Name = trim(adjustl(srcName))//'_'//trim(adjustl(tempChar1))//'_'//trim(adjustl(tempChar2))
+
+            ! Increase pgroup counter
+            particleGroups(naux)%Group = this%ParticleGroupCount + naux
+
+
             ! Correct the particle template based on dimension mask
             ! If dimension is active, leave the given value. 
             ! If not, switch it to one
@@ -2682,23 +2736,82 @@ contains
             ! necessary for achieving the cummulative mass 
             nParticlesDbl = totMass/auxMasses(naux)
             ! ... and using the number of particles per cell, estimate
-            ! the number of releaes per cell.
-            nReleases     = int(nParticlesDbl/auxNPCell(naux))+1
+            ! the number of releases per cell.
+            nReleases     = int(nParticlesDbl/auxNPCell(naux)+0.5)
 
             ! Up to this point, the number of particles 
             ! needed can be computed as nReleases*NPCELL
 
-            ! Given the number of releases, interpolate 
-            ! the release times, using as source the cummulative mass function
-            do nc=1, nCells
+            ! Something here could allow immediately
+            ! move to the next aux var if the total 
+            ! number of particles is zero.
+            totalParticleCount = sum(nReleases*auxNPCell(naux))
+            if ( totalParticleCount .lt. 1 ) then 
+              write(outUnit,*) ' Warning: pgroup ',&
+                  particleGroups(naux)%Name,' has zero particles, it will skip to the next.'
+              ! Process the next aux variable
+              cycle
+            end if 
 
-              if ( nReleases(nc) .lt. 2 ) cycle
+            ! Allocate particles 
+            if(allocated(particleGroups(naux)%Particles)) deallocate(particleGroups(naux)%Particles)
+            allocate(particleGroups(naux)%Particles(totalParticleCount))
+
+            ! Variables for defining the particles for this group
+            idmax = 0
+            offset = 0
+            seqNumber = 0
+            cellCounter = 0
+            currentParticleCount = 0 
+
+            ! Given the number of releases, interpolate release times
+            ! for each cell, using as source the cummulative mass function
+            print *, 'NCELLS: ', nCells
+            do nc=1, nCells
+              print *, '***************************', nc
+
+              if ( nReleases(nc) .lt. 1 ) cycle ! At least one release
+
+              ! DEPRECATE
+              cellCounter = cellCounter + 1
               if ( allocated( releaseTimes ) ) deallocate( releaseTimes ) 
               allocate( releaseTimes( nReleases(nc) ) )
+              ! END DEPRECATE
 
               ! The effective mass of particles for the aux var of this cell
               effectiveMass = totMass(nc)/(nReleases(nc)*auxNPCell(naux))
 
+              ! Create particle template for this cell
+              ! 0: is for drape. (TEMP)
+              ! Drape = 0: particle placed in the cell. If dry, status to unreleased
+              ! Drape = 1: particle placed in the uppermost active cell
+              ! -999: is a placeholder for release time, it will assigned later
+              call CreateMassParticlesAsInternalArray(& 
+                particleGroups(naux),     &
+                srcCellNumbers(nc),       &
+                currentParticleCount,     &
+                auxSubDivisions(naux,1),  &
+                auxSubDivisions(naux,2),  &
+                auxSubDivisions(naux,3),  & 
+                0, effectiveMass, -999d0  )
+              ! Assign layer value to each particle
+              do m = 1, currentParticleCount 
+                seqNumber = seqNumber + 1
+                if(particleGroups(naux)%Particles(m)%Id .gt. idmax) idmax = particleGroups(naux)%Particles(m)%Id
+                particleGroups(naux)%Particles(m)%Group = particleGroups(naux)%Group
+                particleGroups(naux)%Particles(m)%SequenceNumber = seqNumber
+                particleGroups(naux)%Particles(m)%InitialLayer =                       &
+                  grid%GetLayer(particleGroups(naux)%Particles(m)%InitialCellNumber)
+                particleGroups(naux)%Particles(m)%Layer =                              &
+                  grid%GetLayer(particleGroups(naux)%Particles(m)%CellNumber)
+              end do
+              ! Notice that offset should remain as the starting count. These particles 
+              ! still have an invalid release time and it will be corrected 
+              ! downstream
+              offset = currentParticleCount - auxNPCell(naux)
+
+
+              ! Note: 
               ! Interpolator requires strictly increasing x and 
               ! the cummulative mass function may have flat sections.
 
@@ -2708,20 +2821,18 @@ contains
               cummMassSeries(:)  = 0d0
               cummMassSeries(2:) = cummMassTimeseries(1:totMassLoc(nc),nc,naux)
 
-              ! DEV
-              cummMassSeries(2) = 0d0
-              cummMassSeries(7) = cummMassSeries(6)
-              cummMassSeries(8) = cummMassSeries(6)
-              ! END DEV
-
               ! nti, nte: time indexes to be passed to interpolator as source
               nti = 0
               nte = 0
               firstnonzero = 0
               lastCummMass = 0d0
               cummEffectiveMass = 0d0
+              npNextRelease = 0
+
+              ! Loop over cummulative mass series
               do nt = 1, totMassLoc(nc)+1
-                ! Loop until finding the first non-zero
+
+                ! Advance loop until finding the first non-zero
                 if (&
                   ( cummMassSeries( nt ) .eq. 0d0 ) .and. &
                   ( firstnonzero .eq. 0 ) ) cycle
@@ -2760,6 +2871,9 @@ contains
                   ! If it is the last loop, set at the last index in array
                   if ( nt.eq.(totMassLoc(nc)+1) ) nte = nt
 
+
+
+                  ! NEEEDS RESOLUTION SOLVING !!!
                   if ( nte .eq. nti ) then 
                           print *, 'CRY!!!!!!!!'
                           call exit(0)
@@ -2773,17 +2887,85 @@ contains
                     call ustop('There was a problem while initializing 1d interpolator. Stop.')
                   end if
 
+
                   print *, '--------- INTERPOLATING------', nti, nte
+
+                  ! Initialize release variables
+                  lastRelease = .false.
+                  npThisRelease = auxNPCell(naux)
+                  if ( npNextRelease .gt. 0 ) then 
+                    npThisRelease = npNextRelease
+                    npNextRelease = 0
+                  end if 
+
+                  ! And loop until a maximum of nReleases
                   do nr=1, nReleases(nc)
-                    cummEffectiveMass = cummEffectiveMass + auxNPCell(naux)*effectiveMass
-                    call interp1d%evaluate( cummEffectiveMass, releaseTimes(nr) )
 
-                    ! WHAT TO DO HERE !!!!
+                    ! Increase the cummulative mass counter
+                    cummEffectiveMass = cummEffectiveMass + npThisRelease*effectiveMass
 
+                    if ( cummEffectiveMass .ge. lastCummMass ) then
+                      ! If above the current limit, add some particles
+                      ! as long as the limit remains below lastCummMass 
+                      ! and correct cummEffectiveMass
+                      cummEffectiveMass = cummEffectiveMass - npThisRelease*effectiveMass
+                      npAuxDbl = (lastCummMass - cummEffectiveMass)/effectiveMass
+                      npThisRelease = int(npAuxDbl+0.5)
 
-                    print *, 'CUMM MASS: ', cummEffectiveMass, ' - RELEASE TIME: ', releaseTimes(nr) 
-                    if ( cummEffectiveMass .ge. lastCummMass ) exit
-                  end do
+                      ! If no particles, done
+                      if ( npThisRelease .lt. 1 ) exit
+
+                      ! This variable keeps track of the particles 
+                      ! needed to begin releases next time and keep 
+                      ! consistency with total mass for the computed
+                      ! effectiveMass
+                      npNextRelease = auxNPCell(naux) - npThisRelease
+                      cummEffectiveMass = cummEffectiveMass + npThisRelease*effectiveMass
+                      lastRelease = .true.
+                    end if
+
+                    ! Interpolate the release time        
+                    call interp1d%evaluate( cummEffectiveMass, releaseTimes(nr) ) ! THIS ARRAY RELEASE TIMES BYE BYE
+
+                    ! Assign to the template of particles
+                    do m = 1, npThisRelease
+                     idmax = idmax + 1
+                     seqNumber = seqNumber + 1
+                     particleGroups(naux)%Particles(offset+m)%Id = idmax
+                     particleGroups(naux)%Particles(offset+m)%SequenceNumber = seqNumber
+                     particleGroups(naux)%Particles(offset+m)%Group = particleGroups(naux)%Group
+                     particleGroups(naux)%Particles(offset+m)%Drape = particleGroups(naux)%Particles(m)%Drape
+                     particleGroups(naux)%Particles(offset+m)%Status = particleGroups(naux)%Particles(m)%Status
+                     particleGroups(naux)%Particles(offset+m)%InitialCellNumber = & 
+                             particleGroups(naux)%Particles(m)%InitialCellNumber
+                     particleGroups(naux)%Particles(offset+m)%InitialLayer = particleGroups(naux)%Particles(m)%InitialLayer
+                     particleGroups(naux)%Particles(offset+m)%InitialFace = particleGroups(naux)%Particles(m)%InitialFace
+                     particleGroups(naux)%Particles(offset+m)%InitialLocalX = particleGroups(naux)%Particles(m)%InitialLocalX
+                     particleGroups(naux)%Particles(offset+m)%InitialLocalY = particleGroups(naux)%Particles(m)%InitialLocalY
+                     particleGroups(naux)%Particles(offset+m)%InitialLocalZ = particleGroups(naux)%Particles(m)%InitialLocalZ
+                     particleGroups(naux)%Particles(offset+m)%InitialTrackingTime = releaseTimes(nr)
+                     particleGroups(naux)%Particles(offset+m)%TrackingTime = & 
+                             particleGroups(naux)%Particles(offset+m)%InitialTrackingTime
+                     particleGroups(naux)%Particles(offset+m)%CellNumber = particleGroups(naux)%Particles(m)%CellNumber
+                     particleGroups(naux)%Particles(offset+m)%Layer = particleGroups(naux)%Particles(m)%Layer
+                     particleGroups(naux)%Particles(offset+m)%Face = particleGroups(naux)%Particles(m)%Face
+                     particleGroups(naux)%Particles(offset+m)%LocalX = particleGroups(naux)%Particles(m)%LocalX
+                     particleGroups(naux)%Particles(offset+m)%LocalY = particleGroups(naux)%Particles(m)%LocalY
+                     particleGroups(naux)%Particles(offset+m)%LocalZ = particleGroups(naux)%Particles(m)%LocalZ
+                    end do
+
+                    ! Increase offset
+                    offset = offset + npThisRelease
+                    
+                    ! Restart npThisRelease
+                    npThisRelease = auxNPCell(naux)
+
+                    if ( lastRelease ) then
+                      ! And exit loop over releases
+                      exit
+                    end if 
+
+                  end do ! nr=1, nReleases(nc)
 
                   ! After interpolating release times, destroy interpolator
                   call interp1d%destroy()
@@ -2794,23 +2976,43 @@ contains
 
                 end if
 
-              end do ! nt 
+              end do ! nt = 1, totMassLoc(nc)+1
 
-
-              !print *, '...............'
-              !do nt = 1, totMassLoc(nc)+1
-              !  print *, nt, cummMassSeries(nt)
-              !end do 
-
+              ! Save the current particle count, it will add more
+              ! corresponding to the next cell
+              currentParticleCount = offset
 
             end do ! nc=1, nCells
 
+
+            print *, '----------------------------------------------------'
+            print *, '..............................NPARTICLES ', totalParticleCount
+            print *, '........................NPARTICLES OFFSET', offset
+            print *, '.......................cummEffectiveMass ', cummEffectiveMass
+            print *, '.................. totMass: ', totMass
+            print *, '.............effectiveMass: ', effectiveMass
+            print *, '.............auxMasses: ', auxMasses(naux)
+            print *, '----------------------------------------------------'
+            do idmax=1, nTimes
+              print *, idmax+1, cummMassTimeseries(idmax,:,naux)  
+            end do 
+            print *, '----------------------------------------------------'
+
+
+
           end do ! naux = 1, nAuxNames
+
+
+            call exit(0)
+
 
         end do ! nsb=1,nSrcBudgets
 
       case default
-              print *, 'NOT IMPLEMENTED !'
+
+        print *, 'NOT IMPLEMENTED ! :)))))) '
+        call exit(0)
+
       end select
 
 

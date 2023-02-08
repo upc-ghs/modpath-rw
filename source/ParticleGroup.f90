@@ -9,7 +9,7 @@ module ParticleGroupModule
 
   type,public :: ParticleGroupType
     integer :: Group
-    character(len=16) :: Name
+    character(len=20) :: Name
     character(len=200) :: LocationFile
     integer :: TotalParticleCount
     type(ParticleType),dimension(:),allocatable :: Particles
