@@ -10,10 +10,13 @@ PROGRAM = mpathrwpt
 
 SOURCEDIR1=../source
 SOURCEDIR2=../gpkde/src
+SOURCEDIR3=../lib/finterp/src
 
 VPATH = \
 ${SOURCEDIR1} \
-${SOURCEDIR2} 
+${SOURCEDIR2} \
+${SOURCEDIR3} 
+
 
 .SUFFIXES: .c .cpp .f .f90 .F90 .fpp .o
 
@@ -32,13 +35,15 @@ CFLAGS = -O3 -D_UF
 # Define the libraries
 SYSLIBS = 
 
-# Start with objects from GPKDE then
-# continues to modpath
+# Start with objects from GPKDE, 
+# then the library for linear interpolation, 
+# and then modpath files
 OBJECTS = \
 $(OBJDIR)/Histogram.o \
 $(OBJDIR)/KernelMultiGaussian.o \
 $(OBJDIR)/GridCell.o \
 $(OBJDIR)/GridProjectedKDE.o \
+$(OBJDIR)/linear_interpolation_module.o \
 $(OBJDIR)/Coordinate.o \
 $(OBJDIR)/TrackCellOptions.o \
 $(OBJDIR)/BudgetListItem.o \

@@ -1867,7 +1867,7 @@ contains
 
 
     ! FORCING 1 NOW !    
-    nFluxConditions = 1
+    !nFluxConditions = 1
     if ( nFluxConditions .gt. 0 ) then 
 
       nValidFluxConditions = 0 ! Monitors whether the boundary has any particle
@@ -1886,26 +1886,26 @@ contains
       !  particleGroups(nfc)%Group = this%ParticleGroupCount + nfc
 
       !end do
-      print *, 'AT MODPATHSIMDATA...'
-      kfirst = this%tdisData%FindContainingTimeStep(this%ReferenceTime)
-      call this%tdisData%GetPeriodAndStep(this%tdisData%CumulativeTimeStepCount, period, step)
-      print *, 'REFERENCE TIME          : ', this%ReferenceTime
-      print *, 'CUMULATIVETIMESTEPCOUNT : ', this%tdisData%CumulativeTimeStepCount
-      print *, 'PERIOD,STEP             : ', period, step
-      print *, 'TIMESTEPCOUNTS : ', this%tdisData%TimeStepCounts
+      !print *, 'AT MODPATHSIMDATA...'
+      !kfirst = this%tdisData%FindContainingTimeStep(this%ReferenceTime)
+      !call this%tdisData%GetPeriodAndStep(this%tdisData%CumulativeTimeStepCount, period, step)
+      !print *, 'REFERENCE TIME          : ', this%ReferenceTime
+      !print *, 'CUMULATIVETIMESTEPCOUNT : ', this%tdisData%CumulativeTimeStepCount
+      !print *, 'PERIOD,STEP             : ', period, step
+      !print *, 'TIMESTEPCOUNTS : ', this%tdisData%TimeStepCounts
 
-      !this%BudgetReader%GetRecordHeaderRange(stressPeriod, timeStep, firstRecord, lastRecord)
-      !call thistdisData%GetPeriodAndStep(tdisData%CumulativeTimeStepCount, period, step)
-      !print *, 'EARLY LEAVING AT FLUX'
-      !call exit(0)
+      !!this%BudgetReader%GetRecordHeaderRange(stressPeriod, timeStep, firstRecord, lastRecord)
+      !!call thistdisData%GetPeriodAndStep(tdisData%CumulativeTimeStepCount, period, step)
+      !!print *, 'EARLY LEAVING AT FLUX'
+      !!call exit(0)
 
 
-      ! So when defining a prescribed-flux boundary condition
+      !! So when defining a prescribed-flux boundary condition
 
-      ! Request the number of stress periods 
-      print *, 'STRESSPERIODSCOUNT : ', this%tdisData%StressPeriodCount
-      print *, 'STRESSPERIODTYPES : ', this%tdisData%StressPeriodTypes
-      !print *, 'TOTALTIMES: ', this%tdisData%TotalTimes
+      !! Request the number of stress periods 
+      !print *, 'STRESSPERIODSCOUNT : ', this%tdisData%StressPeriodCount
+      !print *, 'STRESSPERIODTYPES : ', this%tdisData%StressPeriodTypes
+      !!print *, 'TOTALTIMES: ', this%tdisData%TotalTimes
 
 
     end if 
@@ -2300,7 +2300,7 @@ contains
               subDivisions(nc,3),& 
               0 )
 
-            exit
+            exit ! TEMP
 
           end do
 
@@ -2403,10 +2403,6 @@ contains
       end if
     end if
 
-
-    !print *, 'EARLY LEAVING'
-    !call exit(0)
-
         
     ! Close bc data file
     close( bcUnit )
@@ -2418,6 +2414,7 @@ contains
   ! Read specific SRC data
   subroutine pr_ReadSRCData( this, srcFile, srcUnit, outUnit, grid, flowModelData )
     use UTL8MODULE,only : urword,ustop,u3dintmpusg,u3dintmp,ugetnode
+    use linear_interpolation_module, only: linear_interp_1d
     !--------------------------------------------------------------
     ! Specifications
     !--------------------------------------------------------------
@@ -2434,49 +2431,47 @@ contains
     integer :: nSources, nValidSources
     integer :: particleCount
     integer :: nsrc, nSrcBudgets, nsb
+    integer, dimension(:), pointer :: dimensionMask
+    integer, pointer               :: nDim
     character(len=20) :: srcName
     character(len=20) :: srcSpecKind, srcPkgName
-    integer :: nAuxNames, naux
+    integer :: nAuxNames, naux, nTimes, nt, nCells, nc, nd, nr
     character(len=16),allocatable,dimension(:) :: srcPkgTypes
     character(len=16),allocatable,dimension(:) :: srcPkgNames
     character(len=16),allocatable,dimension(:) :: auxNames
     logical :: validAuxNames = .false.
     doubleprecision, allocatable, dimension(:) :: auxMasses
+    doubleprecision, allocatable, dimension(:) :: auxEffMasses
     integer, allocatable, dimension(:,:)       :: auxSubDivisions
+    doubleprecision, allocatable, dimension(:,:)     :: flowTimeseries     ! nt x ncells
+    doubleprecision, allocatable, dimension(:,:,:)   :: auxTimeseries      ! nt x ncells x nauxvars
+    doubleprecision, allocatable, dimension(:)       :: timeIntervals      ! nt
+    doubleprecision, allocatable, dimension(:)       :: times              ! nt + 1
+    integer        , allocatable, dimension(:)       :: srcCellNumbers     ! nCells
+    doubleprecision, allocatable, dimension(:,:,:)   :: cummMassTimeseries ! nt x ncells x nauxvars
+    integer        , allocatable, dimension(:)       :: auxNPCell
+    integer        , allocatable, dimension(:)       :: auxNPTot 
+    doubleprecision, allocatable, dimension(:)       :: totMass
+    integer        , allocatable, dimension(:)       :: totMassLoc
+    doubleprecision, allocatable, dimension(:)       :: nParticlesDbl
+    integer        , allocatable, dimension(:)       :: nParticlesInt
+    integer        , allocatable, dimension(:)       :: nReleases
+    doubleprecision, allocatable, dimension(:)       :: releaseTimes
+    doubleprecision, allocatable, dimension(:)       :: cummMassSeries
+    doubleprecision, allocatable, dimension(:)       :: diffCummMassSeries
+    doubleprecision :: effectiveMass, cummEffectiveMass, lastCummMass
+    integer :: firstnonzero, nti, nte, i 
+    integer, allocatable, dimension(:) :: indices, endindices
     type(ParticleGroupType),dimension(:),allocatable :: particleGroups
     type(ParticleGroupType),dimension(:),allocatable :: newParticleGroups
     ! urword
     character(len=200) :: line
     integer :: icol,istart,istop,n
     doubleprecision :: r
-
-
-
-    !type(ParticleTrackingOptionsType), pointer :: trackingOptions
-    !integer :: icol,istart,istop,n,nd,currentDim
-    !doubleprecision    :: r
-    !character(len=200) :: line
-    !integer, dimension(:), allocatable :: cellsPerLayer
-    !integer :: particleCount
-    !integer :: cellCount,rowCount,columnCount,layerCount
-    !integer :: nFluxConditions, nValidFluxConditions, nfc
-    !doubleprecision :: nParticlesCell,cellVolume
-    !doubleprecision :: cellTotalMass,celLDissolvedMass
-    !doubleprecision :: sX,sY,sZ
-    !doubleprecision :: nPX,nPY,nPZ
-    !doubleprecision :: particlesMass, effParticlesMass
-    !integer         :: iNPX, iNPY, iNPZ, NPCELL
-    !integer         :: newParticleGroupCount
-    !integer         :: pgCount
-    !integer         :: totalParticleCount, singleReleaseParticleCount
-    !integer         :: soluteId
-    !doubleprecision :: initialReleaseTime, releaseInterval 
-    !integer :: releaseTimeCount
-    !integer, allocatable, dimension(:,:) :: subDivisions
-    !integer :: m,cellCounter,offset,idmax,seqNumber
-    !integer, dimension(:), pointer :: dimensionMask
-    !integer, pointer               :: nDim
-    !integer :: kfirst, period, step
+    doubleprecision :: initialTime, finalTime
+    ! linear interpolation 
+    type( linear_interp_1d ) :: interp1d
+    integer :: int1dstat
     !--------------------------------------------------------------
 
     write(outUnit, *)
@@ -2502,6 +2497,11 @@ contains
       ! And leave
       return
     end if
+
+
+    ! RW dimensionality vars
+    dimensionMask => this%TrackingOptions%dimensionMask
+    nDim => this%TrackingOptions%nDim
 
 
     nValidSources = 0 
@@ -2539,25 +2539,17 @@ contains
           call ustop('Number of source budgets is .lt. 1. It should be at least 1.')
         end if 
 
-        if( allocated( srcPkgTypes ) ) deallocate( srcPkgTypes ) 
-        allocate( srcPkgTypes( nSrcBudgets ) ) 
-        if ( this%isMF6 ) then 
-          if( allocated( srcPkgNames ) ) deallocate( srcPkgNames ) 
-          allocate( srcPkgNames( nSrcBudgets ) ) 
-        end if 
+        if( allocated( srcPkgNames ) ) deallocate( srcPkgNames ) 
+        allocate( srcPkgNames( nSrcBudgets ) ) 
 
 
         ! Interpret source budgets
         do nsb=1,nSrcBudgets
+
           read(srcUnit, '(a)') line
           icol = 1
           call urword(line,icol,istart,istop,0,n,r,0,0)
-          srcPkgTypes(nsb) = line(istart:istop)
-
-          if ( this%isMF6 ) then 
-            call urword(line,icol,istart,istop,0,n,r,0,0)
-            srcPkgNames(nsb) = line(istart:istop)
-          end if
+          srcPkgNames(nsb) = line(istart:istop)
 
           read(srcUnit, '(a)') line
           icol = 1
@@ -2565,7 +2557,7 @@ contains
           nAuxNames = n 
 
           if ( nAuxNames .lt. 1 ) then
-            write(outUnit,'(A,A,A)') 'Number of aux variables source ', srcPkgTypes(nsb) ,' is .lt. 1. It should be at least 1.'
+            write(outUnit,'(A,A,A)') 'Number of aux variables source ', srcPkgNames(nsb) ,' is .lt. 1. It should be at least 1.'
             call ustop('Number of aux variables is .lt. 1. It should be at least 1. Stop.')
           end if 
 
@@ -2575,6 +2567,8 @@ contains
           allocate( auxMasses( nAuxNames ) )
           if ( allocated( auxSubDivisions ) ) deallocate( auxSubDivisions ) 
           allocate( auxSubDivisions( nAuxNames,3 ) )
+          if ( allocated( auxNPCell ) ) deallocate( auxNPCell ) 
+          allocate( auxNPCell( nAuxNames ) )
 
           ! Loop over aux names and interpret data
           ! Requires some health checks
@@ -2602,44 +2596,227 @@ contains
 
             ! solute id depending on solutes option
 
-            print *, srcName, srcPkgTypes(nsb), srcPkgNames(nsb), auxNames(naux),auxMasses(naux), auxSubDivisions(naux,:) 
-          
-            
-          end do 
+          end do ! naux = 1, nAuxNames 
         
 
           ! Until this point, necessary data for reading auxiliary 
           ! variables and transforming into particles is available
           ! for this source budget
 
+
           ! Validate given aux names
-          validAuxNames = flowModelData%ValidateAuxVarNames( srcPkgTypes( nsb ), auxNames )
+          validAuxNames = flowModelData%ValidateAuxVarNames( srcPkgNames( nsb ), auxNames, this%isMF6 )
           if ( .not. validAuxNames ) then 
-            write(outUnit,'(A,A,A)') 'Aux names for source ', trim(adjustl(srcPkgTypes(nsb))) ,' were not found in budget header.'
+            write(outUnit,'(A,A,A)') 'Aux names for source ', trim(adjustl(srcPkgNames(nsb))) ,' were not found in budget header.'
             call ustop('Given aux names for source were not found in budget header. Stop.')
-            print *, 'INVALID!'
           end if 
 
+          
+          ! TEMPORARY!
+          ! What about initial Time and final Time =?
+          initialTime = this%ReferenceTime
+          finalTime   = this%StopTime
 
-          ! If the model is MF6, then srcPkgName can be used 
-          ! to be compared against TXT2ID2
+          ! Obtain flow and aux vars timeseries.
+          ! Function allocates and return necessary arrays
+          ! Note: times is a vector of times obtained from tdisData%TotalTimes, 
+          ! including intial and final times. timeIntervals is computed as diff(times)
+          call flowModelData%LoadFlowAndAuxTimeseries( srcPkgNames( nsb ), auxNames,& 
+                                  this%isMF6, initialTime, finalTime, this%tdisData,&
+                                flowTimeseries, auxTimeseries, timeIntervals, times,&
+                                                                     srcCellNumbers )
+
+          ! Now compute the cummulative mass function to obtain the total injected mass
+          if ( allocated( cummMassTimeseries ) ) deallocate( cummMassTimeseries ) 
+          allocate( cummMassTimeseries, mold=auxTimeseries ) 
+          cummMassTimeseries(:,:,:) = 0d0
+
+          ! Integrate for each aux var
+          ! Considers simple STEPWISE quantities
+          nTimes = size(timeIntervals)
+          do naux=1, nAuxNames
+            do nt=1,nTimes
+              if ( nt.gt.1 ) then
+                cummMassTimeseries(nt,:,naux) = &
+                  cummMassTimeseries(nt-1,:,naux) + flowTimeseries(nt,:)*auxTimeseries(nt,:,naux)*timeIntervals(nt)
+                cycle
+              end if
+              if ( nt.eq.1 ) cummMassTimeseries(nt,:,naux) = flowTimeseries(nt,:)*auxTimeseries(nt,:,naux)*timeIntervals(nt)
+            end do
+          end do
+
+          ! It needs to transform the cummulative mass into particles
+          nCells = size(srcCellNumbers)
+          if ( allocated(totMass) ) deallocate(totMass)
+          allocate( totMass( nCells ) )
+          if ( allocated(totMassLoc) ) deallocate(totMassLoc)
+          allocate( totMassLoc( nCells ) )
+          if ( allocated(nParticlesDbl) ) deallocate(nParticlesDbl)
+          allocate( nParticlesDbl( nCells ) )
+          if ( allocated(nParticlesInt) ) deallocate(nParticlesInt)
+          allocate( nParticlesInt( nCells ) )
+          if ( allocated(nReleases) ) deallocate(nReleases)
+          allocate( nReleases( nCells ) )
+          if ( allocated(auxEffMasses) ) deallocate( auxEffMasses ) 
+          allocate( auxEffMasses, mold=auxMasses )
+
+          ! Do it for each aux var
+          do naux=1,nAuxNames
+            ! Correct the particle template based on dimension mask
+            ! If dimension is active, leave the given value. 
+            ! If not, switch it to one
+            do nd = 1, 3
+              if ( dimensionMask(nd) .eq. 1 ) cycle 
+              auxSubDivisions(naux,nd) = 1
+            end do
+
+            ! Particles per cell
+            auxNPCell(naux) = product(auxSubDivisions(naux,:))
+
+            ! Max cumm mass stats
+            totMass    = maxval(cummMassTimeseries(:,:,naux), dim=1) ! Max cumm mass in time
+            totMassLoc = maxloc(cummMassTimeseries(:,:,naux), dim=1) ! Loc of max cumm mass in time
+            ! Note: the location of max mass corresponds to the end of the interval at index loc
+
+            ! With the given particles mass, estimate the number of particles
+            ! necessary for achieving the cummulative mass 
+            nParticlesDbl = totMass/auxMasses(naux)
+            ! ... and using the number of particles per cell, estimate
+            ! the number of releaes per cell.
+            nReleases     = int(nParticlesDbl/auxNPCell(naux))+1
+
+            ! Up to this point, the number of particles 
+            ! needed can be computed as nReleases*NPCELL
+
+            ! Given the number of releases, interpolate 
+            ! the release times, using as source the cummulative mass function
+            do nc=1, nCells
+
+              if ( nReleases(nc) .lt. 2 ) cycle
+              if ( allocated( releaseTimes ) ) deallocate( releaseTimes ) 
+              allocate( releaseTimes( nReleases(nc) ) )
+
+              ! The effective mass of particles for the aux var of this cell
+              effectiveMass = totMass(nc)/(nReleases(nc)*auxNPCell(naux))
+
+              ! Interpolator requires strictly increasing x and 
+              ! the cummulative mass function may have flat sections.
+
+              ! Array for the cumm series considering a zero at the beginning
+              if ( allocated( cummMassSeries ) ) deallocate( cummMassSeries ) 
+              allocate( cummMassSeries(totMassLoc(nc)+1) )
+              cummMassSeries(:)  = 0d0
+              cummMassSeries(2:) = cummMassTimeseries(1:totMassLoc(nc),nc,naux)
+
+              ! DEV
+              cummMassSeries(2) = 0d0
+              cummMassSeries(7) = cummMassSeries(6)
+              cummMassSeries(8) = cummMassSeries(6)
+              ! END DEV
+
+              ! nti, nte: time indexes to be passed to interpolator as source
+              nti = 0
+              nte = 0
+              firstnonzero = 0
+              lastCummMass = 0d0
+              cummEffectiveMass = 0d0
+              do nt = 1, totMassLoc(nc)+1
+                ! Loop until finding the first non-zero
+                if (&
+                  ( cummMassSeries( nt ) .eq. 0d0 ) .and. &
+                  ( firstnonzero .eq. 0 ) ) cycle
+
+                ! If found a nonzero mass, save the first nonzero
+                if ( firstnonzero .eq. 0 ) then 
+                  nti = nt-1
+                  if( nt .eq. 1 ) nti = 1 ! just in case, but it shouldn't
+                  firstnonzero = nt
+                  lastCummMass = cummMassSeries(nt)
+                  cycle
+                end if
+
+                ! If the current mass is higher than the last found, 
+                ! and the initial index is defined, then everything is ok, continue
+                ! to the next index if it is not the last.
+                if ( (cummMassSeries(nt) .gt. lastCummMass) .and. (nti.gt.0) ) then 
+                  lastCummMass = cummMassSeries(nt)
+                  if( nt.ne.(totMassLoc(nc)+1) ) cycle
+                else if ( (cummMassSeries(nt) .eq. lastCummMass) .and. (nti.eq.0) ) then
+                  ! Still on a flat area
+                  cycle
+                else if ( (cummMassSeries(nt) .gt. lastCummMass) .and. (nti.eq.0) ) then
+                  ! Define the new starting point and update lastCummMass
+                  nti = nt - 1
+                  lastCummMass = cummMassSeries(nt)
+                  cycle
+                end if
+
+                ! If it is equal to the last, and the first 
+                ! index is defined, then we are on a flat zone
+                if ( (cummMassSeries(nt) .eq. lastCummMass) .and. (nti.gt.0) ) then
+
+                  ! This is the last index for interpolation 
+                  nte = nt-1 
+                  ! If it is the last loop, set at the last index in array
+                  if ( nt.eq.(totMassLoc(nc)+1) ) nte = nt
+
+                  if ( nte .eq. nti ) then 
+                          print *, 'CRY!!!!!!!!'
+                          call exit(0)
+                  end if
 
 
-          !call flowModelData%LoadFlowTimeSeries(&
-          !        simulationData%ReferenceTime, &
-          !        stoptime, fluxCellNumbers, tdisData )
+                  ! Initialize interpolator
+                  call interp1d%initialize(cummMassSeries(nti:nte),times(nti:nte), int1dstat)
+                  if ( int1dstat .gt. 0 ) then 
+                    write(outUnit,'(A)') 'There was a problem while initializing 1d interpolator.'
+                    call ustop('There was a problem while initializing 1d interpolator. Stop.')
+                  end if
+
+                  print *, '--------- INTERPOLATING------', nti, nte
+                  do nr=1, nReleases(nc)
+                    cummEffectiveMass = cummEffectiveMass + auxNPCell(naux)*effectiveMass
+                    call interp1d%evaluate( cummEffectiveMass, releaseTimes(nr) )
+
+                    ! WHAT TO DO HERE !!!!
 
 
+                    print *, 'CUMM MASS: ', cummEffectiveMass, ' - RELEASE TIME: ', releaseTimes(nr) 
+                    if ( cummEffectiveMass .ge. lastCummMass ) exit
+                  end do
 
-        end do  
+                  ! After interpolating release times, destroy interpolator
+                  call interp1d%destroy()
+
+                  ! It should reset nti, nte
+                  nti = 0
+                  nte = 0
+
+                end if
+
+              end do ! nt 
 
 
+              !print *, '...............'
+              !do nt = 1, totMassLoc(nc)+1
+              !  print *, nt, cummMassSeries(nt)
+              !end do 
 
+
+            end do ! nc=1, nCells
+
+          end do ! naux = 1, nAuxNames
+
+        end do ! nsb=1,nSrcBudgets
 
       case default
               print *, 'NOT IMPLEMENTED !'
       end select
-    end do
+
+
+    end do ! nSources/specs
+
+
 
 
     print *, 'EARLIEST LEAVING... '

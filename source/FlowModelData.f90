@@ -6,9 +6,8 @@ module FlowModelDataModule
   use BudgetRecordHeaderModule,only : BudgetRecordHeaderType
   use UtilMiscModule,only : TrimAll
   use UTL8MODULE,only : ustop
-
   implicit none
-  !---------------------------------------------------------------------------------------------------------------
+  !--------------------------------------------------------------------------------------
 
   ! Set default access status to private
   private
@@ -74,6 +73,7 @@ module FlowModelDataModule
       ! DEV
       procedure :: LoadFlowTimeSeries => pr_LoadFlowTimeSeries
       procedure :: ValidateAuxVarNames => pr_ValidateAuxVarNames
+      procedure :: LoadFlowAndAuxTimeseries => pr_LoadFlowAndAuxTimeseries
 
     end type
 
@@ -82,11 +82,11 @@ contains
 
 
     subroutine pr_Initialize(this,headReader, budgetReader, grid, hNoFlow, hDry)
-    !--------------------------------------------------------------------------
+    !---------------------------------------------------------------------------
     !
-    !--------------------------------------------------------------------------
+    !---------------------------------------------------------------------------
     ! Specifications
-    !--------------------------------------------------------------------------
+    !---------------------------------------------------------------------------
     implicit none
     class(FlowModelDataType) :: this
     type(BudgetReaderType),intent(inout),target :: budgetReader
@@ -95,7 +95,7 @@ contains
     integer :: cellCount,gridType
     integer :: n, flowArraySize
     doubleprecision :: hNoFlow, hDry
-    !---------------------------------------------------------------------------------------------------------------
+    !---------------------------------------------------------------------------
 
       this%Initialized = .false.
       
@@ -303,17 +303,11 @@ contains
         end do
       end if
 
-      print *, '----------------------------------------'
-      print *, ' FLOWMODELDATA: LOOP OVER BUDGET HEADERS'
-      print *, firstRecord, lastRecord
-
       ! Loop through record headers
       do n = firstRecord, lastRecord
         header = this%BudgetReader%GetRecordHeader(n)
         textLabel = header%TextLabel
         call TrimAll(textLabel, firstNonBlank, lastNonBlank, trimmedLength)
-        print *, '----------TEXTLABEL: ', header%TextLabel
-        print *, '----------TEXTLABEL: ', textLabel(firstNonBlank:lastNonBlank), ' - HEADERMETHOD', header%Method
         select case(textLabel(firstNonBlank:lastNonBlank))
         case('CONSTANT HEAD', 'CHD')
           ! Read constant head flows into the sinkFlows and sourceFlows arrays.
@@ -462,7 +456,14 @@ contains
                 status)
             end if
           end if
-        
+
+        case('DATA-SPDIS', 'DATA-SAT')
+          ! Skip
+          ! The “DATA” prefix on the text identifier can
+          ! be used by post-processors to recognize that the record
+          ! does not contain a cell flow budget term.
+          cycle
+          
         case default
           ! Now handle any other records in the budget file.
           if((header%Method .eq. 0) .or. (header%Method .eq. 1)) then
@@ -608,15 +609,6 @@ contains
                       this%SinkFlows(cellNumber) +                  &
                       this%ListItemBuffer(m)%BudgetValue
                   end if
-                end if
-                !index = header%FindAuxiliaryNameIndex('CONCENTRATION')
-                if(index .gt. 0) then
-                print *, 'AUXNAMES: ', header%AuxiliaryNames
-                print *, 'TXT1ID1: ', header%TXT1ID1
-                print *, 'TXT2ID1: ', header%TXT2ID1
-                print *, 'TXT1ID2: ', header%TXT1ID2
-                print *, 'TXT2ID2: ', header%TXT2ID2
-                  !print *, 'CONCENTRATION: ', this%ListItemBuffer(m)%AuxiliaryValues(index)
                 end if
               end do
             end if
@@ -889,6 +881,465 @@ contains
     end subroutine pr_CheckForDefaultIface
 
 
+    subroutine pr_LoadFlowAndAuxTimeseries(this, sourcePkgName, auxVarNames,& 
+                                    isMF6, initialTime, finalTime, tdisData,&
+                        flowTimeseries, auxTimeseries, timeIntervals, times,&
+                                                                cellNumbers )
+    use TimeDiscretizationDataModule,only : TimeDiscretizationDataType
+    !------------------------------------------------------------------------
+    ! Given range of times, extract timeseries for flow and aux vars related 
+    ! to package name/budget header 
+    !------------------------------------------------------------------------
+    ! Specifications
+    !------------------------------------------------------------------------
+    implicit none
+    ! input
+    class(FlowModelDataType) :: this
+    character(len=16), intent(in) :: sourcePkgName
+    character(len=16), dimension(:), intent(in) :: auxVarNames
+    logical, intent(in) :: isMF6
+    doubleprecision, intent(in) :: initialTime, finalTime
+    type( TimeDiscretizationDataType ), intent(in) :: tdisData
+    ! out
+    doubleprecision, allocatable, dimension(:,:)  , intent(inout) :: flowTimeseries ! nt x ncells
+    doubleprecision, allocatable, dimension(:,:,:), intent(inout) :: auxTimeseries  ! nt x ncells x nauxvars
+    doubleprecision, allocatable, dimension(:)    , intent(inout) :: timeIntervals  ! nt
+    doubleprecision, allocatable, dimension(:)    , intent(inout) :: times          ! nt + 1
+    integer        , allocatable, dimension(:)    , intent(inout) :: cellNumbers    ! nCells
+    ! local
+    integer :: n, m, naux
+    integer :: stressPeriod, timeStep
+    integer :: firstRecord,lastRecord
+    integer :: firstNonBlank,lastNonBlank,trimmedLength
+    integer :: firstNonBlankIn,lastNonBlankIn,trimmedLengthIn
+    integer :: spaceAssigned, status, cellCount, iface, index, auxindex, cellindex
+    integer :: listItemBufferSize, cellNumber
+    type(BudgetRecordHeaderType) :: header
+    character(len=16) :: textLabel
+    character(len=132) :: message
+    integer :: nCells, newcounter
+    integer :: kinitial, kfinal, ktime, kcounter
+    integer :: nTimes, nTimeIntervals, nAuxVars
+    integer :: spInit, tsInit, spEnd, tsEnd, nsps, nsp 
+    integer, allocatable, dimension(:) :: tempCellNumbers
+    integer, allocatable, dimension(:) :: spCellNumbers
+    !integer, allocatable, dimension(:) :: ifaces
+    !------------------------------------------------------------------------
+
+      ! Trim input pkg name
+      call TrimAll(sourcePkgName, firstNonBlankIn, lastNonBlankIn, trimmedLengthIn)
+      listItemBufferSize = size(this%ListItemBuffer)
+
+      ! Given initial and final times, 
+      ! compute the initial and final time step indexes
+      ! Note 1: TotalTimes starts from dt, not zero.
+      ! Note 2: FindContainingTimeStep returns the index 
+      ! correspoding to the upper limit of the time interval 
+      ! in TotalTimes. Meaning, if on a TotalTimes vector 
+      ! [dt,2dt,...] the time 1.5dt is requested, then 
+      ! the function will return the index 2, corresponding to 
+      ! TotalTimes=2dt. 
+      kinitial = tdisData%FindContainingTimeStep(initialTime)
+      kfinal   = tdisData%FindContainingTimeStep(finalTime)
+      
+      ! The number of intervals
+      nTimeIntervals = kfinal - kinitial + 1
+      nTimes = nTimeIntervals + 1 
+      ! Something wrong with times 
+      if ( nTimeIntervals .lt. 1 ) then 
+         write(message,'(A)') 'Error: the number of times is .lt. 1. Check definition of reference and stop times. Stop.'
+         message = trim(message)
+         call ustop(message)
+      end if  
+
+      ! times: includes intial and final times ( reference, stoptime )
+      if ( allocated( times ) ) deallocate( times ) 
+      allocate( times(nTimes) )
+      if ( allocated( timeIntervals ) ) deallocate( timeIntervals ) 
+      allocate( timeIntervals(nTimeIntervals) )  
+
+      ! Fill times and time intervals
+      do ktime=1,nTimeIntervals
+        if ( ktime .eq. 1 ) times(1) = initialTime
+        if ( ktime .lt. nTimeIntervals ) times(ktime+1) = tdisData%TotalTimes(ktime+kinitial-1)
+        if ( ktime .eq. nTimeIntervals ) times(nTimes)  = finalTime 
+        timeIntervals(ktime) = times(ktime+1) - times(ktime)
+      end do 
+
+      nAuxVars = size(auxVarNames)
+      if ( nAuxVars .lt. 1 ) then 
+         write(message,'(A)') 'Error: number of aux variables for timeseries should be at least 1. Stop.'
+         message = trim(message)
+         call ustop(message)
+      end if  
+
+      ! In order to extract the pkg cells, it needs to 
+      ! run over stress periods
+
+      ! Get the initial and final stress
+      call tdisData%GetPeriodAndStep(kinitial, spInit, tsInit)
+      call tdisData%GetPeriodAndStep(kfinal  , spEnd , tsEnd )
+
+      nsps = spEnd - spInit + 1
+      timeStep = 1
+
+      if ( isMF6 ) then 
+
+        ! Loop over range of stress periods
+        do nsp=1, nsps
+
+          ! Determine record range for stressPeriod and timeStep
+          call this%BudgetReader%GetRecordHeaderRange(nsp, timeStep, firstRecord, lastRecord)
+
+          if(firstRecord .eq. 0) then
+            write(message,'(A,I5,A,I5,A)') ' Error loading Time Step ', timeStep, ' Period ', nsp, '.'
+            message = trim(message)
+            write(*,'(A)') message
+            call ustop('Missing budget information. Budget file must have output for every time step. Stop.')
+          end if
+
+          ! Loop through record headers
+          do n = firstRecord, lastRecord
+            header    = this%BudgetReader%GetRecordHeader(n)
+            if ( ( header%Method .eq. 5 ) .or. ( header%Method .eq. 6 ) ) then
+              textLabel = header%TXT2ID2
+              call TrimAll(textLabel, firstNonBlank, lastNonBlank, trimmedLength)
+
+              ! Is the requested pkg ?
+              if (&
+                textLabel(firstNonBlank:lastNonBlank) .eq. & 
+                sourcePkgName(firstNonBlankIn:lastNonBlankIn) ) then
+                ! Check cells
+                call this%BudgetReader%FillRecordDataBuffer(header,       &
+                  this%ListItemBuffer, listItemBufferSize, spaceAssigned, &
+                  status)
+                if(spaceAssigned .gt. 0) then
+                        
+                  ! If allocated with different size, reallocate 
+                  ! else restart indexes
+                  if ( allocated(spCellNumbers) ) then 
+                    if ( size(spCellNumbers) .ne. spaceAssigned ) then 
+                      deallocate( spCellNumbers )
+                      allocate(spCellNumbers(spaceAssigned))
+                    else
+                      spCellNumbers(:) = 0
+                    end if
+                  else
+                    allocate(spCellNumbers(spaceAssigned))
+                  end if
+
+                  ! Assign to stress period cell numbers
+                  do m = 1, spaceAssigned
+                    cellNumber = this%ListItemBuffer(m)%CellNumber
+                    spCellNumbers(m) = cellNumber
+                  end do
+
+                  ! Allocate/reallocate cellNumbers
+                  if ( .not. allocated( cellNumbers ) ) then
+
+                    ! First initialization
+                    allocate( cellNumbers(spaceAssigned) )
+                    cellNumbers(:) = spCellNumbers(:)
+
+                    ! Break the records loop and continue to next stress period
+                    exit
+
+                  else
+
+                    ! If allocated, verify if any new cell
+                    newcounter = 0
+                    do m =1, spaceAssigned
+                      cellindex = findloc( cellNumbers, spCellNumbers(m), 1 ) 
+                      if ( cellindex .eq. 0 ) newcounter = newcounter + 1 ! is new cell
+                    end do 
+
+                    ! If any new, add it to cellNumbers
+                    if ( newcounter .gt. 0 ) then 
+                      if ( allocated( tempCellNumbers ) ) deallocate( tempCellNumbers ) 
+                      allocate( tempCellNumbers(size(cellNumbers)+newcounter) )
+                      tempCellNumbers(1:size(cellNumbers)) = cellNumbers(:) ! save the old
+                      newcounter = 0
+                      do m =1, spaceAssigned
+                        cellindex = findloc( cellNumbers, spCellNumbers(m), 1 )
+                        if ( cellindex .eq. 0 ) then 
+                          newcounter = newcounter + 1 ! is new cell
+                          tempCellNumbers(size(cellNumbers)+newcounter) = spCellNumbers(m)
+                        end if
+                      end do
+                      call move_alloc( tempCellNumbers, cellNumbers )
+                    end if
+
+                    ! Break the records loop and continue to next stress period
+                    exit
+
+                  end if
+
+                end if
+
+              end if 
+            end if 
+          end do
+
+        end do 
+
+       else
+
+         print *, 'NOT IMPEMENTED ASD CHAOOOOOOOOOSSSSSSSS'
+         call exit(0)
+
+       end if
+     
+       ! No cells found, something wrong 
+       if ( .not. allocated( cellNumbers ) ) then 
+          write(message,'(A,A,A)') 'Error: no cells were found for source package ', trim(adjustl(sourcePkgName)), '. Stop.'
+          message = trim(message)
+          call ustop(message)
+       end if  
+       nCells = size(cellNumbers)
+
+       ! Allocate arrays for storing timeseries
+       if( allocated( flowTimeseries ) ) deallocate( flowTimeseries ) 
+       allocate( flowTimeseries( nTimeIntervals, nCells ) )
+       flowTimeseries(:,:) = 0d0
+       if ( allocated( auxTimeseries ) ) deallocate( auxTimeseries ) 
+       allocate( auxTimeseries( nTimeIntervals, nCells, nAuxVars ) )
+       auxTimeseries(:,:,:) = 0d0
+
+
+       ! Supposedly, previous to run this function 
+       ! aux variables were already validated
+
+
+       ! Use the determined steps (kinitial,kfinal) to build the timeseries
+       kcounter = 0
+       do ktime=kinitial,kfinal
+
+         ! Get the stress period and time step from the cummulative time steps
+         call tdisData%GetPeriodAndStep(ktime, stressPeriod, timeStep)
+         kcounter = kcounter + 1 
+
+         ! Determine record range for stressPeriod and timeStep
+         call this%BudgetReader%GetRecordHeaderRange(stressPeriod, timeStep, firstRecord, lastRecord)
+         if(firstRecord .eq. 0) then
+           write(message,'(A,I5,A,I5,A)') ' Error loading Time Step ', timeStep, ' Period ', stressPeriod, '.'
+           message = trim(message)
+           write(*,'(A)') message
+           call ustop('Missing budget information. Budget file must have output for every time step. Stop.')
+         end if
+
+         ! Loop over record headers
+
+         if ( isMF6 ) then
+           ! Loop through record headers
+           do n = firstRecord, lastRecord
+             header    = this%BudgetReader%GetRecordHeader(n)
+             ! Only methods 5,6 support aux variables
+             if ( ( header%Method .eq. 5 ) .or. ( header%Method .eq. 6 ) ) then
+               textLabel = header%TXT2ID2
+               call TrimAll(textLabel, firstNonBlank, lastNonBlank, trimmedLength)
+               if (&
+                 textLabel(firstNonBlank:lastNonBlank) .eq. & 
+                 sourcePkgName(firstNonBlankIn:lastNonBlankIn) ) then
+
+                 ! Found the pkg
+
+                 call this%BudgetReader%FillRecordDataBuffer(header,             &
+                   this%ListItemBuffer, listItemBufferSize, spaceAssigned,       &
+                   status)
+                 if(spaceAssigned .gt. 0) then
+                   do m = 1, spaceAssigned
+                     cellNumber = this%ListItemBuffer(m)%CellNumber
+
+                     ! Determine the index of cellNumber in the list of cells 
+                     ! requested for timeseseries
+                     cellindex = findloc( cellNumbers, cellNumber, 1 ) 
+                     if ( cellindex .eq. 0 ) cycle ! Not found, but it should not be the case
+
+                     !call this%CheckForDefaultIface(header%TextLabel, iface)
+                     !index = header%FindAuxiliaryNameIndex('IFACE')
+                     !if(index .gt. 0) then
+                     !  iface = int(this%ListItemBuffer(m)%AuxiliaryValues(index))
+                     !end if
+                     !if(iface .gt. 0) ifaces(cellindex) = iface
+
+                     ! Load into flow rates timeseries only if positive, 
+                     ! otherwise leave as zero. Notice that the same 
+                     ! applies to concentration. However, because aux var
+                     ! could be something else (?), it will save whatever 
+                     ! it finds
+                     if(this%ListItemBuffer(m)%BudgetValue .gt. 0.0d0) then
+                       flowTimeseries( kcounter, cellindex )  = this%ListItemBuffer(m)%BudgetValue
+                     end if
+                     
+                     ! Load aux vars
+                     do naux=1, nAuxVars
+                       auxindex = header%FindAuxiliaryNameIndex(auxVarNames(naux))
+                       if(auxindex .gt. 0) then
+                         auxTimeseries( kcounter, cellindex, naux ) = this%ListItemBuffer(m)%AuxiliaryValues(auxindex)
+                       end if
+                     end do
+
+                   end do ! spaceAssigned
+                 end if
+                 
+                 ! Break the records loop and continue to next ktime
+                 exit
+
+               end if
+             end if
+           end do
+
+         ! Another MODFLOW
+         else
+
+           ! Loop through record headers
+           do n = firstRecord, lastRecord
+             header    = this%BudgetReader%GetRecordHeader(n)
+             textLabel = header%TextLabel
+             call TrimAll(textLabel, firstNonBlank, lastNonBlank, trimmedLength)
+             print *, 'TEXTLABEL:!', textLabel
+             ! Only methods 5,6 support aux variables
+             if ( ( header%Method .eq. 5 ) .or. ( header%Method .eq. 6 ) ) then
+               print *, 'IS HEADER METHOD 5/6' 
+             end if
+           end do
+
+         end if 
+
+
+       end do
+
+
+      if( allocated(tempCellNumbers))deallocate(tempCellNumbers)
+      if( allocated(spCellNumbers)  )deallocate(spCellNumbers)
+
+
+    end subroutine pr_LoadFlowAndAuxTimeseries
+
+
+
+    function pr_ValidateAuxVarNames( this, sourcePkgName, auxVarNames, isMF6 ) result ( isValid )
+    !------------------------------------------------------------------------
+    !
+    !------------------------------------------------------------------------
+    ! Specifications
+    !------------------------------------------------------------------------
+    implicit none
+    ! input
+    class(FlowModelDataType) :: this
+    character(len=16), intent(in) :: sourcePkgName
+    character(len=16), dimension(:), intent(in) :: auxVarNames
+    logical, intent(in) :: isMF6
+    ! output
+    logical :: isValid
+    ! local
+    integer :: stressPeriod = 1
+    integer :: timeStep = 1
+    integer :: n, m, naux, nx, nval, auxindex
+    integer :: cellNumber, status
+    integer :: firstRecord,lastRecord
+    integer :: listItemBufferSize, spaceAssigned
+    integer :: firstNonBlank,lastNonBlank,trimmedLength
+    integer :: firstNonBlankIn,lastNonBlankIn,trimmedLengthIn
+    integer :: firstNonBlankLoc,lastNonBlankLoc,trimmedLengthLoc
+    integer :: firstNonBlankNam,lastNonBlankNam,trimmedLengthNam
+    type(BudgetRecordHeaderType) :: header
+    character(len=16) :: textLabel
+    character(len=16) :: textNameLabel
+    character(len=132) message
+    !------------------------------------------------------------------------
+
+
+      isValid = .false.
+
+      ! Trim input pkg type
+      call TrimAll(sourcePkgName, firstNonBlankIn, lastNonBlankIn, trimmedLengthIn)
+
+      ! Determine record range for stressPeriod and timeStep
+      call this%BudgetReader%GetRecordHeaderRange(stressPeriod, timeStep, firstRecord, lastRecord)
+      if(firstRecord .eq. 0) then
+        write(message,'(A,I5,A,I5,A)') ' Error loading Time Step ', timeStep, ' Period ', stressPeriod, '.'
+        message = trim(message)
+        write(*,'(A)') message
+        call ustop('Missing budget information. Budget file must have output for every time step. Stop.')
+      end if
+
+      naux = size( auxVarNames )
+      listItemBufferSize = size(this%ListItemBuffer) 
+
+      ! For MF6, the easiest validation is to 
+      ! verify auxiliary var names by identifying the 
+      ! package against TXT2ID2
+      if ( isMF6 ) then
+        ! Loop through record headers
+        do n = firstRecord, lastRecord
+          header    = this%BudgetReader%GetRecordHeader(n)
+          ! Only methods 5,6 support aux variables
+          if ( ( header%Method .eq. 5 ) .or. ( header%Method .eq. 6 ) ) then
+            textLabel = header%TXT2ID2
+            call TrimAll(textLabel, firstNonBlank, lastNonBlank, trimmedLength)
+            if (&
+              textLabel(firstNonBlank:lastNonBlank) .eq. & 
+              sourcePkgName(firstNonBlankIn:lastNonBlankIn) ) then
+              nval = 0
+              do nx =1, naux 
+                auxindex = header%FindAuxiliaryNameIndex(auxVarNames(nx)) ! it does a trim
+                if(auxindex .gt. 0) then
+                  nval = nval + 1
+                end if
+              end do
+              ! Is valid
+              if ( nval .eq. naux ) then 
+                isValid = .true.
+                ! For cells checking 
+                !call this%BudgetReader%FillRecordDataBuffer(header,       &
+                !  this%ListItemBuffer, listItemBufferSize, spaceAssigned, &
+                !  status)
+                !if(spaceAssigned .gt. 0) then
+                !  do m = 1, spaceAssigned
+                !    cellNumber = this%ListItemBuffer(m)%CellNumber
+                !    print *, sourcePkgName, cellNumber, spaceAssigned, header%TXT2ID2
+                !  end do
+                !end if
+                ! Leave 
+                return
+              end if
+            end if
+          end if
+        end do
+
+      ! Another MODFLOW
+      else
+
+        ! Loop through record headers
+        do n = firstRecord, lastRecord
+          header    = this%BudgetReader%GetRecordHeader(n)
+          textLabel = header%TextLabel
+          call TrimAll(textLabel, firstNonBlank, lastNonBlank, trimmedLength)
+          print *, 'TEXTLABEL:!', textLabel
+          ! Only methods 5,6 support aux variables
+          if ( ( header%Method .eq. 5 ) .or. ( header%Method .eq. 6 ) ) then
+            print *, 'IS HEADER METHOD 5/6' 
+          end if
+        end do
+
+      end if 
+
+
+      ! Done
+      return
+
+
+    end function pr_ValidateAuxVarNames
+
+
+
+
+
+
+    !! DEPRECATION WARNING !!
+
+
     !subroutine pr_SetLayerTypes(this, layerTypes, arraySize)
     !!***************************************************************************************************************
     !!
@@ -913,6 +1364,9 @@ contains
     !end subroutine pr_SetLayerTypes
 
 
+
+
+    ! TO BE DEPRECATED!
     subroutine pr_LoadFlowTimeSeries(this, initialTime, finalTime, cellNumbers, tdisData )
     use TimeDiscretizationDataModule,only : TimeDiscretizationDataType
     !------------------------------------------------------------------------
@@ -1288,83 +1742,6 @@ contains
 
 
     end subroutine pr_LoadFlowTimeSeries
-
-
-    function pr_ValidateAuxVarNames( this, sourcePkgType, auxVarNames ) result ( isValid )
-    !------------------------------------------------------------------------
-    !
-    !------------------------------------------------------------------------
-    ! Specifications
-    !------------------------------------------------------------------------
-    implicit none
-    ! input
-    class(FlowModelDataType) :: this
-    character(len=16), intent(in) :: sourcePkgType 
-    character(len=16), dimension(:), intent(in) :: auxVarNames
-    ! output
-    logical :: isValid
-    ! local
-    integer :: stressPeriod = 1
-    integer :: timeStep = 1
-    integer :: n, naux, nx, nval, auxindex
-    integer :: firstRecord,lastRecord
-    integer :: firstNonBlank,lastNonBlank,trimmedLength
-    integer :: firstNonBlankIn,lastNonBlankIn,trimmedLengthIn
-    integer :: firstNonBlankLoc,lastNonBlankLoc,trimmedLengthLoc
-    type(BudgetRecordHeaderType) :: header
-    character(len=16) :: textLabel
-    character(len=132) message
-    !------------------------------------------------------------------------
-
-      isValid = .false.
-
-      ! Trim input pkg type
-      call TrimAll(sourcePkgType, firstNonBlankIn, lastNonBlankIn, trimmedLengthIn)
-
-      ! Determine record range for stressPeriod and timeStep
-      call this%BudgetReader%GetRecordHeaderRange(stressPeriod, timeStep, firstRecord, lastRecord)
-      if(firstRecord .eq. 0) then
-        write(message,'(A,I5,A,I5,A)') ' Error loading Time Step ', timeStep, ' Period ', stressPeriod, '.'
-        message = trim(message)
-        write(*,'(A)') message
-        call ustop('Missing budget information. Budget file must have output for every time step. Stop.')
-      end if
-
-      naux = size( auxVarNames )
-
-      ! Loop through record headers
-      do n = firstRecord, lastRecord
-        header    = this%BudgetReader%GetRecordHeader(n)
-        textLabel = header%TextLabel
-        call TrimAll(textLabel, firstNonBlank, lastNonBlank, trimmedLength)
-        ! Only methods 5,6 support aux variables
-        if ( ( header%Method .eq. 5 ) .or. ( header%Method .eq. 6 ) ) then 
-          if (&
-            textLabel(firstNonBlank:lastNonBlank) .eq. & 
-            sourcePkgType(firstNonBlankIn:lastNonBlankIn) ) then
-            nval = 0
-            do nx =1, naux 
-              auxindex = header%FindAuxiliaryNameIndex(auxVarNames(nx)) ! it does a trim
-              if(auxindex .gt. 0) then
-                nval = nval + 1
-              end if
-            end do
-            ! Is valid
-            if ( nval .eq. naux ) then 
-              isValid = .true.
-              return
-            end if
-          end if
-        end if
-      end do
-
-
-      return
-
-
-    end function pr_ValidateAuxVarNames
-
-
 
 
 end module FlowModelDataModule

@@ -1,3 +1,6 @@
 [submodule "gpkde"]
 	path = gpkde
 	url =  https://github.com/upc-ghs/gpkde.git
+[submodule "lib/finterp"]
+	path = lib/finterp
+	url = https://github.com/jacobwilliams/finterp.git
