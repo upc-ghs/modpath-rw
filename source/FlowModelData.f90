@@ -884,7 +884,7 @@ contains
     subroutine pr_LoadFlowAndAuxTimeseries(this, sourcePkgName, auxVarNames,& 
                                     isMF6, initialTime, finalTime, tdisData,&
                         flowTimeseries, auxTimeseries, timeIntervals, times,&
-                                                                cellNumbers )
+                                                       cellNumbers, outUnit )
     use TimeDiscretizationDataModule,only : TimeDiscretizationDataType
     !------------------------------------------------------------------------
     ! Given range of times, extract timeseries for flow and aux vars related 
@@ -900,6 +900,7 @@ contains
     logical, intent(in) :: isMF6
     doubleprecision, intent(in) :: initialTime, finalTime
     type( TimeDiscretizationDataType ), intent(in) :: tdisData
+    integer, optional, intent(in) :: outUnit
     ! out
     doubleprecision, allocatable, dimension(:,:)  , intent(inout) :: flowTimeseries ! nt x ncells
     doubleprecision, allocatable, dimension(:,:,:), intent(inout) :: auxTimeseries  ! nt x ncells x nauxvars
@@ -941,16 +942,34 @@ contains
       ! TotalTimes=2dt. 
       kinitial = tdisData%FindContainingTimeStep(initialTime)
       kfinal   = tdisData%FindContainingTimeStep(finalTime)
-      
+    
+      ! There are cases in which, depending on the stoptimeoption, 
+      ! finalTime may have the value 1.0d+30. Something really 
+      ! big to track particles until all of them get to a stop
+      ! conditio for steady state modelsn. For such value, 
+      ! FindContainingTimeStep will return, assuming that this large
+      ! number is higher than the length of the modflow simulation stoptime.
+      ! In such case, it is enforced that kfinal adopt the value of 
+      ! tdisData%CumulativeTimeStepCount, the highest possible value.
+      !if ( (kfinal .eq. 0) .and. (this%SteadyState)  ) then
+      if ( (kfinal .eq. 0) ) then
+       if ( present(outUnit) ) then       
+        write(outUnit,'(a)') 'FlowModelData: LoadFlowAndAuxTimeseries: kfinal is assumed to be CumulativeTimeStepCount'
+        write(outUnit,'(a,e15.7)') 'FlowModelData: LoadFlowAndAuxTimeseries: final time is ', finalTime
+       end if
+       kfinal = tdisData%CumulativeTimeStepCount
+      end if
+
       ! The number of intervals
       nTimeIntervals = kfinal - kinitial + 1
       nTimes = nTimeIntervals + 1 
       ! Something wrong with times 
       if ( nTimeIntervals .lt. 1 ) then 
-         write(message,'(A)') 'Error: the number of times is .lt. 1. Check definition of reference and stop times. Stop.'
+         write(message,'(A)') 'Error: the number of times is .lt. 1. Check definition of reference and stoptimes. Stop.'
          message = trim(message)
          call ustop(message)
       end if  
+
 
       ! times: includes intial and final times ( reference, stoptime )
       if ( allocated( times ) ) deallocate( times ) 

@@ -11,7 +11,7 @@ module ParticleGroupModule
     integer :: Group
     character(len=20) :: Name
     character(len=200) :: LocationFile
-    integer :: TotalParticleCount
+    integer :: TotalParticleCount = 0
     type(ParticleType),dimension(:),allocatable :: Particles
     integer,private :: Count
     integer,private :: ReleaseTimeCount = 1

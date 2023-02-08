@@ -822,91 +822,12 @@ program MPath7
   if(allocated(cellData)) deallocate(cellData)
   allocate(cellData)
   
-  !call system_clock(clockCountStart, clockCountRate, clockCountMax)
-  !do nt = 1, tdisData%CumulativeTimeStepCount
-  !  ! Get the stress period and time step from the cummulative time step
-  !  call tdisData%GetPeriodAndStep(nt, period, step)
-  !  print *, nt, period, step 
-  !  ! Load data for the current time step
-  !  call flowModelData%LoadTimeStep(period, step)
-  !end do 
-  !call system_clock(clockCountStop, clockCountRate, clockCountMax)
-  print *, '----------------------------------------------------------------------------'
-  print *, 'REFERENCE TIME  : ',simulationData%ReferenceTime
-  print *, 'SIMDATASTOPTIME : ',simulationData%StopTime
-  print *, 'STOPTIME        : ',stoptime
-  print *, 'TOTALTIMES(1)   : ',tdisData%TotalTimes(1)
-  print *, 'TOTALTIMES(END) : ',tdisData%TotalTimes(tdisData%CumulativeTimeStepCount)
-  print *, 'KFIRST          : ',kfirst
-  print *, 'KLAST           : ',klast
-  print *, 'NT              : ',nt
-  print *, 'TIME            : ',time
-  print *, 'KSTOPTIME       : ',tdisData%FindContainingTimeStep(stoptime)
-  kstoptime = tdisData%FindContainingTimeStep(stoptime)
-  print *, 'TOTALTIMES(kstoptime-1)   : ', tdisData%TotalTimes(kstoptime-1)
-  print *, 'TOTALTIMES(kstoptime)     : ', tdisData%TotalTimes(kstoptime)
-  print *, 'DIFF-TOTALTIMES(kstoptime): ', stoptime-tdisData%TotalTimes(kstoptime)
-  print *, 'TOTALTIMES(kfirst)        : ', tdisData%TotalTimes(kfirst)
-  if ( kfirst .gt. 1 ) then 
-  print *, 'TOTALTIMES(kfirst-1): ', tdisData%TotalTimes(kfirst-1)
-  print *, 'TOTALTIMES(kfirst)  : ', tdisData%TotalTimes(kfirst)
-  print *, 'DIFFREFTOTALTIMES(kfirst): ', simulationData%ReferenceTime-tdisData%TotalTimes(kfirst)
-  else
-  print *, 'DIFFREFTOTALTIMES(kfirst): ', simulationData%ReferenceTime
-  end if 
-  print *, 'FINDTIMESTEP(0)    :', tdisData%FindContainingTimeStep(0d0)
-  !elapsedTime = dble(clockCountStop - clockCountStart) / dble(clockCountRate)
-  !write(*, '(1X,A,E15.5,A)') 'Elapsed time = ', elapsedTime, ' seconds'
-  effectiveTime = stoptime - simulationData%ReferenceTime
-  nEffectiveTimes = kstoptime - kfirst
-
-  ! Notice that the index returned by tdisData%FindContainingTimeStep 
-  ! means that the actual time is somewhere in between index-1,index
-
-
-  print *, ' nEFFECTIVETIMES: ', nEffectiveTimes
-  print *, ' nEFFECTIVETIMES+first+last: ', nEffectiveTimes + 2
-  print *, '----------------------------------------------------------------------------'
-
-  !if( allocated(effectiveTimes) ) deallocate(effectiveTimes)
-  !if ( nEffectiveTimes .gt. 0 ) then
-  !  allocate(effectiveTimes(nEffectiveTimes+1))
-  !  ! IT WORKS IT SEEMS BETTER THE NEXT WAY
-  !  do ktime=0,nEffectiveTimes
-  !    if ( ktime .gt. 0 ) print *, 'KTIME=',ktime, tdisData%TotalTimes(ktime+kfirst-1)
-  !    if ( ktime .eq. 0 ) print *, 'KTIME=',ktime, simulationData%ReferenceTime
-  !    if ( ktime .eq. nEffectiveTimes ) print *, 'KTIME=',ktime+1, stoptime
-  !    !if ( ktime .gt. 0 ) effectiveTimes(ktime) = tdisData%TotalTimes(ktime+kfirst-1)
-  !    !if ( ktime .eq. 0 ) effectiveTimes(ktime) = simulationData%ReferenceTime
-  !  end do 
-  print *, '----------------------------------------------------------------------------'
-    do ktime=kfirst,kstoptime
-      if ( ktime .eq. kfirst )    print *, 'INITIAL::',simulationData%ReferenceTime
-      if ( ktime .lt. kstoptime ) print *, 'KTIME  ::',tdisData%TotalTimes(ktime)
-      if ( ktime .eq. kstoptime ) print *, 'END    ::', stoptime 
-      !if ( ktime .gt. 0 ) effectiveTimes(ktime) = tdisData%TotalTimes(ktime+kfirst-1)
-      !if ( ktime .eq. 0 ) effectiveTimes(ktime) = simulationData%ReferenceTime
-    end do 
-  !end if
-  print *, ' EFFECTIVE TIME: ', effectiveTime
-  !print *, effectiveTimes(1:5)
-  !print *, effectiveTimes(nEffectiveTimes:nEffectiveTimes-5:-1)
-  print *, '----------------------------------------------------------------------------'
-
-  nFluxCells = 1
-  if ( allocated( fluxCellNumbers ) ) deallocate( fluxCellNumbers ) 
-  allocate( fluxCellNumbers(nFluxCells) )
-  fluxCellNumbers(1) = 49 ! The injection cell
-
-
-  call flowModelData%LoadFlowTimeSeries(&
-          simulationData%ReferenceTime, &
-          stoptime, fluxCellNumbers, tdisData )
-
-
-  call exit(0)
-
-
+  ! DEV PCONC
+  !nFluxCells = 1
+  !if ( allocated( fluxCellNumbers ) ) deallocate( fluxCellNumbers ) 
+  !allocate( fluxCellNumbers(nFluxCells) )
+  !fluxCellNumbers(1) = 49 ! The injection cell
+  ! DEV PCONC
 
 
   call ulog('Begin TIME_STEP_LOOP', logUnit)
@@ -1006,7 +927,6 @@ program MPath7
     do groupIndex =1, simulationData%ParticleGroupCount
       do particleIndex = 1, simulationData%ParticleGroups(groupIndex)%TotalParticleCount
         p => simulationData%ParticleGroups(groupIndex)%Particles(particleIndex)
-        ! Should this InitialTrackingTime be the ReferenceTime ?
         if(&
           ((p%Status .eq. 0) .and. (p%InitialTrackingTime .eq. 0.0d0)) .or. &
           (simulationData%TimeseriesOutputOption .eq. 1) ) then
@@ -1015,7 +935,7 @@ program MPath7
           pCoord%LocalX = p%LocalX
           pCoord%LocalY = p%LocalY
           pCoord%LocalZ = p%LocalZ
-          pCoord%TrackingTime = 0.0d0 ! Again, should be ReferenceTime ?
+          pCoord%TrackingTime = 0.0d0 
           call modelGrid%ConvertToModelXYZ(pCoord%CellNumber, &
             pCoord%LocalX, pCoord%LocalY, pCoord%LocalZ,      &
             pCoord%GlobalX, pCoord%GlobalY, pCoord%GlobalZ)
@@ -1056,7 +976,6 @@ program MPath7
           groupIndex = solute%pGroups(npg)
           do particleIndex = 1, simulationData%ParticleGroups(groupIndex)%TotalParticleCount
             p => simulationData%ParticleGroups(groupIndex)%Particles(particleIndex)
-            ! Check against ReferenceTime ?
             if((p%Status .eq. 0) .and. (p%InitialTrackingTime .eq. 0.0d0)) then 
               activeCounter = activeCounter + 1
             end if
@@ -1079,7 +998,6 @@ program MPath7
           do particleIndex = 1, simulationData%ParticleGroups(groupIndex)%TotalParticleCount
             p => simulationData%ParticleGroups(groupIndex)%Particles(particleIndex)
             ! To the array for GPKDE
-            ! Check against ReferenceTime ?
             if((p%Status .eq. 0) .and. (p%InitialTrackingTime .eq. 0.0d0)) then 
               activeCounter = activeCounter + 1
               activeParticleCoordinates( activeCounter, 1 ) = p%GlobalX
@@ -1123,7 +1041,6 @@ program MPath7
   call ulog('Begin TRACKING_INTERVAL_LOOP', logUnit)
   TRACKING_INTERVAL_LOOP: do while (itend .eq. 0)
   itcount = itcount + 1 
-  print *, itcount, '-------------------------------------------------------------------------------'
 
   itend = 1
   maxTime = tsMax
@@ -1599,22 +1516,6 @@ program MPath7
   end do TRACKING_INTERVAL_LOOP   
   call ulog('Exit TRACKING_INTERVAL_LOOP', logUnit)
      
-  print *, '----------------------------------------------------------------------------'
-  print *, 'REFERENCE TIME  : ',simulationData%ReferenceTime
-  print *, 'SIMDATASTOPTIME : ',simulationData%StopTime
-  print *, 'STOPTIME        : ',stoptime
-  print *, 'TOTALTIMES(1)   : ',tdisData%TotalTimes(1)
-  print *, 'TOTALTIMES(END) : ',tdisData%TotalTimes(tdisData%CumulativeTimeStepCount)
-  print *, 'KFIRST          : ',kfirst
-  print *, 'KLAST           : ',klast
-  print *, 'KTIME           : ',ktime
-  print *, 'NT              : ',nt
-  print *, 'TIME            : ',time
-  !elapsedTime = dble(clockCountStop - clockCountStart) / dble(clockCountRate)
-  !write(*, '(1X,A,E15.5,A)') 'Elapsed time = ', elapsedTime, ' seconds'
-  print *, '----------------------------------------------------------------------------'
-  !call exit(0)
-
   ! Exit TIME_STEP_LOOP if the tracking time has reached the specified stop time.
   IF(time .ge. stoptime) exit TIME_STEP_LOOP
 

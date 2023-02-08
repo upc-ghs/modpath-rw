@@ -1471,7 +1471,10 @@ contains
       ! Set release time for initial condition.
       ! It is an initial condition, then
       ! assumes release at referencetime
-      initialReleaseTime = this%ReferenceTime
+      ! VERIFY!
+      ! IT SHOULD BE ZERO!???
+      !initialReleaseTime = this%ReferenceTime 
+      initialReleaseTime = 0d0
       call particleGroups(nic)%SetReleaseOption1(initialReleaseTime)
 
       ! Read id 
@@ -1519,7 +1522,7 @@ contains
         validCellCounter = count( densityDistribution /= 0d0 )
         if( validCellCounter .eq.0 ) then
           write(outUnit,'(a,a,a)') 'Warning: initial condition ',&
-                trim(particleGroups(nic)%Name),' has a distribution only with zeros'
+            trim(adjustl(particleGroups(nic)%Name)),' has a distribution only with zeros'
           write(outUnit,'(a)') 'It will not create a particle group. Continue to the next.'
           ! Process the next one
           cycle
@@ -1667,14 +1670,14 @@ contains
         idmax = 0
         seqNumber = 0
         do m = 1, totalParticleCount
-            seqNumber = seqNumber + 1
-            if(particleGroups(nic)%Particles(m)%Id .gt. idmax) idmax = particleGroups(nic)%Particles(m)%Id
-            particleGroups(nic)%Particles(m)%Group = particleGroups(nic)%Group
-            particleGroups(nic)%Particles(m)%SequenceNumber = seqNumber
-            particleGroups(nic)%Particles(m)%InitialLayer =                                   &
-              grid%GetLayer(particleGroups(nic)%Particles(m)%InitialCellNumber)
-            particleGroups(nic)%Particles(m)%Layer =                                          &
-              grid%GetLayer(particleGroups(nic)%Particles(m)%CellNumber)
+          seqNumber = seqNumber + 1
+          if(particleGroups(nic)%Particles(m)%Id .gt. idmax) idmax = particleGroups(nic)%Particles(m)%Id
+          particleGroups(nic)%Particles(m)%Group = particleGroups(nic)%Group
+          particleGroups(nic)%Particles(m)%SequenceNumber = seqNumber
+          particleGroups(nic)%Particles(m)%InitialLayer =                                   &
+            grid%GetLayer(particleGroups(nic)%Particles(m)%InitialCellNumber)
+          particleGroups(nic)%Particles(m)%Layer =                                          &
+            grid%GetLayer(particleGroups(nic)%Particles(m)%CellNumber)
         end do
 
         ! Done with this IC kind
@@ -1864,13 +1867,13 @@ contains
       write(outUnit,'(A)') 'Number of given flux conditions is .le. 0. Will not interpret flux boundaries.'
       continue
     end if
+    nValidFluxConditions = 0 ! Monitors whether the boundary has any particle
 
 
     ! FORCING 1 NOW !    
     !nFluxConditions = 1
     if ( nFluxConditions .gt. 0 ) then 
 
-      nValidFluxConditions = 0 ! Monitors whether the boundary has any particle
       particleCount = 0
 
       !! Carrier for candidate particle groups 
@@ -1922,6 +1925,7 @@ contains
       write(outUnit,'(A)') 'Number of given prescribed conditions is .le. 0. Will not interpret prescribed boundaries.'
       continue
     end if
+    nValidPrescribedConditions = 0 ! Monitors whether the boundary has any particle
 
     ! Process prescribed boundaries
     if ( nPrescribedConditions .gt. 0 ) then 
@@ -1932,7 +1936,6 @@ contains
       ! Allocate prescribed boundaries 
       call this%TrackingOptions%InitializePrescribedBoundaries( nPrescribedConditions )
 
-      nValidPrescribedConditions = 0 ! Monitors whether the boundary has any particle
       particleCount = 0
       cellCount   = grid%CellCount
       rowCount    = grid%RowCount
@@ -2468,6 +2471,8 @@ contains
     character(len=20) :: tempChar1
     character(len=20) :: tempChar2
     integer :: m, idmax, seqNumber, cellCounter, offset
+    integer :: nValidPGroup = 0
+    integer :: newParticleGroupCount, pgCount
     type(ParticleGroupType),dimension(:),allocatable :: particleGroups
     type(ParticleGroupType),dimension(:),allocatable :: newParticleGroups
     ! urword
@@ -2477,6 +2482,8 @@ contains
     ! linear interpolation 
     type( linear_interp_1d ) :: interp1d
     integer :: int1dstat
+    ! error
+    character(len=132) message
     !--------------------------------------------------------------
 
     write(outUnit, *)
@@ -2510,25 +2517,25 @@ contains
 
 
     nValidSources = 0 
-    particleCount = 0
 
     ! Loop over source specs
     do nsrc = 1, nSources
       
-      ! Report which SRC specification will be processed
-      write(outUnit,'(A,I5)') 'Processing SRC specification : ', nsrc
-
       read(srcUnit, '(a)') line
       icol = 1
       call urword(line,icol,istart,istop,0,n,r,0,0)
       srcName = line(istart:istop)
+
+      ! Report which SRC specification will be processed
+      write(outUnit,'(A,A)') 'Processing SRC specification: ', trim(adjustl(srcName))
+
 
       read(srcUnit, '(a)') line
       icol = 1
       call urword(line,icol,istart,istop,0,n,r,0,0)
       srcSpecKind = line(istart:istop)
 
-      select case (srcSpecKind ) 
+      select case (srcSpecKind) 
       case ('AUX','AUXILIARY')
 
         ! Process reading auxiliary variables
@@ -2550,10 +2557,14 @@ contains
         allocate( srcPkgNames( nSrcBudgets ) ) 
         do nsb=1,nSrcBudgets
 
+
           read(srcUnit, '(a)') line
           icol = 1
           call urword(line,icol,istart,istop,0,n,r,0,0)
           srcPkgNames(nsb) = line(istart:istop)
+
+          ! Report
+          write(outUnit,'(A,A)') 'Source budget name: ', trim(adjustl(srcPkgNames(nsb)))
 
           read(srcUnit, '(a)') line
           icol = 1
@@ -2561,7 +2572,7 @@ contains
           nAuxNames = n 
 
           if ( nAuxNames .lt. 1 ) then
-            write(outUnit,'(A,A,A)') 'Number of aux variables source ', srcPkgNames(nsb) ,' is .lt. 1. It should be at least 1.'
+            write(outUnit,'(A,A,A)') 'Number of aux variables source ', trim(adjustl(srcPkgNames(nsb))) ,' should be at least 1.'
             call ustop('Number of aux variables is .lt. 1. It should be at least 1. Stop.')
           end if 
 
@@ -2573,6 +2584,12 @@ contains
           allocate( auxSubDivisions( nAuxNames,3 ) )
           if ( allocated( auxNPCell ) ) deallocate( auxNPCell ) 
           allocate( auxNPCell( nAuxNames ) )
+
+
+          ! Intialize some counters
+          nValidPGroup = 0
+          particleCount = 0
+
 
           ! Loop over aux names and interpret data
           ! Requires some health checks
@@ -2619,13 +2636,9 @@ contains
             call ustop('Given aux names for source were not found in budget header. Stop.')
           end if 
 
-          
-          ! TEMPORARY!
-          ! What about initial Time and final Time =?
+          ! While reading from AUX vars, uses simulation characteristic times
           initialTime = this%ReferenceTime
           finalTime   = this%StopTime
-          ! NEEDS TO DO SOMETHING IN THE CASE THAT STOPTIME is 1d+30
-
 
           ! Obtain flow and aux vars timeseries.
           ! Function allocates and return necessary arrays
@@ -2634,7 +2647,7 @@ contains
           call flowModelData%LoadFlowAndAuxTimeseries( srcPkgNames( nsb ), auxNames,& 
                                   this%isMF6, initialTime, finalTime, this%tdisData,&
                                 flowTimeseries, auxTimeseries, timeIntervals, times,&
-                                                                     srcCellNumbers )
+                                                            srcCellNumbers, outUnit )
 
           ! Now compute the cummulative mass function to obtain the total injected mass
           if ( allocated( cummMassTimeseries ) ) deallocate( cummMassTimeseries ) 
@@ -2694,12 +2707,7 @@ contains
 
 
           ! Do it for each aux var
-          print *, '++++++++++++++++++++++++++++'
-          print *, '+++++ NAUXNAMES: ', nAuxNames
           do naux=1,nAuxNames
-          print *, '++++++++++++++++++++++++++++'
-          print *, '++ AUX: ', naux
-          print *, '++++++++++++++++++++++++++++'
 
             ! Report
             write(outUnit,'(A,A)') 'Processing auxiliary variable: ', trim(adjustl(auxNames(naux)))
@@ -2748,12 +2756,13 @@ contains
             totalParticleCount = sum(nReleases*auxNPCell(naux))
             if ( totalParticleCount .lt. 1 ) then 
               write(outUnit,*) ' Warning: pgroup ',&
-                  particleGroups(naux)%Name,' has zero particles, it will skip to the next.'
+                trim(adjustl(particleGroups(naux)%Name)),' has zero particles, it will skip to the next.'
               ! Process the next aux variable
               cycle
             end if 
 
             ! Allocate particles 
+            particleGroups(naux)%TotalParticleCount = totalParticleCount
             if(allocated(particleGroups(naux)%Particles)) deallocate(particleGroups(naux)%Particles)
             allocate(particleGroups(naux)%Particles(totalParticleCount))
 
@@ -2766,9 +2775,7 @@ contains
 
             ! Given the number of releases, interpolate release times
             ! for each cell, using as source the cummulative mass function
-            print *, 'NCELLS: ', nCells
             do nc=1, nCells
-              print *, '***************************', nc
 
               if ( nReleases(nc) .lt. 1 ) cycle ! At least one release
 
@@ -2871,12 +2878,10 @@ contains
                   ! If it is the last loop, set at the last index in array
                   if ( nt.eq.(totMassLoc(nc)+1) ) nte = nt
 
-
-
-                  ! NEEEDS RESOLUTION SOLVING !!!
+                  ! Can it occur ?
                   if ( nte .eq. nti ) then 
-                          print *, 'CRY!!!!!!!!'
-                          call exit(0)
+                    write(outUnit,'(A)') 'Range of time indexes for 1d interpolation is inconsistent.'
+                    call ustop('Range of time indexes for 1d interpolation is inconsistent. Stop.')
                   end if
 
 
@@ -2887,8 +2892,6 @@ contains
                     call ustop('There was a problem while initializing 1d interpolator. Stop.')
                   end if
 
-
-                  print *, '--------- INTERPOLATING------', nti, nte
 
                   ! Initialize release variables
                   lastRelease = .false.
@@ -2943,7 +2946,8 @@ contains
                      particleGroups(naux)%Particles(offset+m)%InitialLocalX = particleGroups(naux)%Particles(m)%InitialLocalX
                      particleGroups(naux)%Particles(offset+m)%InitialLocalY = particleGroups(naux)%Particles(m)%InitialLocalY
                      particleGroups(naux)%Particles(offset+m)%InitialLocalZ = particleGroups(naux)%Particles(m)%InitialLocalZ
-                     particleGroups(naux)%Particles(offset+m)%InitialTrackingTime = releaseTimes(nr)
+                     particleGroups(naux)%Particles(offset+m)%InitialTrackingTime = releaseTimes(nr) - this%ReferenceTime 
+                     !particleGroups(naux)%Particles(offset+m)%InitialTrackingTime = releaseTimes(nr) 
                      particleGroups(naux)%Particles(offset+m)%TrackingTime = & 
                              particleGroups(naux)%Particles(offset+m)%InitialTrackingTime
                      particleGroups(naux)%Particles(offset+m)%CellNumber = particleGroups(naux)%Particles(m)%CellNumber
@@ -2985,104 +2989,73 @@ contains
             end do ! nc=1, nCells
 
 
-            print *, '----------------------------------------------------'
-            print *, '..............................NPARTICLES ', totalParticleCount
-            print *, '........................NPARTICLES OFFSET', offset
-            print *, '.......................cummEffectiveMass ', cummEffectiveMass
-            print *, '.................. totMass: ', totMass
-            print *, '.............effectiveMass: ', effectiveMass
-            print *, '.............auxMasses: ', auxMasses(naux)
-            print *, '----------------------------------------------------'
-            do idmax=1, nTimes
-              print *, idmax+1, cummMassTimeseries(idmax,:,naux)  
-            end do 
-            print *, '----------------------------------------------------'
+            !print *, '----------------------------------------------------'
+            !print *, '..............................NPARTICLES ', totalParticleCount
+            !print *, '........................NPARTICLES OFFSET', offset
+            !print *, '.......................cummEffectiveMass ', cummEffectiveMass
+            !print *, '.................. totMass: ', totMass
+            !print *, '.............effectiveMass: ', effectiveMass
+            !print *, '.............auxMasses: ', auxMasses(naux)
+            !print *, '----------------------------------------------------'
+            !do idmax=1, nTimes
+            !  print *, idmax+1, cummMassTimeseries(idmax,:,naux)  
+            !end do 
+            !print *, '----------------------------------------------------'
 
+            ! Increase counters
+            if ( particleGroups(naux)%TotalParticleCount .gt. 0 ) then 
+              nValidPGroup = nValidPGroup + 1
+              particleCount =  particleCount + particleGroups(naux)%TotalParticleCount 
+            end if
 
 
           end do ! naux = 1, nAuxNames
+       
+          ! It needs to add the newly created groups to simulationData%ParticleGroups
 
+          ! Extend simulationdata to include these particle groups
+          if ( nValidPGroup .gt. 0 ) then 
+            newParticleGroupCount = this%ParticleGroupCount + nValidPGroup
+            allocate(newParticleGroups(newParticleGroupCount))
+            ! If some particle groups existed previously
+            if( this%ParticleGroupCount .gt. 0 ) then 
+              do n = 1, this%ParticleGroupCount
+                newParticleGroups(n) = this%ParticleGroups(n)
+              end do
+            end if 
+            pgCount = 0
+            do n = 1, nAuxNames
+              if ( particleGroups(n)%TotalParticleCount .eq. 0 ) cycle
+              pgCount = pgCount + 1 
+              newParticleGroups(pgCount+this%ParticleGroupCount) = particleGroups(n)
+            end do 
+            if( this%ParticleGroupCount .gt. 0 ) then 
+              call move_alloc( newParticleGroups, this%ParticleGroups )
+              this%ParticleGroupCount = newParticleGroupCount
+              this%TotalParticleCount = this%TotalParticleCount + particleCount
+            else
+              this%ParticleGroupCount = newParticleGroupCount
+              this%TotalParticleCount = particleCount
+              allocate(this%ParticleGroups(this%ParticleGroupCount))
+              call move_alloc( newParticleGroups, this%ParticleGroups )
+            end if
+          end if
 
-            call exit(0)
 
 
         end do ! nsb=1,nSrcBudgets
 
       case default
-
-        print *, 'NOT IMPLEMENTED ! :)))))) '
-        call exit(0)
-
+        ! Not implemented
+        write(message,'(A,A,A)') 'The SRC specification kind ',trim(adjustl(srcSpecKind)),' has not been implemented. Stop.'
+        message = trim(message)
+        write(outUnit,'(A)') message
+        call ustop(message)
       end select
 
 
     end do ! nSources/specs
 
-
-
-
-    print *, 'EARLIEST LEAVING... '
-    call exit(0)
-
-
-
-    !! CellsPerLayer, required for u3d reader
-    !allocate(cellsPerLayer(grid%LayerCount))
-    !do n = 1, grid%LayerCount
-    !  cellsPerLayer(n) = grid%GetLayerCellCount(n)
-    !end do
-
-
-    !! Preparations for interpreting SRC specs
-
-    !! RW dimensionality vars
-    !dimensionMask => this%TrackingOptions%dimensionMask
-    !nDim => this%TrackingOptions%nDim
-    
-
-
-    !! FORCING 1 NOW !    
-    !nFluxConditions = 1
-    !if ( nFluxConditions .gt. 0 ) then 
-
-    !  nValidFluxConditions = 0 ! Monitors whether the boundary has any particle
-    !  particleCount = 0
-
-    !  !! Carrier for candidate particle groups 
-    !  !allocate(particleGroups(nFluxConditions))
- 
-    !  !! Loop over flux conditions
-    !  !do nfc = 1, nFluxConditions
-    !  !  
-    !  !  ! Report which FLUX BC will be processed
-    !  !  write(outUnit,'(A,I5)') 'Processing flux boundary condition: ', nfc
-
-    !  !  ! Increase pgroup counter
-    !  !  particleGroups(nfc)%Group = this%ParticleGroupCount + nfc
-
-    !  !end do
-    !  print *, 'AT MODPATHSIMDATA...'
-    !  kfirst = this%tdisData%FindContainingTimeStep(this%ReferenceTime)
-    !  call this%tdisData%GetPeriodAndStep(this%tdisData%CumulativeTimeStepCount, period, step)
-    !  print *, 'REFERENCE TIME          : ', this%ReferenceTime
-    !  print *, 'CUMULATIVETIMESTEPCOUNT : ', this%tdisData%CumulativeTimeStepCount
-    !  print *, 'PERIOD,STEP             : ', period, step
-    !  print *, 'TIMESTEPCOUNTS : ', this%tdisData%TimeStepCounts
-
-    !  !this%BudgetReader%GetRecordHeaderRange(stressPeriod, timeStep, firstRecord, lastRecord)
-    !  !call thistdisData%GetPeriodAndStep(tdisData%CumulativeTimeStepCount, period, step)
-    !  !print *, 'EARLY LEAVING AT FLUX'
-    !  !call exit(0)
-
-    !  ! So when defining a prescribed-flux boundary condition
-
-    !  ! Request the number of stress periods 
-    !  print *, 'STRESSPERIODSCOUNT : ', this%tdisData%StressPeriodCount
-    !  print *, 'STRESSPERIODTYPES : ', this%tdisData%StressPeriodTypes
-    !  !print *, 'TOTALTIMES: ', this%tdisData%TotalTimes
-
-
-    !end if 
 
         
     ! Close data file
