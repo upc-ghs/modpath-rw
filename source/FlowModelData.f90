@@ -881,7 +881,7 @@ contains
     subroutine pr_LoadFlowAndAuxTimeseries(this, sourcePkgName, auxVarNames,& 
                                     isMF6, initialTime, finalTime, tdisData,&
                         flowTimeseries, auxTimeseries, timeIntervals, times,&
-                                                       cellNumbers, outUnit )
+                              cellNumbers, outUnit, iFaceOption, iFaceCells )
     use TimeDiscretizationDataModule,only : TimeDiscretizationDataType
     !------------------------------------------------------------------------
     ! Given range of times, extract timeseries for flow and aux vars related 
@@ -898,13 +898,17 @@ contains
     doubleprecision, intent(in) :: initialTime, finalTime
     type( TimeDiscretizationDataType ), intent(in) :: tdisData
     integer, optional, intent(in) :: outUnit
+    logical, optional, intent(in) :: iFaceOption
     ! out
     doubleprecision, allocatable, dimension(:,:)  , intent(inout) :: flowTimeseries ! nt x ncells
     doubleprecision, allocatable, dimension(:,:,:), intent(inout) :: auxTimeseries  ! nt x ncells x nauxvars
     doubleprecision, allocatable, dimension(:)    , intent(inout) :: timeIntervals  ! nt
     doubleprecision, allocatable, dimension(:)    , intent(inout) :: times          ! nt + 1
     integer        , allocatable, dimension(:)    , intent(inout) :: cellNumbers    ! nCells
+    integer, allocatable, dimension(:), optional  , intent(inout) :: iFaceCells     ! nCells
     ! local
+    logical :: lookForIFace = .false.
+    integer :: ifaceindex
     integer :: n, m, naux
     integer :: stressPeriod, timeStep
     integer :: firstRecord,lastRecord
@@ -923,7 +927,8 @@ contains
     integer :: spInit, tsInit, spEnd, tsEnd, nStressPeriods, nsp 
     integer, allocatable, dimension(:) :: tempCellNumbers
     integer, allocatable, dimension(:) :: spCellNumbers
-    !integer, allocatable, dimension(:) :: ifaces
+    integer, allocatable, dimension(:) :: tempSPIFaces
+    integer, allocatable, dimension(:) :: spIFaces
     ! For identifying pkgs with aux vars from modflow != mf6
     logical :: foundTheSource = .false.
     integer :: nb, nbindex
@@ -941,6 +946,13 @@ contains
     DATA anameid(4)  /'             RIV'/ ! RIV
     DATA anameid(5)  /'             GHB'/ ! GHB
     !------------------------------------------------------------------------
+
+      ! Check the iface flag
+      if ( present( iFaceOption) ) then 
+        lookForIface = .false.
+        ifaceindex   = 0
+        lookForIFace = iFaceOption
+      end if 
 
       ! Trim input pkg name
       call TrimAll(sourcePkgName, firstNonBlankIn, lastNonBlankIn, trimmedLengthIn)
@@ -961,7 +973,7 @@ contains
       ! There are cases in which, depending on the stoptimeoption, 
       ! finalTime may have the value 1.0d+30. Something really 
       ! big to track particles until all of them get to a stop
-      ! conditio for steady state modelsn. For such value, 
+      ! conditio for steady state models. For such value, 
       ! FindContainingTimeStep will return, assuming that this large
       ! number is higher than the length of the modflow simulation stoptime.
       ! In such case, it is enforced that kfinal adopt the value of 
@@ -984,7 +996,6 @@ contains
          message = trim(message)
          call ustop(message)
       end if  
-
 
       ! times: includes intial and final times ( reference, stoptime )
       if ( allocated( times ) ) deallocate( times ) 
@@ -1107,11 +1118,23 @@ contains
                   if ( size(spCellNumbers) .ne. spaceAssigned ) then 
                     deallocate( spCellNumbers )
                     allocate(spCellNumbers(spaceAssigned))
+                    if( lookForIFace ) then 
+                      deallocate( spIFaces )
+                      allocate(spIFaces(spaceAssigned))
+                      spIFaces(:) = 0
+                    end if 
                   else
                     spCellNumbers(:) = 0
+                    if( lookForIFace ) then 
+                      spIFaces(:) = 0
+                    end if 
                   end if
                 else
                   allocate(spCellNumbers(spaceAssigned))
+                  if( lookForIFace ) then 
+                    allocate(spIFaces(spaceAssigned))
+                    spIFaces(:) = 0
+                  end if 
                 end if
 
                 ! Assign to stress period cell numbers
@@ -1119,12 +1142,28 @@ contains
                   cellNumber = this%ListItemBuffer(m)%CellNumber
                   spCellNumbers(m) = cellNumber
                 end do
+                
+                ! Again, it is considered that the existence of IFACE 
+                ! has been already established, as every other aux var, 
+                ! regardless of which value it may have
+                if ( lookForIFace ) then 
+                  ifaceindex = header%FindAuxiliaryNameIndex('IFACE')
+                  if ( ifaceindex .gt. 0 ) then 
+                   do m = 1, spaceAssigned
+                    spIFaces(m) = int(this%ListItemBuffer(m)%AuxiliaryValues(ifaceindex))
+                   end do
+                  end if
+                end if 
 
                 ! Assign cellNumbers
                 if ( .not. allocated( cellNumbers ) ) then
                   ! First initialization
                   allocate( cellNumbers(spaceAssigned) )
                   cellNumbers(:) = spCellNumbers(:)
+                  if ( lookForIFace ) then 
+                    allocate( iFaceCells(spaceAssigned) )
+                    iFaceCells(:) = spIFaces(:)
+                  end if 
                   ! Break the records loop and continue to next stress period
                   exit
                 else
@@ -1139,15 +1178,26 @@ contains
                     if ( allocated( tempCellNumbers ) ) deallocate( tempCellNumbers ) 
                     allocate( tempCellNumbers(size(cellNumbers)+newcounter) )
                     tempCellNumbers(1:size(cellNumbers)) = cellNumbers(:) ! save the old
+                    if ( lookForIFace ) then 
+                      if ( allocated( tempSPIFaces ) ) deallocate( tempSPIFaces ) 
+                      allocate( tempSPIFaces(size(iFaceCells)+newcounter) )
+                      tempSPIFaces(1:size(iFaceCells)) = iFaceCells(:) ! save the old
+                    end if 
                     newcounter = 0
                     do m =1, spaceAssigned
                       cellindex = findloc( cellNumbers, spCellNumbers(m), 1 )
                       if ( cellindex .eq. 0 ) then 
                         newcounter = newcounter + 1 ! is new cell
                         tempCellNumbers(size(cellNumbers)+newcounter) = spCellNumbers(m)
+                        if( lookForIFace ) then 
+                          tempSPIFaces(size(iFaceCells)+newcounter) = spIFaces(m)
+                        end if 
                       end if
                     end do
                     call move_alloc( tempCellNumbers, cellNumbers )
+                    if ( lookForIFace ) then 
+                      call move_alloc( tempSPIFaces, iFaceCells )
+                    end if 
                   end if
                   ! Break the records loop and continue to next stress period
                   exit
@@ -1162,6 +1212,13 @@ contains
         end do !n = firstRecord, lastRecord
 
       end do !nsp=1, nStressPeriods
+
+      
+      print *, 'VERIFY IFACEs'
+      print *, cellNumbers
+      print *, iFaceCells
+      call exit(0)
+
 
      
       ! No cells found, something wrong 
@@ -1181,7 +1238,8 @@ contains
       auxTimeseries(:,:,:) = 0d0
 
       ! Supposedly, previous to run this function 
-      ! aux variables were already validated
+      ! aux variables were already validated with 
+      ! call this%ValidateAuxVarNames
 
       ! Use the determined steps (kinitial,kfinal) to build the timeseries
       kcounter = 0
@@ -1327,7 +1385,8 @@ contains
 
 
 
-    function pr_ValidateAuxVarNames( this, sourcePkgName, auxVarNames, isMF6 ) result ( isValid )
+    function pr_ValidateAuxVarNames( this, sourcePkgName, auxVarNames, isMF6,& 
+                                              iFaceOption ) result ( isValid )
     !------------------------------------------------------------------------
     !
     !------------------------------------------------------------------------
@@ -1339,11 +1398,12 @@ contains
     character(len=16), intent(in) :: sourcePkgName
     character(len=16), dimension(:), intent(in) :: auxVarNames
     logical, intent(in) :: isMF6
+    logical, optional, intent(in) :: iFaceOption
     ! output
     logical :: isValid
     ! local
-    integer :: stressPeriod = 1
-    integer :: timeStep = 1
+    integer :: timeStep = 1 ! to look for aux vars, use as ref...
+    integer :: stressPeriod = 1 ! the first stperiod, first tstep
     integer :: n, m, naux, nx, nval, auxindex
     integer :: cellNumber, status
     integer :: firstRecord,lastRecord
@@ -1355,6 +1415,8 @@ contains
     character(len=16)  :: textLabel
     character(len=16)  :: textNameLabel
     character(len=132) :: message
+    logical :: lookForIFace = .false.
+    integer :: ifaceindex
     integer :: nb, nbindex
     integer :: nbmax = 5
     character(len=16)  :: anamebud(5)
@@ -1371,7 +1433,14 @@ contains
     DATA anameid(5)  /'             GHB'/ ! GHB
     !------------------------------------------------------------------------
 
+      ! Check the iface flag
+      if ( present( iFaceOption) ) then 
+        lookForIface = .false.
+        ifaceindex   = 0
+        lookForIFace = iFaceOption
+      end if 
 
+      ! Initialize output
       isValid = .false.
 
       ! Trim input pkg type
@@ -1410,17 +1479,26 @@ contains
                   nval = nval + 1
                 end if
               end do
-              ! Is valid
-              if ( nval .eq. naux ) then 
-                isValid = .true.
-                ! Leave 
-                return
-              end if
+              if ( lookForIFace ) then
+                ifaceindex = header%FindAuxiliaryNameIndex('IFACE')
+                ! Is valid
+                if ( (nval .eq. naux) .and. (ifaceindex.gt.0) ) then 
+                  isValid = .true.
+                  ! Leave 
+                  return
+                end if
+              else
+                ! Is valid
+                if ( nval .eq. naux ) then 
+                  isValid = .true.
+                  ! Leave 
+                  return
+                end if
+              end if 
             end if
           end if
         end do
-
-      ! Other MODFLOW flavor
+      ! Other MODFLOW flavors
       ! Compare against the list of known headers that accept
       ! aux variables
       else
@@ -1469,11 +1547,22 @@ contains
                   nval = nval + 1
                 end if
               end do
-              ! Is valid
-              if ( nval .eq. naux ) then 
-                isValid = .true.
-                ! Leave 
-                return
+              if ( lookForIFace ) then
+                ifaceindex = header%FindAuxiliaryNameIndex('IFACE')
+                print *, 'case1', ifaceindex
+                ! Is valid
+                if ( (nval .eq. naux) .and. (ifaceindex.gt.0) ) then 
+                  isValid = .true.
+                  ! Leave 
+                  return
+                end if
+              else
+                ! Is valid
+                if ( nval .eq. naux ) then 
+                  isValid = .true.
+                  ! Leave 
+                  return
+                end if
               end if
             else
               textNameLabel = anamebud(nbindex) 
@@ -1488,11 +1577,22 @@ contains
                     nval = nval + 1
                   end if
                 end do
-                ! Is valid
-                if ( nval .eq. naux ) then 
-                  isValid = .true.
-                  ! Leave 
-                  return
+                if ( lookForIFace ) then
+                  ifaceindex = header%FindAuxiliaryNameIndex('IFACE')
+                  print *, 'case2', ifaceindex
+                  ! Is valid
+                  if ( (nval .eq. naux) .and. (ifaceindex.gt.0) ) then 
+                    isValid = .true.
+                    ! Leave 
+                    return
+                  end if
+                else
+                  ! Is valid
+                  if ( nval .eq. naux ) then 
+                    isValid = .true.
+                    ! Leave 
+                    return
+                  end if
                 end if
               end if
             end if
