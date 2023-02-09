@@ -2632,8 +2632,8 @@ contains
           ! Validate given aux names
           validAuxNames = flowModelData%ValidateAuxVarNames( srcPkgNames( nsb ), auxNames, this%isMF6 )
           if ( .not. validAuxNames ) then 
-            write(outUnit,'(A,A,A)') 'Aux names for source ', trim(adjustl(srcPkgNames(nsb))) ,' were not found in budget header.'
-            call ustop('Given aux names for source were not found in budget header. Stop.')
+            write(outUnit,'(A,A,A)') 'Aux variables were not found in budget/source ', trim(adjustl(srcPkgNames(nsb))), '.'
+            call ustop('Aux variables were not found in budget/source or it does not support aux vars. Stop.')
           end if 
 
           ! While reading from AUX vars, uses simulation characteristic times

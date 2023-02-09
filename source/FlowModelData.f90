@@ -1263,9 +1263,23 @@ contains
     integer :: firstNonBlankLoc,lastNonBlankLoc,trimmedLengthLoc
     integer :: firstNonBlankNam,lastNonBlankNam,trimmedLengthNam
     type(BudgetRecordHeaderType) :: header
-    character(len=16) :: textLabel
-    character(len=16) :: textNameLabel
-    character(len=132) message
+    character(len=16)  :: textLabel
+    character(len=16)  :: textNameLabel
+    character(len=132) :: message
+    integer :: nb, nbindex
+    integer :: nbmax = 5
+    character(len=16)  :: anamebud(5)
+    DATA anamebud(1) /'           WELLS'/ ! WEL
+    DATA anamebud(2) /'    DRAINS (DRT)'/ ! DRT
+    DATA anamebud(3) /'          DRAINS'/ ! DRN
+    DATA anamebud(4) /'   RIVER LEAKAGE'/ ! RIV
+    DATA anamebud(5) /' HEAD DEP BOUNDS'/ ! GHB
+    character(len=16)  :: anameid(5)
+    DATA anameid(1)  /'             WEL'/ ! WEL
+    DATA anameid(2)  /'             DRT'/ ! DRT
+    DATA anameid(3)  /'             DRN'/ ! DRN
+    DATA anameid(4)  /'             RIV'/ ! RIV
+    DATA anameid(5)  /'             GHB'/ ! GHB
     !------------------------------------------------------------------------
 
 
@@ -1310,16 +1324,6 @@ contains
               ! Is valid
               if ( nval .eq. naux ) then 
                 isValid = .true.
-                ! For cells checking 
-                !call this%BudgetReader%FillRecordDataBuffer(header,       &
-                !  this%ListItemBuffer, listItemBufferSize, spaceAssigned, &
-                !  status)
-                !if(spaceAssigned .gt. 0) then
-                !  do m = 1, spaceAssigned
-                !    cellNumber = this%ListItemBuffer(m)%CellNumber
-                !    print *, sourcePkgName, cellNumber, spaceAssigned, header%TXT2ID2
-                !  end do
-                !end if
                 ! Leave 
                 return
               end if
@@ -1327,20 +1331,85 @@ contains
           end if
         end do
 
-      ! Another MODFLOW
+      ! Other MODFLOW flavor
+      ! Compare against the list of known headers that accept
+      ! aux variables
       else
-
         ! Loop through record headers
         do n = firstRecord, lastRecord
           header    = this%BudgetReader%GetRecordHeader(n)
-          textLabel = header%TextLabel
-          call TrimAll(textLabel, firstNonBlank, lastNonBlank, trimmedLength)
-          print *, 'TEXTLABEL:!', textLabel
           ! Only methods 5,6 support aux variables
           if ( ( header%Method .eq. 5 ) .or. ( header%Method .eq. 6 ) ) then
-            print *, 'IS HEADER METHOD 5/6' 
-          end if
-        end do
+            textLabel = header%TextLabel
+            call TrimAll(textLabel, firstNonBlank, lastNonBlank, trimmedLength)
+
+            ! Needs to verify relation
+            ! Find equivalence
+            nbindex = 0
+            do nb=1,nbmax
+              textNameLabel = anamebud(nb) 
+              call TrimAll(textNameLabel, firstNonBlankLoc, lastNonBlankLoc, trimmedLengthLoc)
+              if (&
+                textNameLabel(firstNonBlankLoc:lastNonBlankLoc) .eq. & 
+                textLabel(firstNonBlank:lastNonBlank) ) then
+                ! Found, continue
+                nbindex = nb
+                exit
+              end if   
+            end do
+
+            ! Not found in the list of known budgets supporting
+            ! aux variables, try next budget header. It may be useful 
+            ! to report the header text label for validation.
+            if ( nbindex .eq. 0 ) then
+              exit
+            end if
+
+            ! Compare the id/ftype (e.g. WEL) against the given src name,
+            ! and if not, give it another chance by comparing against the 
+            ! budget label itself (e.g. WELLS)
+            textNameLabel = anameid(nbindex) 
+            call TrimAll(textNameLabel, firstNonBlankLoc, lastNonBlankLoc, trimmedLengthLoc)
+            if (&
+              textNameLabel(firstNonBlankLoc:lastNonBlankLoc) .eq. & 
+              sourcePkgName(firstNonBlankIn:lastNonBlankIn) ) then
+              nval = 0
+              do nx =1, naux 
+                auxindex = header%FindAuxiliaryNameIndex(auxVarNames(nx)) ! it does a trim
+                if(auxindex .gt. 0) then
+                  nval = nval + 1
+                end if
+              end do
+              ! Is valid
+              if ( nval .eq. naux ) then 
+                isValid = .true.
+                ! Leave 
+                return
+              end if
+            else
+              textNameLabel = anamebud(nbindex) 
+              call TrimAll(textNameLabel, firstNonBlankLoc, lastNonBlankLoc, trimmedLengthLoc)
+              if (&
+                textNameLabel(firstNonBlankLoc:lastNonBlankLoc) .eq. & 
+                sourcePkgName(firstNonBlankIn:lastNonBlankIn) ) then
+                nval = 0
+                do nx =1, naux 
+                  auxindex = header%FindAuxiliaryNameIndex(auxVarNames(nx)) ! it does a trim
+                  if(auxindex .gt. 0) then
+                    nval = nval + 1
+                  end if
+                end do
+                ! Is valid
+                if ( nval .eq. naux ) then 
+                  isValid = .true.
+                  ! Leave 
+                  return
+                end if
+              end if
+            end if
+          end if ! ( header%Method .eq. 5 ) .or. ( header%Method .eq. 6 )
+
+        end do ! n = firstRecord, lastRecord
 
       end if 
 
