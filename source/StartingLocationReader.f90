@@ -10,9 +10,10 @@ private
 
 public ReadAndPrepareLocations
 ! RWPT
-public ReadAndPrepareLocationsMass
+public ReadAndPrepareLocationsMass ! DEPRECATION WARNING
 public pr_CreateParticlesAsInternalArray
 public CreateMassParticlesAsInternalArray
+public CreateMassParticlesOnFaces
 
 
 contains
@@ -123,112 +124,6 @@ end if
 end subroutine ReadAndPrepareLocations
 
 
-subroutine ReadAndPrepareLocationsMass(inUnit, outUnit, particleGroup, ibound,      &
-  cellCount, grid, seqNumber, particleMass)
-!***************************************************************************************************************
-! Description goes here
-!***************************************************************************************************************
-!
-! Specifications
-!---------------------------------------------------------------------------------------------------------------
-use UTL8MODULE,only : ustop, u8rdcom
-implicit none
-type(ParticleGroupType),intent(inout) :: particleGroup
-integer,intent(in) :: cellCount, inUnit, outUnit
-doubleprecision, intent(in) :: particleMass
-integer,intent(inout) :: seqNumber
-integer :: inu, inputStyle, templateCount, n, m, releaseTimeCount, offset, layerCount, rowCount, columnCount, idmax
-integer :: singleReleaseCount, errorCode
-logical :: closeFile
-character (len=200) :: line
-integer,dimension(cellCount),intent(in) :: ibound
-class(ModflowRectangularGridType),intent(in) :: grid
-!---------------------------------------------------------------------------------------------------------------
-  
-! Open starting locations file if inUnit is not positive. Otherwise, assume inUnit is open and read from it.
-if(inUnit .le. 0) then
-    inu = 99
-    open(unit=inu, file=particleGroup%LocationFile, status='old',               &
-      form='formatted', access='sequential')
-    closeFile = .true.
-else
-    inu = inUnit
-    closeFile = .false.
-end if
-  
-! Read comment lines
-call u8rdcom(inu, outUnit, line, errorCode)
-
-! Read locations input style
-read(line, *) inputStyle
-
-select case (inputStyle)
-    case (1)
-        ! Read individual particle starting location data
-        call pr_ReadLocations1(particleGroup, inu, grid)             
-    case (2)
-        ! Read a particle location template and a list of grid cell regions defined by base grid layer, row, and column.
-        ! Particles are generated for each cell contained in the grid cell cell regions according to the template specifications.
-        call pr_ReadLocations2(particleGroup, inu, grid, ibound, cellCount)             
-    case (3)
-        ! Read a particle location template and a list of grid cell numbers.
-        ! Particles are generated for each grid cell according to the template specifications.
-        call pr_ReadLocations3(particleGroup, inu, grid, ibound, cellCount)   
-    case (4)
-        ! Read particle template information and generate particles for cells defined by mask arrays for each layer.
-        call pr_ReadLocations4(particleGroup, inu, outUnit, ibound, cellCount, grid) 
-    case default
-        call ustop('Unsupported input style was specified for starting locations. Stop.')
-end select
-      
-if(closeFile) close(inu)
-  
-! Assign layer value to each particle
-singleReleaseCount = particleGroup%GetSingleReleaseParticleCount()
-idmax = 0
-do m = 1, singleReleaseCount
-    seqNumber = seqNumber + 1
-    if(particleGroup%Particles(m)%Id .gt. idmax) idmax = particleGroup%Particles(m)%Id
-    particleGroup%Particles(m)%Group = particleGroup%Group
-    particleGroup%Particles(m)%SequenceNumber = seqNumber
-    particleGroup%Particles(m)%InitialLayer =                                   &
-      grid%GetLayer(particleGroup%Particles(m)%InitialCellNumber)
-    particleGroup%Particles(m)%Layer =                                          &
-      grid%GetLayer(particleGroup%Particles(m)%CellNumber)
-end do
-  
-! Initialize particle data for all additional releases
-if(particleGroup%GetReleaseTimeCount() .gt. 1) then
-    do n = 2, particleGroup%GetReleaseTimeCount()
-        offset = (n - 1) * singleReleaseCount
-        do m = 1, singleReleaseCount
-            idmax = idmax + 1
-            seqNumber = seqNumber + 1
-            particleGroup%Particles(offset + m)%Id = idmax
-            particleGroup%Particles(offset + m)%SequenceNumber = seqNumber
-            particleGroup%Particles(offset + m)%Group = particleGroup%Group
-            particleGroup%Particles(offset + m)%Drape = particleGroup%Particles(m)%Drape
-            particleGroup%Particles(offset + m)%Status = particleGroup%Particles(m)%Status
-            particleGroup%Particles(offset + m)%InitialCellNumber = particleGroup%Particles(m)%InitialCellNumber
-            particleGroup%Particles(offset + m)%InitialLayer = particleGroup%Particles(m)%InitialLayer
-            particleGroup%Particles(offset + m)%InitialFace = particleGroup%Particles(m)%InitialFace
-            particleGroup%Particles(offset + m)%InitialLocalX = particleGroup%Particles(m)%InitialLocalX
-            particleGroup%Particles(offset + m)%InitialLocalY = particleGroup%Particles(m)%InitialLocalY
-            particleGroup%Particles(offset + m)%InitialLocalZ = particleGroup%Particles(m)%InitialLocalZ
-            particleGroup%Particles(offset + m)%InitialTrackingTime = particleGroup%GetReleaseTime(n)
-            particleGroup%Particles(offset + m)%TrackingTime = particleGroup%Particles(offset + m)%InitialTrackingTime
-            particleGroup%Particles(offset + m)%CellNumber = particleGroup%Particles(m)%CellNumber
-            particleGroup%Particles(offset + m)%Layer = particleGroup%Particles(m)%Layer
-            particleGroup%Particles(offset + m)%Face = particleGroup%Particles(m)%Face
-            particleGroup%Particles(offset + m)%LocalX = particleGroup%Particles(m)%LocalX
-            particleGroup%Particles(offset + m)%LocalY = particleGroup%Particles(m)%LocalY
-            particleGroup%Particles(offset + m)%LocalZ = particleGroup%Particles(m)%LocalZ
-            particleGroup%Particles(offset + m)%Mass   = particleMass
-        end do
-    end do
-end if
-  
-end subroutine ReadAndPrepareLocationsMass
 
 
 
@@ -717,8 +612,9 @@ end if
   
 end function pr_FindFace
 
-subroutine pr_CreateParticlesOnFaces(pGroup, cellNumber, currentParticleCount,  &
-  subDiv, drape)
+
+subroutine pr_CreateParticlesOnFaces(pGroup, cellNumber, currentParticleCount, &
+                                                                 subDiv, drape )
 !***************************************************************************************************************
 ! Description goes here
 !***************************************************************************************************************
@@ -785,8 +681,8 @@ currentParticleCount = m
 end subroutine pr_CreateParticlesOnFaces
 
 
-subroutine pr_CreateParticlesAsInternalArray(pGroup, cellNumber,                &
-  currentParticleCount, nx, ny, nz, drape)
+subroutine pr_CreateParticlesAsInternalArray(pGroup, cellNumber, &
+                          currentParticleCount, nx, ny, nz, drape)
 !***************************************************************************************************************
 ! Description goes here
 !***************************************************************************************************************
@@ -843,64 +739,261 @@ end subroutine pr_CreateParticlesAsInternalArray
 
 subroutine CreateMassParticlesAsInternalArray(pGroup, cellNumber, currentParticleCount,& 
                                          nx, ny, nz, drape, particlesMass, releaseTime )
+  !-------------------------------------------------------------------------------------
+  ! Same as pr_CreateParticlesAsInternalArray but specifying mass and releaseTime
+  !-------------------------------------------------------------------------------------
+  ! Specifications
+  !-------------------------------------------------------------------------------------
+  use UTL8MODULE,only : ustop
+  implicit none
+  type(ParticleGroupType),intent(inout) :: pGroup
+  integer,intent(inout) :: currentParticleCount
+  integer,intent(in) :: nx, ny, nz, cellNumber, drape
+  doubleprecision,intent(in) :: particlesMass
+  doubleprecision,intent(in) :: releaseTime
+  integer :: m,face,i,j,k
+  doubleprecision :: dx,dy,dz,x,y,z,faceCoord,rowCoord,columnCoord
+  !-------------------------------------------------------------------------------------
+    
+  m = currentParticleCount
+  ! pGroup%Particles(n)%InitialFace = 0
+  dx = 1.0d0 / dble(nx)
+  dy = 1.0d0 / dble(ny)
+  dz = 1.0d0 / dble(nz)
+  do k = 1, nz
+    z = (k - 1)*dz + (dz/2.0d0)
+    do i = 1, ny
+      y = (i - 1)*dy + (dy/2.0d0)
+      do j = 1, nx
+        m = m+ 1
+        x = (j - 1)*dx + (dx/2.0d0)
+        pGroup%Particles(m)%InitialLocalX = x
+        pGroup%Particles(m)%InitialLocalY = y
+        pGroup%Particles(m)%InitialLocalZ = z
+        pGroup%Particles(m)%InitialGlobalZ = 0.0d0
+        pGroup%Particles(m)%Id = m
+        pGroup%Particles(m)%Drape = drape
+        pGroup%Particles(m)%Status = 0
+        pGroup%Particles(m)%InitialCellNumber = cellNumber
+        pGroup%Particles(m)%InitialTrackingTime = releaseTime
+        pGroup%Particles(m)%CellNumber = pGroup%Particles(m)%InitialCellNumber
+        pGroup%Particles(m)%InitialFace = 0
+        pGroup%Particles(m)%Face = 0
+        pGroup%Particles(m)%LocalX = pGroup%Particles(m)%InitialLocalX
+        pGroup%Particles(m)%LocalY = pGroup%Particles(m)%InitialLocalY
+        pGroup%Particles(m)%LocalZ = pGroup%Particles(m)%InitialLocalZ
+        pGroup%Particles(m)%GlobalZ = pGroup%Particles(m)%InitialGlobalZ
+        pGroup%Particles(m)%TrackingTime = pGroup%Particles(m)%InitialTrackingTime
+        pGroup%Particles(m)%Mass = particlesMass
+      end do
+    end do
+  end do
+    
+  currentParticleCount = m
+  
+  
+end subroutine CreateMassParticlesAsInternalArray
+
+
+subroutine CreateMassParticlesOnFaces(pGroup, cellNumber, currentParticleCount, &
+                                      subDiv, drape, particlesMass, releaseTime )
+  !------------------------------------------------------------------------------
+  ! Same as pr_CreateParticlesOnFaces byt specifying mass and releaseTime
+  !------------------------------------------------------------------------------
+  ! Specifications
+  !------------------------------------------------------------------------------
+  use UTL8MODULE,only : ustop
+  implicit none
+  type(ParticleGroupType),intent(inout) :: pGroup
+  integer,dimension(12),intent(in) :: subDiv
+  integer,intent(inout) :: currentParticleCount
+  integer,intent(in) :: cellNumber, drape
+  doubleprecision,intent(in) :: particlesMass
+  doubleprecision,intent(in) :: releaseTime
+  integer :: n,m,face,i,j,k,nr,nc
+  doubleprecision :: faceCoord,rowCoord,columnCoord,dr,dc
+  !------------------------------------------------------------------------------
+    
+  m = currentParticleCount
+  do face = 1, 6
+    nr = subDiv(2*face -1)
+    nc = subDiv(2*face)
+    if((nc*nr) .gt. 0) then
+      dc = 1.0d0 / dble(nc)
+      dr = 1.0d0 / dble(nr)
+      faceCoord = 0.0d0
+      if(face.eq.2 .or. face.eq.4 .or. face.eq.6) faceCoord = 1.0d0
+      do i = 1, nr
+        rowCoord = (i - 1)*dr + (dr/2.0d0)
+        do j = 1, nc
+          columnCoord = (j - 1)*dc + (dc/2.0d0)
+          m = m + 1
+          pGroup%Particles(m)%InitialFace = face
+          if(face.eq.1 .or. face.eq.2) then
+            pGroup%Particles(m)%InitialLocalX = faceCoord
+            pGroup%Particles(m)%InitialLocalY = columnCoord
+            pGroup%Particles(m)%InitialLocalZ = rowCoord
+          else if(face.eq.3 .or. face.eq.4) then
+            pGroup%Particles(m)%InitialLocalX = columnCoord
+            pGroup%Particles(m)%InitialLocalY = faceCoord
+            pGroup%Particles(m)%InitialLocalZ = rowCoord
+          else
+            pGroup%Particles(m)%InitialLocalX = columnCoord
+            pGroup%Particles(m)%InitialLocalY = rowCoord
+            pGroup%Particles(m)%InitialLocalZ = faceCoord
+          end if
+          pGroup%Particles(m)%Id = m
+          pGroup%Particles(m)%InitialGlobalZ = 0.0d0
+          pGroup%Particles(m)%Drape = drape
+          pGroup%Particles(m)%Status = 0
+          pGroup%Particles(m)%InitialCellNumber = cellNumber
+          pGroup%Particles(m)%InitialTrackingTime = pGroup%GetReleaseTime(1)
+          pGroup%Particles(m)%CellNumber = pGroup%Particles(m)%InitialCellNumber
+          pGroup%Particles(m)%Face = pGroup%Particles(m)%InitialFace
+          pGroup%Particles(m)%LocalX = pGroup%Particles(m)%InitialLocalX
+          pGroup%Particles(m)%LocalY = pGroup%Particles(m)%InitialLocalY
+          pGroup%Particles(m)%LocalZ = pGroup%Particles(m)%InitialLocalZ
+          pGroup%Particles(m)%GlobalZ = pGroup%Particles(m)%InitialGlobalZ
+          pGroup%Particles(m)%TrackingTime = pGroup%Particles(m)%InitialTrackingTime
+          pGroup%Particles(m)%Mass = particlesMass
+        end do
+      end do
+    end if
+  end do
+    
+  currentParticleCount = m
+   
+  
+end subroutine CreateMassParticlesOnFaces
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+!!!!!!!!!!! DEPRECATION WARNING !!!!!!!!!!!!!!!!!1
+
+subroutine ReadAndPrepareLocationsMass(inUnit, outUnit, particleGroup, ibound,      &
+  cellCount, grid, seqNumber, particleMass)
 !***************************************************************************************************************
-! Same as pr_CreateParticlesAsInternalArray but specifying mass
-!
+! Description goes here
 !***************************************************************************************************************
 !
 ! Specifications
 !---------------------------------------------------------------------------------------------------------------
-use UTL8MODULE,only : ustop
+use UTL8MODULE,only : ustop, u8rdcom
 implicit none
-type(ParticleGroupType),intent(inout) :: pGroup
-integer,intent(inout) :: currentParticleCount
-integer,intent(in) :: nx, ny, nz, cellNumber, drape
-doubleprecision,intent(in) :: particlesMass
-doubleprecision,intent(in) :: releaseTime
-integer :: m,face,i,j,k
-doubleprecision :: dx,dy,dz,x,y,z,faceCoord,rowCoord,columnCoord
+type(ParticleGroupType),intent(inout) :: particleGroup
+integer,intent(in) :: cellCount, inUnit, outUnit
+doubleprecision, intent(in) :: particleMass
+integer,intent(inout) :: seqNumber
+integer :: inu, inputStyle, templateCount, n, m, releaseTimeCount, offset, layerCount, rowCount, columnCount, idmax
+integer :: singleReleaseCount, errorCode
+logical :: closeFile
+character (len=200) :: line
+integer,dimension(cellCount),intent(in) :: ibound
+class(ModflowRectangularGridType),intent(in) :: grid
 !---------------------------------------------------------------------------------------------------------------
   
-m = currentParticleCount
-! pGroup%Particles(n)%InitialFace = 0
-dx = 1.0d0 / dble(nx)
-dy = 1.0d0 / dble(ny)
-dz = 1.0d0 / dble(nz)
-do k = 1, nz
-    z = (k - 1)*dz + (dz/2.0d0)
-    do i = 1, ny
-        y = (i - 1)*dy + (dy/2.0d0)
-        do j = 1, nx
-            m = m+ 1
-            x = (j - 1)*dx + (dx/2.0d0)
-            pGroup%Particles(m)%InitialLocalX = x
-            pGroup%Particles(m)%InitialLocalY = y
-            pGroup%Particles(m)%InitialLocalZ = z
-            pGroup%Particles(m)%InitialGlobalZ = 0.0d0
-            pGroup%Particles(m)%Id = m
-            pGroup%Particles(m)%Drape = drape
-            pGroup%Particles(m)%Status = 0
-            pGroup%Particles(m)%InitialCellNumber = cellNumber
-            pGroup%Particles(m)%InitialTrackingTime = releaseTime
-            pGroup%Particles(m)%CellNumber = pGroup%Particles(m)%InitialCellNumber
-            pGroup%Particles(m)%InitialFace = 0
-            pGroup%Particles(m)%Face = 0
-            pGroup%Particles(m)%LocalX = pGroup%Particles(m)%InitialLocalX
-            pGroup%Particles(m)%LocalY = pGroup%Particles(m)%InitialLocalY
-            pGroup%Particles(m)%LocalZ = pGroup%Particles(m)%InitialLocalZ
-            pGroup%Particles(m)%GlobalZ = pGroup%Particles(m)%InitialGlobalZ
-            pGroup%Particles(m)%TrackingTime = pGroup%Particles(m)%InitialTrackingTime
-            pGroup%Particles(m)%Mass = particlesMass
-            ! NEEDS SOMETHING BETTER/CLEANER
-            !pGroup%Particles(m)%SequenceNumber = 0
-        end do
-    end do
+! Open starting locations file if inUnit is not positive. Otherwise, assume inUnit is open and read from it.
+if(inUnit .le. 0) then
+    inu = 99
+    open(unit=inu, file=particleGroup%LocationFile, status='old',               &
+      form='formatted', access='sequential')
+    closeFile = .true.
+else
+    inu = inUnit
+    closeFile = .false.
+end if
+  
+! Read comment lines
+call u8rdcom(inu, outUnit, line, errorCode)
+
+! Read locations input style
+read(line, *) inputStyle
+
+select case (inputStyle)
+    case (1)
+        ! Read individual particle starting location data
+        call pr_ReadLocations1(particleGroup, inu, grid)             
+    case (2)
+        ! Read a particle location template and a list of grid cell regions defined by base grid layer, row, and column.
+        ! Particles are generated for each cell contained in the grid cell cell regions according to the template specifications.
+        call pr_ReadLocations2(particleGroup, inu, grid, ibound, cellCount)             
+    case (3)
+        ! Read a particle location template and a list of grid cell numbers.
+        ! Particles are generated for each grid cell according to the template specifications.
+        call pr_ReadLocations3(particleGroup, inu, grid, ibound, cellCount)   
+    case (4)
+        ! Read particle template information and generate particles for cells defined by mask arrays for each layer.
+        call pr_ReadLocations4(particleGroup, inu, outUnit, ibound, cellCount, grid) 
+    case default
+        call ustop('Unsupported input style was specified for starting locations. Stop.')
+end select
+      
+if(closeFile) close(inu)
+  
+! Assign layer value to each particle
+singleReleaseCount = particleGroup%GetSingleReleaseParticleCount()
+idmax = 0
+do m = 1, singleReleaseCount
+    seqNumber = seqNumber + 1
+    if(particleGroup%Particles(m)%Id .gt. idmax) idmax = particleGroup%Particles(m)%Id
+    particleGroup%Particles(m)%Group = particleGroup%Group
+    particleGroup%Particles(m)%SequenceNumber = seqNumber
+    particleGroup%Particles(m)%InitialLayer =                                   &
+      grid%GetLayer(particleGroup%Particles(m)%InitialCellNumber)
+    particleGroup%Particles(m)%Layer =                                          &
+      grid%GetLayer(particleGroup%Particles(m)%CellNumber)
 end do
   
-currentParticleCount = m
+! Initialize particle data for all additional releases
+if(particleGroup%GetReleaseTimeCount() .gt. 1) then
+    do n = 2, particleGroup%GetReleaseTimeCount()
+        offset = (n - 1) * singleReleaseCount
+        do m = 1, singleReleaseCount
+            idmax = idmax + 1
+            seqNumber = seqNumber + 1
+            particleGroup%Particles(offset + m)%Id = idmax
+            particleGroup%Particles(offset + m)%SequenceNumber = seqNumber
+            particleGroup%Particles(offset + m)%Group = particleGroup%Group
+            particleGroup%Particles(offset + m)%Drape = particleGroup%Particles(m)%Drape
+            particleGroup%Particles(offset + m)%Status = particleGroup%Particles(m)%Status
+            particleGroup%Particles(offset + m)%InitialCellNumber = particleGroup%Particles(m)%InitialCellNumber
+            particleGroup%Particles(offset + m)%InitialLayer = particleGroup%Particles(m)%InitialLayer
+            particleGroup%Particles(offset + m)%InitialFace = particleGroup%Particles(m)%InitialFace
+            particleGroup%Particles(offset + m)%InitialLocalX = particleGroup%Particles(m)%InitialLocalX
+            particleGroup%Particles(offset + m)%InitialLocalY = particleGroup%Particles(m)%InitialLocalY
+            particleGroup%Particles(offset + m)%InitialLocalZ = particleGroup%Particles(m)%InitialLocalZ
+            particleGroup%Particles(offset + m)%InitialTrackingTime = particleGroup%GetReleaseTime(n)
+            particleGroup%Particles(offset + m)%TrackingTime = particleGroup%Particles(offset + m)%InitialTrackingTime
+            particleGroup%Particles(offset + m)%CellNumber = particleGroup%Particles(m)%CellNumber
+            particleGroup%Particles(offset + m)%Layer = particleGroup%Particles(m)%Layer
+            particleGroup%Particles(offset + m)%Face = particleGroup%Particles(m)%Face
+            particleGroup%Particles(offset + m)%LocalX = particleGroup%Particles(m)%LocalX
+            particleGroup%Particles(offset + m)%LocalY = particleGroup%Particles(m)%LocalY
+            particleGroup%Particles(offset + m)%LocalZ = particleGroup%Particles(m)%LocalZ
+            particleGroup%Particles(offset + m)%Mass   = particleMass
+        end do
+    end do
+end if
+  
+end subroutine ReadAndPrepareLocationsMass
 
 
-end subroutine CreateMassParticlesAsInternalArray
+
+
 
 
 

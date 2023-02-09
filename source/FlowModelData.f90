@@ -885,7 +885,12 @@ contains
     use TimeDiscretizationDataModule,only : TimeDiscretizationDataType
     !------------------------------------------------------------------------
     ! Given range of times, extract timeseries for flow and aux vars related 
-    ! to package name/budget header 
+    ! to package name/budget header.
+    ! 
+    ! It can receive iFaceOption to extract the IFACE variable for each cell
+    ! related to the source budget. The current extraction of IFACE considers 
+    ! that is not changing in time. 
+    ! 
     !------------------------------------------------------------------------
     ! Specifications
     !------------------------------------------------------------------------
@@ -946,6 +951,10 @@ contains
     DATA anameid(4)  /'             RIV'/ ! RIV
     DATA anameid(5)  /'             GHB'/ ! GHB
     !------------------------------------------------------------------------
+
+      ! Supposedly, previous to run this function 
+      ! aux variables were already validated with 
+      ! call this%ValidateAuxVarNames
 
       ! Check the iface flag
       if ( present( iFaceOption) ) then 
@@ -1213,14 +1222,6 @@ contains
 
       end do !nsp=1, nStressPeriods
 
-      
-      print *, 'VERIFY IFACEs'
-      print *, cellNumbers
-      print *, iFaceCells
-      call exit(0)
-
-
-     
       ! No cells found, something wrong 
       if ( .not. allocated( cellNumbers ) ) then 
          write(message,'(A,A,A)') 'Error: no cells were found for source package ', trim(adjustl(sourcePkgName)), '. Stop.'
@@ -1237,9 +1238,6 @@ contains
       allocate( auxTimeseries( nTimeIntervals, nCells, nAuxVars ) )
       auxTimeseries(:,:,:) = 0d0
 
-      ! Supposedly, previous to run this function 
-      ! aux variables were already validated with 
-      ! call this%ValidateAuxVarNames
 
       ! Use the determined steps (kinitial,kfinal) to build the timeseries
       kcounter = 0
@@ -1337,13 +1335,6 @@ contains
                   ! requested for timeseseries
                   cellindex = findloc( cellNumbers, cellNumber, 1 ) 
                   if ( cellindex .eq. 0 ) cycle ! Not found, but it should not be the case
-
-                  !call this%CheckForDefaultIface(header%TextLabel, iface)
-                  !index = header%FindAuxiliaryNameIndex('IFACE')
-                  !if(index .gt. 0) then
-                  !  iface = int(this%ListItemBuffer(m)%AuxiliaryValues(index))
-                  !end if
-                  !if(iface .gt. 0) ifaces(cellindex) = iface
 
                   ! Load into flow rates timeseries only if positive, 
                   ! otherwise leave as zero. Notice that the same 

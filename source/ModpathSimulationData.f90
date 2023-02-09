@@ -4,6 +4,7 @@ module ModpathSimulationDataModule
   use ModflowRectangularGridModule,only : ModflowRectangularGridType
   use StartingLocationReaderModule,only : ReadAndPrepareLocations, &
                                CreateMassParticlesAsInternalArray, &
+                                       CreateMassParticlesOnFaces, &
                                 pr_CreateParticlesAsInternalArray
   use TimeDiscretizationDataModule,only : TimeDiscretizationDataType
   use FlowModelDataModule,only : FlowModelDataType
@@ -2446,13 +2447,15 @@ contains
     doubleprecision, allocatable, dimension(:) :: auxMasses
     doubleprecision, allocatable, dimension(:) :: auxEffMasses
     integer, allocatable, dimension(:,:)       :: auxSubDivisions
+    integer, dimension(12)                     :: auxFaceDivisions
     doubleprecision, allocatable, dimension(:,:)     :: flowTimeseries     ! nt x ncells
     doubleprecision, allocatable, dimension(:,:,:)   :: auxTimeseries      ! nt x ncells x nauxvars
     doubleprecision, allocatable, dimension(:)       :: timeIntervals      ! nt
     doubleprecision, allocatable, dimension(:)       :: times              ! nt + 1
     integer        , allocatable, dimension(:)       :: srcCellNumbers     ! nCells
+    integer        , allocatable, dimension(:)       :: srcCellIFaces      ! nCells
     doubleprecision, allocatable, dimension(:,:,:)   :: cummMassTimeseries ! nt x ncells x nauxvars
-    integer        , allocatable, dimension(:)       :: auxNPCell
+    integer        , allocatable, dimension(:,:)     :: auxNPCell
     integer        , allocatable, dimension(:)       :: auxNPTot 
     doubleprecision, allocatable, dimension(:)       :: totMass
     integer        , allocatable, dimension(:)       :: totMassLoc
@@ -2473,6 +2476,8 @@ contains
     integer :: m, idmax, seqNumber, cellCounter, offset
     integer :: nValidPGroup = 0
     integer :: newParticleGroupCount, pgCount
+    integer :: iFaceOptionInt
+    logical :: iFaceOption
     type(ParticleGroupType),dimension(:),allocatable :: particleGroups
     type(ParticleGroupType),dimension(:),allocatable :: newParticleGroups
     ! urword
@@ -2517,7 +2522,6 @@ contains
 
 
     nValidSources = 0 
-
     ! Loop over source specs
     do nsrc = 1, nSources
       
@@ -2563,6 +2567,12 @@ contains
           call urword(line,icol,istart,istop,0,n,r,0,0)
           srcPkgNames(nsb) = line(istart:istop)
 
+          !call urword(line,icol,istart,istop,2,n,r,0,0)
+          !print *, 'TRIED TO READ THE INTEGER'
+          !print *, n
+          ! 0 if not found
+          !call exit(0)
+
           ! Report
           write(outUnit,'(A,A)') 'Source budget name: ', trim(adjustl(srcPkgNames(nsb)))
 
@@ -2582,8 +2592,6 @@ contains
           allocate( auxMasses( nAuxNames ) )
           if ( allocated( auxSubDivisions ) ) deallocate( auxSubDivisions ) 
           allocate( auxSubDivisions( nAuxNames,3 ) )
-          if ( allocated( auxNPCell ) ) deallocate( auxNPCell ) 
-          allocate( auxNPCell( nAuxNames ) )
 
 
           ! Intialize some counters
@@ -2628,12 +2636,17 @@ contains
           ! variables and transforming into particles is available
           ! for this source budget
 
+           
+          ! DEV
+          iFaceOption = .true.
+          ! END DEV
+
 
           ! Validate given aux names
-          validAuxNames = flowModelData%ValidateAuxVarNames( srcPkgNames( nsb ), auxNames, this%isMF6 )
+          validAuxNames = flowModelData%ValidateAuxVarNames( srcPkgNames( nsb ), auxNames, this%isMF6, iFaceOption )
           if ( .not. validAuxNames ) then 
-            write(outUnit,'(A,A,A)') 'Aux variables were not found in budget/source ', trim(adjustl(srcPkgNames(nsb))), '.'
-            call ustop('Aux variables were not found in budget/source or it does not support aux vars. Stop.')
+            write(outUnit,'(A,A,A)') 'Not all aux variables were found in source ', trim(adjustl(srcPkgNames(nsb))), '.'
+            call ustop('Not all aux variables were found in source or it does not support aux vars. Stop.')
           end if 
 
           ! While reading from AUX vars, uses simulation characteristic times
@@ -2647,7 +2660,7 @@ contains
           call flowModelData%LoadFlowAndAuxTimeseries( srcPkgNames( nsb ), auxNames,& 
                                   this%isMF6, initialTime, finalTime, this%tdisData,&
                                 flowTimeseries, auxTimeseries, timeIntervals, times,&
-                                                            srcCellNumbers, outUnit )
+                                srcCellNumbers, outUnit, iFaceOption, srcCellIFaces )
 
           ! Now compute the cummulative mass function to obtain the total injected mass
           if ( allocated( cummMassTimeseries ) ) deallocate( cummMassTimeseries ) 
@@ -2682,6 +2695,8 @@ contains
           allocate( nReleases( nCells ) )
           if ( allocated(auxEffMasses) ) deallocate( auxEffMasses ) 
           allocate( auxEffMasses, mold=auxMasses )
+          if ( allocated( auxNPCell ) ) deallocate( auxNPCell ) 
+          allocate( auxNPCell( nAuxNames, nCells ) )
 
           ! For this source budget, it should create 
           ! particlegroups for what specifically ? 
@@ -2700,11 +2715,9 @@ contains
           ! will request a soluteid for each auxvar in case the simulation 
           ! is multispecies.
 
-
           ! Carrier for candidate particle groups 
           if ( allocated(particleGroups) ) deallocate( particleGroups )
           allocate(particleGroups(nAuxNames))
-
 
           ! Do it for each aux var
           do naux=1,nAuxNames
@@ -2723,17 +2736,38 @@ contains
             ! Increase pgroup counter
             particleGroups(naux)%Group = this%ParticleGroupCount + naux
 
-
-            ! Correct the particle template based on dimension mask
+            ! Correction to the particle template based on dimension mask
             ! If dimension is active, leave the given value. 
             ! If not, switch it to one
             do nd = 1, 3
               if ( dimensionMask(nd) .eq. 1 ) cycle 
               auxSubDivisions(naux,nd) = 1
             end do
-
+                
             ! Particles per cell
-            auxNPCell(naux) = product(auxSubDivisions(naux,:))
+            auxNPCell(naux,:) = product(auxSubDivisions(naux,:))
+
+            ! Interpret srcCellIFaces
+            if ( iFaceOption ) then
+              do nc = 1, nCells
+                auxFaceDivisions(:) = 0
+                select case(srcCellIFaces(nc))
+                case(1,2)
+                  auxFaceDivisions(2*srcCellIFaces(nc)-1) = auxSubDivisions(naux,3) ! nver
+                  auxFaceDivisions(2*srcCellIFaces(nc))   = auxSubDivisions(naux,2) ! nrow
+                case(3,4)
+                  auxFaceDivisions(2*srcCellIFaces(nc)-1) = auxSubDivisions(naux,3) ! nver
+                  auxFaceDivisions(2*srcCellIFaces(nc))   = auxSubDivisions(naux,1) ! ncol
+                case(5,6)
+                  auxFaceDivisions(2*srcCellIFaces(nc)-1) = auxSubDivisions(naux,2) ! nrow
+                  auxFaceDivisions(2*srcCellIFaces(nc))   = auxSubDivisions(naux,1) ! ncol
+                case default
+                  cycle
+                end select
+                ! Update NP cell
+                auxNPCell(naux,nc) = auxFaceDivisions(2*srcCellIFaces(nc)-1)*auxFaceDivisions(2*srcCellIFaces(nc))
+              end do
+            end if
 
             ! Max cumm mass stats
             totMass    = maxval(cummMassTimeseries(:,:,naux), dim=1) ! Max cumm mass in time
@@ -2745,15 +2779,14 @@ contains
             nParticlesDbl = totMass/auxMasses(naux)
             ! ... and using the number of particles per cell, estimate
             ! the number of releases per cell.
-            nReleases     = int(nParticlesDbl/auxNPCell(naux)+0.5)
+            nReleases     = int(nParticlesDbl/auxNPCell(naux,:)+0.5)
 
             ! Up to this point, the number of particles 
             ! needed can be computed as nReleases*NPCELL
 
-            ! Something here could allow immediately
-            ! move to the next aux var if the total 
+            ! Cycle to the next aux var if the total 
             ! number of particles is zero.
-            totalParticleCount = sum(nReleases*auxNPCell(naux))
+            totalParticleCount = sum(nReleases*auxNPCell(naux,:))
             if ( totalParticleCount .lt. 1 ) then 
               write(outUnit,*) ' Warning: pgroup ',&
                 trim(adjustl(particleGroups(naux)%Name)),' has zero particles, it will skip to the next.'
@@ -2766,7 +2799,7 @@ contains
             if(allocated(particleGroups(naux)%Particles)) deallocate(particleGroups(naux)%Particles)
             allocate(particleGroups(naux)%Particles(totalParticleCount))
 
-            ! Variables for defining the particles for this group
+            ! Variables for defining the particles of this group
             idmax = 0
             offset = 0
             seqNumber = 0
@@ -2786,21 +2819,47 @@ contains
               ! END DEPRECATE
 
               ! The effective mass of particles for the aux var of this cell
-              effectiveMass = totMass(nc)/(nReleases(nc)*auxNPCell(naux))
+              effectiveMass = totMass(nc)/(nReleases(nc)*auxNPCell(naux,nc))
 
               ! Create particle template for this cell
               ! 0: is for drape. (TEMP)
               ! Drape = 0: particle placed in the cell. If dry, status to unreleased
               ! Drape = 1: particle placed in the uppermost active cell
               ! -999: is a placeholder for release time, it will assigned later
-              call CreateMassParticlesAsInternalArray(& 
-                particleGroups(naux),     &
-                srcCellNumbers(nc),       &
-                currentParticleCount,     &
-                auxSubDivisions(naux,1),  &
-                auxSubDivisions(naux,2),  &
-                auxSubDivisions(naux,3),  & 
-                0, effectiveMass, -999d0  )
+
+              ! Interpret srcCellIFaces
+              if ( (iFaceOption) .and. (srcCellIFaces(nc).gt.0)  ) then
+                ! Create particles at cell face
+                auxFaceDivisions(:) = 0
+                select case(srcCellIFaces(nc))
+                case(1,2)
+                  auxFaceDivisions(2*srcCellIFaces(nc)-1) = auxSubDivisions(naux,3) ! nver
+                  auxFaceDivisions(2*srcCellIFaces(nc))   = auxSubDivisions(naux,2) ! nrow
+                case(3,4)
+                  auxFaceDivisions(2*srcCellIFaces(nc)-1) = auxSubDivisions(naux,3) ! nver
+                  auxFaceDivisions(2*srcCellIFaces(nc))   = auxSubDivisions(naux,1) ! ncol
+                case(5,6)
+                  auxFaceDivisions(2*srcCellIFaces(nc)-1) = auxSubDivisions(naux,2) ! nrow
+                  auxFaceDivisions(2*srcCellIFaces(nc))   = auxSubDivisions(naux,1) ! ncol
+                end select
+                call CreateMassParticlesOnFaces(&
+                  particleGroups(naux),    &
+                  srcCellNumbers(nc),      &
+                  currentParticleCount,    &
+                  auxFaceDivisions,        &
+                  0, effectiveMass, -999d0 )
+              else
+                ! Normal internal array of particles
+                call CreateMassParticlesAsInternalArray(& 
+                  particleGroups(naux),     &
+                  srcCellNumbers(nc),       &
+                  currentParticleCount,     &
+                  auxSubDivisions(naux,1),  &
+                  auxSubDivisions(naux,2),  &
+                  auxSubDivisions(naux,3),  & 
+                  0, effectiveMass, -999d0  )
+              end if
+
               ! Assign layer value to each particle
               do m = 1, currentParticleCount 
                 seqNumber = seqNumber + 1
@@ -2815,7 +2874,7 @@ contains
               ! Notice that offset should remain as the starting count. These particles 
               ! still have an invalid release time and it will be corrected 
               ! downstream
-              offset = currentParticleCount - auxNPCell(naux)
+              offset = currentParticleCount - auxNPCell(naux,nc)
 
 
               ! Note: 
@@ -2895,7 +2954,7 @@ contains
 
                   ! Initialize release variables
                   lastRelease = .false.
-                  npThisRelease = auxNPCell(naux)
+                  npThisRelease = auxNPCell(naux,nc)
                   if ( npNextRelease .gt. 0 ) then 
                     npThisRelease = npNextRelease
                     npNextRelease = 0
@@ -2922,7 +2981,7 @@ contains
                       ! needed to begin releases next time and keep 
                       ! consistency with total mass for the computed
                       ! effectiveMass
-                      npNextRelease = auxNPCell(naux) - npThisRelease
+                      npNextRelease = auxNPCell(naux,nc) - npThisRelease
                       cummEffectiveMass = cummEffectiveMass + npThisRelease*effectiveMass
                       lastRelease = .true.
                     end if
@@ -2962,7 +3021,7 @@ contains
                     offset = offset + npThisRelease
                     
                     ! Restart npThisRelease
-                    npThisRelease = auxNPCell(naux)
+                    npThisRelease = auxNPCell(naux,nc)
 
                     if ( lastRelease ) then
                       ! And exit loop over releases
