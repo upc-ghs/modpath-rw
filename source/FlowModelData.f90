@@ -12,15 +12,12 @@ module FlowModelDataModule
   ! Set default access status to private
   private
 
-
     type,public :: FlowModelDataType
-      !doubleprecision :: ReferenceTime = 0d0
-      !doubleprecision :: StoppingTime = 0d0
-      doubleprecision :: HDry = 0d0
-      doubleprecision :: HNoFlow = 0d0
       logical :: Initialized = .false.
       logical :: SteadyState = .true.
       integer :: DefaultIfaceCount
+      doubleprecision :: HDry = 0d0
+      doubleprecision :: HNoFlow = 0d0
       character(len=16),dimension(20) :: DefaultIfaceLabels
       integer,dimension(20) :: DefaultIfaceValues
       integer,allocatable,dimension(:) :: IBoundTS
@@ -36,8 +33,8 @@ module FlowModelDataModule
       doubleprecision,allocatable,dimension(:) :: BoundaryFlows
       doubleprecision,allocatable,dimension(:) :: SubFaceFlows
       doubleprecision,allocatable,dimension(:) :: ArrayBufferDbl
+
       ! Externally assigned arrays
-      !integer,dimension(:),pointer :: LayerTypes
       integer,dimension(:),pointer :: IBound
       integer,dimension(:),pointer :: Zones
       doubleprecision,dimension(:),pointer :: Porosity
@@ -913,18 +910,36 @@ contains
     integer :: firstRecord,lastRecord
     integer :: firstNonBlank,lastNonBlank,trimmedLength
     integer :: firstNonBlankIn,lastNonBlankIn,trimmedLengthIn
+    integer :: firstNonBlankLoc,lastNonBlankLoc,trimmedLengthLoc
     integer :: spaceAssigned, status, cellCount, iface, index, auxindex, cellindex
     integer :: listItemBufferSize, cellNumber
     type(BudgetRecordHeaderType) :: header
-    character(len=16) :: textLabel
+    character(len=16)  :: textLabel
+    character(len=16)  :: textNameLabel
     character(len=132) :: message
     integer :: nCells, newcounter
     integer :: kinitial, kfinal, ktime, kcounter
     integer :: nTimes, nTimeIntervals, nAuxVars
-    integer :: spInit, tsInit, spEnd, tsEnd, nsps, nsp 
+    integer :: spInit, tsInit, spEnd, tsEnd, nStressPeriods, nsp 
     integer, allocatable, dimension(:) :: tempCellNumbers
     integer, allocatable, dimension(:) :: spCellNumbers
     !integer, allocatable, dimension(:) :: ifaces
+    ! For identifying pkgs with aux vars from modflow != mf6
+    logical :: foundTheSource = .false.
+    integer :: nb, nbindex
+    integer :: nbmax = 5
+    character(len=16)  :: anamebud(5)
+    DATA anamebud(1) /'           WELLS'/ ! WEL
+    DATA anamebud(2) /'    DRAINS (DRT)'/ ! DRT
+    DATA anamebud(3) /'          DRAINS'/ ! DRN
+    DATA anamebud(4) /'   RIVER LEAKAGE'/ ! RIV
+    DATA anamebud(5) /' HEAD DEP BOUNDS'/ ! GHB
+    character(len=16)  :: anameid(5)
+    DATA anameid(1)  /'             WEL'/ ! WEL
+    DATA anameid(2)  /'             DRT'/ ! DRT
+    DATA anameid(3)  /'             DRN'/ ! DRN
+    DATA anameid(4)  /'             RIV'/ ! RIV
+    DATA anameid(5)  /'             GHB'/ ! GHB
     !------------------------------------------------------------------------
 
       ! Trim input pkg name
@@ -999,234 +1014,309 @@ contains
       call tdisData%GetPeriodAndStep(kinitial, spInit, tsInit)
       call tdisData%GetPeriodAndStep(kfinal  , spEnd , tsEnd )
 
-      nsps = spEnd - spInit + 1
+      nStressPeriods = spEnd - spInit + 1
       timeStep = 1
 
-      if ( isMF6 ) then 
+      ! Loop over range of stress periods
+      do nsp=1, nStressPeriods
 
-        ! Loop over range of stress periods
-        do nsp=1, nsps
+        ! Determine record range for stressPeriod and timeStep
+        call this%BudgetReader%GetRecordHeaderRange(nsp, timeStep, firstRecord, lastRecord)
 
-          ! Determine record range for stressPeriod and timeStep
-          call this%BudgetReader%GetRecordHeaderRange(nsp, timeStep, firstRecord, lastRecord)
+        if(firstRecord .eq. 0) then
+          write(message,'(A,I5,A,I5,A)') ' Error loading Time Step ', timeStep, ' Period ', nsp, '.'
+          message = trim(message)
+          write(*,'(A)') message
+          call ustop('Missing budget information. Budget file must have output for every time step. Stop.')
+        end if
 
-          if(firstRecord .eq. 0) then
-            write(message,'(A,I5,A,I5,A)') ' Error loading Time Step ', timeStep, ' Period ', nsp, '.'
-            message = trim(message)
-            write(*,'(A)') message
-            call ustop('Missing budget information. Budget file must have output for every time step. Stop.')
-          end if
+        ! Loop through record headers
+        do n = firstRecord, lastRecord
+          header    = this%BudgetReader%GetRecordHeader(n)
+          if ( ( header%Method .eq. 5 ) .or. ( header%Method .eq. 6 ) ) then
 
-          ! Loop through record headers
-          do n = firstRecord, lastRecord
-            header    = this%BudgetReader%GetRecordHeader(n)
-            if ( ( header%Method .eq. 5 ) .or. ( header%Method .eq. 6 ) ) then
+            ! Is the requested pkg ?
+            foundTheSource = .false.
+
+            ! MF6
+            if ( isMF6 ) then 
               textLabel = header%TXT2ID2
               call TrimAll(textLabel, firstNonBlank, lastNonBlank, trimmedLength)
-
-              ! Is the requested pkg ?
               if (&
                 textLabel(firstNonBlank:lastNonBlank) .eq. & 
                 sourcePkgName(firstNonBlankIn:lastNonBlankIn) ) then
-                ! Check cells
-                call this%BudgetReader%FillRecordDataBuffer(header,       &
-                  this%ListItemBuffer, listItemBufferSize, spaceAssigned, &
-                  status)
-                if(spaceAssigned .gt. 0) then
-                        
-                  ! If allocated with different size, reallocate 
-                  ! else restart indexes
-                  if ( allocated(spCellNumbers) ) then 
-                    if ( size(spCellNumbers) .ne. spaceAssigned ) then 
-                      deallocate( spCellNumbers )
-                      allocate(spCellNumbers(spaceAssigned))
-                    else
-                      spCellNumbers(:) = 0
-                    end if
-                  else
+                foundTheSource = .true.
+              end if 
+            ! OTHER MODFLOW
+            else
+              textLabel = header%TextLabel
+              call TrimAll(textLabel, firstNonBlank, lastNonBlank, trimmedLength)
+
+              ! Needs to verify relation
+              ! Find equivalence
+              nbindex = 0
+              do nb=1,nbmax
+                textNameLabel = anamebud(nb) 
+                call TrimAll(textNameLabel, firstNonBlankLoc, lastNonBlankLoc, trimmedLengthLoc)
+                if (&
+                  textNameLabel(firstNonBlankLoc:lastNonBlankLoc) .eq. & 
+                  textLabel(firstNonBlank:lastNonBlank) ) then
+                  ! Found, continue
+                  nbindex = nb
+                  exit
+                end if   
+              end do
+
+              ! Not found in the list of known budgets supporting
+              ! aux variables, try next budget header. It might be useful 
+              ! to report the header text label for validation.
+              if ( nbindex .eq. 0 ) then
+                exit
+              end if
+
+              ! Compare the id/ftype (e.g. WEL) against the given src name,
+              ! and if not, give it another chance by comparing against the 
+              ! budget label itself (e.g. WELLS)
+              textNameLabel = anameid(nbindex) 
+              call TrimAll(textNameLabel, firstNonBlankLoc, lastNonBlankLoc, trimmedLengthLoc)
+              if (&
+                textNameLabel(firstNonBlankLoc:lastNonBlankLoc) .eq. & 
+                sourcePkgName(firstNonBlankIn:lastNonBlankIn) ) then
+                foundTheSource = .true.
+              else
+                textNameLabel = anamebud(nbindex) 
+                call TrimAll(textNameLabel, firstNonBlankLoc, lastNonBlankLoc, trimmedLengthLoc)
+                if (&
+                  textNameLabel(firstNonBlankLoc:lastNonBlankLoc) .eq. & 
+                  sourcePkgName(firstNonBlankIn:lastNonBlankIn) ) then
+                  foundTheSource = .true.
+                end if
+              end if
+            end if ! isMF6
+
+            if ( foundTheSource ) then 
+              ! Check cells
+              call this%BudgetReader%FillRecordDataBuffer(header,       &
+                this%ListItemBuffer, listItemBufferSize, spaceAssigned, &
+                status)
+              if(spaceAssigned .gt. 0) then
+                      
+                ! If allocated with different size, reallocate 
+                ! else restart indexes
+                if ( allocated(spCellNumbers) ) then 
+                  if ( size(spCellNumbers) .ne. spaceAssigned ) then 
+                    deallocate( spCellNumbers )
                     allocate(spCellNumbers(spaceAssigned))
-                  end if
-
-                  ! Assign to stress period cell numbers
-                  do m = 1, spaceAssigned
-                    cellNumber = this%ListItemBuffer(m)%CellNumber
-                    spCellNumbers(m) = cellNumber
-                  end do
-
-                  ! Allocate/reallocate cellNumbers
-                  if ( .not. allocated( cellNumbers ) ) then
-
-                    ! First initialization
-                    allocate( cellNumbers(spaceAssigned) )
-                    cellNumbers(:) = spCellNumbers(:)
-
-                    ! Break the records loop and continue to next stress period
-                    exit
-
                   else
-
-                    ! If allocated, verify if any new cell
-                    newcounter = 0
-                    do m =1, spaceAssigned
-                      cellindex = findloc( cellNumbers, spCellNumbers(m), 1 ) 
-                      if ( cellindex .eq. 0 ) newcounter = newcounter + 1 ! is new cell
-                    end do 
-
-                    ! If any new, add it to cellNumbers
-                    if ( newcounter .gt. 0 ) then 
-                      if ( allocated( tempCellNumbers ) ) deallocate( tempCellNumbers ) 
-                      allocate( tempCellNumbers(size(cellNumbers)+newcounter) )
-                      tempCellNumbers(1:size(cellNumbers)) = cellNumbers(:) ! save the old
-                      newcounter = 0
-                      do m =1, spaceAssigned
-                        cellindex = findloc( cellNumbers, spCellNumbers(m), 1 )
-                        if ( cellindex .eq. 0 ) then 
-                          newcounter = newcounter + 1 ! is new cell
-                          tempCellNumbers(size(cellNumbers)+newcounter) = spCellNumbers(m)
-                        end if
-                      end do
-                      call move_alloc( tempCellNumbers, cellNumbers )
-                    end if
-
-                    ! Break the records loop and continue to next stress period
-                    exit
-
+                    spCellNumbers(:) = 0
                   end if
-
+                else
+                  allocate(spCellNumbers(spaceAssigned))
                 end if
 
-              end if 
-            end if 
-          end do
+                ! Assign to stress period cell numbers
+                do m = 1, spaceAssigned
+                  cellNumber = this%ListItemBuffer(m)%CellNumber
+                  spCellNumbers(m) = cellNumber
+                end do
 
-        end do 
+                ! Assign cellNumbers
+                if ( .not. allocated( cellNumbers ) ) then
+                  ! First initialization
+                  allocate( cellNumbers(spaceAssigned) )
+                  cellNumbers(:) = spCellNumbers(:)
+                  ! Break the records loop and continue to next stress period
+                  exit
+                else
+                  ! If allocated, verify if any new cell
+                  newcounter = 0
+                  do m =1, spaceAssigned
+                    cellindex = findloc( cellNumbers, spCellNumbers(m), 1 ) 
+                    if ( cellindex .eq. 0 ) newcounter = newcounter + 1 ! is new cell
+                  end do 
+                  ! If any new, add it to cellNumbers
+                  if ( newcounter .gt. 0 ) then 
+                    if ( allocated( tempCellNumbers ) ) deallocate( tempCellNumbers ) 
+                    allocate( tempCellNumbers(size(cellNumbers)+newcounter) )
+                    tempCellNumbers(1:size(cellNumbers)) = cellNumbers(:) ! save the old
+                    newcounter = 0
+                    do m =1, spaceAssigned
+                      cellindex = findloc( cellNumbers, spCellNumbers(m), 1 )
+                      if ( cellindex .eq. 0 ) then 
+                        newcounter = newcounter + 1 ! is new cell
+                        tempCellNumbers(size(cellNumbers)+newcounter) = spCellNumbers(m)
+                      end if
+                    end do
+                    call move_alloc( tempCellNumbers, cellNumbers )
+                  end if
+                  ! Break the records loop and continue to next stress period
+                  exit
+                end if !Assign cellNumbers
 
-       else
+              end if !if(spaceAssigned .gt. 0)
 
-         print *, 'NOT IMPEMENTED ASD CHAOOOOOOOOOSSSSSSSS'
-         call exit(0)
+            end if ! foundTheSource
 
-       end if
+          end if ! ( header%Method .eq. 5 ) .or. ( header%Method .eq. 6 )
+
+        end do !n = firstRecord, lastRecord
+
+      end do !nsp=1, nStressPeriods
+
      
-       ! No cells found, something wrong 
-       if ( .not. allocated( cellNumbers ) ) then 
-          write(message,'(A,A,A)') 'Error: no cells were found for source package ', trim(adjustl(sourcePkgName)), '. Stop.'
+      ! No cells found, something wrong 
+      if ( .not. allocated( cellNumbers ) ) then 
+         write(message,'(A,A,A)') 'Error: no cells were found for source package ', trim(adjustl(sourcePkgName)), '. Stop.'
+         message = trim(message)
+         call ustop(message)
+      end if  
+      nCells = size(cellNumbers)
+
+      ! Allocate arrays for storing timeseries
+      if( allocated( flowTimeseries ) ) deallocate( flowTimeseries ) 
+      allocate( flowTimeseries( nTimeIntervals, nCells ) )
+      flowTimeseries(:,:) = 0d0
+      if ( allocated( auxTimeseries ) ) deallocate( auxTimeseries ) 
+      allocate( auxTimeseries( nTimeIntervals, nCells, nAuxVars ) )
+      auxTimeseries(:,:,:) = 0d0
+
+      ! Supposedly, previous to run this function 
+      ! aux variables were already validated
+
+      ! Use the determined steps (kinitial,kfinal) to build the timeseries
+      kcounter = 0
+      do ktime=kinitial,kfinal
+
+        ! Get the stress period and time step from the cummulative time steps
+        call tdisData%GetPeriodAndStep(ktime, stressPeriod, timeStep)
+        kcounter = kcounter + 1 
+
+        ! Determine record range for stressPeriod and timeStep
+        call this%BudgetReader%GetRecordHeaderRange(stressPeriod, timeStep, firstRecord, lastRecord)
+        if(firstRecord .eq. 0) then
+          write(message,'(A,I5,A,I5,A)') ' Error loading Time Step ', timeStep, ' Period ', stressPeriod, '.'
           message = trim(message)
-          call ustop(message)
-       end if  
-       nCells = size(cellNumbers)
-
-       ! Allocate arrays for storing timeseries
-       if( allocated( flowTimeseries ) ) deallocate( flowTimeseries ) 
-       allocate( flowTimeseries( nTimeIntervals, nCells ) )
-       flowTimeseries(:,:) = 0d0
-       if ( allocated( auxTimeseries ) ) deallocate( auxTimeseries ) 
-       allocate( auxTimeseries( nTimeIntervals, nCells, nAuxVars ) )
-       auxTimeseries(:,:,:) = 0d0
+          write(*,'(A)') message
+          call ustop('Missing budget information. Budget file must have output for every time step. Stop.')
+        end if
 
 
-       ! Supposedly, previous to run this function 
-       ! aux variables were already validated
+        ! Loop through record headers
+        do n = firstRecord, lastRecord
+          header    = this%BudgetReader%GetRecordHeader(n)
+          ! Only methods 5,6 support aux variables
+          if ( ( header%Method .eq. 5 ) .or. ( header%Method .eq. 6 ) ) then
 
+            ! Is the requested pkg ?
+            foundTheSource = .false.
 
-       ! Use the determined steps (kinitial,kfinal) to build the timeseries
-       kcounter = 0
-       do ktime=kinitial,kfinal
+            ! MF6
+            if ( isMF6 ) then 
+              textLabel = header%TXT2ID2
+              call TrimAll(textLabel, firstNonBlank, lastNonBlank, trimmedLength)
+              if (&
+                textLabel(firstNonBlank:lastNonBlank) .eq. & 
+                sourcePkgName(firstNonBlankIn:lastNonBlankIn) ) then
+                foundTheSource = .true.
+              end if 
+            ! OTHER MODFLOW
+            else
+              textLabel = header%TextLabel
+              call TrimAll(textLabel, firstNonBlank, lastNonBlank, trimmedLength)
 
-         ! Get the stress period and time step from the cummulative time steps
-         call tdisData%GetPeriodAndStep(ktime, stressPeriod, timeStep)
-         kcounter = kcounter + 1 
+              ! Needs to verify relation
+              ! Find equivalence
+              nbindex = 0
+              do nb=1,nbmax
+                textNameLabel = anamebud(nb) 
+                call TrimAll(textNameLabel, firstNonBlankLoc, lastNonBlankLoc, trimmedLengthLoc)
+                if (&
+                  textNameLabel(firstNonBlankLoc:lastNonBlankLoc) .eq. & 
+                  textLabel(firstNonBlank:lastNonBlank) ) then
+                  ! Found, continue
+                  nbindex = nb
+                  exit
+                end if   
+              end do
 
-         ! Determine record range for stressPeriod and timeStep
-         call this%BudgetReader%GetRecordHeaderRange(stressPeriod, timeStep, firstRecord, lastRecord)
-         if(firstRecord .eq. 0) then
-           write(message,'(A,I5,A,I5,A)') ' Error loading Time Step ', timeStep, ' Period ', stressPeriod, '.'
-           message = trim(message)
-           write(*,'(A)') message
-           call ustop('Missing budget information. Budget file must have output for every time step. Stop.')
-         end if
+              ! Not found in the list of known budgets supporting
+              ! aux variables, try next budget header. It might be useful 
+              ! to report the header text label for validation.
+              if ( nbindex .eq. 0 ) then
+                exit
+              end if
 
-         ! Loop over record headers
+              ! Compare the id/ftype (e.g. WEL) against the given src name,
+              ! and if not, give it another chance by comparing against the 
+              ! budget label itself (e.g. WELLS)
+              textNameLabel = anameid(nbindex) 
+              call TrimAll(textNameLabel, firstNonBlankLoc, lastNonBlankLoc, trimmedLengthLoc)
+              if (&
+                textNameLabel(firstNonBlankLoc:lastNonBlankLoc) .eq. & 
+                sourcePkgName(firstNonBlankIn:lastNonBlankIn) ) then
+                foundTheSource = .true.
+              else
+                textNameLabel = anamebud(nbindex) 
+                call TrimAll(textNameLabel, firstNonBlankLoc, lastNonBlankLoc, trimmedLengthLoc)
+                if (&
+                  textNameLabel(firstNonBlankLoc:lastNonBlankLoc) .eq. & 
+                  sourcePkgName(firstNonBlankIn:lastNonBlankIn) ) then
+                  foundTheSource = .true.
+                end if
+              end if
+            end if ! isMF6
 
-         if ( isMF6 ) then
-           ! Loop through record headers
-           do n = firstRecord, lastRecord
-             header    = this%BudgetReader%GetRecordHeader(n)
-             ! Only methods 5,6 support aux variables
-             if ( ( header%Method .eq. 5 ) .or. ( header%Method .eq. 6 ) ) then
-               textLabel = header%TXT2ID2
-               call TrimAll(textLabel, firstNonBlank, lastNonBlank, trimmedLength)
-               if (&
-                 textLabel(firstNonBlank:lastNonBlank) .eq. & 
-                 sourcePkgName(firstNonBlankIn:lastNonBlankIn) ) then
+            if ( foundTheSource ) then 
+              ! Found the pkg
+              call this%BudgetReader%FillRecordDataBuffer(header,             &
+                this%ListItemBuffer, listItemBufferSize, spaceAssigned,       &
+                status)
+              if(spaceAssigned .gt. 0) then
+                do m = 1, spaceAssigned
+                  cellNumber = this%ListItemBuffer(m)%CellNumber
 
-                 ! Found the pkg
+                  ! Determine the index of cellNumber in the list of cells 
+                  ! requested for timeseseries
+                  cellindex = findloc( cellNumbers, cellNumber, 1 ) 
+                  if ( cellindex .eq. 0 ) cycle ! Not found, but it should not be the case
 
-                 call this%BudgetReader%FillRecordDataBuffer(header,             &
-                   this%ListItemBuffer, listItemBufferSize, spaceAssigned,       &
-                   status)
-                 if(spaceAssigned .gt. 0) then
-                   do m = 1, spaceAssigned
-                     cellNumber = this%ListItemBuffer(m)%CellNumber
+                  !call this%CheckForDefaultIface(header%TextLabel, iface)
+                  !index = header%FindAuxiliaryNameIndex('IFACE')
+                  !if(index .gt. 0) then
+                  !  iface = int(this%ListItemBuffer(m)%AuxiliaryValues(index))
+                  !end if
+                  !if(iface .gt. 0) ifaces(cellindex) = iface
 
-                     ! Determine the index of cellNumber in the list of cells 
-                     ! requested for timeseseries
-                     cellindex = findloc( cellNumbers, cellNumber, 1 ) 
-                     if ( cellindex .eq. 0 ) cycle ! Not found, but it should not be the case
+                  ! Load into flow rates timeseries only if positive, 
+                  ! otherwise leave as zero. Notice that the same 
+                  ! applies to concentration. However, because aux var
+                  ! could be something else (?), it will save whatever 
+                  ! it finds
+                  if(this%ListItemBuffer(m)%BudgetValue .gt. 0.0d0) then
+                    flowTimeseries( kcounter, cellindex )  = this%ListItemBuffer(m)%BudgetValue
+                  end if
+                  
+                  ! Load aux vars
+                  do naux=1, nAuxVars
+                    auxindex = header%FindAuxiliaryNameIndex(auxVarNames(naux))
+                    if(auxindex .gt. 0) then
+                      auxTimeseries( kcounter, cellindex, naux ) = this%ListItemBuffer(m)%AuxiliaryValues(auxindex)
+                    end if
+                  end do
 
-                     !call this%CheckForDefaultIface(header%TextLabel, iface)
-                     !index = header%FindAuxiliaryNameIndex('IFACE')
-                     !if(index .gt. 0) then
-                     !  iface = int(this%ListItemBuffer(m)%AuxiliaryValues(index))
-                     !end if
-                     !if(iface .gt. 0) ifaces(cellindex) = iface
+                end do ! spaceAssigned
+              end if
+              
+              ! Break the records loop and continue to next ktime
+              exit
 
-                     ! Load into flow rates timeseries only if positive, 
-                     ! otherwise leave as zero. Notice that the same 
-                     ! applies to concentration. However, because aux var
-                     ! could be something else (?), it will save whatever 
-                     ! it finds
-                     if(this%ListItemBuffer(m)%BudgetValue .gt. 0.0d0) then
-                       flowTimeseries( kcounter, cellindex )  = this%ListItemBuffer(m)%BudgetValue
-                     end if
-                     
-                     ! Load aux vars
-                     do naux=1, nAuxVars
-                       auxindex = header%FindAuxiliaryNameIndex(auxVarNames(naux))
-                       if(auxindex .gt. 0) then
-                         auxTimeseries( kcounter, cellindex, naux ) = this%ListItemBuffer(m)%AuxiliaryValues(auxindex)
-                       end if
-                     end do
+            end if ! foundTheSource
 
-                   end do ! spaceAssigned
-                 end if
-                 
-                 ! Break the records loop and continue to next ktime
-                 exit
+          end if ! ( header%Method .eq. 5 ) .or. ( header%Method .eq. 6 ) 
 
-               end if
-             end if
-           end do
+        end do ! n = firstRecord, lastRecord
 
-         ! Another MODFLOW
-         else
-
-           ! Loop through record headers
-           do n = firstRecord, lastRecord
-             header    = this%BudgetReader%GetRecordHeader(n)
-             textLabel = header%TextLabel
-             call TrimAll(textLabel, firstNonBlank, lastNonBlank, trimmedLength)
-             print *, 'TEXTLABEL:!', textLabel
-             ! Only methods 5,6 support aux variables
-             if ( ( header%Method .eq. 5 ) .or. ( header%Method .eq. 6 ) ) then
-               print *, 'IS HEADER METHOD 5/6' 
-             end if
-           end do
-
-         end if 
-
-
-       end do
+      end do ! ktime=kinitial,kfinal
 
 
       if( allocated(tempCellNumbers))deallocate(tempCellNumbers)
@@ -1261,7 +1351,6 @@ contains
     integer :: firstNonBlank,lastNonBlank,trimmedLength
     integer :: firstNonBlankIn,lastNonBlankIn,trimmedLengthIn
     integer :: firstNonBlankLoc,lastNonBlankLoc,trimmedLengthLoc
-    integer :: firstNonBlankNam,lastNonBlankNam,trimmedLengthNam
     type(BudgetRecordHeaderType) :: header
     character(len=16)  :: textLabel
     character(len=16)  :: textNameLabel
@@ -1359,7 +1448,7 @@ contains
             end do
 
             ! Not found in the list of known budgets supporting
-            ! aux variables, try next budget header. It may be useful 
+            ! aux variables, try next budget header. It might be useful 
             ! to report the header text label for validation.
             if ( nbindex .eq. 0 ) then
               exit
