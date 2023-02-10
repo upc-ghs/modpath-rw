@@ -1056,7 +1056,7 @@ contains
                 obs%cells(no) = cellNumber
               end do 
             else
-              call ustop('Invalid observation kind. Stop.')
+              call ustop('Invalid cell reading style for this observation. Stop.')
             end if
 
           case (2)
@@ -1073,6 +1073,12 @@ contains
               call u3dintmp(obsUnit, outUnit, grid%LayerCount, grid%RowCount,      &
                 grid%ColumnCount, grid%CellCount, obsCells, aname(1)) 
             else if((grid%GridType .eq. 2) .or. (grid%GridType .eq. 4)) then
+              if ( .not. allocated( cellsPerLayer ) ) then
+                allocate(cellsPerLayer(grid%LayerCount))
+                do n = 1, grid%LayerCount
+                  cellsPerLayer(n) = grid%GetLayerCellCount(n)
+                end do
+              end if 
               call u3dintmpusg(obsUnit, outUnit, grid%CellCount, grid%LayerCount,  &
                 obsCells, aname(1), cellsPerLayer)
             else
@@ -2474,11 +2480,22 @@ contains
     integer :: firstnonzero, nti, nte  
     character(len=20) :: tempChar1
     character(len=20) :: tempChar2
-    integer :: m, idmax, seqNumber, cellCounter, offset
+    integer :: m, idmax, seqNumber, cellCounter, offset, cellNumber
     integer :: nValidPGroup = 0
     integer :: newParticleGroupCount, pgCount
     integer :: iFaceOptionInt
     logical :: iFaceOption
+    integer :: cellReadFormat
+    integer :: layer, row, column
+    integer :: nSpecies
+    integer :: nTimeIntervals
+    doubleprecision, allocatable, dimension(:,:) :: allSpecData
+    !doubleprecision, allocatable, dimension(:,:) :: startEndTimes
+    integer, allocatable, dimension(:) :: cellsHolder
+    integer, allocatable, dimension(:) :: cellsPerLayer
+    logical :: readFromBudget   = .false.
+    logical :: readAsUnstructured = .false.
+    logical :: validTimeIntervals = .false.
     type(ParticleGroupType),dimension(:),allocatable :: particleGroups
     type(ParticleGroupType),dimension(:),allocatable :: newParticleGroups
     ! urword
@@ -2490,6 +2507,9 @@ contains
     integer :: int1dstat
     ! error
     character(len=132) message
+    ! u3d
+    character(len=24)  :: aname(1)
+    data aname(1) /'                   CELLS'/
     !--------------------------------------------------------------
 
     write(outUnit, *)
@@ -2541,6 +2561,9 @@ contains
       srcSpecKind = line(istart:istop)
 
       select case (srcSpecKind) 
+      ! Concentrations are read from AUX variables stored in the budget file.
+      ! Flow-rates and times are extracted from the budget for the characteristic
+      ! simulation times ( reftime, stoptime ).
       case ('AUX','AUXILIARY')
 
         ! Process reading auxiliary variables
@@ -2553,7 +2576,7 @@ contains
         
         if ( nSrcBudgets .lt. 1 ) then
           write(outUnit,'(A,A,A)') 'Number of source budgets for spec ', srcName ,' is .lt. 1. It should be at least 1.'
-          call ustop('Number of source budgets is .lt. 1. It should be at least 1.')
+          call ustop('Number of source budgets is .lt. 1. It should be at least 1. Stop.')
         end if 
 
         ! Interpret source budgets
@@ -2880,7 +2903,6 @@ contains
               ! downstream
               offset = currentParticleCount - auxNPCell(naux,nc)
 
-
               ! Note: 
               ! Interpolator requires strictly increasing x and 
               ! the cummulative mass function may have flat sections.
@@ -3103,6 +3125,260 @@ contains
           end if
 
         end do ! nsb=1,nSrcBudgets
+
+      ! Concentrations, injection times and cells are specified by the user.
+      ! Flow-rates are extracted from a given BUDGET header
+      case ('SPEC','SPECIFIED')
+
+        ! Report 
+        write(outUnit,'(A,I5)') 'SRC specification will be read with the SPECIFIED format.'
+
+        ! Force nSrcBudgets .eq. 1 
+        nSrcBudgets = 1
+        !read(srcUnit, '(a)') line
+        !icol = 1
+        !call urword(line,icol,istart,istop,2,n,r,0,0)
+        !nSrcBudgets = n
+        !
+        !if ( nSrcBudgets .lt. 1 ) then
+        !  write(outUnit,'(A,A,A)') 'Number of source budgets for spec ', srcName ,' is .lt. 1. It should be at least 1.'
+        !  call ustop('Number of source budgets is .lt. 1. It should be at least 1. Stop.')
+        !end if 
+
+        ! Interpret source budgets
+        if( allocated( srcPkgNames ) ) deallocate( srcPkgNames ) 
+        allocate( srcPkgNames( nSrcBudgets ) )
+
+        !if( allocated( srcIFaceOpt ) ) deallocate( srcIFaceOpt ) 
+        !allocate( srcIFaceOpt( nSrcBudgets ) )
+        !srcIFaceOpt(:) = 0 
+
+        do nsb=1,nSrcBudgets
+
+          ! Read the budget header
+          read(srcUnit, '(a)') line
+          icol = 1
+          call urword(line,icol,istart,istop,0,n,r,0,0)
+          srcPkgNames(nsb) = line(istart:istop)
+
+          !call urword(line,icol,istart,istop,2,n,r,0,0)
+          !srcIFaceOpt(nsb) = n 
+
+          ! Report
+          write(outUnit,'(A,A)') 'Source budget header: ', trim(adjustl(srcPkgNames(nsb)))
+
+          ! Read cell format 
+          read(srcUnit, '(a)') line
+          icol = 1
+          call urword(line,icol,istart,istop,2,n,r,0,0)
+          cellReadFormat = n
+
+          ! Read cells 
+          readFromBudget = .false.
+          select case(cellReadFormat)
+          ! From budget file
+          case(0)
+            write(outUnit,'(A)') 'Cells will be taken from the budget header.'
+            readFromBudget = .true.
+          ! As list of given cells
+          case(1)
+            write(outUnit,'(A)') 'Cells are expected to be specified as a list.'
+            nCells = 0
+            call urword(line,icol,istart,istop,2,n,r,0,0)
+            nCells = n
+            if ( nCells .lt. 1 ) then 
+              write(outUnit,'(A)') 'Number of specified cells is invalid. It should be at least 1.'
+              call ustop('Number of specified cells is invalid. It should be at least 1. Stop.')
+            end if 
+            readAsUnstructured = .false.
+            call urword(line,icol,istart,istop,2,n,r,0,0)
+            if ( n.gt.0 ) then 
+              readAsUnstructured = .true.
+            end if
+            ! Depending on the number of cells 
+            ! allocate array for cell ids
+            if ( allocated( srcCellNumbers ) ) deallocate( srcCellNumbers )
+            allocate( srcCellNumbers(nCells) )
+
+            ! Read the cells
+            if( readAsUnstructured) then
+              do nc = 1, nCells
+                read(srcUnit,*) cellNumber
+                srcCellNumbers(nc) = cellNumber
+              end do 
+            else
+              ! Read as layer, row, column
+              do nc = 1, nCells
+                read(srcUnit, *) layer, row, column
+                call ugetnode(&
+                  grid%LayerCount,   &
+                  grid%RowCount,     &
+                  grid%ColumnCount,  &
+                  layer, row, column,&
+                  cellNumber )
+                srcCellNumbers(nc) = cellNumber
+              end do 
+            end if
+          ! As 3d array
+          case(2)
+            write(outUnit,'(A)') 'Cells are expected to be specified as array.'
+
+            ! Required for u3d
+            if(allocated(cellsHolder)) deallocate(cellsHolder)
+            allocate(cellsHolder(grid%CellCount))
+            cellsHolder(:) = 0
+
+            ! Read cells
+            if((grid%GridType .eq. 1) .or. (grid%GridType .eq. 3)) then
+              call u3dintmp(srcUnit, outUnit, grid%LayerCount, grid%RowCount, &
+                grid%ColumnCount, grid%CellCount, cellsHolder, aname(1)) 
+            else if((grid%GridType .eq. 2) .or. (grid%GridType .eq. 4)) then
+              if ( .not. allocated( cellsPerLayer ) ) then
+                allocate(cellsPerLayer(grid%LayerCount))
+                do n = 1, grid%LayerCount
+                  cellsPerLayer(n) = grid%GetLayerCellCount(n)
+                end do
+              end if 
+              call u3dintmpusg(srcUnit, outUnit, grid%CellCount, grid%LayerCount, &
+                cellsHolder, aname(1), cellsPerLayer)
+            else
+              write(outUnit,*) 'Invalid grid type specified when reading CELLS array data.'
+              write(outUnit,*) 'Stop.'
+              call ustop(' ')          
+            end if
+
+            ! Count how many obs cells specified 
+            nCells = count(cellsHolder/=0)
+            if ( nCells .eq. 0 ) then 
+              write(outUnit,*) 'No cells found in array for source.' 
+              call ustop('No cells found in array for source. Stop.')
+            end if
+
+            ! Depending on the number of cells 
+            ! allocate array for cell ids
+            if ( allocated( srcCellNumbers ) ) deallocate( srcCellNumbers )
+            allocate( srcCellNumbers(nCells) )
+
+            ! Fill srcCellNumbers
+            cellCounter = 0
+            do nc =1,grid%CellCount
+              if(cellsHolder(nc).eq.0) cycle
+              cellCounter = cellCounter + 1
+              srcCellNumbers(cellCounter) = nc
+            end do
+
+            if ( allocated( cellsHolder ) ) deallocate( cellsHolder ) 
+          ! Invalid
+          case default
+            write(outUnit,'(A,I6)') 'Cells reading format not available. Given ', cellReadFormat
+            call ustop('Cells reading format not available. Stop.')
+          end select
+
+          ! Read the number of concentrations/species
+          read(srcUnit, '(a)') line
+          icol = 1
+          call urword(line,icol,istart,istop,2,n,r,0,0)
+          nSpecies = n 
+          if ( nSpecies .lt. 1 ) then 
+            write(outUnit,'(A)') 'Number of species/concentration columns should be at least 1.'
+            call ustop('Number of species/concentration columns should be at least 1. Stop.')
+          end if 
+          if ( nSpecies .gt. 50 ) then 
+            write(outUnit,'(A)') 'Number of concentration columns is large. An arbitrary limit of 50 is established.'
+            call ustop('Number of concentration columns is large. An arbitrary limit of 50 is established. Stop.')
+          end if 
+
+          ! Read the solute ids if the simulation demands  
+          ! Something that loops over the species to read/load their soluteid
+          ! call urword(line,icol,istart,istop,2,n,r,0,0)
+
+          ! Read the number of time intervals
+          read(srcUnit, '(a)') line
+          icol = 1
+          call urword(line,icol,istart,istop,2,n,r,0,0)
+          nTimeIntervals = n 
+          if ( nTimeIntervals .lt. 1 ) then 
+            write(outUnit,'(A)') 'Number of time intervals should be at least 1.'
+            call ustop('Number of time intervals should be at least 1. Stop.')
+          end if 
+          if ( nTimeIntervals .gt. 1000000 ) then 
+            write(outUnit,'(A)') 'Number of time intervals is large. An arbitrary limit of 1e6 is established.'
+            call ustop('Number of time intervals is large. An arbitrary limit of 1e6 is established. Stop.')
+          end if 
+
+          ! Allocate allSpecData
+          if ( allocated( allSpecData ) ) deallocate( allSpecData ) 
+          ! NOTICE THE NCELLS,NTIMES TO FOLLOW FORTRAN MAJOR FORMAT
+          allocate( allSpecData(nSpecies+2,nTimeIntervals) )
+        
+          ! Load everything in allSpecData. 
+          ! "columns" 1 and 2 (rows in fact, but seen as columns in input file), represent the time intervals
+          ! and the rest are the values for species/concentrations
+          do nt=1,nTimeIntervals           
+           read(srcUnit,*) (allSpecData(nd,nt),nd=1,(nSpecies+2))
+          end do
+
+          ! Validate the time values
+          ! Invalid intervals when:
+          ! Any tend .le. tstart
+          ! tstart(nt+1) .lt. tend(nt)
+          validTimeIntervals = .true.
+          do nt=1,nTimeIntervals
+            ! If end .le. start
+            if( allSpecData(2,nt) .le. allSpecData(1,nt) ) then 
+              validTimeIntervals = .false.
+              exit
+            end if
+            ! If the last loop and didn't fail
+            ! in previous check, ready
+            if ( nt.eq.nTimeIntervals ) then 
+              exit
+            end if 
+            ! If start+1 .lt. end
+            if( allSpecData(1,nt+1) .lt. allSpecData(2,nt) ) then 
+              validTimeIntervals = .false.
+              exit
+            end if  
+          end do
+
+          if( .not. validTimeIntervals ) then 
+          write(outUnit,'(A)') 'Error: invalid time intervals. Verify that do not overlap and that start is .le. end.'
+          call ustop('Error: invalid time intervals. Verify that do not overlap and that start is .le. end. Stop.')
+          end if 
+
+
+
+          
+
+          !! Activate/deactivate iFaceOption for this source
+          !iFaceOption = .false.
+          !if ( srcIFaceOpt(nsb) .gt. 0 ) then 
+          !  iFaceOption = .true.
+          !  write(outUnit,'(A,A)') 'Will interpret IFACE from the budget file.'
+          !end if  
+
+          !! Number of aux variables and allocate
+          !read(srcUnit, '(a)') line
+          !icol = 1
+          !call urword(line,icol,istart,istop,2,n,r,0,0)
+          !nAuxNames = n 
+          !if ( nAuxNames .lt. 1 ) then
+          !  write(outUnit,'(A,A,A)') 'Number of aux variables source ', trim(adjustl(srcPkgNames(nsb))) ,' should be at least 1.'
+          !  call ustop('Number of aux variables is .lt. 1. It should be at least 1. Stop.')
+          !end if 
+          !if ( allocated( auxNames ) ) deallocate( auxNames ) 
+          !allocate( auxNames( nAuxNames ) )
+          !if ( allocated( auxMasses ) ) deallocate( auxMasses ) 
+          !allocate( auxMasses( nAuxNames ) )
+          !if ( allocated( auxSubDivisions ) ) deallocate( auxSubDivisions ) 
+          !allocate( auxSubDivisions( nAuxNames,3 ) )
+
+        end do ! nsb=1,nSrcBudgets
+
+
+
+        print *, 'EARLY LEAVING FROM SPECIFIED SRC BOUNDARY.'
+        call exit(0)
 
       case default
         ! Not implemented
