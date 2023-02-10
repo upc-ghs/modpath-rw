@@ -2487,15 +2487,18 @@ contains
     logical :: iFaceOption
     integer :: cellReadFormat
     integer :: layer, row, column
-    integer :: nSpecies
+    integer :: nSpecies, ns
     integer :: nTimeIntervals
-    doubleprecision, allocatable, dimension(:,:) :: allSpecData
+    doubleprecision, allocatable, dimension(:)   :: particlesMass
+    doubleprecision, allocatable, dimension(:,:) :: allSpecData  ! nc+2 x nt (column major)
     !doubleprecision, allocatable, dimension(:,:) :: startEndTimes
-    integer, allocatable, dimension(:) :: cellsHolder
-    integer, allocatable, dimension(:) :: cellsPerLayer
+    integer :: readNTemplates
+    integer, allocatable, dimension(:,:) :: nSubDivisions
+    integer, allocatable, dimension(:)   :: cellsHolder
+    integer, allocatable, dimension(:)   :: cellsPerLayer
     logical :: readFromBudget   = .false.
     logical :: readAsUnstructured = .false.
-    logical :: validTimeIntervals = .false.
+    logical :: isValid = .false.
     type(ParticleGroupType),dimension(:),allocatable :: particleGroups
     type(ParticleGroupType),dimension(:),allocatable :: newParticleGroups
     ! urword
@@ -3288,9 +3291,55 @@ contains
             call ustop('Number of concentration columns is large. An arbitrary limit of 50 is established. Stop.')
           end if 
 
+          ! Read the option to determine how to read 
+          ! the release template
+          ! If the option:
+          ! - not given or 0  : read 1 template and apply the same for all species
+          ! - given and .gt. 0: read nSpecies templates
+          readNTemplates = 1
+          call urword(line,icol,istart,istop,2,n,r,0,0)
+          if ( n.gt.0 ) then 
+            readNTemplates = nSpecies
+          end if  
+          if( allocated( nSubDivisions ) ) deallocate( nSubDivisions ) 
+          allocate( nSubDivisions(nSpecies,3) )
+          nSubDivisions(:,:) = 1
+          do nr=1,readNTemplates
+            read(srcUnit,*) (nSubDivisions(nr,ns),ns=1,3)
+          end do
+          if ( (readNTemplates .eq. 1) .and. (nSpecies.gt.1) ) then 
+            do ns=2,nSpecies
+              nSubDivisions(ns,:) = nSubDivisions(1,:)
+            end do
+          end if
+          ! Verify validity  
+          if ( any(nSubDivisions.lt.1) ) then 
+            write(outUnit,'(A)') 'Error: some invalid subdivisions. Verify that all are .gt. 0.'
+            call ustop('Error: some invalid subdivisions. Verify that all are .gt. 0. Stop.')
+          end if 
+
+          ! It needs to read particles mass, for each species
+          if( allocated( particlesMass ) ) deallocate( particlesMass )
+          allocate( particlesMass( nSpecies ) )
+          particlesMass(:) = 0d0 
+          ! Read masses old school
+          read(srcUnit,*) (particlesMass(ns),ns=1,nSpecies)
+
+          ! And some validation
+          ! Invalid if:
+          ! - A value of mass is .le. 0
+          if ( any(particlesMass.le.0) ) then 
+            write(outUnit,'(A)') 'Error: invalid particles mass. Verify that all are .gt. 0.'
+            call ustop('Error: invalid particles mass. Verify that all are .gt. 0. Stop.')
+          end if 
+
           ! Read the solute ids if the simulation demands  
           ! Something that loops over the species to read/load their soluteid
           ! call urword(line,icol,istart,istop,2,n,r,0,0)
+   
+          ! Read the particles release template
+
+
 
           ! Read the number of time intervals
           read(srcUnit, '(a)') line
@@ -3322,11 +3371,11 @@ contains
           ! Invalid intervals when:
           ! Any tend .le. tstart
           ! tstart(nt+1) .lt. tend(nt)
-          validTimeIntervals = .true.
+          isValid = .true.
           do nt=1,nTimeIntervals
             ! If end .le. start
             if( allSpecData(2,nt) .le. allSpecData(1,nt) ) then 
-              validTimeIntervals = .false.
+              isValid = .false.
               exit
             end if
             ! If the last loop and didn't fail
@@ -3336,12 +3385,12 @@ contains
             end if 
             ! If start+1 .lt. end
             if( allSpecData(1,nt+1) .lt. allSpecData(2,nt) ) then 
-              validTimeIntervals = .false.
+              isValid = .false.
               exit
             end if  
           end do
 
-          if( .not. validTimeIntervals ) then 
+          if( .not. isValid ) then 
           write(outUnit,'(A)') 'Error: invalid time intervals. Verify that do not overlap and that start is .le. end.'
           call ustop('Error: invalid time intervals. Verify that do not overlap and that start is .le. end. Stop.')
           end if 
