@@ -2488,10 +2488,12 @@ contains
     integer :: cellReadFormat
     integer :: layer, row, column
     integer :: nSpecies, ns
-    integer :: nTimeIntervals
+    integer :: nTimeIntervals,nMFTimeIntervals, nMFTimes, mftCounter, tCounter
+    doubleprecision, allocatable, dimension(:)   :: mfTimes
     doubleprecision, allocatable, dimension(:)   :: particlesMass
     doubleprecision, allocatable, dimension(:,:) :: allSpecData  ! nc+2 x nt (column major)
     !doubleprecision, allocatable, dimension(:,:) :: startEndTimes
+    doubleprecision :: lowT, highT
     integer :: readNTemplates
     integer, allocatable, dimension(:,:) :: nSubDivisions
     integer, allocatable, dimension(:)   :: cellsHolder
@@ -2499,6 +2501,7 @@ contains
     logical :: readFromBudget   = .false.
     logical :: readAsUnstructured = .false.
     logical :: isValid = .false.
+    integer :: ktime, kinitial, kfinal
     type(ParticleGroupType),dimension(:),allocatable :: particleGroups
     type(ParticleGroupType),dimension(:),allocatable :: newParticleGroups
     ! urword
@@ -3333,13 +3336,11 @@ contains
             call ustop('Error: invalid particles mass. Verify that all are .gt. 0. Stop.')
           end if 
 
+
           ! Read the solute ids if the simulation demands  
           ! Something that loops over the species to read/load their soluteid
           ! call urword(line,icol,istart,istop,2,n,r,0,0)
    
-          ! Read the particles release template
-
-
 
           ! Read the number of time intervals
           read(srcUnit, '(a)') line
@@ -3394,6 +3395,137 @@ contains
           write(outUnit,'(A)') 'Error: invalid time intervals. Verify that do not overlap and that start is .le. end.'
           call ustop('Error: invalid time intervals. Verify that do not overlap and that start is .le. end. Stop.')
           end if 
+
+
+          ! It needs to build some kind of time vector
+          ! and verify against simulation times. 
+          
+          ! It was already validated that given times 
+          ! were increasing. 
+
+          ! Validate initial time against ReferenceTime 
+          ! and set the initial. 
+          initialTime = allSpecData(1,1)
+          if ( initialTime.lt.this%ReferenceTime ) initialTime = this%ReferenceTime
+
+          ! Analogous with the highest
+          finalTime = allSpecData(2,nTimeIntervals)
+          if ( finalTime.gt.this%StopTime ) finalTime = this%StopTime
+
+          ! Given initial and final times, 
+          ! compute the initial and final time step indexes
+          ! Note 1: TotalTimes starts from dt, not zero.
+          ! Note 2: FindContainingTimeStep returns the index 
+          ! correspoding to the upper limit of the time interval 
+          ! in TotalTimes. Meaning, if on a TotalTimes vector 
+          ! [dt,2dt,...] the time 1.5dt is requested, then 
+          ! the function will return the index 2, corresponding to 
+          ! TotalTimes=2dt. 
+          kinitial = this%tdisData%FindContainingTimeStep(initialTime)
+          kfinal   = this%tdisData%FindContainingTimeStep(finalTime)
+
+          if ( (kfinal .eq. 0) ) then
+            write(outUnit,'(a)') 'Warning: kfinal is assumed to be CumulativeTimeStepCount'
+            write(outUnit,'(a,e15.7)') 'finalTime is ', finalTime
+            kfinal = this%tdisData%CumulativeTimeStepCount
+          end if
+
+          ! The number of intervals
+          nMFTimeIntervals = kfinal - kinitial + 1
+          nMFTimes = nMFTimeIntervals + 1 
+          ! Something wrong with times 
+          if ( nMFTimeIntervals .lt. 1 ) then 
+            write(message,'(A)') 'Error: the number of time intervals is .lt. 1. Stop.'
+            message = trim(message)
+            call ustop(message)
+          end if
+
+          ! mfTimes: obtained from determined kinitial and kfinal
+          ! including initial and final times 
+          if ( allocated( mfTimes ) ) deallocate( mfTimes )
+          allocate( mfTimes(nMFTimes) )
+
+          !if ( allocated( timeIntervals ) )
+          !deallocate( timeIntervals ) 
+          !allocate( timeIntervals(nTimeIntervals) )
+
+          ! Fill mfTimes
+          do ktime=1,nMFTimeIntervals
+            if ( ktime .eq. 1 ) mfTimes(1) = initialTime
+            if ( ktime .lt. nMFTimeIntervals ) mftimes(ktime+1)  = this%tdisData%TotalTimes(ktime+kinitial-1)
+            if ( ktime .eq. nMFTimeIntervals ) mftimes(nMFTimes) = finalTime 
+          end do
+
+
+          print *, ' !!!! INITIAL AND FINAL TIMES:!!!! '
+          print *, initialTime, finalTime
+          print *, kinitial, kfinal
+          
+
+          do ktime=1,nMFTimes
+            print *, ktime, mfTimes(ktime)
+          end do
+
+          ! Now needs to build the times vector and somehow 
+          ! determine which intervals are necessary.
+          
+          tCounter = 0
+          mftCounter = 1
+          do nt = 1, nTimeIntervals
+            !if ( nt.eq.1 ) then 
+            !  print *, maxval((/allSpecData(1,nt),mfTimes(mftCounter)/))
+            !  if( maxval((/allSpecData(1,nt),mfTimes(mftCounter)/)) ) then 
+            !  end if 
+            !end if
+            !if ( allSpecData(1,nt) .lt. mfTimes(mftcounter) ) then 
+            ! if ( allSpecData(2,nt) .lt. mfTimes(mftcounter) ) then 
+            !   print *, 'DISCARD NT', nt
+            ! end if 
+            !end if 
+
+            if ( allSpecData(2,nt) .lt. mfTimes(mftcounter) ) then 
+              print *, 'DISCARD NT', nt
+            end if 
+
+            if ( nt.eq.1 ) then 
+              minT = maxval((/allSpecData(1,nt),mfTimes(mftCounter)/))
+              maxT = minval((/allSpecData(2,nt),mfTimes(mftCounter+1)/))
+              if( maxT .eq. mfTimes(mftCounter+1) ) then 
+                print *, 'INCREASE mftCounter'
+                mftCounter = mftCounter + 1 
+              end if 
+
+              !print *, maxval((/allSpecData(1,nt),mfTimes(mftCounter)/))
+              !print *, minval((/allSpecData(2,nt),mfTimes(mftCounter+1)/))
+            end if
+
+          end do 
+
+
+
+
+
+          ! Once the times are known, it can validate 
+          ! the existence of the budget header using the 
+          ! range of stress periods within the initial and
+          ! final times
+
+
+
+          ! It needs to validate that the budget header exists
+          ! in the file
+
+
+          ! If the header exists, and it was specified 
+          ! to extract the cells from the budget, do it.
+
+
+
+
+          ! It needs to generate the flow-rates timeseries
+          ! and somehow make it consistent with the concentration 
+          ! data.
+
 
 
 
