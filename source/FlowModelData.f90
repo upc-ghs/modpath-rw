@@ -889,7 +889,7 @@ contains
     ! 
     ! It can receive iFaceOption to extract the IFACE variable for each cell
     ! related to the source budget. The current extraction of IFACE considers 
-    ! that is not changing in time. 
+    ! that is not changing in time.   
     ! 
     !------------------------------------------------------------------------
     ! Specifications
@@ -962,6 +962,10 @@ contains
         ifaceindex   = 0
         lookForIFace = iFaceOption
       end if 
+      ! Initialize iFaceCells by deallocating if allocated 
+      if ( present( iFaceCells ) ) then 
+        if ( allocated( iFaceCells ) ) deallocate( iFaceCells ) 
+      end if  
 
       ! Trim input pkg name
       call TrimAll(sourcePkgName, firstNonBlankIn, lastNonBlankIn, trimmedLengthIn)
@@ -1540,7 +1544,6 @@ contains
               end do
               if ( lookForIFace ) then
                 ifaceindex = header%FindAuxiliaryNameIndex('IFACE')
-                print *, 'case1', ifaceindex
                 ! Is valid
                 if ( (nval .eq. naux) .and. (ifaceindex.gt.0) ) then 
                   isValid = .true.
@@ -1570,7 +1573,6 @@ contains
                 end do
                 if ( lookForIFace ) then
                   ifaceindex = header%FindAuxiliaryNameIndex('IFACE')
-                  print *, 'case2', ifaceindex
                   ! Is valid
                   if ( (nval .eq. naux) .and. (ifaceindex.gt.0) ) then 
                     isValid = .true.

@@ -2443,6 +2443,7 @@ contains
     character(len=16),allocatable,dimension(:) :: srcPkgTypes
     character(len=16),allocatable,dimension(:) :: srcPkgNames
     character(len=16),allocatable,dimension(:) :: auxNames
+    integer,allocatable,dimension(:)           :: srcIFaceOpt
     logical :: validAuxNames = .false.
     doubleprecision, allocatable, dimension(:) :: auxMasses
     doubleprecision, allocatable, dimension(:) :: auxEffMasses
@@ -2555,49 +2556,47 @@ contains
           call ustop('Number of source budgets is .lt. 1. It should be at least 1.')
         end if 
 
-
         ! Interpret source budgets
         if( allocated( srcPkgNames ) ) deallocate( srcPkgNames ) 
         allocate( srcPkgNames( nSrcBudgets ) ) 
+        if( allocated( srcIFaceOpt ) ) deallocate( srcIFaceOpt ) 
+        allocate( srcIFaceOpt( nSrcBudgets ) )
+        srcIFaceOpt(:) = 0 
         do nsb=1,nSrcBudgets
-
 
           read(srcUnit, '(a)') line
           icol = 1
           call urword(line,icol,istart,istop,0,n,r,0,0)
           srcPkgNames(nsb) = line(istart:istop)
 
-          !call urword(line,icol,istart,istop,2,n,r,0,0)
-          !print *, 'TRIED TO READ THE INTEGER'
-          !print *, n
-          ! 0 if not found
-          !call exit(0)
+          call urword(line,icol,istart,istop,2,n,r,0,0)
+          srcIFaceOpt(nsb) = n 
 
           ! Report
           write(outUnit,'(A,A)') 'Source budget name: ', trim(adjustl(srcPkgNames(nsb)))
 
+          ! Activate/deactivate iFaceOption for this source
+          iFaceOption = .false.
+          if ( srcIFaceOpt(nsb) .gt. 0 ) then 
+            iFaceOption = .true.
+            write(outUnit,'(A,A)') 'Will interpret IFACE from the budget file.'
+          end if  
+
+          ! Number of aux variables and allocate
           read(srcUnit, '(a)') line
           icol = 1
           call urword(line,icol,istart,istop,2,n,r,0,0)
           nAuxNames = n 
-
           if ( nAuxNames .lt. 1 ) then
             write(outUnit,'(A,A,A)') 'Number of aux variables source ', trim(adjustl(srcPkgNames(nsb))) ,' should be at least 1.'
             call ustop('Number of aux variables is .lt. 1. It should be at least 1. Stop.')
           end if 
-
           if ( allocated( auxNames ) ) deallocate( auxNames ) 
           allocate( auxNames( nAuxNames ) )
           if ( allocated( auxMasses ) ) deallocate( auxMasses ) 
           allocate( auxMasses( nAuxNames ) )
           if ( allocated( auxSubDivisions ) ) deallocate( auxSubDivisions ) 
           allocate( auxSubDivisions( nAuxNames,3 ) )
-
-
-          ! Intialize some counters
-          nValidPGroup = 0
-          particleCount = 0
-
 
           ! Loop over aux names and interpret data
           ! Requires some health checks
@@ -2631,16 +2630,9 @@ contains
 
           end do ! naux = 1, nAuxNames 
         
-
           ! Until this point, necessary data for reading auxiliary 
           ! variables and transforming into particles is available
           ! for this source budget
-
-           
-          ! DEV
-          iFaceOption = .true.
-          ! END DEV
-
 
           ! Validate given aux names
           validAuxNames = flowModelData%ValidateAuxVarNames( srcPkgNames( nsb ), auxNames, this%isMF6, iFaceOption )
@@ -2655,7 +2647,7 @@ contains
 
           ! Obtain flow and aux vars timeseries.
           ! Function allocates and return necessary arrays
-          ! Note: times is a vector of times obtained from tdisData%TotalTimes, 
+          ! Note: times is a vector built from tdisData%TotalTimes, 
           ! including intial and final times. timeIntervals is computed as diff(times)
           call flowModelData%LoadFlowAndAuxTimeseries( srcPkgNames( nsb ), auxNames,& 
                                   this%isMF6, initialTime, finalTime, this%tdisData,&
@@ -2668,7 +2660,7 @@ contains
           cummMassTimeseries(:,:,:) = 0d0
 
           ! Integrate for each aux var
-          ! Considers simple STEPWISE quantities
+          ! Considers STEPWISE quantities
           nTimes = size(timeIntervals)
           do naux=1, nAuxNames
             do nt=1,nTimes
@@ -2693,10 +2685,16 @@ contains
           allocate( nParticlesInt( nCells ) )
           if ( allocated(nReleases) ) deallocate(nReleases)
           allocate( nReleases( nCells ) )
-          if ( allocated(auxEffMasses) ) deallocate( auxEffMasses ) 
+          if ( allocated( auxEffMasses ) ) deallocate( auxEffMasses ) 
           allocate( auxEffMasses, mold=auxMasses )
           if ( allocated( auxNPCell ) ) deallocate( auxNPCell ) 
           allocate( auxNPCell( nAuxNames, nCells ) )
+          ! Allocate srcCellIFaces as a placeholder with zeros
+          ! if it was not allocated at the extraction function
+          if ( .not. allocated(srcCellIFaces) ) then
+            allocate( srcCellIFaces(nCells) )
+            srcCellIFaces(:) = 0
+          end if 
 
           ! For this source budget, it should create 
           ! particlegroups for what specifically ? 
@@ -2718,6 +2716,10 @@ contains
           ! Carrier for candidate particle groups 
           if ( allocated(particleGroups) ) deallocate( particleGroups )
           allocate(particleGroups(nAuxNames))
+
+          ! Intialize some counters
+          nValidPGroup = 0
+          particleCount = 0
 
           ! Do it for each aux var
           do naux=1,nAuxNames
@@ -2747,7 +2749,8 @@ contains
             ! Particles per cell
             auxNPCell(naux,:) = product(auxSubDivisions(naux,:))
 
-            ! Interpret srcCellIFaces
+            ! Interpret srcCellIFaces and apply
+            ! correction to particles per cell.
             if ( iFaceOption ) then
               do nc = 1, nCells
                 auxFaceDivisions(:) = 0
@@ -2789,7 +2792,7 @@ contains
             totalParticleCount = sum(nReleases*auxNPCell(naux,:))
             if ( totalParticleCount .lt. 1 ) then 
               write(outUnit,*) ' Warning: pgroup ',&
-                trim(adjustl(particleGroups(naux)%Name)),' has zero particles, it will skip to the next.'
+                trim(adjustl(particleGroups(naux)%Name)),' has zero particles, it will skip this aux var.'
               ! Process the next aux variable
               cycle
             end if 
@@ -2828,7 +2831,8 @@ contains
               ! -999: is a placeholder for release time, it will assigned later
 
               ! Interpret srcCellIFaces
-              if ( (iFaceOption) .and. (srcCellIFaces(nc).gt.0)  ) then
+              ! This check requires allocated srcCellIFaces, it could be improved. 
+              if ( iFaceOption .and. (srcCellIFaces(nc).gt.0)  ) then
                 ! Create particles at cell face
                 auxFaceDivisions(:) = 0
                 select case(srcCellIFaces(nc))
@@ -2943,14 +2947,12 @@ contains
                     call ustop('Range of time indexes for 1d interpolation is inconsistent. Stop.')
                   end if
 
-
                   ! Initialize interpolator
                   call interp1d%initialize(cummMassSeries(nti:nte),times(nti:nte), int1dstat)
                   if ( int1dstat .gt. 0 ) then 
                     write(outUnit,'(A)') 'There was a problem while initializing 1d interpolator.'
                     call ustop('There was a problem while initializing 1d interpolator. Stop.')
                   end if
-
 
                   ! Initialize release variables
                   lastRelease = .false.
@@ -2961,6 +2963,7 @@ contains
                   end if 
 
                   ! And loop until a maximum of nReleases
+                  ! It will break based on cummulative mass
                   do nr=1, nReleases(nc)
 
                     ! Increase the cummulative mass counter
@@ -2989,7 +2992,7 @@ contains
                     ! Interpolate the release time        
                     call interp1d%evaluate( cummEffectiveMass, releaseTimes(nr) ) ! THIS ARRAY RELEASE TIMES BYE BYE
 
-                    ! Assign to the template of particles
+                    ! Assign to particles
                     do m = 1, npThisRelease
                      idmax = idmax + 1
                      seqNumber = seqNumber + 1
@@ -3067,7 +3070,6 @@ contains
               particleCount =  particleCount + particleGroups(naux)%TotalParticleCount 
             end if
 
-
           end do ! naux = 1, nAuxNames
        
           ! It needs to add the newly created groups to simulationData%ParticleGroups
@@ -3100,8 +3102,6 @@ contains
             end if
           end if
 
-
-
         end do ! nsb=1,nSrcBudgets
 
       case default
@@ -3114,7 +3114,6 @@ contains
 
 
     end do ! nSources/specs
-
 
         
     ! Close data file
