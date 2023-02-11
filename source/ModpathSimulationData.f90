@@ -2488,17 +2488,21 @@ contains
     integer :: cellReadFormat
     integer :: layer, row, column
     integer :: nSpecies, ns
-    integer :: nTimeIntervals,nMFTimeIntervals, nMFTimes, mftCounter, tCounter
+    integer :: nTimeIntervals,nMFTimeIntervals, nMFTimes
+    integer :: mftCounter, tCounter, itCounter, doCounter
+    doubleprecision, allocatable, dimension(:)   :: mergedTimes
+    doubleprecision, allocatable, dimension(:)   :: inputTimes
     doubleprecision, allocatable, dimension(:)   :: mfTimes
     doubleprecision, allocatable, dimension(:)   :: particlesMass
-    doubleprecision, allocatable, dimension(:,:) :: allSpecData  ! nc+2 x nt (column major)
-    !doubleprecision, allocatable, dimension(:,:) :: startEndTimes
-    doubleprecision :: lowT, highT
+    doubleprecision, allocatable, dimension(:,:) :: allSpecData    ! nc+2 x nt (column major)
+    doubleprecision, allocatable, dimension(:,:) :: concTimeseries ! nc   x nt (column major)
+    integer, allocatable, dimension(:)           :: intervalIndex
+    doubleprecision :: minT, maxT 
     integer :: readNTemplates
     integer, allocatable, dimension(:,:) :: nSubDivisions
     integer, allocatable, dimension(:)   :: cellsHolder
     integer, allocatable, dimension(:)   :: cellsPerLayer
-    logical :: readFromBudget   = .false.
+    logical :: readCellsFromBudget   = .false.
     logical :: readAsUnstructured = .false.
     logical :: isValid = .false.
     integer :: ktime, kinitial, kfinal
@@ -3180,12 +3184,12 @@ contains
           cellReadFormat = n
 
           ! Read cells 
-          readFromBudget = .false.
+          readCellsFromBudget = .false.
           select case(cellReadFormat)
           ! From budget file
           case(0)
             write(outUnit,'(A)') 'Cells will be taken from the budget header.'
-            readFromBudget = .true.
+            readCellsFromBudget = .true.
           ! As list of given cells
           case(1)
             write(outUnit,'(A)') 'Cells are expected to be specified as a list.'
@@ -3396,34 +3400,24 @@ contains
           call ustop('Error: invalid time intervals. Verify that do not overlap and that start is .le. end. Stop.')
           end if 
 
+          ! It needs to build a time vector considering 
+          ! characteristic simulation times 
 
-          ! It needs to build some kind of time vector
-          ! and verify against simulation times. 
-          
-          ! It was already validated that given times 
+          ! It was already validated that input times 
           ! were increasing. 
 
           ! Validate initial time against ReferenceTime 
           ! and set the initial. 
           initialTime = allSpecData(1,1)
           if ( initialTime.lt.this%ReferenceTime ) initialTime = this%ReferenceTime
-
           ! Analogous with the highest
           finalTime = allSpecData(2,nTimeIntervals)
           if ( finalTime.gt.this%StopTime ) finalTime = this%StopTime
 
           ! Given initial and final times, 
-          ! compute the initial and final time step indexes
-          ! Note 1: TotalTimes starts from dt, not zero.
-          ! Note 2: FindContainingTimeStep returns the index 
-          ! correspoding to the upper limit of the time interval 
-          ! in TotalTimes. Meaning, if on a TotalTimes vector 
-          ! [dt,2dt,...] the time 1.5dt is requested, then 
-          ! the function will return the index 2, corresponding to 
-          ! TotalTimes=2dt. 
+          ! compute the initial and final time step indexes.
           kinitial = this%tdisData%FindContainingTimeStep(initialTime)
           kfinal   = this%tdisData%FindContainingTimeStep(finalTime)
-
           if ( (kfinal .eq. 0) ) then
             write(outUnit,'(a)') 'Warning: kfinal is assumed to be CumulativeTimeStepCount'
             write(outUnit,'(a,e15.7)') 'finalTime is ', finalTime
@@ -3445,10 +3439,6 @@ contains
           if ( allocated( mfTimes ) ) deallocate( mfTimes )
           allocate( mfTimes(nMFTimes) )
 
-          !if ( allocated( timeIntervals ) )
-          !deallocate( timeIntervals ) 
-          !allocate( timeIntervals(nTimeIntervals) )
-
           ! Fill mfTimes
           do ktime=1,nMFTimeIntervals
             if ( ktime .eq. 1 ) mfTimes(1) = initialTime
@@ -3456,103 +3446,152 @@ contains
             if ( ktime .eq. nMFTimeIntervals ) mftimes(nMFTimes) = finalTime 
           end do
 
+          ! Allocate input times, will have at most nTimeIntervals*2 elements
+          if ( allocated( inputTimes ) ) deallocate( inputTimes ) 
+          allocate( inputTimes(2*nTimeIntervals) )
+          inputTimes (:) = 0d0
 
-          print *, ' !!!! INITIAL AND FINAL TIMES:!!!! '
-          print *, initialTime, finalTime
-          print *, kinitial, kfinal
-          
-
-          do ktime=1,nMFTimes
-            print *, ktime, mfTimes(ktime)
+          ! Flatten the input times
+          itCounter = 0
+          do nt = 1, nTimeIntervals
+            if (nt.eq.1) then
+              inputTimes(1) = allSpecData(1,nt)
+              inputTimes(2) = allSpecData(2,nt)
+              itCounter = 2
+              cycle
+            end if
+            if ( nt.le.nTimeIntervals ) then
+              if ( allSpecData(1,nt) .gt. allSpecData(2,nt-1) ) then
+               itCounter = itCounter + 1
+               inputTimes(itCounter) = allSpecData(1,nt)
+              end if
+              itCounter = itCounter + 1
+              inputTimes(itCounter) = allSpecData(2,nt)
+            end if
           end do
 
-          ! Now needs to build the times vector and somehow 
-          ! determine which intervals are necessary.
-          
-          tCounter = 0
+          ! Allocate mergedTimes, will have at most 
+          ! tCounter + nMFTimes elements
+          if ( allocated( mergedTimes ) ) deallocate( mergedTimes )
+          allocate( mergedTimes(itCounter+nMFTimes) )
+          mergedTimes(:) = 0d0
+          tCounter = 1
           mftCounter = 1
-          do nt = 1, nTimeIntervals
-            !if ( nt.eq.1 ) then 
-            !  print *, maxval((/allSpecData(1,nt),mfTimes(mftCounter)/))
-            !  if( maxval((/allSpecData(1,nt),mfTimes(mftCounter)/)) ) then 
-            !  end if 
-            !end if
-            !if ( allSpecData(1,nt) .lt. mfTimes(mftcounter) ) then 
-            ! if ( allSpecData(2,nt) .lt. mfTimes(mftcounter) ) then 
-            !   print *, 'DISCARD NT', nt
-            ! end if 
-            !end if 
-
-            if ( allSpecData(2,nt) .lt. mfTimes(mftcounter) ) then 
-              print *, 'DISCARD NT', nt
-            end if 
-
-            if ( nt.eq.1 ) then 
-              minT = maxval((/allSpecData(1,nt),mfTimes(mftCounter)/))
-              maxT = minval((/allSpecData(2,nt),mfTimes(mftCounter+1)/))
-              if( maxT .eq. mfTimes(mftCounter+1) ) then 
-                print *, 'INCREASE mftCounter'
-                mftCounter = mftCounter + 1 
-              end if 
-
-              !print *, maxval((/allSpecData(1,nt),mfTimes(mftCounter)/))
-              !print *, minval((/allSpecData(2,nt),mfTimes(mftCounter+1)/))
-            end if
-
+          do nt = 1, (itCounter+nMFTimes)
+           if( (tCounter.le.itCounter).and.(mftCounter.le.nMFTimes) ) then 
+             minT = minval((/inputTimes(tCounter),mfTimes(mftCounter)/))
+           else
+             if ( tCounter.gt.itCounter ) minT = mfTimes(mftCounter) 
+             if ( mftCounter.gt.nMFTimes ) minT = inputTimes(tCounter)
+           end if 
+           if ( minT.eq.inputTimes(tCounter)) tCounter = tCounter + 1
+           if ( minT.eq.mfTimes(mftCounter) ) mftCounter = mftCounter + 1
+           mergedTimes(nt) = minT
+           if( (tCounter.gt.itCounter).and.(mftCounter.gt.nMFTimes) ) exit
           end do 
 
+          ! Of the merged vector, how many are within the valid range 
+          tCounter =  count((mergedTimes.ge.initialTime).and.(mergedTimes.le.finalTime))
+          if( allocated( times ) ) deallocate( times )
+          allocate( times(tCounter) )
+          times(:) = 0d0
+          ! Fill the time vector
+          tCounter = 0
+          do nt = 1, (itCounter+nMFTimes)
+            if( mergedTimes(nt) .lt. initialTime ) cycle
+            if( mergedTimes(nt) .gt. finalTime ) exit
+            tCounter = tCounter + 1 
+            times(tCounter) = mergedTimes(nt)
+          end do
 
+          ! Some cleaning
+          deallocate( mergedTimes ) 
+          deallocate( inputTimes  )
+         
+          ! For the vector of times, determine the 
+          ! input data interval. Will be used to assign 
+          ! concentrations. 
+          if ( allocated( intervalIndex ) ) deallocate( intervalIndex ) 
+          allocate( intervalIndex( size(times) ) ) 
+          intervalIndex(:) = 0
+          itCounter = 1
+          do nt=2,size(times)
+            doCounter = 0
+            do
+              if( itCounter .gt. nTimeIntervals ) exit
+              if( times(nt).le.allSpecData(1,itCounter) ) then
+                exit
+              end if
+              if(&
+                (times(nt-1).ge.allSpecData(1,itCounter)).and.& 
+                (times(nt).le.allSpecData(2,itCounter)) ) then
+                intervalIndex(nt) = itCounter
+                exit
+              end if
+              if(&
+                (times(nt-1).ge.allSpecData(2,itCounter)).and.& 
+                (times(nt).le.allSpecData(1,itCounter+1)) ) then
+                itCounter = itCounter + 1
+                exit
+              end if
+              doCounter = doCounter + 1
+              if( doCounter .gt. 1e5 ) exit ! just in case
+            end do
+            if( itCounter .gt. nTimeIntervals ) exit
+            if( doCounter .gt. 1e5 ) exit
+          end do 
 
+          if ( doCounter.gt.1e5 ) then 
+          write(outUnit,'(A)') 'Error: something went wrong while analyzing time intervals for assigning concentrations.'
+          call ustop('Error: something went wrong while analyzing time intervals for assigning concentrations. Stop.')
+          end if 
 
+          ! Assign concentrations and fill timeIntervals
+          if ( allocated( concTimeseries ) ) deallocate( concTimeseries ) 
+          allocate( concTimeseries( nSpecies, size(times)-1) )  ! conc during the interval
+          concTimeseries(:,:) = 0d0
+          if ( allocated( timeIntervals ) ) deallocate( timeIntervals ) 
+          allocate( timeIntervals( size(times)-1) )  ! interval length
+          timeIntervals(:) = 0d0
+          do nt=1,size(times)-1
+            if( intervalIndex(nt+1).gt.0 ) then 
+              concTimeseries(:,nt) = allSpecData(3:,intervalIndex(nt+1))
+            end if
+            timeIntervals(nt) = times(nt+1)-times(nt)
+          end do 
+
+          ! Is allSpecData needed anymore ?
 
           ! Once the times are known, it can validate 
           ! the existence of the budget header using the 
           ! range of stress periods within the initial and
           ! final times
-
-
-
-          ! It needs to validate that the budget header exists
-          ! in the file
-
+          ! Validate given aux names
+          isValid = .false.
+          isValid = flowModelData%ValidateBudgetHeader(srcPkgNames(nsb), initialTime, finalTime, this%tdisData)
+          if ( .not. isValid ) then 
+            write(message,'(A,A,A)') 'Given header ', trim(adjustl(srcPkgNames(nsb))),' was not found in budget file. Stop.'
+            call ustop(message)
+          end if
 
           ! If the header exists, and it was specified 
           ! to extract the cells from the budget, do it.
-
-
-
+          !if( readFromBudget ) then 
+          !end if
 
           ! It needs to generate the flow-rates timeseries
-          ! and somehow make it consistent with the concentration 
-          ! data.
+          call flowModelData%LoadFlowTimeseries( srcPkgNames(nsb), &
+            initialTime, finalTime, this%tdisData, srcCellNumbers, &
+                      flowTimeseries, readCellsFromBudget, outUnit )
 
-
-
-
-          
-
-          !! Activate/deactivate iFaceOption for this source
-          !iFaceOption = .false.
-          !if ( srcIFaceOpt(nsb) .gt. 0 ) then 
-          !  iFaceOption = .true.
-          !  write(outUnit,'(A,A)') 'Will interpret IFACE from the budget file.'
-          !end if  
-
-          !! Number of aux variables and allocate
-          !read(srcUnit, '(a)') line
-          !icol = 1
-          !call urword(line,icol,istart,istop,2,n,r,0,0)
-          !nAuxNames = n 
-          !if ( nAuxNames .lt. 1 ) then
-          !  write(outUnit,'(A,A,A)') 'Number of aux variables source ', trim(adjustl(srcPkgNames(nsb))) ,' should be at least 1.'
-          !  call ustop('Number of aux variables is .lt. 1. It should be at least 1. Stop.')
-          !end if 
-          !if ( allocated( auxNames ) ) deallocate( auxNames ) 
-          !allocate( auxNames( nAuxNames ) )
-          !if ( allocated( auxMasses ) ) deallocate( auxMasses ) 
-          !allocate( auxMasses( nAuxNames ) )
-          !if ( allocated( auxSubDivisions ) ) deallocate( auxSubDivisions ) 
-          !allocate( auxSubDivisions( nAuxNames,3 ) )
+          !print *, nMFTimes, nMFTimeIntervals 
+          !print *, shape(flowTimeseries)        
+          !print *, shape(mfTimes)
+          !print *, 'CELL NUMBERS', srcCellNumbers
+          !do nt=1,nMFTimeIntervals
+          !print *, 'NT', nt, mfTimes(nt), mfTimes(nt+1), flowTimeseries(nt,:)
+          !end do 
+           
 
         end do ! nsb=1,nSrcBudgets
 
