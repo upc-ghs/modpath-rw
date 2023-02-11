@@ -2490,14 +2490,14 @@ contains
     integer :: nSpecies, ns
     integer :: nTimeIntervals,nMFTimeIntervals, nMFTimes
     integer :: mftCounter, tCounter, itCounter, doCounter
-    doubleprecision, allocatable, dimension(:)   :: mergedTimes
-    doubleprecision, allocatable, dimension(:)   :: inputTimes
-    doubleprecision, allocatable, dimension(:)   :: mfTimes
-    doubleprecision, allocatable, dimension(:)   :: particlesMass
-    doubleprecision, allocatable, dimension(:,:) :: allSpecData         ! nc+2 x nt (column major)
-    doubleprecision, allocatable, dimension(:,:) :: concTimeseries      ! nc   x nt (column major)
-    doubleprecision, allocatable, dimension(:,:) :: flowDataTimeseries  ! nt x ncells
-    integer, allocatable, dimension(:)           :: intervalIndex
+    doubleprecision, allocatable, dimension(:)     :: mergedTimes
+    doubleprecision, allocatable, dimension(:)     :: inputTimes
+    doubleprecision, allocatable, dimension(:)     :: mfTimes
+    doubleprecision, allocatable, dimension(:)     :: particlesMass
+    doubleprecision, allocatable, dimension(:,:)   :: allSpecData         ! nc+2 x nt (column major)
+    doubleprecision, allocatable, dimension(:,:,:) :: concTimeseries      ! nt x nc x ns 
+    doubleprecision, allocatable, dimension(:,:)   :: flowDataTimeseries  ! nt x ncells
+    integer, allocatable, dimension(:)             :: intervalIndex
     doubleprecision :: minT, maxT 
     integer :: readNTemplates
     integer, allocatable, dimension(:,:) :: nSubDivisions
@@ -2729,6 +2729,7 @@ contains
             allocate( srcCellIFaces(nCells) )
             srcCellIFaces(:) = 0
           end if 
+
 
           ! For this source budget, it should create 
           ! particlegroups for what specifically ? 
@@ -3160,6 +3161,7 @@ contains
         if( allocated( srcPkgNames ) ) deallocate( srcPkgNames ) 
         allocate( srcPkgNames( nSrcBudgets ) )
 
+        iFaceOption = .false.
         !if( allocated( srcIFaceOpt ) ) deallocate( srcIFaceOpt ) 
         !allocate( srcIFaceOpt( nSrcBudgets ) )
         !srcIFaceOpt(:) = 0 
@@ -3547,21 +3549,6 @@ contains
           call ustop('Error: something went wrong while analyzing time intervals for assigning concentrations. Stop.')
           end if 
 
-          ! Assign concentrations and fill timeIntervals
-          if ( allocated( concTimeseries ) ) deallocate( concTimeseries ) 
-          allocate( concTimeseries( nSpecies, size(times)-1) )  ! conc during the interval
-          concTimeseries(:,:) = 0d0
-          if ( allocated( timeIntervals ) ) deallocate( timeIntervals ) 
-          allocate( timeIntervals( size(times)-1) )  ! interval length
-          timeIntervals(:) = 0d0
-          do nt=1,size(times)-1
-            if( intervalIndex(nt+1).gt.0 ) then 
-              concTimeseries(:,nt) = allSpecData(3:,intervalIndex(nt+1))
-            end if
-            timeIntervals(nt) = times(nt+1)-times(nt)
-          end do 
-
-          ! Is allSpecData needed anymore ?
 
           ! Once the times are known, it can validate 
           ! the existence of the budget header using the 
@@ -3582,7 +3569,29 @@ contains
             initialTime, finalTime, this%tdisData, srcCellNumbers, &
                   flowDataTimeseries, readCellsFromBudget, outUnit )
 
-          
+          ! The allocation of concTimeseries needs to be after loadflowtimeseries
+          ! in case nCells is determined after reading cells from the budget.
+          if ( readCellsFromBudget ) then 
+            nCells = size(srcCellNumbers)
+          end if 
+
+          ! Assign concentrations and fill timeIntervals
+          nTimeIntervals = size(times)-1
+          if ( allocated( concTimeseries ) ) deallocate( concTimeseries ) 
+          allocate( concTimeseries( nTimeIntervals, nCells, nSpecies ) )  ! conc during the interval
+          concTimeseries(:,:,:) = 0d0
+          if ( allocated( timeIntervals ) ) deallocate( timeIntervals ) 
+          allocate( timeIntervals( nTimeIntervals ) )  ! interval length
+          timeIntervals(:) = 0d0
+          do nt=1,size(times)-1
+            if( intervalIndex(nt+1).gt.0 ) then 
+              ! Assume same concentration for all cells
+              concTimeseries(nt,:,:) = spread( allSpecData(3:,intervalIndex(nt+1)), 2, nCells )
+            end if
+            timeIntervals(nt) = times(nt+1)-times(nt)
+          end do 
+
+
           ! For the vector of times, determine the corresponding 
           ! modflow data interval. Will be used to assign flow-rates.
           ! Note: mfTimes, by definition, do not have blank-jumps in between intervals. 
@@ -3619,43 +3628,467 @@ contains
 
           ! Assign flow-rates 
           if ( allocated( flowTimeseries ) ) deallocate( flowTimeseries ) 
-          allocate( flowTimeseries( nCells, size(times)-1) )  ! conc during the interval
+          allocate( flowTimeseries( nTimeIntervals, nCells ) )
           flowTimeseries(:,:) = 0d0
-          do nt=1,size(times)-1
+          do nt=1,nTimeIntervals
             if( intervalIndex(nt+1).gt.0 ) then 
-              flowTimeseries(:,nt) = flowDataTimeseries(intervalIndex(nt+1),:) ! why did you do it like this...
+              flowTimeseries(nt,:) = flowDataTimeseries(intervalIndex(nt+1),:)
             end if
           end do 
 
+          ! Now compute the cummulative mass function to obtain the total injected mass
+          if ( allocated( cummMassTimeseries ) ) deallocate( cummMassTimeseries ) 
+          !allocate( cummMassTimeseries, mold=auxTimeseries ) ! auxTimeseries  nt,nc,ns
+          allocate( cummMassTimeseries(nTimeIntervals,nCells,nSpecies) ) ! try to be consistent with the aux format 
+          cummMassTimeseries(:,:,:) = 0d0
 
-          !! Now compute the cummulative mass function to obtain the total injected mass
-          !if ( allocated( cummMassTimeseries ) ) deallocate( cummMassTimeseries ) 
-          !allocate( cummMassTimeseries, mold=auxTimeseries ) 
-          !cummMassTimeseries(:,:,:) = 0d0
-
-          !! Integrate for each aux var
-          !! Considers STEPWISE quantities
-          !nTimes = size(timeIntervals)
-          !do naux=1, nAuxNames
-          !  do nt=1,nTimes
-          !    if ( nt.gt.1 ) then
-          !      cummMassTimeseries(nt,:,naux) = &
-          !        cummMassTimeseries(nt-1,:,naux) + flowTimeseries(nt,:)*auxTimeseries(nt,:,naux)*timeIntervals(nt)
-          !      cycle
-          !    end if
-          !    if ( nt.eq.1 ) cummMassTimeseries(nt,:,naux) = flowTimeseries(nt,:)*auxTimeseries(nt,:,naux)*timeIntervals(nt)
-          !  end do
-          !end do
-
+          ! Integrate for each concentration
+          ! Considers STEPWISE quantities
+          do ns=1, nSpecies
+            do nt=1,nTimeIntervals
+              if ( nt.gt.1 ) then
+                cummMassTimeseries(nt,:,ns) = &
+                  cummMassTimeseries(nt-1,:,ns) + flowTimeseries(nt,:)*concTimeseries(nt,:,ns)*timeIntervals(nt)
+                cycle
+              end if
+              if ( nt.eq.1 ) cummMassTimeseries(nt,:,ns) = flowTimeseries(nt,:)*concTimeseries(nt,:,ns)*timeIntervals(nt)
+            end do
+          end do
 
 
+
+          ! NOTICE THE FOLLOWING                   !
+          ! TRICKS FOR CONSISTENCY BETWEEN FORMATS !
+          nAuxNames = nSpecies
+          if( allocated( auxSubDivisions ) ) deallocate( auxSubDivisions ) 
+          auxSubDivisions = nSubDivisions
+          if ( (.not. iFaceOption).and.allocated(srcCellIFaces) ) then
+            deallocate( srcCellIFaces ) 
+            allocate( srcCellIFaces(nCells) ) 
+          end if
+          if ( allocated(auxMasses) ) deallocate( auxMasses ) 
+          auxMasses = particlesMass
+          ! TRICKS FOR CONSISTENCY BETWEEN FORMATS !
+          ! NOTICE THE FOLLOWING                   !
+
+
+          if ( allocated(totMass) ) deallocate(totMass)
+          allocate( totMass( nCells ) )
+          if ( allocated(totMassLoc) ) deallocate(totMassLoc)
+          allocate( totMassLoc( nCells ) )
+          if ( allocated(nParticlesDbl) ) deallocate(nParticlesDbl)
+          allocate( nParticlesDbl( nCells ) )
+          if ( allocated(nParticlesInt) ) deallocate(nParticlesInt)
+          allocate( nParticlesInt( nCells ) )
+          if ( allocated(nReleases) ) deallocate(nReleases)
+          allocate( nReleases( nCells ) )
+          if ( allocated( auxEffMasses ) ) deallocate( auxEffMasses ) 
+          allocate( auxEffMasses, mold=auxMasses )
+          if ( allocated( auxNPCell ) ) deallocate( auxNPCell ) 
+          allocate( auxNPCell( nAuxNames, nCells ) )
+          ! Allocate srcCellIFaces as a placeholder with zeros
+          ! if it was not allocated at the extraction function
+          if ( .not. allocated(srcCellIFaces) ) then
+            allocate( srcCellIFaces(nCells) )
+            srcCellIFaces(:) = 0
+          end if
+
+
+          ! Carrier for candidate particle groups 
+          if ( allocated(particleGroups) ) deallocate( particleGroups )
+          allocate(particleGroups(nAuxNames))
+
+          ! Intialize some counters
+          nValidPGroup = 0
+          particleCount = 0
+
+          ! Do it for each aux var
+          do naux=1,nAuxNames
+
+            ! Report
+            !write(outUnit,'(A,A)') 'Processing auxiliary variable: ', trim(adjustl(auxNames(naux)))
+            write(outUnit,'(A,I3)') 'Processing specie: ', naux
+
+            ! Give a name to the particle group
+            ! SRCname_idsrcbudget_idauxvar
+            tempChar1 = ''
+            tempChar2 = ''
+            write( unit=tempChar1, fmt=* )nsb 
+            write( unit=tempChar2, fmt=* )naux 
+            particleGroups(naux)%Name = trim(adjustl(srcName))//'_'//trim(adjustl(tempChar1))//'_'//trim(adjustl(tempChar2))
+
+            ! Increase pgroup counter
+            particleGroups(naux)%Group = this%ParticleGroupCount + naux
+
+            ! Correction to the particle template based on dimension mask
+            ! If dimension is active, leave the given value. 
+            ! If not, switch it to one
+            do nd = 1, 3
+              if ( dimensionMask(nd) .eq. 1 ) cycle 
+              auxSubDivisions(naux,nd) = 1
+            end do
+                
+            ! Particles per cell
+            auxNPCell(naux,:) = product(auxSubDivisions(naux,:))
+
+            ! Interpret srcCellIFaces and apply
+            ! correction to particles per cell.
+            if ( iFaceOption ) then
+              do nc = 1, nCells
+                auxFaceDivisions(:) = 0
+                select case(srcCellIFaces(nc))
+                case(1,2)
+                  auxFaceDivisions(2*srcCellIFaces(nc)-1) = auxSubDivisions(naux,3) ! nver
+                  auxFaceDivisions(2*srcCellIFaces(nc))   = auxSubDivisions(naux,2) ! nrow
+                case(3,4)
+                  auxFaceDivisions(2*srcCellIFaces(nc)-1) = auxSubDivisions(naux,3) ! nver
+                  auxFaceDivisions(2*srcCellIFaces(nc))   = auxSubDivisions(naux,1) ! ncol
+                case(5,6)
+                  auxFaceDivisions(2*srcCellIFaces(nc)-1) = auxSubDivisions(naux,2) ! nrow
+                  auxFaceDivisions(2*srcCellIFaces(nc))   = auxSubDivisions(naux,1) ! ncol
+                case default
+                  cycle
+                end select
+                ! Update NP cell
+                auxNPCell(naux,nc) = auxFaceDivisions(2*srcCellIFaces(nc)-1)*auxFaceDivisions(2*srcCellIFaces(nc))
+              end do
+            end if
+
+            ! Max cumm mass stats
+            totMass    = maxval(cummMassTimeseries(:,:,naux), dim=1) ! Max cumm mass in time
+            totMassLoc = maxloc(cummMassTimeseries(:,:,naux), dim=1) ! Loc of max cumm mass in time
+            ! Note: the location of max mass corresponds to the end of the interval at index loc
+
+            ! With the given particles mass, estimate the number of particles
+            ! necessary for achieving the cummulative mass 
+            nParticlesDbl = totMass/auxMasses(naux)
+            ! ... and using the number of particles per cell, estimate
+            ! the number of releases per cell.
+            nReleases     = int(nParticlesDbl/auxNPCell(naux,:)+0.5)
+
+            ! Up to this point, the number of particles 
+            ! needed can be computed as nReleases*NPCELL
+
+            ! Cycle to the next aux var if the total 
+            ! number of particles is zero.
+            totalParticleCount = sum(nReleases*auxNPCell(naux,:))
+            if ( totalParticleCount .lt. 1 ) then 
+              write(outUnit,*) ' Warning: pgroup ',&
+                trim(adjustl(particleGroups(naux)%Name)),' has zero particles, it will skip this aux var.'
+              ! Process the next aux variable
+              cycle
+            end if 
+
+            ! Allocate particles 
+            particleGroups(naux)%TotalParticleCount = totalParticleCount
+            if(allocated(particleGroups(naux)%Particles)) deallocate(particleGroups(naux)%Particles)
+            allocate(particleGroups(naux)%Particles(totalParticleCount))
+
+            ! Variables for defining the particles of this group
+            idmax = 0
+            offset = 0
+            seqNumber = 0
+            cellCounter = 0
+            currentParticleCount = 0 
+
+            ! Given the number of releases, interpolate release times
+            ! for each cell, using as source the cummulative mass function
+            do nc=1, nCells
+
+              if ( nReleases(nc) .lt. 1 ) cycle ! At least one release
+
+              ! DEPRECATE
+              cellCounter = cellCounter + 1
+              if ( allocated( releaseTimes ) ) deallocate( releaseTimes ) 
+              allocate( releaseTimes( nReleases(nc) ) )
+              ! END DEPRECATE
+
+              ! The effective mass of particles for the aux var of this cell
+              effectiveMass = totMass(nc)/(nReleases(nc)*auxNPCell(naux,nc))
+
+              ! Create particle template for this cell
+              ! 0: is for drape. (TEMP)
+              ! Drape = 0: particle placed in the cell. If dry, status to unreleased
+              ! Drape = 1: particle placed in the uppermost active cell
+              ! -999: is a placeholder for release time, it will assigned later
+
+              ! Interpret srcCellIFaces
+              ! This check requires allocated srcCellIFaces, it could be improved. 
+              if ( iFaceOption .and. (srcCellIFaces(nc).gt.0)  ) then
+                ! Create particles at cell face
+                auxFaceDivisions(:) = 0
+                select case(srcCellIFaces(nc))
+                case(1,2)
+                  auxFaceDivisions(2*srcCellIFaces(nc)-1) = auxSubDivisions(naux,3) ! nver
+                  auxFaceDivisions(2*srcCellIFaces(nc))   = auxSubDivisions(naux,2) ! nrow
+                case(3,4)
+                  auxFaceDivisions(2*srcCellIFaces(nc)-1) = auxSubDivisions(naux,3) ! nver
+                  auxFaceDivisions(2*srcCellIFaces(nc))   = auxSubDivisions(naux,1) ! ncol
+                case(5,6)
+                  auxFaceDivisions(2*srcCellIFaces(nc)-1) = auxSubDivisions(naux,2) ! nrow
+                  auxFaceDivisions(2*srcCellIFaces(nc))   = auxSubDivisions(naux,1) ! ncol
+                end select
+                call CreateMassParticlesOnFaces(&
+                  particleGroups(naux),    &
+                  srcCellNumbers(nc),      &
+                  currentParticleCount,    &
+                  auxFaceDivisions,        &
+                  0, effectiveMass, -999d0 )
+              else
+                ! Normal internal array of particles
+                call CreateMassParticlesAsInternalArray(& 
+                  particleGroups(naux),     &
+                  srcCellNumbers(nc),       &
+                  currentParticleCount,     &
+                  auxSubDivisions(naux,1),  &
+                  auxSubDivisions(naux,2),  &
+                  auxSubDivisions(naux,3),  & 
+                  0, effectiveMass, -999d0  )
+              end if
+
+              ! Assign layer value to each particle
+              do m = 1, currentParticleCount 
+                seqNumber = seqNumber + 1
+                if(particleGroups(naux)%Particles(m)%Id .gt. idmax) idmax = particleGroups(naux)%Particles(m)%Id
+                particleGroups(naux)%Particles(m)%Group = particleGroups(naux)%Group
+                particleGroups(naux)%Particles(m)%SequenceNumber = seqNumber
+                particleGroups(naux)%Particles(m)%InitialLayer =                       &
+                  grid%GetLayer(particleGroups(naux)%Particles(m)%InitialCellNumber)
+                particleGroups(naux)%Particles(m)%Layer =                              &
+                  grid%GetLayer(particleGroups(naux)%Particles(m)%CellNumber)
+              end do
+              ! Notice that offset should remain as the starting count. These particles 
+              ! still have an invalid release time and it will be corrected 
+              ! downstream
+              offset = currentParticleCount - auxNPCell(naux,nc)
+
+              ! Note: 
+              ! Interpolator requires strictly increasing x and 
+              ! the cummulative mass function may have flat sections.
+
+              ! Array for the cumm series considering a zero at the beginning
+              if ( allocated( cummMassSeries ) ) deallocate( cummMassSeries ) 
+              allocate( cummMassSeries(totMassLoc(nc)+1) )
+              cummMassSeries(:)  = 0d0
+              cummMassSeries(2:) = cummMassTimeseries(1:totMassLoc(nc),nc,naux)
+
+              ! nti, nte: time indexes to be passed to interpolator as source
+              nti = 0
+              nte = 0
+              firstnonzero = 0
+              lastCummMass = 0d0
+              cummEffectiveMass = 0d0
+              npNextRelease = 0
+
+              ! Loop over cummulative mass series
+              do nt = 1, totMassLoc(nc)+1
+
+                ! Advance loop until finding the first non-zero
+                if (&
+                  ( cummMassSeries( nt ) .eq. 0d0 ) .and. &
+                  ( firstnonzero .eq. 0 ) ) cycle
+
+                ! If found a nonzero mass, save the first nonzero
+                if ( firstnonzero .eq. 0 ) then 
+                  nti = nt-1
+                  if( nt .eq. 1 ) nti = 1 ! just in case, but it shouldn't
+                  firstnonzero = nt
+                  lastCummMass = cummMassSeries(nt)
+                  cycle
+                end if
+
+                ! If the current mass is higher than the last found, 
+                ! and the initial index is defined, then everything is ok, continue
+                ! to the next index if it is not the last.
+                if ( (cummMassSeries(nt) .gt. lastCummMass) .and. (nti.gt.0) ) then 
+                  lastCummMass = cummMassSeries(nt)
+                  if( nt.ne.(totMassLoc(nc)+1) ) cycle
+                else if ( (cummMassSeries(nt) .eq. lastCummMass) .and. (nti.eq.0) ) then
+                  ! Still on a flat area
+                  cycle
+                else if ( (cummMassSeries(nt) .gt. lastCummMass) .and. (nti.eq.0) ) then
+                  ! Define the new starting point and update lastCummMass
+                  nti = nt - 1
+                  lastCummMass = cummMassSeries(nt)
+                  cycle
+                end if
+
+                ! If it is equal to the last, and the first 
+                ! index is defined, then we are on a flat zone
+                if ( (cummMassSeries(nt) .eq. lastCummMass) .and. (nti.gt.0) ) then
+
+                  ! This is the last index for interpolation 
+                  nte = nt-1 
+                  ! If it is the last loop, set at the last index in array
+                  if ( nt.eq.(totMassLoc(nc)+1) ) nte = nt
+
+                  ! Can it occur ?
+                  if ( nte .eq. nti ) then 
+                    write(outUnit,'(A)') 'Range of time indexes for 1d interpolation is inconsistent.'
+                    call ustop('Range of time indexes for 1d interpolation is inconsistent. Stop.')
+                  end if
+
+                  ! Initialize interpolator
+                  call interp1d%initialize(cummMassSeries(nti:nte),times(nti:nte), int1dstat)
+                  if ( int1dstat .gt. 0 ) then 
+                    write(outUnit,'(A)') 'There was a problem while initializing 1d interpolator.'
+                    call ustop('There was a problem while initializing 1d interpolator. Stop.')
+                  end if
+
+                  ! Initialize release variables
+                  lastRelease = .false.
+                  npThisRelease = auxNPCell(naux,nc)
+                  if ( npNextRelease .gt. 0 ) then 
+                    npThisRelease = npNextRelease
+                    npNextRelease = 0
+                  end if 
+
+                  ! And loop until a maximum of nReleases
+                  ! It will break based on cummulative mass
+                  do nr=1, nReleases(nc)
+
+                    ! Increase the cummulative mass counter
+                    cummEffectiveMass = cummEffectiveMass + npThisRelease*effectiveMass
+
+                    if ( cummEffectiveMass .ge. lastCummMass ) then
+                      ! If above the current limit, add some particles
+                      ! as long as the limit remains below lastCummMass 
+                      ! and correct cummEffectiveMass
+                      cummEffectiveMass = cummEffectiveMass - npThisRelease*effectiveMass
+                      npAuxDbl = (lastCummMass - cummEffectiveMass)/effectiveMass
+                      npThisRelease = int(npAuxDbl+0.5)
+
+                      ! If no particles, done
+                      if ( npThisRelease .lt. 1 ) exit
+
+                      ! This variable keeps track of the particles 
+                      ! needed to begin releases next time and keep 
+                      ! consistency with total mass for the computed
+                      ! effectiveMass
+                      npNextRelease = auxNPCell(naux,nc) - npThisRelease
+                      cummEffectiveMass = cummEffectiveMass + npThisRelease*effectiveMass
+                      lastRelease = .true.
+                    end if
+
+                    ! Interpolate the release time        
+                    call interp1d%evaluate( cummEffectiveMass, releaseTimes(nr) ) ! THIS ARRAY RELEASE TIMES BYE BYE
+
+                    ! Assign to particles
+                    do m = 1, npThisRelease
+                     idmax = idmax + 1
+                     seqNumber = seqNumber + 1
+                     particleGroups(naux)%Particles(offset+m)%Id = idmax
+                     particleGroups(naux)%Particles(offset+m)%SequenceNumber = seqNumber
+                     particleGroups(naux)%Particles(offset+m)%Group = particleGroups(naux)%Group
+                     particleGroups(naux)%Particles(offset+m)%Drape = particleGroups(naux)%Particles(m)%Drape
+                     particleGroups(naux)%Particles(offset+m)%Status = particleGroups(naux)%Particles(m)%Status
+                     particleGroups(naux)%Particles(offset+m)%InitialCellNumber = & 
+                             particleGroups(naux)%Particles(m)%InitialCellNumber
+                     particleGroups(naux)%Particles(offset+m)%InitialLayer = particleGroups(naux)%Particles(m)%InitialLayer
+                     particleGroups(naux)%Particles(offset+m)%InitialFace = particleGroups(naux)%Particles(m)%InitialFace
+                     particleGroups(naux)%Particles(offset+m)%InitialLocalX = particleGroups(naux)%Particles(m)%InitialLocalX
+                     particleGroups(naux)%Particles(offset+m)%InitialLocalY = particleGroups(naux)%Particles(m)%InitialLocalY
+                     particleGroups(naux)%Particles(offset+m)%InitialLocalZ = particleGroups(naux)%Particles(m)%InitialLocalZ
+                     particleGroups(naux)%Particles(offset+m)%InitialTrackingTime = releaseTimes(nr) - this%ReferenceTime 
+                     !particleGroups(naux)%Particles(offset+m)%InitialTrackingTime = releaseTimes(nr) 
+                     particleGroups(naux)%Particles(offset+m)%TrackingTime = & 
+                             particleGroups(naux)%Particles(offset+m)%InitialTrackingTime
+                     particleGroups(naux)%Particles(offset+m)%CellNumber = particleGroups(naux)%Particles(m)%CellNumber
+                     particleGroups(naux)%Particles(offset+m)%Layer = particleGroups(naux)%Particles(m)%Layer
+                     particleGroups(naux)%Particles(offset+m)%Face = particleGroups(naux)%Particles(m)%Face
+                     particleGroups(naux)%Particles(offset+m)%LocalX = particleGroups(naux)%Particles(m)%LocalX
+                     particleGroups(naux)%Particles(offset+m)%LocalY = particleGroups(naux)%Particles(m)%LocalY
+                     particleGroups(naux)%Particles(offset+m)%LocalZ = particleGroups(naux)%Particles(m)%LocalZ
+                    end do
+
+                    ! Increase offset
+                    offset = offset + npThisRelease
+                    
+                    ! Restart npThisRelease
+                    npThisRelease = auxNPCell(naux,nc)
+
+                    if ( lastRelease ) then
+                      ! And exit loop over releases
+                      exit
+                    end if 
+
+                  end do ! nr=1, nReleases(nc)
+
+                  ! After interpolating release times, destroy interpolator
+                  call interp1d%destroy()
+
+                  ! It should reset nti, nte
+                  nti = 0
+                  nte = 0
+
+                end if
+
+              end do ! nt = 1, totMassLoc(nc)+1
+
+              ! Save the current particle count, it will add more
+              ! corresponding to the next cell
+              currentParticleCount = offset
+
+            end do ! nc=1, nCells
+
+
+            !print *, '----------------------------------------------------'
+            !print *, '..............................NPARTICLES ', totalParticleCount
+            !print *, '........................NPARTICLES OFFSET', offset
+            !print *, '.......................cummEffectiveMass ', cummEffectiveMass
+            !print *, '.................. totMass: ', totMass
+            !print *, '.............effectiveMass: ', effectiveMass
+            !print *, '.............auxMasses: ', auxMasses(naux)
+            !print *, '----------------------------------------------------'
+            !do idmax=1, nTimeIntervals
+            !  print *, idmax+1, cummMassTimeseries(idmax,:,naux)  
+            !end do 
+            !print *, '----------------------------------------------------'
+
+            ! Increase counters
+            if ( particleGroups(naux)%TotalParticleCount .gt. 0 ) then 
+              nValidPGroup = nValidPGroup + 1
+              particleCount =  particleCount + particleGroups(naux)%TotalParticleCount 
+            end if
+
+
+          end do ! naux = 1, nAuxNames
+       
+          ! It needs to add the newly created groups to simulationData%ParticleGroups
+
+          ! Extend simulationdata to include these particle groups
+          if ( nValidPGroup .gt. 0 ) then 
+            newParticleGroupCount = this%ParticleGroupCount + nValidPGroup
+            allocate(newParticleGroups(newParticleGroupCount))
+            ! If some particle groups existed previously
+            if( this%ParticleGroupCount .gt. 0 ) then 
+              do n = 1, this%ParticleGroupCount
+                newParticleGroups(n) = this%ParticleGroups(n)
+              end do
+            end if 
+            pgCount = 0
+            do n = 1, nAuxNames
+              if ( particleGroups(n)%TotalParticleCount .eq. 0 ) cycle
+              pgCount = pgCount + 1 
+              newParticleGroups(pgCount+this%ParticleGroupCount) = particleGroups(n)
+            end do 
+            if( this%ParticleGroupCount .gt. 0 ) then 
+              call move_alloc( newParticleGroups, this%ParticleGroups )
+              this%ParticleGroupCount = newParticleGroupCount
+              this%TotalParticleCount = this%TotalParticleCount + particleCount
+            else
+              this%ParticleGroupCount = newParticleGroupCount
+              this%TotalParticleCount = particleCount
+              allocate(this%ParticleGroups(this%ParticleGroupCount))
+              call move_alloc( newParticleGroups, this%ParticleGroups )
+            end if
+          end if
+
+          !print *, 'EARLY LEAVING FROM SPECIFIED SRC BOUNDARY.'
+          !call exit(0)
 
         end do ! nsb=1,nSrcBudgets
 
-
-
-        print *, 'EARLY LEAVING FROM SPECIFIED SRC BOUNDARY.'
-        call exit(0)
 
       case default
         ! Not implemented
