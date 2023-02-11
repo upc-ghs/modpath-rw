@@ -2494,8 +2494,9 @@ contains
     doubleprecision, allocatable, dimension(:)   :: inputTimes
     doubleprecision, allocatable, dimension(:)   :: mfTimes
     doubleprecision, allocatable, dimension(:)   :: particlesMass
-    doubleprecision, allocatable, dimension(:,:) :: allSpecData    ! nc+2 x nt (column major)
-    doubleprecision, allocatable, dimension(:,:) :: concTimeseries ! nc   x nt (column major)
+    doubleprecision, allocatable, dimension(:,:) :: allSpecData         ! nc+2 x nt (column major)
+    doubleprecision, allocatable, dimension(:,:) :: concTimeseries      ! nc   x nt (column major)
+    doubleprecision, allocatable, dimension(:,:) :: flowDataTimeseries  ! nt x ncells
     integer, allocatable, dimension(:)           :: intervalIndex
     doubleprecision :: minT, maxT 
     integer :: readNTemplates
@@ -3576,22 +3577,78 @@ contains
 
           ! If the header exists, and it was specified 
           ! to extract the cells from the budget, do it.
-          !if( readFromBudget ) then 
-          !end if
-
-          ! It needs to generate the flow-rates timeseries
+          ! Generate the flow-rates timeseries
           call flowModelData%LoadFlowTimeseries( srcPkgNames(nsb), &
             initialTime, finalTime, this%tdisData, srcCellNumbers, &
-                      flowTimeseries, readCellsFromBudget, outUnit )
+                  flowDataTimeseries, readCellsFromBudget, outUnit )
 
-          !print *, nMFTimes, nMFTimeIntervals 
-          !print *, shape(flowTimeseries)        
-          !print *, shape(mfTimes)
-          !print *, 'CELL NUMBERS', srcCellNumbers
-          !do nt=1,nMFTimeIntervals
-          !print *, 'NT', nt, mfTimes(nt), mfTimes(nt+1), flowTimeseries(nt,:)
-          !end do 
-           
+          
+          ! For the vector of times, determine the corresponding 
+          ! modflow data interval. Will be used to assign flow-rates.
+          ! Note: mfTimes, by definition, do not have blank-jumps in between intervals. 
+          ! Meaning that the end of one interval is the beggining of the next. Similarly,
+          ! mfTimes are built with the consideration that begin at ReferenceTime and 
+          ! after intersecting with the times provided by the user, times vector 
+          ! also is such that begins at ReferenceTime.
+
+          ! Reset intervalIndex 
+          intervalIndex(:) = 0
+          itCounter = 1
+          do nt=2,size(times)
+            doCounter = 0
+            do
+              if( itCounter .gt. nMFTimeIntervals ) exit
+              if(&
+                (times(nt-1).ge.mfTimes(itCounter)).and.& 
+                (times(nt).le.mfTimes(itCounter+1)) ) then
+                intervalIndex(nt) = itCounter
+                if( (times(nt).eq.mfTimes(itCounter+1)) ) itCounter = itCounter + 1
+                exit
+              end if
+              doCounter = doCounter + 1
+              if( doCounter .gt. 1e5 ) exit ! just in case
+            end do
+            if( itCounter .gt. nMFTimeIntervals ) exit
+            if( doCounter .gt. 1e5 ) exit
+          end do 
+
+          if ( doCounter.gt.1e5 ) then 
+          write(outUnit,'(A)') 'Error: something went wrong while analyzing time intervals for assigning flow-rates.'
+          call ustop('Error: something went wrong while analyzing time intervals for assigning flow-rates. Stop.')
+          end if 
+
+          ! Assign flow-rates 
+          if ( allocated( flowTimeseries ) ) deallocate( flowTimeseries ) 
+          allocate( flowTimeseries( nCells, size(times)-1) )  ! conc during the interval
+          flowTimeseries(:,:) = 0d0
+          do nt=1,size(times)-1
+            if( intervalIndex(nt+1).gt.0 ) then 
+              flowTimeseries(:,nt) = flowDataTimeseries(intervalIndex(nt+1),:) ! why did you do it like this...
+            end if
+          end do 
+
+
+          !! Now compute the cummulative mass function to obtain the total injected mass
+          !if ( allocated( cummMassTimeseries ) ) deallocate( cummMassTimeseries ) 
+          !allocate( cummMassTimeseries, mold=auxTimeseries ) 
+          !cummMassTimeseries(:,:,:) = 0d0
+
+          !! Integrate for each aux var
+          !! Considers STEPWISE quantities
+          !nTimes = size(timeIntervals)
+          !do naux=1, nAuxNames
+          !  do nt=1,nTimes
+          !    if ( nt.gt.1 ) then
+          !      cummMassTimeseries(nt,:,naux) = &
+          !        cummMassTimeseries(nt-1,:,naux) + flowTimeseries(nt,:)*auxTimeseries(nt,:,naux)*timeIntervals(nt)
+          !      cycle
+          !    end if
+          !    if ( nt.eq.1 ) cummMassTimeseries(nt,:,naux) = flowTimeseries(nt,:)*auxTimeseries(nt,:,naux)*timeIntervals(nt)
+          !  end do
+          !end do
+
+
+
 
         end do ! nsb=1,nSrcBudgets
 
