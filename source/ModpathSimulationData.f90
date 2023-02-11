@@ -2483,7 +2483,7 @@ contains
     integer :: m, idmax, seqNumber, cellCounter, offset, cellNumber
     integer :: nValidPGroup = 0
     integer :: newParticleGroupCount, pgCount
-    integer :: iFaceOptionInt
+    integer :: iFaceOptionInt, iFaceNumber
     logical :: iFaceOption
     integer :: cellReadFormat
     integer :: layer, row, column
@@ -2505,7 +2505,9 @@ contains
     integer, allocatable, dimension(:)   :: cellsPerLayer
     logical :: readCellsFromBudget   = .false.
     logical :: readAsUnstructured = .false.
+    logical :: concPerCell = .false.
     logical :: isValid = .false.
+    integer :: nColumns
     integer :: ktime, kinitial, kfinal
     type(ParticleGroupType),dimension(:),allocatable :: particleGroups
     type(ParticleGroupType),dimension(:),allocatable :: newParticleGroups
@@ -2565,7 +2567,7 @@ contains
       ! Report which SRC specification will be processed
       write(outUnit,'(A,A)') 'Processing SRC specification: ', trim(adjustl(srcName))
 
-
+      ! Interpret specification kind
       read(srcUnit, '(a)') line
       icol = 1
       call urword(line,icol,istart,istop,0,n,r,0,0)
@@ -2598,11 +2600,13 @@ contains
         srcIFaceOpt(:) = 0 
         do nsb=1,nSrcBudgets
 
+          ! Read the pkg/budget header
           read(srcUnit, '(a)') line
           icol = 1
           call urword(line,icol,istart,istop,0,n,r,0,0)
           srcPkgNames(nsb) = line(istart:istop)
 
+          ! Read iFaceOption
           call urword(line,icol,istart,istop,2,n,r,0,0)
           srcIFaceOpt(nsb) = n 
 
@@ -3145,27 +3149,22 @@ contains
         ! Report 
         write(outUnit,'(A,I5)') 'SRC specification will be read with the SPECIFIED format.'
 
-        ! Force nSrcBudgets .eq. 1 
-        nSrcBudgets = 1
-        !read(srcUnit, '(a)') line
-        !icol = 1
-        !call urword(line,icol,istart,istop,2,n,r,0,0)
-        !nSrcBudgets = n
-        !
-        !if ( nSrcBudgets .lt. 1 ) then
-        !  write(outUnit,'(A,A,A)') 'Number of source budgets for spec ', srcName ,' is .lt. 1. It should be at least 1.'
-        !  call ustop('Number of source budgets is .lt. 1. It should be at least 1. Stop.')
-        !end if 
+        read(srcUnit, '(a)') line
+        icol = 1
+        call urword(line,icol,istart,istop,2,n,r,0,0)
+        nSrcBudgets = n
+        
+        if ( nSrcBudgets .lt. 1 ) then
+          write(outUnit,'(A,A,A)') 'Number of source budgets for spec ', srcName ,' is .lt. 1. It should be at least 1.'
+          call ustop('Number of source budgets is .lt. 1. It should be at least 1. Stop.')
+        end if 
 
         ! Interpret source budgets
         if( allocated( srcPkgNames ) ) deallocate( srcPkgNames ) 
         allocate( srcPkgNames( nSrcBudgets ) )
-
-        iFaceOption = .false.
-        !if( allocated( srcIFaceOpt ) ) deallocate( srcIFaceOpt ) 
-        !allocate( srcIFaceOpt( nSrcBudgets ) )
-        !srcIFaceOpt(:) = 0 
-
+        if( allocated( srcIFaceOpt ) ) deallocate( srcIFaceOpt ) 
+        allocate( srcIFaceOpt( nSrcBudgets ) )
+        srcIFaceOpt(:) = 0 
         do nsb=1,nSrcBudgets
 
           ! Read the budget header
@@ -3174,11 +3173,19 @@ contains
           call urword(line,icol,istart,istop,0,n,r,0,0)
           srcPkgNames(nsb) = line(istart:istop)
 
-          !call urword(line,icol,istart,istop,2,n,r,0,0)
-          !srcIFaceOpt(nsb) = n 
+          ! Read iFaceOption
+          call urword(line,icol,istart,istop,2,n,r,0,0)
+          srcIFaceOpt(nsb) = n 
 
           ! Report
           write(outUnit,'(A,A)') 'Source budget header: ', trim(adjustl(srcPkgNames(nsb)))
+
+          ! Activate/deactivate iFaceOption for this source
+          iFaceOption = .false.
+          if ( srcIFaceOpt(nsb) .gt. 0 ) then 
+            iFaceOption = .true.
+            write(outUnit,'(A,A)') 'Will interpret IFACE while loading cells.'
+          end if  
 
           ! Read cell format 
           read(srcUnit, '(a)') line
@@ -3196,6 +3203,7 @@ contains
           ! As list of given cells
           case(1)
             write(outUnit,'(A)') 'Cells are expected to be specified as a list.'
+            ! Number of cells
             nCells = 0
             call urword(line,icol,istart,istop,2,n,r,0,0)
             nCells = n
@@ -3203,34 +3211,73 @@ contains
               write(outUnit,'(A)') 'Number of specified cells is invalid. It should be at least 1.'
               call ustop('Number of specified cells is invalid. It should be at least 1. Stop.')
             end if 
+            ! Cell number format
             readAsUnstructured = .false.
             call urword(line,icol,istart,istop,2,n,r,0,0)
             if ( n.gt.0 ) then 
               readAsUnstructured = .true.
             end if
-            ! Depending on the number of cells 
-            ! allocate array for cell ids
+
+            ! Different concentration per cell
+            concPerCell = .false.
+            call urword(line,icol,istart,istop,2,n,r,0,0)
+            if ( n .gt. 0 ) then
+              concPerCell = .true. 
+              write(outUnit,'(A)') 'Will consider different concentration per cell. Expects nSpecies*nCells columns.'
+            end if  
+
+            ! Allocate array for cell ids
             if ( allocated( srcCellNumbers ) ) deallocate( srcCellNumbers )
             allocate( srcCellNumbers(nCells) )
 
+            if ( iFaceOption ) then 
+              if ( allocated(srcCellIFaces) ) deallocate( srcCellIFaces )
+              allocate( srcCellIFaces(nCells) )
+            end if
+
             ! Read the cells
             if( readAsUnstructured) then
-              do nc = 1, nCells
-                read(srcUnit,*) cellNumber
-                srcCellNumbers(nc) = cellNumber
-              end do 
+              if ( .not. iFaceOption ) then 
+                do nc = 1, nCells
+                  read(srcUnit,*) cellNumber
+                  srcCellNumbers(nc) = cellNumber
+                end do
+              else
+                do nc = 1, nCells
+                  iFaceNumber = 0
+                  read(srcUnit,*) cellNumber, iFaceNumber
+                  srcCellNumbers(nc) = cellNumber
+                  srcCellIFaces(nc)  = iFaceNumber
+                end do
+              end if  
             else
-              ! Read as layer, row, column
-              do nc = 1, nCells
-                read(srcUnit, *) layer, row, column
-                call ugetnode(&
-                  grid%LayerCount,   &
-                  grid%RowCount,     &
-                  grid%ColumnCount,  &
-                  layer, row, column,&
-                  cellNumber )
-                srcCellNumbers(nc) = cellNumber
-              end do 
+              if ( .not. iFaceOption ) then 
+                ! Read as layer, row, column
+                do nc = 1, nCells
+                  read(srcUnit, *) layer, row, column
+                  call ugetnode(&
+                    grid%LayerCount,   &
+                    grid%RowCount,     &
+                    grid%ColumnCount,  &
+                    layer, row, column,&
+                    cellNumber )
+                  srcCellNumbers(nc) = cellNumber
+                end do 
+              else
+                ! Read as layer, row, column
+                do nc = 1, nCells
+                  iFaceNumber = 0
+                  read(srcUnit, *) layer, row, column, iFaceNumber
+                  call ugetnode(&
+                    grid%LayerCount,   &
+                    grid%RowCount,     &
+                    grid%ColumnCount,  &
+                    layer, row, column,&
+                    cellNumber )
+                  srcCellNumbers(nc) = cellNumber
+                  srcCellIFaces(nc)  = iFaceNumber
+                end do 
+              end if
             end if
           ! As 3d array
           case(2)
@@ -3366,13 +3413,19 @@ contains
           ! Allocate allSpecData
           if ( allocated( allSpecData ) ) deallocate( allSpecData ) 
           ! NOTICE THE NCELLS,NTIMES TO FOLLOW FORTRAN MAJOR FORMAT
-          allocate( allSpecData(nSpecies+2,nTimeIntervals) )
+          if ( .not. concPerCell ) then 
+            nColumns = nSpecies + 2 
+            allocate( allSpecData(nColumns,nTimeIntervals) )
+          else
+            nColumns = nSpecies*nCells + 2 
+            allocate( allSpecData(nColumns,nTimeIntervals) )
+          end if 
         
           ! Load everything in allSpecData. 
           ! "columns" 1 and 2 (rows in fact, but seen as columns in input file), represent the time intervals
           ! and the rest are the values for species/concentrations
           do nt=1,nTimeIntervals           
-           read(srcUnit,*) (allSpecData(nd,nt),nd=1,(nSpecies+2))
+           read(srcUnit,*) (allSpecData(nd,nt),nd=1,nColumns)
           end do
 
           ! Validate the time values
@@ -3586,7 +3639,14 @@ contains
           do nt=1,size(times)-1
             if( intervalIndex(nt+1).gt.0 ) then 
               ! Assume same concentration for all cells
-              concTimeseries(nt,:,:) = spread( allSpecData(3:,intervalIndex(nt+1)), 2, nCells )
+              if ( .not. concPerCell ) then 
+                concTimeseries(nt,:,:) = spread( allSpecData(3:,intervalIndex(nt+1)), 2, nCells )
+              else
+                do nc=1,nCells
+                  concTimeseries(nt,nc,:) = & 
+                    allSpecData(2+(nc-1)*nSpecies+1:2+nc*nSpecies,intervalIndex(nt+1))
+                end do 
+              end if 
             end if
             timeIntervals(nt) = times(nt+1)-times(nt)
           end do 
