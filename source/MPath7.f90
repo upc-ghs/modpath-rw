@@ -842,7 +842,8 @@ program MPath7
       call transportModelData%LoadTimeStep(period, step)
   end if 
   
-  if(flowModelData%SteadyState) then
+  !if(flowModelData%SteadyState) then
+  if(tdisData%StressPeriodTypes(period)) then
     write(message,'(A,I5,A,I5,A,1PE12.5,A)') 'Processing Time Step ',step,        &
       ' Period ',period,'.  Time = ',tdisData%TotalTimes(ktime), &
       '  Steady-state flow'
