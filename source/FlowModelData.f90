@@ -2038,7 +2038,7 @@ contains
     character(len=132) :: message
     integer :: nCells, newcounter
     integer :: kinitial, kfinal, ktime, kcounter
-    integer :: nTimes, nTimeIntervals, nAuxVars
+    integer :: nTimes, nTimeIntervals, nAuxVars, cellCounter 
     integer :: spInit, tsInit, spEnd, tsEnd, nStressPeriods, nsp 
     integer, allocatable, dimension(:) :: tempCellNumbers
     integer, allocatable, dimension(:) :: spCellNumbers
@@ -2113,68 +2113,207 @@ contains
               textLabel(firstNonBlank:lastNonBlank) .eq. & 
               sourcePkgName(firstNonBlankIn:lastNonBlankIn) ) then
               ! Found it
-              
-              ! ONLY FOR HEADER METHOD 5,6 VERIFY THE REST!
-
-              ! Check cells
-              call this%BudgetReader%FillRecordDataBuffer(header,&
-                         this%ListItemBuffer, listItemBufferSize,&
-                                           spaceAssigned, status )
-              if(spaceAssigned .gt. 0) then
-                      
-                ! If allocated with different size, reallocate 
-                ! else restart indexes
-                if ( allocated(spCellNumbers) ) then 
-                  if ( size(spCellNumbers) .ne. spaceAssigned ) then 
-                    deallocate( spCellNumbers )
-                    allocate(spCellNumbers(spaceAssigned))
-                  else
-                    spCellNumbers(:) = 0
-                  end if
-                else
-                  allocate(spCellNumbers(spaceAssigned))
-                end if
-
-                ! Assign to stress period cell numbers
-                do m = 1, spaceAssigned
-                  cellNumber = this%ListItemBuffer(m)%CellNumber
-                  spCellNumbers(m) = cellNumber
-                end do
-                
-                ! Assign cellNumbers
-                if ( .not. allocated( cellNumbers ) ) then
-                  ! First initialization
-                  allocate( cellNumbers(spaceAssigned) )
-                  cellNumbers(:) = spCellNumbers(:)
-                  ! Break the records loop and continue to next stress period
-                  exit
-                else
-                  ! If allocated, verify if any new cell
-                  newcounter = 0
-                  do m =1, spaceAssigned
-                    cellindex = findloc( cellNumbers, spCellNumbers(m), 1 ) 
-                    if ( cellindex .eq. 0 ) newcounter = newcounter + 1 ! is new cell
-                  end do 
-                  ! If any new, add it to cellNumbers
-                  if ( newcounter .gt. 0 ) then 
-                    if ( allocated( tempCellNumbers ) ) deallocate( tempCellNumbers ) 
-                    allocate( tempCellNumbers(size(cellNumbers)+newcounter) )
-                    tempCellNumbers(1:size(cellNumbers)) = cellNumbers(:) ! save the old
-                    newcounter = 0
-                    do m =1, spaceAssigned
-                      cellindex = findloc( cellNumbers, spCellNumbers(m), 1 )
-                      if ( cellindex .eq. 0 ) then 
-                        newcounter = newcounter + 1 ! is new cell
-                        tempCellNumbers(size(cellNumbers)+newcounter) = spCellNumbers(m)
+       print *, '------------------------------'
+       print *, sourcePkgName, header%Method
+       print *, '------------------------------'
+              ! Read accordingly
+              select case(header%Method) 
+              case(0,1)
+                ! Header methods 0,1 should somehow count which 
+                ! cells have non-zero positive flow-rates otherwise
+                ! will allocate everything
+                select case(textLabel(firstNonBlank:lastNonBlank))
+                  case('CONSTANT HEAD', 'CHD')
+                    call this%BudgetReader%FillRecordDataBuffer(header, &
+                                        this%ArrayBufferDbl, cellCount, & 
+                                                  spaceAssigned, status )
+                    if(cellCount .eq. spaceAssigned) then
+                      ! If allocated with different size, reallocate 
+                      ! else restart indexes
+                      if ( allocated(spCellNumbers) ) then 
+                        if ( size(spCellNumbers) .ne. spaceAssigned ) then 
+                          deallocate( spCellNumbers )
+                          allocate(spCellNumbers(spaceAssigned))
+                        else
+                          spCellNumbers(:) = 0
+                        end if
+                      else
+                        allocate(spCellNumbers(spaceAssigned))
                       end if
-                    end do
-                    call move_alloc( tempCellNumbers, cellNumbers )
-                  end if
-                  ! Break the records loop and continue to next stress period
-                  exit
-                end if !Assign cellNumbers
+                      ! Assign to stress period cell numbers
+                      do m = 1, spaceAssigned
+                        cellNumber = m 
+                        spCellNumbers(m) = cellNumber
+                      end do
+                    end if ! if(cellCount .eq. spaceAssigned)
+                  case default
+                    if(header%ArrayItemCount .eq. cellCount) then
+                      call this%BudgetReader%FillRecordDataBuffer(header, &
+                                          this%ArrayBufferDbl, cellCount, & 
+                                                    spaceAssigned, status )
+                      if(cellCount .eq. spaceAssigned) then
+                        ! If allocated with different size, reallocate 
+                        ! else restart indexes
+                        if ( allocated(spCellNumbers) ) then 
+                          if ( size(spCellNumbers) .ne. spaceAssigned ) then 
+                            deallocate( spCellNumbers )
+                            allocate(spCellNumbers(spaceAssigned))
+                          else
+                            spCellNumbers(:) = 0
+                          end if
+                        else
+                          allocate(spCellNumbers(spaceAssigned))
+                        end if
+                        ! Assign to stress period cell numbers
+                        do m = 1, spaceAssigned
+                          cellNumber = m 
+                          spCellNumbers(m) = cellNumber
+                        end do
+                      end if ! if(cellCount .eq. spaceAssigned)
+                    end if
+                end select
+              case(2)
+                call this%BudgetReader%FillRecordDataBuffer(header, &
+                           this%ListItemBuffer, listItemBufferSize, & 
+                                              spaceAssigned, status )
+                if(spaceAssigned .gt. 0) then
+                  ! Count cells with positive flow-rate
+                  ! Restart cellCounter
+                  cellCounter = 0
+                  do m = 1, spaceAssigned
+                    if(this%ListItemBuffer(m)%BudgetValue .gt. 0.0d0) then
+                      cellCounter = cellCounter + 1
+                    end if
+                  end do
+                  if ( cellCounter .eq. 0 ) exit
 
-              end if !if(spaceAssigned .gt. 0)
+                  ! If allocated with different size, reallocate 
+                  ! else restart indexes
+                  if ( allocated(spCellNumbers) ) then 
+                    if ( size(spCellNumbers) .ne. cellCounter ) then 
+                      deallocate( spCellNumbers )
+                      allocate(spCellNumbers(cellCounter))
+                    else
+                      spCellNumbers(:) = 0
+                    end if
+                  else
+                    allocate(spCellNumbers(cellCounter))
+                  end if
+                  ! Assign to stress period cell numbers
+                  cellCounter = 0 
+                  do m = 1, spaceAssigned
+                    if(this%ListItemBuffer(m)%BudgetValue .gt. 0.0d0) then
+                      cellCounter = cellCounter + 1
+                      cellNumber = this%ListItemBuffer(m)%CellNumber
+                      spCellNumbers(cellCounter) = cellNumber
+                    end if
+                  end do
+                end if ! if(spaceAssigned .gt. 0)
+              case(3)
+                call this%BudgetReader%FillRecordDataBuffer(header, &
+                          this%ArrayBufferDbl, this%ArrayBufferInt, &
+                       header%ArrayItemCount, spaceAssigned, status )
+                if(header%ArrayItemCount .eq. spaceAssigned) then
+                  ! If allocated with different size, reallocate 
+                  ! else restart indexes
+                  if ( allocated(spCellNumbers) ) then 
+                    if ( size(spCellNumbers) .ne. spaceAssigned ) then 
+                      deallocate( spCellNumbers )
+                      allocate(spCellNumbers(spaceAssigned))
+                    else
+                      spCellNumbers(:) = 0
+                    end if
+                  else
+                    allocate(spCellNumbers(spaceAssigned))
+                  end if
+                  ! Assign to stress period cell numbers
+                  do m = 1, spaceAssigned
+                    cellNumber = this%ArrayBufferInt(m)
+                    spCellNumbers(m) = cellNumber
+                  end do
+                end if ! (header%ArrayItemCount .eq. spaceAssigned) 
+              case(4)
+                call this%BudgetReader%FillRecordDataBuffer(header, &
+                        this%ArrayBufferDbl, header%ArrayItemCount, & 
+                                               spaceAssigned,status )
+                if(header%ArrayItemCount .eq. spaceAssigned) then
+                  ! If allocated with different size, reallocate 
+                  ! else restart indexes
+                  if ( allocated(spCellNumbers) ) then 
+                    if ( size(spCellNumbers) .ne. spaceAssigned ) then 
+                      deallocate( spCellNumbers )
+                      allocate(spCellNumbers(spaceAssigned))
+                    else
+                      spCellNumbers(:) = 0
+                    end if
+                  else
+                    allocate(spCellNumbers(spaceAssigned))
+                  end if
+                  ! Assign to stress period cell numbers
+                  do m = 1, spaceAssigned
+                    cellNumber = m 
+                    spCellNumbers(m) = cellNumber
+                  end do
+                end if !(header%ArrayItemCount .eq. spaceAssigned)
+              case(5,6)
+                call this%BudgetReader%FillRecordDataBuffer(header, &
+                           this%ListItemBuffer, listItemBufferSize, &
+                                              spaceAssigned, status )
+                if(spaceAssigned .gt. 0) then
+                  ! If allocated with different size, reallocate 
+                  ! else restart indexes
+                  if ( allocated(spCellNumbers) ) then 
+                    if ( size(spCellNumbers) .ne. spaceAssigned ) then 
+                      deallocate( spCellNumbers )
+                      allocate(spCellNumbers(spaceAssigned))
+                    else
+                      spCellNumbers(:) = 0
+                    end if
+                  else
+                    allocate(spCellNumbers(spaceAssigned))
+                  end if
+                  ! Assign to stress period cell numbers
+                  do m = 1, spaceAssigned
+                    cellNumber = this%ListItemBuffer(m)%CellNumber
+                    spCellNumbers(m) = cellNumber
+                  end do
+                end if !if(spaceAssigned .gt. 0)
+
+              end select
+
+
+              ! Assign cellNumbers
+              if ( .not. allocated( cellNumbers ) ) then
+                ! First initialization
+                allocate( cellNumbers(size(spCellNumbers)) )
+                cellNumbers(:) = spCellNumbers(:)
+                ! Break the records loop and continue to next stress period
+                exit
+              else
+                ! If allocated, verify if any new cell
+                newcounter = 0
+                do m =1, size(spCellNumbers)
+                  cellindex = findloc( cellNumbers, spCellNumbers(m), 1 ) 
+                  if ( cellindex .eq. 0 ) newcounter = newcounter + 1 ! is new cell
+                end do 
+                ! If any new, add it to cellNumbers
+                if ( newcounter .gt. 0 ) then 
+                  if ( allocated( tempCellNumbers ) ) deallocate( tempCellNumbers ) 
+                  allocate( tempCellNumbers(size(cellNumbers)+newcounter) )
+                  tempCellNumbers(1:size(cellNumbers)) = cellNumbers(:) ! save the old
+                  newcounter = 0
+                  do m =1, size(spCellNumbers)
+                    cellindex = findloc( cellNumbers, spCellNumbers(m), 1 )
+                    if ( cellindex .eq. 0 ) then 
+                      newcounter = newcounter + 1 ! is new cell
+                      tempCellNumbers(size(cellNumbers)+newcounter) = spCellNumbers(m)
+                    end if
+                  end do
+                  call move_alloc( tempCellNumbers, cellNumbers )
+                end if
+                ! Break the records loop and continue to next stress period
+                exit
+              end if !Assign cellNumbers
 
             end if ! found src pkg name
 
@@ -2358,385 +2497,6 @@ contains
 
 
     end subroutine pr_LoadFlowTimeseries
-
-
-    !!!------------------------------------------------------------------------
-    !!!
-    !!!------------------------------------------------------------------------
-    !!! Specifications
-    !!!------------------------------------------------------------------------
-    !!implicit none
-    !!! input
-    !!class(FlowModelDataType) :: this
-    !!doubleprecision, intent(in) :: initialTime, finalTime
-    !!integer, dimension(:), intent(in) :: cellNumbers
-    !!type( TimeDiscretizationDataType ), intent(in) :: tdisData
-    !!! should be obtained from boundary
-    !!character(len=16), allocatable, dimension(:) :: auxnames  
-    !!! local
-    !!integer :: stressPeriod, timeStep
-    !!integer :: firstRecord,lastRecord,n,m,firstNonBlank,lastNonBlank,trimmedLength
-    !!integer :: spaceAssigned, status, cellCount, iface, index, auxindex, cellindex
-    !!integer :: boundaryFlowsOffset, listItemBufferSize, cellNumber, layer
-    !!type(BudgetRecordHeaderType) :: header
-    !!character(len=16) :: textLabel
-    !!character(len=132) message
-    !!integer :: nCells
-    !!integer :: kinitial, kfinal, ktime, kcounter
-    !!integer :: nTimes 
-    !!doubleprecision, allocatable, dimension(:,:) :: timeseries
-    !!doubleprecision, allocatable, dimension(:,:) :: ctimeseries
-    !!integer, allocatable, dimension(:) :: ifaces
-    !!!------------------------------------------------------------------------
-
-    !!    print *, '-------------------------------------------------------'
-    !!    print *, 'FLOWMODELDATA:: LOADFLOWTIMESERIES'
-    !!    print *, 'FLOWMODELDATA:: LOADFLOWTIMESERIES ( OR LOADBUDGET...) '
-    !!    print *, '-------------------------------------------------------'
-
-    !!  ! Seems needed
-    !!  listItemBufferSize = size(this%ListItemBuffer)
-
-    !!  ! While defining cellNumbers, shall we determine 
-    !!  ! in advance on which BudgetRecords are we intererested ?
-
-    !!  nCells = size(cellNumbers)
-
-    !!  if ( allocated( ifaces ) ) deallocate( ifaces )
-    !!  allocate( ifaces( nCells ) )
-    !!  if ( allocated( auxnames ) ) deallocate( auxnames )
-    !!  allocate( auxnames( nCells ) )
-    !!  auxnames(1) = 'CONCENTRATION'
-    !!  ifaces(:) = 0
-
-    !!  ! Given initial and final times, 
-    !!  ! compute an array of times from which 
-    !!  ! determine and extract stress periods/time steps
-    !!  kinitial = tdisData%FindContainingTimeStep(initialTime)
-    !!  kfinal   = tdisData%FindContainingTimeStep(finalTime)
-
-    !!  do ktime=kinitial,kfinal
-    !!    if ( ktime .eq. kinitial ) print *, 'TINITIAL::',initialTime
-    !!    if ( ktime .lt. kfinal   ) print *, 'KTIME   ::',tdisData%TotalTimes(ktime)
-    !!    if ( ktime .eq. kfinal   ) print *, 'TEND    ::',finalTime 
-    !!  end do 
-
-    !!  ! nTimes: This number represent the number of intervals
-    !!  nTimes = kfinal - kinitial + 1 
-
-    !!  print *, '-------------------------------------------------'
-    !!  if ( allocated( timeseries ) ) deallocate( timeseries ) 
-    !!  allocate( timeseries( nTimes, nCells ) )
-    !!  timeseries(:,:) = 0d0
-    !!  if ( allocated( ctimeseries ) ) deallocate( ctimeseries ) 
-    !!  allocate( ctimeseries( nTimes, nCells ) )
-    !!  ctimeseries(:,:) = 0d0
-
-    !!  print *, 'STRESS PERIOD AND TIME STEP: '
-    !!  kcounter = 0
-    !!  do ktime=kinitial,kfinal
-    !!    ! Get the stress period and time step from the cummulative time step
-    !!    call tdisData%GetPeriodAndStep(ktime, stressPeriod, timeStep)
-    !!    kcounter = kcounter + 1 
-    !!    print *, 'KINFO:: ', kcounter, ktime, stressPeriod, timeStep
-    !!    print *, '-------------------------------------------------'
-
-    !!    ! Determine record range for stressPeriod and timeStep
-    !!    call this%BudgetReader%GetRecordHeaderRange(stressPeriod, timeStep, firstRecord, lastRecord)
-    !!    if(firstRecord .eq. 0) then
-    !!      write(message,'(A,I5,A,I5,A)') ' Error loading Time Step ', timeStep, ' Period ', stressPeriod, '.'
-    !!      message = trim(message)
-    !!      write(*,'(A)') message
-    !!      call ustop('Missing budget information. Budget file must have output for every time step. Stop.')
-    !!    end if
-
-    !!    print *, '----------------------------------------'
-    !!    print *, ' LOOP OVER BUDGET HEADERS'
-    !!    print *, '----------------------------------------'
-
-    !!    !! Loop through record headers
-    !!    do n = firstRecord, lastRecord
-    !!      header    = this%BudgetReader%GetRecordHeader(n)
-    !!      textLabel = header%TextLabel
-    !!      call TrimAll(textLabel, firstNonBlank, lastNonBlank, trimmedLength)
-    !!      select case(textLabel(firstNonBlank:lastNonBlank))
-    !!      case('CONSTANT HEAD', 'CHD')
-    !!        ! Do not skip ( some understanding of IFACE? )
-    !!        print *, '----------TEXTLABEL: ', textLabel(firstNonBlank:lastNonBlank), ' - HEADERMETHOD', header%Method
-
-    !!  !    ! Read constant head flows into the sinkFlows and sourceFlows arrays.
-    !!  !    ! For a standard budget file, Method = 0. For a compact budget file,
-    !!  !    ! Method = 2.
-    !!  !    if(header%Method .eq. 0) then
-    !!  !      call this%BudgetReader%FillRecordDataBuffer(header,       &
-    !!  !        this%ArrayBufferDbl, cellCount, spaceAssigned, status)
-    !!  !      if(cellCount .eq. spaceAssigned) then
-    !!  !        do m = 1, spaceAssigned
-    !!  !          if(this%ArrayBufferDbl(m) .gt. 0.0d0) then
-    !!  !            this%SourceFlows(m) = this%SourceFlows(m) +         &
-    !!  !              this%ArrayBufferDbl(m)
-    !!  !          else if(this%ArrayBufferDbl(m) .lt. 0.0d0) then
-    !!  !            this%SinkFlows(m) = this%SinkFlows(m) +             &
-    !!  !              this%ArrayBufferDbl(m)
-    !!  !          end if
-    !!  !        end do
-    !!  !      end if
-    !!  !    else if(header%Method .eq. 2) then
-    !!  !      call this%BudgetReader%FillRecordDataBuffer(header,             &
-    !!  !        this%ListItemBuffer, listItemBufferSize, spaceAssigned, status)
-    !!  !      if(spaceAssigned .gt. 0) then
-    !!  !        do m = 1, spaceAssigned
-    !!  !          cellNumber = this%ListItemBuffer(m)%CellNumber
-    !!  !          if(this%ListItemBuffer(m)%BudgetValue .gt. 0.0d0) then
-    !!  !            this%SourceFlows(cellNumber) =                      &
-    !!  !              this%SourceFlows(cellNumber) + this%ListItemBuffer(m)%BudgetValue
-    !!  !          else if(this%ListItemBuffer(m)%BudgetValue .lt. 0.0d0) then
-    !!  !            this%SinkFlows(cellNumber) =                        &
-    !!  !              this%SinkFlows(cellNumber) + this%ListItemBuffer(m)%BudgetValue
-    !!  !          end if
-    !!  !        end do
-    !!  !      end if
-    !!  !    else if((header%Method .eq. 5) .or. (header%Method .eq. 6)) then
-    !!  !      call this%BudgetReader%FillRecordDataBuffer(header,             &
-    !!  !        this%ListItemBuffer, listItemBufferSize, spaceAssigned,       &
-    !!  !        status)
-    !!  !      if(spaceAssigned .gt. 0) then
-    !!  !        do m = 1, spaceAssigned
-    !!  !          call this%CheckForDefaultIface(header%TextLabel, iface)
-    !!  !          index = header%FindAuxiliaryNameIndex('IFACE')
-    !!  !          if(index .gt. 0) then
-    !!  !            iface = int(this%ListItemBuffer(m)%AuxiliaryValues(index))
-    !!  !          end if
-    !!  !          
-    !!  !          cellNumber = this%ListItemBuffer(m)%CellNumber
-    !!  !          if(iface .gt. 0) then
-    !!  !            boundaryFlowsOffset = 6 * (cellNumber - 1)
-    !!  !            this%BoundaryFlows(boundaryFlowsOffset + iface) =   &
-    !!  !              this%BoundaryFlows(boundaryFlowsOffset + iface) + &
-    !!  !              this%ListItemBuffer(m)%BudgetValue
-    !!  !          else
-    !!  !            if(this%ListItemBuffer(m)%BudgetValue .gt. 0.0d0) then
-    !!  !              this%SourceFlows(cellNumber) =                  &
-    !!  !                this%SourceFlows(cellNumber) +                &
-    !!  !                this%ListItemBuffer(m)%BudgetValue
-    !!  !            else if(this%ListItemBuffer(m)%BudgetValue .lt. 0.0d0) then
-    !!  !              this%SinkFlows(cellNumber) =                    &
-    !!  !                this%SinkFlows(cellNumber) +                  &
-    !!  !                this%ListItemBuffer(m)%BudgetValue
-    !!  !            end if
-    !!  !          end if
-    !!  !        end do
-    !!  !      end if
-    !!  !    end if
-
-    !!        continue
-
-    !!      case('STORAGE', 'STO-SS', 'STO-SY')
-    !!        ! Skip
-    !!        cycle
-    !!      case('FLOW JA FACE', 'FLOW-JA-FACE')
-    !!        ! Skip
-    !!        cycle
-    !!      case('DATA-SPDIS', 'DATA-SAT')
-    !!        ! Skip
-    !!        cycle
-    !!      case('FLOW RIGHT FACE', 'FLOW FRONT FACE', 'FLOW LOWER FACE')
-    !!        ! Skip
-    !!        cycle
-    !!      case default
-    !!        ! Do not skip ( some understanding of IFACE? )
-    !!        print *, '----------TEXTLABEL: ', textLabel(firstNonBlank:lastNonBlank), ' - HEADERMETHOD', header%Method
-
-    !!   !    ! Now handle any other records in the budget file.
-    !!   !    if((header%Method .eq. 0) .or. (header%Method .eq. 1)) then
-    !!   !      if(header%ArrayItemCount .eq. cellCount) then
-    !!   !        call this%BudgetReader%FillRecordDataBuffer(header,         &
-    !!   !          this%ArrayBufferDbl, cellCount, spaceAssigned, status)
-    !!   !        if(cellCount .eq. spaceAssigned) then
-    !!   !          call this%CheckForDefaultIface(header%TextLabel, iface)
-    !!   !          if(iface .gt. 0) then
-    !!   !            do m = 1, spaceAssigned
-    !!   !              boundaryFlowsOffset = 6 * (m - 1)
-    !!   !              this%BoundaryFlows(boundaryFlowsOffset + iface) =   &
-    !!   !                this%BoundaryFlows(boundaryFlowsOffset + iface) + &
-    !!   !                this%ArrayBufferDbl(m)
-    !!   !            end do
-    !!   !          else
-    !!   !            do m = 1, spaceAssigned
-    !!   !              if(this%ArrayBufferDbl(m) .gt. 0.0d0) then
-    !!   !                this%SourceFlows(m) = this%SourceFlows(m) +     &
-    !!   !                  this%ArrayBufferDbl(m)
-    !!   !              else if(this%ArrayBufferDbl(m) .lt. 0.0d0) then
-    !!   !                this%SinkFlows(m) = this%SinkFlows(m) +         &
-    !!   !                  this%ArrayBufferDbl(m)
-    !!   !              end if
-    !!   !            end do
-    !!   !          end if
-    !!   !        end if
-    !!   !      end if
-    !!   !    else if(header%Method .eq. 3) then
-    !!   !      call this%BudgetReader%FillRecordDataBuffer(header,             &
-    !!   !        this%ArrayBufferDbl, this%ArrayBufferInt,                     &
-    !!   !        header%ArrayItemCount, spaceAssigned, status)
-    !!   !      if(header%ArrayItemCount .eq. spaceAssigned) then
-    !!   !        call this%CheckForDefaultIface(header%TextLabel, iface)
-    !!   !        if(iface .gt. 0) then
-    !!   !          do m = 1, spaceAssigned
-    !!   !            if(this%Grid%GridType .ne. 2) then
-    !!   !              ! structured
-    !!   !              layer = this%ArrayBufferInt(m)
-    !!   !              cellNumber = (layer - 1) * spaceAssigned + m
-    !!   !            else
-    !!   !              ! mfusg unstructured
-    !!   !              cellNumber = this%ArrayBufferInt(m)
-    !!   !            end if
-    !!   !            boundaryFlowsOffset = 6 * (cellNumber - 1)
-    !!   !            this%BoundaryFlows(boundaryFlowsOffset + iface) =   &
-    !!   !              this%BoundaryFlows(boundaryFlowsOffset + iface) + &
-    !!   !              this%ArrayBufferDbl(m)
-    !!   !          end do
-    !!   !        else            
-    !!   !          do m = 1, spaceAssigned
-    !!   !            cellNumber = this%ArrayBufferInt(m)
-    !!   !            if(this%ArrayBufferDbl(m) .gt. 0.0d0) then
-    !!   !              this%SourceFlows(cellNumber) =                  &
-    !!   !                this%SourceFlows(cellNumber) +                &
-    !!   !                this%ArrayBufferDbl(m)
-    !!   !            else if(this%ArrayBufferDbl(m) .lt. 0.0d0) then
-    !!   !              this%SinkFlows(cellNumber) =                    &
-    !!   !                this%SinkFlows(cellNumber) +                  &
-    !!   !                this%ArrayBufferDbl(m)
-    !!   !            end if
-    !!   !          end do
-    !!   !        end if
-    !!   !      end if
-    !!   !    else if(header%Method .eq. 4) then
-    !!   !      call this%BudgetReader%FillRecordDataBuffer(header,             &
-    !!   !        this%ArrayBufferDbl, header%ArrayItemCount, spaceAssigned,    &
-    !!   !        status)
-    !!   !      if(header%ArrayItemCount .eq. spaceAssigned) then
-    !!   !        call this%CheckForDefaultIface(header%TextLabel, iface)
-    !!   !        if(iface .gt. 0) then
-    !!   !          do m = 1, spaceAssigned
-    !!   !            boundaryFlowsOffset = 6 * (m - 1)
-    !!   !            this%BoundaryFlows(boundaryFlowsOffset + iface) =   &
-    !!   !              this%BoundaryFlows(boundaryFlowsOffset + iface) + &
-    !!   !              this%ArrayBufferDbl(m)
-    !!   !          end do
-    !!   !        else            
-    !!   !          do m = 1, spaceAssigned
-    !!   !            if(this%ArrayBufferDbl(m) .gt. 0.0d0) then
-    !!   !              this%SourceFlows(m) = this%SourceFlows(m) +     &
-    !!   !                this%ArrayBufferDbl(m)
-    !!   !            else if(this%ArrayBufferDbl(m) .lt. 0.0d0) then
-    !!   !              this%SinkFlows(m) = this%SinkFlows(m) +         &
-    !!   !                this%ArrayBufferDbl(m)
-    !!   !            end if
-    !!   !          end do
-    !!   !        end if
-    !!   !      end if
-    !!   !    else if(header%Method .eq. 2) then
-    !!   !      call this%BudgetReader%FillRecordDataBuffer(header,             &
-    !!   !        this%ListItemBuffer, listItemBufferSize, spaceAssigned,       &
-    !!   !        status)
-    !!   !      if(spaceAssigned .gt. 0) then
-    !!   !        call this%CheckForDefaultIface(header%TextLabel, iface)
-    !!   !        if(iface .gt. 0) then
-    !!   !          do m = 1, spaceAssigned
-    !!   !              cellNumber = this%ListItemBuffer(m)%CellNumber
-    !!   !              boundaryFlowsOffset = 6 * (cellNumber - 1)
-    !!   !              this%BoundaryFlows(boundaryFlowsOffset + iface) =   &
-    !!   !                this%BoundaryFlows(boundaryFlowsOffset + iface) + &
-    !!   !                this%ListItemBuffer(m)%BudgetValue
-    !!   !          end do
-    !!   !        else            
-    !!   !          do m = 1, spaceAssigned
-    !!   !            cellNumber = this%ListItemBuffer(m)%CellNumber
-    !!   !            if(this%ListItemBuffer(m)%BudgetValue .gt. 0.0d0) then
-    !!   !              this%SourceFlows(cellNumber) =                  &
-    !!   !                this%SourceFlows(cellNumber) +                &
-    !!   !                this%ListItemBuffer(m)%BudgetValue
-    !!   !            else if(this%ListItemBuffer(m)%BudgetValue .lt. 0.0d0) then
-    !!   !              this%SinkFlows(cellNumber) =                    &
-    !!   !                this%SinkFlows(cellNumber) +                  &
-    !!   !                this%ListItemBuffer(m)%BudgetValue
-    !!   !            end if
-    !!   !          end do
-    !!   !        end if
-    !!   !      end if
-    !!   !    else if((header%Method .eq. 5) .or. (header%Method .eq. 6)) then
-    !!        if((header%Method .eq. 5) .or. (header%Method .eq. 6)) then
-    !!          call this%BudgetReader%FillRecordDataBuffer(header,             &
-    !!            this%ListItemBuffer, listItemBufferSize, spaceAssigned,       &
-    !!            status)
-    !!          if(spaceAssigned .gt. 0) then
-    !!            do m = 1, spaceAssigned
-
-
-
-    !!              cellNumber = this%ListItemBuffer(m)%CellNumber
-    !!              ! Determine the index of cellNumber in the list of cells 
-    !!              ! requested for timeseseries
-    !!              cellindex = findloc( cellNumbers, cellNumber, 1 ) 
-    !!              if ( cellindex .eq. 0 ) cycle ! Not requested
-    !!              print *, cellindex, cellNumber
-    !!              print *, header%AuxiliaryNames 
-    !!              print *, this%ListItemBuffer(m)%AuxiliaryValues
-
-
-    !!              call this%CheckForDefaultIface(header%TextLabel, iface)
-    !!              index = header%FindAuxiliaryNameIndex('IFACE')
-    !!              if(index .gt. 0) then
-    !!                iface = int(this%ListItemBuffer(m)%AuxiliaryValues(index))
-    !!              end if
-    !!              if(iface .gt. 0) ifaces(cellindex) = iface
-
-    !!              ! Load into flow rates timeseries only if positive, 
-    !!              ! otherwise leave as zero
-    !!              if(this%ListItemBuffer(m)%BudgetValue .gt. 0.0d0) then
-    !!                timeseries( kcounter, cellindex )  = this%ListItemBuffer(m)%BudgetValue
-    !!              end if
-
-    !!              ! Load into concentration timeseries only if positive, 
-    !!              ! otherwise leave as zero
-
-    !!              ! NOTE: this should load all the aux variables of this cell
-    !!              auxindex = header%FindAuxiliaryNameIndex(auxnames(cellindex))
-    !!              if(auxindex .gt. 0) then
-    !!                ctimeseries( kcounter, cellindex ) = this%ListItemBuffer(m)%AuxiliaryValues(cellindex)
-    !!              end if
-
-    !!            end do
-    !!          end if
-    !!        end if
-
-    !!        continue
-
-    !!      end select
-    !!    end do
-
-    !!  end do
-
-
-    !!  print *, '-----------------------------------'
-    !!  print *, ' THE TIMESERIES !!                 '
-    !!  print *, '-----------------------------------'
-    !!  kcounter = 0
-    !!  do ktime = kinitial, kfinal
-    !!    kcounter = kcounter + 1 
-    !!    print *, kcounter, ktime, timeseries(kcounter, 1), ctimeseries(kcounter, 1) 
-    !!  end do
-
-
-    !!  print *, 'LEAVING!!'
-    !!  call exit(0)
-
-
-
-
-
-
-
 
 
 

@@ -2692,6 +2692,12 @@ contains
                                 flowTimeseries, auxTimeseries, timeIntervals, times,&
                                 srcCellNumbers, outUnit, iFaceOption, srcCellIFaces )
 
+
+          ! From here until the creation of particles the process 
+          ! is the same than for the SPEC format so it could be considered 
+          ! to wrap these ops on a common function 
+
+
           ! Now compute the cummulative mass function to obtain the total injected mass
           if ( allocated( cummMassTimeseries ) ) deallocate( cummMassTimeseries ) 
           allocate( cummMassTimeseries, mold=auxTimeseries ) 
@@ -3089,23 +3095,17 @@ contains
             end do ! nc=1, nCells
 
 
-            !print *, '----------------------------------------------------'
-            !print *, '..............................NPARTICLES ', totalParticleCount
-            !print *, '........................NPARTICLES OFFSET', offset
-            !print *, '.......................cummEffectiveMass ', cummEffectiveMass
-            !print *, '.................. totMass: ', totMass
-            !print *, '.............effectiveMass: ', effectiveMass
-            !print *, '.............auxMasses: ', auxMasses(naux)
-            !print *, '----------------------------------------------------'
-            !do idmax=1, nTimes
-            !  print *, idmax+1, cummMassTimeseries(idmax,:,naux)  
-            !end do 
-            !print *, '----------------------------------------------------'
 
             ! Increase counters
             if ( particleGroups(naux)%TotalParticleCount .gt. 0 ) then 
               nValidPGroup = nValidPGroup + 1
               particleCount =  particleCount + particleGroups(naux)%TotalParticleCount 
+
+              write(outUnit,'(A,es18.9e3)') 'Original particle mass for this solute  = ', auxMasses(naux)
+              write(outUnit,'(A,es18.9e3)') 'Effective particle mass for this solute = ', effectiveMass
+              write(outUnit,'(A,es18.9e3)') 'Total released mass  = ', cummEffectiveMass
+              write(outUnit,'(A,I10)') 'Total number of particles = ', particleGroups(naux)%TotalParticleCount 
+
             end if
 
           end do ! naux = 1, nAuxNames
@@ -3200,6 +3200,7 @@ contains
           case(0)
             write(outUnit,'(A)') 'Cells will be taken from the budget header.'
             readCellsFromBudget = .true.
+            nCells = 0
           ! As list of given cells
           case(1)
             write(outUnit,'(A)') 'Cells are expected to be specified as a list.'
@@ -3243,9 +3244,16 @@ contains
                   srcCellNumbers(nc) = cellNumber
                 end do
               else
+                ! Read as cellNumber, iFaceNumber
+                ! It uses urword to allow for undefined iFaceNumber
                 do nc = 1, nCells
                   iFaceNumber = 0
-                  read(srcUnit,*) cellNumber, iFaceNumber
+                  read(srcUnit, '(a)') line
+                  icol = 1
+                  call urword(line,icol,istart,istop,2,n,r,0,0)
+                  cellNumber = n 
+                  call urword(line,icol,istart,istop,2,n,r,0,0)
+                  iFaceNumber = n 
                   srcCellNumbers(nc) = cellNumber
                   srcCellIFaces(nc)  = iFaceNumber
                 end do
@@ -3264,10 +3272,20 @@ contains
                   srcCellNumbers(nc) = cellNumber
                 end do 
               else
-                ! Read as layer, row, column
+                ! Read as layer, row, column iFaceNumber
+                ! It uses urword to allow for undefined iFaceNumber
                 do nc = 1, nCells
                   iFaceNumber = 0
-                  read(srcUnit, *) layer, row, column, iFaceNumber
+                  read(srcUnit, '(a)') line
+                  icol = 1
+                  call urword(line,icol,istart,istop,2,n,r,0,0)
+                  layer = n 
+                  call urword(line,icol,istart,istop,2,n,r,0,0)
+                  row = n 
+                  call urword(line,icol,istart,istop,2,n,r,0,0)
+                  column = n 
+                  call urword(line,icol,istart,istop,2,n,r,0,0)
+                  iFaceNumber = n 
                   call ugetnode(&
                     grid%LayerCount,   &
                     grid%RowCount,     &
@@ -3622,17 +3640,22 @@ contains
             initialTime, finalTime, this%tdisData, srcCellNumbers, &
                   flowDataTimeseries, readCellsFromBudget, outUnit )
 
+print*, shape(flowDataTimeseries) 
+          print *, nCells
           ! The allocation of concTimeseries needs to be after loadflowtimeseries
           ! in case nCells is determined after reading cells from the budget.
           if ( readCellsFromBudget ) then 
             nCells = size(srcCellNumbers)
+            print *, 'HOLE:', nCells, srcCellNumbers
           end if 
+          print *, nCells
 
           ! Assign concentrations and fill timeIntervals
           nTimeIntervals = size(times)-1
           if ( allocated( concTimeseries ) ) deallocate( concTimeseries ) 
           allocate( concTimeseries( nTimeIntervals, nCells, nSpecies ) )  ! conc during the interval
           concTimeseries(:,:,:) = 0d0
+print*, shape(concTimeseries), concPerCell, nCells
           if ( allocated( timeIntervals ) ) deallocate( timeIntervals ) 
           allocate( timeIntervals( nTimeIntervals ) )  ! interval length
           timeIntervals(:) = 0d0
@@ -3650,7 +3673,6 @@ contains
             end if
             timeIntervals(nt) = times(nt+1)-times(nt)
           end do 
-
 
           ! For the vector of times, determine the corresponding 
           ! modflow data interval. Will be used to assign flow-rates.
@@ -3696,12 +3718,18 @@ contains
             end if
           end do 
 
+
+          ! From here until the creation of particles the process 
+          ! is the same than for the AUX format so it could be considered 
+          ! to wrap these ops on a common function 
+
+
           ! Now compute the cummulative mass function to obtain the total injected mass
           if ( allocated( cummMassTimeseries ) ) deallocate( cummMassTimeseries ) 
           !allocate( cummMassTimeseries, mold=auxTimeseries ) ! auxTimeseries  nt,nc,ns
           allocate( cummMassTimeseries(nTimeIntervals,nCells,nSpecies) ) ! try to be consistent with the aux format 
           cummMassTimeseries(:,:,:) = 0d0
-
+print*, shape(cummMassTimeseries)
           ! Integrate for each concentration
           ! Considers STEPWISE quantities
           do ns=1, nSpecies
@@ -3714,7 +3742,6 @@ contains
               if ( nt.eq.1 ) cummMassTimeseries(nt,:,ns) = flowTimeseries(nt,:)*concTimeseries(nt,:,ns)*timeIntervals(nt)
             end do
           end do
-
 
 
           ! NOTICE THE FOLLOWING                   !
@@ -4091,24 +4118,16 @@ contains
 
             end do ! nc=1, nCells
 
-
-            !print *, '----------------------------------------------------'
-            !print *, '..............................NPARTICLES ', totalParticleCount
-            !print *, '........................NPARTICLES OFFSET', offset
-            !print *, '.......................cummEffectiveMass ', cummEffectiveMass
-            !print *, '.................. totMass: ', totMass
-            !print *, '.............effectiveMass: ', effectiveMass
-            !print *, '.............auxMasses: ', auxMasses(naux)
-            !print *, '----------------------------------------------------'
-            !do idmax=1, nTimeIntervals
-            !  print *, idmax+1, cummMassTimeseries(idmax,:,naux)  
-            !end do 
-            !print *, '----------------------------------------------------'
-
             ! Increase counters
             if ( particleGroups(naux)%TotalParticleCount .gt. 0 ) then 
               nValidPGroup = nValidPGroup + 1
               particleCount =  particleCount + particleGroups(naux)%TotalParticleCount 
+
+              write(outUnit,'(A,es18.9e3)') 'Original particle mass for this solute  = ', auxMasses(naux)
+              write(outUnit,'(A,es18.9e3)') 'Effective particle mass for this solute = ', effectiveMass
+              write(outUnit,'(A,es18.9e3)') 'Total released mass                     = ', cummEffectiveMass
+              write(outUnit,'(A,I10)') 'Total number of particles               = ', particleGroups(naux)%TotalParticleCount 
+
             end if
 
 
@@ -4144,8 +4163,6 @@ contains
             end if
           end if
 
-          !print *, 'EARLY LEAVING FROM SPECIFIED SRC BOUNDARY.'
-          !call exit(0)
 
         end do ! nsb=1,nSrcBudgets
 
@@ -4157,7 +4174,9 @@ contains
         write(outUnit,'(A)') message
         call ustop(message)
       end select
-
+      write(outUnit,'(A,A,A,I10)')'Total number of particles in ',trim(adjustl(srcName)),'       = ', particleCount
+      write(outUnit,'(1x,a)') '------------------------'
+      write(outUnit, *)
 
     end do ! nSources/specs
 
@@ -4168,5 +4187,18 @@ contains
 
   end subroutine pr_ReadSRCData
 
+
+            !print *, '----------------------------------------------------'
+            !print *, '..............................NPARTICLES ', totalParticleCount
+            !print *, '........................NPARTICLES OFFSET', offset
+            !print *, '.......................cummEffectiveMass ', cummEffectiveMass
+            !print *, '.................. totMass: ', totMass
+            !print *, '.............effectiveMass: ', effectiveMass
+            !print *, '.............auxMasses: ', auxMasses(naux)
+            !print *, '----------------------------------------------------'
+            !do idmax=1, nTimes
+            !  print *, idmax+1, cummMassTimeseries(idmax,:,naux)  
+            !end do 
+            !print *, '----------------------------------------------------'
 
 end module ModpathSimulationDataModule
