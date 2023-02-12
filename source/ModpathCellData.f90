@@ -77,7 +77,7 @@ module ModpathCellDataModule
     procedure :: GetVolumetricBalance=>pr_GetVolumetricBalance
     procedure :: GetVolumetricBalanceComponents=>pr_GetVolumetricBalanceComponents
     procedure :: ComputeSubCellFlows=>pr_ComputeSubCellFlows
-    procedure,private :: GetSubFaceBoundaryCount=>pr_GetSubFaceBoundaryCount
+    !procedure,private :: GetSubFaceBoundaryCount=>pr_GetSubFaceBoundaryCount
     procedure,private :: GetSubCellBoundaryFlow=>pr_GetSubCellBoundaryFlow
     procedure,private :: pr_SetDataUnstructured
     procedure,private :: pr_SetDataStructured
@@ -1804,13 +1804,13 @@ contains
   end subroutine pr_SetDataStructured
 
 !------------------------------------------
-  function pr_GetSubFaceBoundaryCount(this,faceNumber) result(count)
-  implicit none
-  class(ModpathCellDataType) :: this
-  integer,intent(in) :: faceNumber
-  integer :: count
-  
-  end function
+!  function pr_GetSubFaceBoundaryCount(this,faceNumber) result(count)
+!  implicit none
+!  class(ModpathCellDataType) :: this
+!  integer,intent(in) :: faceNumber
+!  integer :: count
+!  
+!  end function
 
 !------------------------------------------
   function pr_FindConnectionNumberIndex(cellNumber,connectionList,arraySize,connectionCount) result(index)

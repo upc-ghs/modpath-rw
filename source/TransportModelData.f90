@@ -75,7 +75,7 @@ contains
   implicit none
   class(TransportModelDataType) :: this
   class(ModflowRectangularGridType),intent(inout),pointer :: grid
-  class(ModpathSimulationDataType),intent(in),pointer :: simulationData
+  type(ModpathSimulationDataType),intent(in),pointer :: simulationData
 
   integer :: cellCount, gridType
   !---------------------------------------------------------------------------------------------------------------
