@@ -94,7 +94,7 @@ program MPath7
   doubleprecision,dimension(:),allocatable :: tPoint
   integer,dimension(7) :: budgetIntervalBins
   doubleprecision,dimension(6) :: budgetIntervalBreaks
-  logical :: traceModeOn, unitOpened
+  logical :: traceModeOn
   integer :: budgetIntervalBreakCount, maxErrorCell
   doubleprecision :: maxError
   integer :: clockCountStart, clockCountStop, clockCountRate, clockCountMax
@@ -114,9 +114,6 @@ program MPath7
   character(len=80) compilerVersionText
   logical :: isTimeSeriesPoint, timeseriesRecordWritten
       
-  ! UTILS
-  integer :: isThisFileOpen = -1
-
 
   ! GPKDE
   doubleprecision, dimension(:,:), allocatable :: activeParticleCoordinates
@@ -440,10 +437,10 @@ program MPath7
   call ulog('Read MODPATH basic data component.', logUnit)   
   call basicData%ReadData(mpbasUnit, mplistUnit, modelGrid)
 
+
   ! Read the remainder of the MODPATH simulation file
   call ulog('Read the remainder of the MODPATH-RW simulation data component.', logUnit)
   call simulationData%ReadData(mpsimUnit, mplistUnit, basicData%IBound, tdisData, modelGrid)
-  
 
   ! Initialize flowModelData
   ! It is required to be initialized in order to read information from SRC package
@@ -470,7 +467,7 @@ program MPath7
   else
       klast = 1
       kincr = -1
-  end if 
+  end if
 
   ! Set the appropriate value of stoptime. Start by setting stoptime to correspond to the start or the
   ! end of the simulation (depending on the tracking direction)
@@ -529,7 +526,6 @@ program MPath7
     
     call ulog('Read specific SRC simulation data.', logUnit)
     call simulationData%ReadSRCData( srcFile, srcUnit, mpListUnit, modelGrid, flowModelData )
-
 
   end if
 
@@ -2299,7 +2295,7 @@ program MPath7
   integer,intent(in) :: outUnit
   integer,intent(inout) :: gridFileType
   character(len=200) :: line
-  character(len=150) :: fname
+  character(len=200) :: fname
   character(len=16) :: filtyp
   character(len=30) :: gridFileTypeString
   character(len=80) :: message
@@ -2724,28 +2720,28 @@ program MPath7
 
 
 
-  ! OBSERVATION CELLS
-  ! Candidate to be deprecated
-  subroutine WriteObservationHeader(outUnit, cellNumber, referenceTime,   &
-                                           originX, originY, rotationAngle)
-      !---------------------------------------------------------------------
-      ! Doc me
-      !---------------------------------------------------------------------
-      ! Specifications
-      !---------------------------------------------------------------------
-      implicit none
-      integer,intent(in) :: outUnit, cellNumber
-      doubleprecision,intent(in) :: referenceTime, originX, originY, rotationAngle
-      integer :: version, subversion
-      !----------------------------------- 
-      version = 7
-      subversion = 2
-      write(outUnit, '(a,2i10)') 'MODPATH_CELL_OBSERVATION_FILE', version, subversion
-      write(outUnit, '(i8,1x,4e18.10)') cellNumber, referenceTime, originX, originY, &
-      rotationAngle
-      write(outUnit, '(a)') 'END HEADER'
-
-  end subroutine WriteObservationHeader
+!  ! OBSERVATION CELLS
+!  ! Candidate to be deprecated
+!  subroutine WriteObservationHeader(outUnit, cellNumber, referenceTime,   &
+!                                           originX, originY, rotationAngle)
+!      !---------------------------------------------------------------------
+!      ! Doc me
+!      !---------------------------------------------------------------------
+!      ! Specifications
+!      !---------------------------------------------------------------------
+!      implicit none
+!      integer,intent(in) :: outUnit, cellNumber
+!      doubleprecision,intent(in) :: referenceTime, originX, originY, rotationAngle
+!      integer :: version, subversion
+!      !----------------------------------- 
+!      version = 7
+!      subversion = 2
+!      write(outUnit, '(a,2i10)') 'MODPATH_CELL_OBSERVATION_FILE', version, subversion
+!      write(outUnit, '(i8,1x,4e18.10)') cellNumber, referenceTime, originX, originY, &
+!      rotationAngle
+!      write(outUnit, '(a)') 'END HEADER'
+!
+!  end subroutine WriteObservationHeader
 
 
 end program MPath7

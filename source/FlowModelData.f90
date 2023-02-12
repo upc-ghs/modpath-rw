@@ -905,7 +905,7 @@ contains
     character(len=16), dimension(:), intent(in) :: auxVarNames
     logical, intent(in) :: isMF6
     doubleprecision, intent(in) :: initialTime, finalTime
-    type( TimeDiscretizationDataType ), intent(in) :: tdisData
+    class( TimeDiscretizationDataType ), intent(in) :: tdisData
     integer, optional, intent(in) :: outUnit
     logical, optional, intent(in) :: iFaceOption
     ! out
@@ -1619,7 +1619,7 @@ contains
     class(FlowModelDataType) :: this
     character(len=16), intent(in) :: sourcePkgName
     doubleprecision, optional, intent(in) :: initialTime, finalTime
-    type( TimeDiscretizationDataType ), optional, intent(in) :: tdisData
+    class( TimeDiscretizationDataType ), optional, intent(in) :: tdisData
     integer, optional, intent(in) :: outUnit
     ! output
     logical :: isValid
@@ -2017,7 +2017,7 @@ contains
     class(FlowModelDataType) :: this
     character(len=16), intent(in) :: sourcePkgName
     doubleprecision, intent(in)   :: initialTime, finalTime
-    type( TimeDiscretizationDataType ), intent(in) :: tdisData
+    class( TimeDiscretizationDataType ), intent(in) :: tdisData
     integer, allocatable, dimension(:), intent(inout) :: cellNumbers
     logical, optional, intent(in) :: readCellsFromBudget
     integer, optional, intent(in) :: outUnit
@@ -2113,9 +2113,7 @@ contains
               textLabel(firstNonBlank:lastNonBlank) .eq. & 
               sourcePkgName(firstNonBlankIn:lastNonBlankIn) ) then
               ! Found it
-       print *, '------------------------------'
-       print *, sourcePkgName, header%Method
-       print *, '------------------------------'
+
               ! Read accordingly
               select case(header%Method) 
               case(0,1)

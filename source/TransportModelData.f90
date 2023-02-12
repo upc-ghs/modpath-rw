@@ -156,7 +156,7 @@ contains
     integer, intent(in)                      :: outUnit
     ! local
     class(ModpathSimulationDataType), pointer :: simulationData
-    integer :: isThisFileOpen = -1
+    integer :: isThisFileOpen 
     integer :: icol,istart,istop,n
     doubleprecision    :: r
     character(len=200) :: line
@@ -171,6 +171,7 @@ contains
     simulationData => this%simulationData
 
     ! Verify if unit is open 
+    isThisFileOpen = -1 
     inquire( file=spcFile, number=isThisFileOpen )
     if ( isThisFileOpen .lt. 0 ) then 
       ! No spc file
@@ -391,10 +392,10 @@ contains
     integer, intent(in)                      :: dspUnit
     integer, intent(in)                      :: outUnit
     ! local
-    class(ModpathSimulationDataType), pointer :: simulationData
+    type(ModpathSimulationDataType), pointer :: simulationData
     class(ModflowRectangularGridType),pointer :: grid
     type(DispersionDataType),pointer          :: disp
-    integer :: isThisFileOpen = -1
+    integer :: isThisFileOpen 
     integer :: icol,istart,istop,n
     doubleprecision    :: r
     character(len=200) :: line
@@ -418,7 +419,8 @@ contains
     write(outUnit, '(1x,a)') 'MODPATH-RW DSP file data'
     write(outUnit, '(1x,a)') '------------------------'
 
-    ! Verify if unit is open 
+    ! Verify if unit is open
+    isThisFileOpen = -1 
     inquire( file=dspFile, number=isThisFileOpen )
     if ( isThisFileOpen .lt. 0 ) then 
       ! No spc file
