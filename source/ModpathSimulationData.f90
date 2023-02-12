@@ -2488,7 +2488,7 @@ contains
     integer :: m, idmax, seqNumber, cellCounter, offset, cellNumber
     integer :: nValidPGroup = 0
     integer :: newParticleGroupCount, pgCount
-    integer :: iFaceOptionInt, iFaceNumber
+    integer :: iFaceOptionInt, iFaceNumber, defaultIFaceNumber
     logical :: iFaceOption
     integer :: cellReadFormat
     integer :: layer, row, column
@@ -3146,7 +3146,9 @@ contains
             end if
           end if
 
+
         end do ! nsb=1,nSrcBudgets
+
 
       ! Concentrations, injection times and cells are specified by the user.
       ! Flow-rates are extracted from a given BUDGET header
@@ -3179,12 +3181,16 @@ contains
           call urword(line,icol,istart,istop,0,n,r,0,0)
           srcPkgNames(nsb) = line(istart:istop)
 
+          ! Report
+          write(outUnit,'(A,A)') 'Source budget header: ', trim(adjustl(srcPkgNames(nsb)))
+
           ! Read iFaceOption
           call urword(line,icol,istart,istop,2,n,r,0,0)
           srcIFaceOpt(nsb) = n 
 
-          ! Report
-          write(outUnit,'(A,A)') 'Source budget header: ', trim(adjustl(srcPkgNames(nsb)))
+          ! Read defaultIFaceNumber
+          call urword(line,icol,istart,istop,2,n,r,0,0)
+          defaultIFaceNumber = n 
 
           ! Activate/deactivate iFaceOption for this source
           iFaceOption = .false.
@@ -3206,7 +3212,7 @@ contains
           case(0)
             write(outUnit,'(A)') 'Cells will be taken from the budget header.'
             readCellsFromBudget = .true.
-            nCells = 0
+            ! nCells is determined after extracting flow-rates
           ! As list of given cells
           case(1)
             write(outUnit,'(A)') 'Cells are expected to be specified as a list.'
@@ -3260,6 +3266,7 @@ contains
                   cellNumber = n 
                   call urword(line,icol,istart,istop,2,n,r,0,0)
                   iFaceNumber = n 
+                  if ( n.eq.0 ) iFaceNumber = defaultIFaceNumber
                   srcCellNumbers(nc) = cellNumber
                   srcCellIFaces(nc)  = iFaceNumber
                 end do
@@ -3292,6 +3299,7 @@ contains
                   column = n 
                   call urword(line,icol,istart,istop,2,n,r,0,0)
                   iFaceNumber = n 
+                  if ( n.eq.0 ) iFaceNumber = defaultIFaceNumber
                   call ugetnode(&
                     grid%LayerCount,   &
                     grid%RowCount,     &
@@ -3350,6 +3358,13 @@ contains
               cellCounter = cellCounter + 1
               srcCellNumbers(cellCounter) = nc
             end do
+
+            ! Apply default iface if the iface option was given 
+            if ( iFaceOption ) then 
+              if ( allocated(srcCellIFaces) ) deallocate( srcCellIFaces )
+              allocate( srcCellIFaces(nCells) )
+              srcCellIFaces(:) = defaultIFaceNumber
+            end if
 
             if ( allocated( cellsHolder ) ) deallocate( cellsHolder ) 
           ! Invalid
@@ -3721,6 +3736,13 @@ contains
             end if
           end do 
 
+          ! Apply default iface if cells were read from budget
+          if ( iFaceOption.and.readCellsFromBudget ) then 
+            if ( allocated(srcCellIFaces) ) deallocate( srcCellIFaces )
+            allocate( srcCellIFaces(nCells) )
+            srcCellIFaces(:) = defaultIFaceNumber
+          end if
+
 
           ! From here until the creation of particles the process 
           ! is the same than for the AUX format so it could be considered 
@@ -3754,7 +3776,6 @@ contains
           auxSubDivisions = nSubDivisions
           if ( (.not. iFaceOption).and.allocated(srcCellIFaces) ) then
             deallocate( srcCellIFaces ) 
-            allocate( srcCellIFaces(nCells) ) 
           end if
           if ( allocated(auxMasses) ) deallocate( auxMasses ) 
           auxMasses = particlesMass
