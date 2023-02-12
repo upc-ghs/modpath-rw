@@ -2113,9 +2113,7 @@ contains
               textLabel(firstNonBlank:lastNonBlank) .eq. & 
               sourcePkgName(firstNonBlankIn:lastNonBlankIn) ) then
               ! Found it
-       print *, '------------------------------'
-       print *, sourcePkgName, header%Method
-       print *, '------------------------------'
+
               ! Read accordingly
               select case(header%Method) 
               case(0,1)

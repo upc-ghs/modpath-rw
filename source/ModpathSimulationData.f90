@@ -3646,30 +3646,27 @@ contains
             initialTime, finalTime, this%tdisData, srcCellNumbers, &
                   flowDataTimeseries, readCellsFromBudget, outUnit )
 
-print*, shape(flowDataTimeseries) 
-          print *, nCells
           ! The allocation of concTimeseries needs to be after loadflowtimeseries
           ! in case nCells is determined after reading cells from the budget.
-          if ( readCellsFromBudget ) then 
-            nCells = size(srcCellNumbers)
-            print *, 'HOLE:', nCells, srcCellNumbers
-          end if 
-          print *, nCells
+          nCells = size(srcCellNumbers)
 
           ! Assign concentrations and fill timeIntervals
           nTimeIntervals = size(times)-1
           if ( allocated( concTimeseries ) ) deallocate( concTimeseries ) 
           allocate( concTimeseries( nTimeIntervals, nCells, nSpecies ) )  ! conc during the interval
           concTimeseries(:,:,:) = 0d0
-print*, shape(concTimeseries), concPerCell, nCells
+
           if ( allocated( timeIntervals ) ) deallocate( timeIntervals ) 
           allocate( timeIntervals( nTimeIntervals ) )  ! interval length
           timeIntervals(:) = 0d0
+
           do nt=1,size(times)-1
             if( intervalIndex(nt+1).gt.0 ) then 
               ! Assume same concentration for all cells
               if ( .not. concPerCell ) then 
-                concTimeseries(nt,:,:) = spread( allSpecData(3:,intervalIndex(nt+1)), 2, nCells )
+                do nc=1,nCells
+                  concTimeseries(nt,nc,:) = allSpecData(3:,intervalIndex(nt+1))
+                end do
               else
                 do nc=1,nCells
                   concTimeseries(nt,nc,:) = & 
@@ -3712,7 +3709,7 @@ print*, shape(concTimeseries), concPerCell, nCells
           if ( doCounter.gt.1e5 ) then 
           write(outUnit,'(A)') 'Error: something went wrong while analyzing time intervals for assigning flow-rates.'
           call ustop('Error: something went wrong while analyzing time intervals for assigning flow-rates. Stop.')
-          end if 
+          end if
 
           ! Assign flow-rates 
           if ( allocated( flowTimeseries ) ) deallocate( flowTimeseries ) 
@@ -3735,7 +3732,7 @@ print*, shape(concTimeseries), concPerCell, nCells
           !allocate( cummMassTimeseries, mold=auxTimeseries ) ! auxTimeseries  nt,nc,ns
           allocate( cummMassTimeseries(nTimeIntervals,nCells,nSpecies) ) ! try to be consistent with the aux format 
           cummMassTimeseries(:,:,:) = 0d0
-print*, shape(cummMassTimeseries)
+
           ! Integrate for each concentration
           ! Considers STEPWISE quantities
           do ns=1, nSpecies
@@ -4186,9 +4183,8 @@ print*, shape(cummMassTimeseries)
       write(outUnit, *)
 
     end do ! nSources/specs
+       
 
-    print *, 'WTF'
-        
     ! Close data file
     close( srcUnit )
 
