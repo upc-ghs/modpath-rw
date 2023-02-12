@@ -6,14 +6,19 @@
 # the executable, and the executable name and path.
 OBJDIR = ./obj_temp
 BINDIR = .
-PROGRAM = mpathrwpt
+PROGRAM = mpathrwptifort
 
 SOURCEDIR1=../source
 SOURCEDIR2=../gpkde/src
 
+SOURCEDIR1=../source
+SOURCEDIR2=../gpkde/src
+SOURCEDIR3=../lib/finterp/src
+
 VPATH = \
 ${SOURCEDIR1} \
-${SOURCEDIR2} 
+${SOURCEDIR2} \
+${SOURCEDIR3} 
 
 .SUFFIXES: .c .cpp .f .f90 .F90 .fpp .o
 
@@ -22,9 +27,9 @@ FC = ifort
 # FROM MF6
 #FFLAGS = -Ofast -traceback -qopenmp -ipo -no-heap-arrays -fpe0 -traceback -fpp
 # FROM MODPATH-OMP
-FFLAGS = -Ofast -traceback -qopenmp -ipo
+#FFLAGS = -Ofast -traceback -qopenmp -ipo
 # DEBUG
-#FFLAGS = -O0 -g -debug extended -traceback -qopenmp
+FFLAGS = -O0 -g -debug extended -traceback -qopenmp
 
 
 # Define the C compile flags
@@ -41,14 +46,17 @@ $(OBJDIR)/Histogram.o \
 $(OBJDIR)/KernelMultiGaussian.o \
 $(OBJDIR)/GridCell.o \
 $(OBJDIR)/GridProjectedKDE.o \
+$(OBJDIR)/linear_interpolation_module.o \
 $(OBJDIR)/Coordinate.o \
 $(OBJDIR)/TrackCellOptions.o \
 $(OBJDIR)/BudgetListItem.o \
 $(OBJDIR)/HeadRecordHeader.o \
 $(OBJDIR)/GridLocation.o \
 $(OBJDIR)/GlobalData.o \
+$(OBJDIR)/DispersionData.o \
 $(OBJDIR)/Solute.o \
 $(OBJDIR)/Observation.o \
+$(OBJDIR)/BoundaryConditions.o \
 $(OBJDIR)/ParticleTrackingOptions.o \
 $(OBJDIR)/compilerversion.o \
 $(OBJDIR)/openspec.o \
@@ -86,10 +94,10 @@ $(OBJDIR)/RectangularGridDisuMfusg.o \
 $(OBJDIR)/TrackCellResult.o \
 $(OBJDIR)/RectangularGridDisuMf6.o \
 $(OBJDIR)/ModpathCellDataContainer.o \
+$(OBJDIR)/FlowModelData.o \
 $(OBJDIR)/ModpathSimulationData.o \
 $(OBJDIR)/ParticleManager.o \
 $(OBJDIR)/TrackCell.o \
-$(OBJDIR)/FlowModelData.o \
 $(OBJDIR)/TransportModelData.o \
 $(OBJDIR)/ParticleTrackingEngine.o \
 $(OBJDIR)/MPath7.o 
