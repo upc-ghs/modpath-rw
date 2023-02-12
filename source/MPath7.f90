@@ -534,8 +534,8 @@ program MPath7
   if(simulationData%TotalParticleCount .eq. 0) then
     terminationMessage = 'The simulation was terminated because there are no particles to track. Stop.'
     call ustop(terminationMessage)
-    terminationMessage = 'The simulation was terminated because there are no particles to track.'
-    goto 100 ! Requires initialized clock, so far it is not
+    !terminationMessage = 'The simulation was terminated because there are no particles to track.'
+    !goto 100 ! Requires initialized clock, so far it is not
   end if
 
 

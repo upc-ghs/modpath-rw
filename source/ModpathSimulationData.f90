@@ -1481,10 +1481,7 @@ contains
 
       ! Set release time for initial condition.
       ! It is an initial condition, then
-      ! assumes release at referencetime
-      ! VERIFY!
-      ! IT SHOULD BE ZERO!???
-      !initialReleaseTime = this%ReferenceTime 
+      ! assumes release at the beginning
       initialReleaseTime = 0d0
       call particleGroups(nic)%SetReleaseOption1(initialReleaseTime)
 
@@ -2503,6 +2500,7 @@ contains
     doubleprecision, allocatable, dimension(:,:,:) :: concTimeseries      ! nt x nc x ns 
     doubleprecision, allocatable, dimension(:,:)   :: flowDataTimeseries  ! nt x ncells
     integer, allocatable, dimension(:)             :: intervalIndex
+    integer, allocatable, dimension(:)             :: soluteIds
     doubleprecision :: minT, maxT 
     integer :: readNTemplates
     integer, allocatable, dimension(:,:) :: nSubDivisions
@@ -2642,6 +2640,14 @@ contains
           if ( allocated( auxSubDivisions ) ) deallocate( auxSubDivisions ) 
           allocate( auxSubDivisions( nAuxNames,3 ) )
 
+          ! Read the solute ids if the simulation demands  
+          if ( ( this%ParticlesMassOption .eq. 2 ) ) then 
+            write(outUnit,'(A)') 'Will try to read solute ids due to ParticlesMassOption.eq.2 '
+            ! Read solute id
+            if( allocated( soluteIds ) ) deallocate( soluteIds )
+            allocate( soluteIds( nSpecies ) )
+          end if
+
           ! Loop over aux names and interpret data
           ! Requires some health checks
           do naux = 1, nAuxNames
@@ -2666,11 +2672,13 @@ contains
             auxSubDivisions(naux,3) = n 
             ! Validate template
 
-            ! SOMETHING LIKE THIS
-            ! solute id depending on solutes option
-            !if ( this%ParticlesMassOption .eq. 2 ) then 
-            !  particleGroups(nic)%Solute = soluteId
-            !end if
+            ! Read solute id depending on solutes option
+            if ( this%ParticlesMassOption .eq. 2 ) then 
+              call urword(line,icol,istart,istop,2,n,r,0,0)
+              ! If the soluteid is not given, assign default 1 
+              soluteIds(naux) = n 
+              if ( n.lt.1 ) soluteIds(naux) = 1
+            end if
 
           end do ! naux = 1, nAuxNames 
         
@@ -2788,6 +2796,11 @@ contains
 
             ! Increase pgroup counter
             particleGroups(naux)%Group = this%ParticleGroupCount + naux
+
+            ! Assign soluteIds if simulation demands
+            if ( this%ParticlesMassOption .eq. 2 ) then 
+              particleGroups(naux)%Solute = soluteIds(naux)
+            end if
 
             ! Correction to the particle template based on dimension mask
             ! If dimension is active, leave the given value. 
@@ -3196,7 +3209,6 @@ contains
           iFaceOption = .false.
           if ( srcIFaceOpt(nsb) .gt. 0 ) then 
             iFaceOption = .true.
-            write(outUnit,'(A,A)') 'Will interpret IFACE while loading cells.'
           end if  
 
           ! Read cell format 
@@ -3213,9 +3225,15 @@ contains
             write(outUnit,'(A)') 'Cells will be taken from the budget header.'
             readCellsFromBudget = .true.
             ! nCells is determined after extracting flow-rates
+            if ( iFaceOption ) then 
+              write(outUnit,'(A)') 'IFACE option is activated for this source.'
+            end if 
           ! As list of given cells
           case(1)
             write(outUnit,'(A)') 'Cells are expected to be specified as a list.'
+            if ( iFaceOption ) then 
+              write(outUnit,'(A)') 'Will read IFACE next to the cell ids.'
+            end if 
             ! Number of cells
             nCells = 0
             call urword(line,icol,istart,istop,2,n,r,0,0)
@@ -3234,7 +3252,7 @@ contains
             ! Different concentration per cell
             concPerCell = .false.
             call urword(line,icol,istart,istop,2,n,r,0,0)
-            if ( n .gt. 0 ) then
+            if ( n.gt.0 ) then
               concPerCell = .true. 
               write(outUnit,'(A)') 'Will consider different concentration per cell. Expects nSpecies*nCells columns.'
             end if  
@@ -3266,7 +3284,7 @@ contains
                   cellNumber = n 
                   call urword(line,icol,istart,istop,2,n,r,0,0)
                   iFaceNumber = n 
-                  if ( n.eq.0 ) iFaceNumber = defaultIFaceNumber
+                  if ( n.lt.1 ) iFaceNumber = defaultIFaceNumber
                   srcCellNumbers(nc) = cellNumber
                   srcCellIFaces(nc)  = iFaceNumber
                 end do
@@ -3299,7 +3317,7 @@ contains
                   column = n 
                   call urword(line,icol,istart,istop,2,n,r,0,0)
                   iFaceNumber = n 
-                  if ( n.eq.0 ) iFaceNumber = defaultIFaceNumber
+                  if ( n.lt.1 ) iFaceNumber = defaultIFaceNumber
                   call ugetnode(&
                     grid%LayerCount,   &
                     grid%RowCount,     &
@@ -3314,6 +3332,10 @@ contains
           ! As 3d array
           case(2)
             write(outUnit,'(A)') 'Cells are expected to be specified as array.'
+
+            if ( iFaceOption ) then 
+              write(outUnit,'(A)') 'IFACE option is activated for this source.'
+            end if 
 
             ! Required for u3d
             if(allocated(cellsHolder)) deallocate(cellsHolder)
@@ -3429,12 +3451,15 @@ contains
             call ustop('Error: invalid particles mass. Verify that all are .gt. 0. Stop.')
           end if 
 
-
           ! Read the solute ids if the simulation demands  
-          ! Something that loops over the species to read/load their soluteid
-          ! call urword(line,icol,istart,istop,2,n,r,0,0)
+          if ( ( this%ParticlesMassOption .eq. 2 ) ) then 
+            write(outUnit,'(A)') 'Will try to read solute ids due to ParticlesMassOption.eq.2 '
+            ! Read solute id
+            if( allocated( soluteIds ) ) deallocate( soluteIds )
+            allocate( soluteIds( nSpecies ) )
+            read(srcUnit,*) (soluteIds(ns),ns=1,nSpecies)
+          end if
    
-
           ! Read the number of time intervals
           read(srcUnit, '(a)') line
           icol = 1
@@ -3830,6 +3855,11 @@ contains
 
             ! Increase pgroup counter
             particleGroups(naux)%Group = this%ParticleGroupCount + naux
+
+            ! Assign soluteIds if simulation demands
+            if ( this%ParticlesMassOption .eq. 2 ) then 
+              particleGroups(naux)%Solute = soluteIds(naux)
+            end if
 
             ! Correction to the particle template based on dimension mask
             ! If dimension is active, leave the given value. 

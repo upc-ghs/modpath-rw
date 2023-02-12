@@ -160,7 +160,10 @@ contains
     integer :: icol,istart,istop,n
     doubleprecision    :: r
     character(len=200) :: line
-    integer :: nSolutes, ns, ncount, npg
+    integer :: ns, ncount, npg, pgcount
+    integer, allocatable, dimension(:) :: soluteIds
+    integer :: minSolId, maxSolId, countSolId
+    character(len=20) :: tempChar1
     !--------------------------------------------------------------
 
     write(outUnit, *)
@@ -187,9 +190,51 @@ contains
         ! However, they are all displaced with the 
         ! same transport properties
         ! Extracted from particles groups defined until 
-        ! this very moment. 
-        continue
+        ! this very moment.
+        write(outUnit,'(A)') 'ParticlesMassOption.eq.2. Will read soluteIds from particle groups and leave.'
+
+        if ( allocated( soluteIds ) ) deallocate( soluteIds )
+        allocate( soluteIds(simulationData%ParticleGroupCount) )
+        do npg=1,simulationData%ParticleGroupCount
+          soluteIds(npg) = simulationData%ParticleGroups(npg)%Solute
+        end do
+        minSolId = minval(soluteIds)-1
+        maxSolId = maxval(soluteIds)
+        ns = 0
+        ! Count how many different ids
+        do while (minSolId<maxSolId)
+          ns = ns+1
+          minSolId = minval(soluteIds, mask=soluteIds>minSolId)
+        end do
+        this%nSolutes = ns
+        if ( allocated(this%Solutes) ) deallocate( this%Solutes )
+        allocate( this%Solutes(this%nSolutes) )
+
+        ! Now assign in increasing id order 
+        minSolId = minval(soluteIds)-1
+        ns = 0
+        do while (minSolId<maxSolId)
+          ns = ns+1
+          minSolId = minval(soluteIds, mask=soluteIds>minSolId)
+          countSolId = count(soluteIds.eq.minSolId)
+          if ( allocated(this%Solutes(ns)%pGroups) ) deallocate(this%Solutes(ns)%pGroups)
+          allocate(this%Solutes(ns)%pGroups(countSolId))
+          pgcount = 0
+          do npg=1,simulationData%ParticleGroupCount
+            if ( simulationData%ParticleGroups(npg)%Solute.eq.minSolId ) then 
+              pgcount = pgcount + 1 
+              this%Solutes(ns)%pGroups(pgcount) = simulationData%ParticleGroups(npg)%Group
+            end if 
+          end do 
+          this%Solutes(ns)%nParticleGroups = pgcount
+          this%Solutes(ns)%id = minSolId
+          tempChar1 = ''
+          write( unit=tempChar1, fmt=* )ns 
+          this%Solutes(ns)%stringid = 'SPC'//trim(adjustl(tempChar1))
+        end do
       else
+        write(outUnit,'(A)') 'ParticlesMassOption.ne.2. Will create a single solute and leave.'
+
         ! If not solute id, then assumes single solute and
         ! all pgroups are of the same kind 
         this%nSolutes = 1
@@ -211,6 +256,7 @@ contains
 
       end if
 
+      ! Leave
       return
 
     end if
@@ -467,6 +513,7 @@ contains
     do n = 1, grid%LayerCount
       cellsPerLayer(n) = grid%GetLayerCellCount(n)
     end do
+
 
     ! Loop over dispersion data
     do ndis=1,this%nDispersion
@@ -750,10 +797,11 @@ contains
 
   subroutine pr_SetSoluteDispersion( this, soluteId )
   !-----------------------------------------------------------------------------------
-  ! Specifications:
   !   - Assigns transportmodeldata dispersion pointers
   !     to dispersion parameters specified for the solute
   !   - Runs only if simulation is multidispersion and RWPT
+  !-----------------------------------------------------------------------------------
+  ! Specifications:
   !-----------------------------------------------------------------------------------
   implicit none
   class(TransportModelDataType), target :: this
@@ -765,33 +813,28 @@ contains
     this%AlphaTran => this%Solutes(soluteId)%Dispersion%AlphaTH
     this%DMEff     => this%Solutes(soluteId)%Dispersion%DMEff
 
-
     ! TO BE DEPRECATED
     this%DMol = this%Solutes(soluteId)%Dispersion%dmaqueous 
-
 
   end subroutine pr_SetSoluteDispersion
 
 
   subroutine pr_LoadTimeStep(this, stressPeriod, timeStep)
-  !---------------------------------------------------------------------------------------------------------------
-  ! Specifications:
-  !---------------------------------------------------------------------------------------------------------------
+  !-----------------------------------------------------------------------------------
   !   - Huge simplification from flowModelData%LoadTimeStep
   !   - It could be employed for loading time variable data for dispersion
   !   - In the meantime, only update time references and ICBOUND 
-  !---------------------------------------------------------------------------------------------------------------
+  !-----------------------------------------------------------------------------------
+  ! Specifications:
+  !-----------------------------------------------------------------------------------
   implicit none
+  ! input
   class(TransportModelDataType) :: this
   integer,intent(in) :: stressPeriod, timeStep
-  integer :: firstRecord, lastRecord, n, m, firstNonBlank, lastNonBlank, &
-    trimmedLength
-  integer :: spaceAssigned, status,cellCount, iface, index,              &
-    boundaryFlowsOffset, listItemBufferSize, cellNumber, layer
-  character(len=16) :: textLabel
-  doubleprecision :: top 
-  real :: HDryTol, HDryDiff
-  !---------------------------------------------------------------------------------------------------------------
+  ! local
+  integer :: n, cellCount
+  !-----------------------------------------------------------------------------------
+
 
     cellCount = this%Grid%CellCount
     if(this%Grid%GridType .gt. 2) then
@@ -806,6 +849,7 @@ contains
 
     this%CurrentStressPeriod = stressPeriod
     this%CurrentTimeStep = timeStep
+
 
   end subroutine pr_LoadTimeStep
 
