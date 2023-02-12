@@ -49,6 +49,13 @@ module TransportModelDataModule
       integer,private :: CurrentStressPeriod = 0
       integer,private :: CurrentTimeStep = 0
 
+      ! Flow model data
+      !type( FlowModelDataType ), pointer :: flowModelData => null()
+
+      ! Budget reader
+      !type(BudgetReaderType), pointer :: budgetReader => null()
+      !this%BudgetReader => budgetReader
+
       ! TO BE DEPRECATED
       doubleprecision :: DMol
 
