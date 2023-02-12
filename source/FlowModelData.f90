@@ -2126,22 +2126,35 @@ contains
                                         this%ArrayBufferDbl, cellCount, & 
                                                   spaceAssigned, status )
                     if(cellCount .eq. spaceAssigned) then
+                      ! Count cells with positive flow-rate
+                      ! Restart cellCounter
+                      cellCounter = 0
+                      do m = 1, spaceAssigned
+                        if(this%ArrayBufferDbl(m) .gt. 0.0d0) then
+                          cellCounter = cellCounter + 1
+                        end if
+                      end do
+                      if ( cellCounter .eq. 0 ) exit
                       ! If allocated with different size, reallocate 
                       ! else restart indexes
                       if ( allocated(spCellNumbers) ) then 
-                        if ( size(spCellNumbers) .ne. spaceAssigned ) then 
+                        if ( size(spCellNumbers) .ne. cellCounter ) then 
                           deallocate( spCellNumbers )
-                          allocate(spCellNumbers(spaceAssigned))
+                          allocate(spCellNumbers(cellCounter))
                         else
                           spCellNumbers(:) = 0
                         end if
                       else
-                        allocate(spCellNumbers(spaceAssigned))
+                        allocate(spCellNumbers(cellCounter))
                       end if
                       ! Assign to stress period cell numbers
+                      cellCounter = 0
                       do m = 1, spaceAssigned
-                        cellNumber = m 
-                        spCellNumbers(m) = cellNumber
+                        if(this%ArrayBufferDbl(m) .gt. 0.0d0) then
+                          cellCounter = cellCounter + 1
+                          cellNumber  = m 
+                          spCellNumbers(m) = cellNumber
+                        end if
                       end do
                     end if ! if(cellCount .eq. spaceAssigned)
                   case default
@@ -2150,22 +2163,36 @@ contains
                                           this%ArrayBufferDbl, cellCount, & 
                                                     spaceAssigned, status )
                       if(cellCount .eq. spaceAssigned) then
+                        ! Count cells with positive flow-rate
+                        ! Restart cellCounter
+                        cellCounter = 0
+                        do m = 1, spaceAssigned
+                          if(this%ArrayBufferDbl(m) .gt. 0.0d0) then
+                            cellCounter = cellCounter + 1
+                          end if
+                        end do
+                        if ( cellCounter .eq. 0 ) exit
+
                         ! If allocated with different size, reallocate 
                         ! else restart indexes
                         if ( allocated(spCellNumbers) ) then 
-                          if ( size(spCellNumbers) .ne. spaceAssigned ) then 
+                          if ( size(spCellNumbers) .ne. cellCounter ) then 
                             deallocate( spCellNumbers )
-                            allocate(spCellNumbers(spaceAssigned))
+                            allocate(spCellNumbers(cellCounter))
                           else
                             spCellNumbers(:) = 0
                           end if
                         else
-                          allocate(spCellNumbers(spaceAssigned))
+                          allocate(spCellNumbers(cellCounter))
                         end if
                         ! Assign to stress period cell numbers
+                        cellCounter = 0
                         do m = 1, spaceAssigned
-                          cellNumber = m 
-                          spCellNumbers(m) = cellNumber
+                          if(this%ArrayBufferDbl(m) .gt. 0.0d0) then
+                            cellCounter = cellCounter + 1
+                            cellNumber  = m 
+                            spCellNumbers(m) = cellNumber
+                          end if
                         end do
                       end if ! if(cellCount .eq. spaceAssigned)
                     end if
@@ -2184,7 +2211,6 @@ contains
                     end if
                   end do
                   if ( cellCounter .eq. 0 ) exit
-
                   ! If allocated with different size, reallocate 
                   ! else restart indexes
                   if ( allocated(spCellNumbers) ) then 
@@ -2212,22 +2238,35 @@ contains
                           this%ArrayBufferDbl, this%ArrayBufferInt, &
                        header%ArrayItemCount, spaceAssigned, status )
                 if(header%ArrayItemCount .eq. spaceAssigned) then
+                  ! Count cells with positive flow-rate
+                  ! Restart cellCounter
+                  cellCounter = 0
+                  do m = 1, spaceAssigned
+                    if(this%ArrayBufferDbl(m) .gt. 0.0d0) then
+                      cellCounter = cellCounter + 1
+                    end if
+                  end do
+                  if ( cellCounter .eq. 0 ) exit
                   ! If allocated with different size, reallocate 
                   ! else restart indexes
                   if ( allocated(spCellNumbers) ) then 
-                    if ( size(spCellNumbers) .ne. spaceAssigned ) then 
+                    if ( size(spCellNumbers) .ne. cellCounter ) then 
                       deallocate( spCellNumbers )
-                      allocate(spCellNumbers(spaceAssigned))
+                      allocate(spCellNumbers(cellCounter))
                     else
                       spCellNumbers(:) = 0
                     end if
                   else
-                    allocate(spCellNumbers(spaceAssigned))
+                    allocate(spCellNumbers(cellCounter))
                   end if
                   ! Assign to stress period cell numbers
+                  cellCounter = 0
                   do m = 1, spaceAssigned
-                    cellNumber = this%ArrayBufferInt(m)
-                    spCellNumbers(m) = cellNumber
+                    if(this%ArrayBufferDbl(m) .gt. 0.0d0) then
+                      cellCounter = cellCounter + 1
+                      cellNumber = this%ArrayBufferInt(m)
+                      spCellNumbers(m) = cellNumber
+                    end if
                   end do
                 end if ! (header%ArrayItemCount .eq. spaceAssigned) 
               case(4)
@@ -2235,22 +2274,35 @@ contains
                         this%ArrayBufferDbl, header%ArrayItemCount, & 
                                                spaceAssigned,status )
                 if(header%ArrayItemCount .eq. spaceAssigned) then
+                  ! Count cells with positive flow-rate
+                  ! Restart cellCounter
+                  cellCounter = 0
+                  do m = 1, spaceAssigned
+                    if(this%ArrayBufferDbl(m) .gt. 0.0d0) then
+                      cellCounter = cellCounter + 1
+                    end if
+                  end do
+                  if ( cellCounter .eq. 0 ) exit
                   ! If allocated with different size, reallocate 
                   ! else restart indexes
                   if ( allocated(spCellNumbers) ) then 
-                    if ( size(spCellNumbers) .ne. spaceAssigned ) then 
+                    if ( size(spCellNumbers) .ne. cellCounter ) then 
                       deallocate( spCellNumbers )
-                      allocate(spCellNumbers(spaceAssigned))
+                      allocate(spCellNumbers(cellCounter))
                     else
                       spCellNumbers(:) = 0
                     end if
                   else
-                    allocate(spCellNumbers(spaceAssigned))
+                    allocate(spCellNumbers(cellCounter))
                   end if
                   ! Assign to stress period cell numbers
+                  cellCounter = 0
                   do m = 1, spaceAssigned
-                    cellNumber = m 
-                    spCellNumbers(m) = cellNumber
+                    if(this%ArrayBufferDbl(m) .gt. 0.0d0) then
+                      cellCounter = cellCounter + 1
+                      cellNumber  = m 
+                      spCellNumbers(m) = cellNumber
+                    end if
                   end do
                 end if !(header%ArrayItemCount .eq. spaceAssigned)
               case(5,6)
@@ -2258,22 +2310,35 @@ contains
                            this%ListItemBuffer, listItemBufferSize, &
                                               spaceAssigned, status )
                 if(spaceAssigned .gt. 0) then
+                  ! Count cells with positive flow-rate
+                  ! Restart cellCounter
+                  cellCounter = 0
+                  do m = 1, spaceAssigned
+                    if(this%ListItemBuffer(m)%BudgetValue .gt. 0.0d0) then
+                      cellCounter = cellCounter + 1
+                    end if
+                  end do
+                  if ( cellCounter .eq. 0 ) exit
                   ! If allocated with different size, reallocate 
                   ! else restart indexes
                   if ( allocated(spCellNumbers) ) then 
-                    if ( size(spCellNumbers) .ne. spaceAssigned ) then 
+                    if ( size(spCellNumbers) .ne. cellCounter ) then 
                       deallocate( spCellNumbers )
-                      allocate(spCellNumbers(spaceAssigned))
+                      allocate(spCellNumbers(cellCounter))
                     else
                       spCellNumbers(:) = 0
                     end if
                   else
-                    allocate(spCellNumbers(spaceAssigned))
+                    allocate(spCellNumbers(cellCounter))
                   end if
                   ! Assign to stress period cell numbers
+                  cellCounter = 0 
                   do m = 1, spaceAssigned
-                    cellNumber = this%ListItemBuffer(m)%CellNumber
-                    spCellNumbers(m) = cellNumber
+                    if(this%ListItemBuffer(m)%BudgetValue .gt. 0.0d0) then
+                      cellCounter = cellCounter + 1
+                      cellNumber = this%ListItemBuffer(m)%CellNumber
+                      spCellNumbers(cellCounter) = cellNumber
+                    end if
                   end do
                 end if !if(spaceAssigned .gt. 0)
 
