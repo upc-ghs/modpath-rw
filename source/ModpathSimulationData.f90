@@ -65,7 +65,7 @@ module ModpathSimulationDataModule
     logical :: isUniformRetardation = .false.   ! RWPT
     doubleprecision :: uniformPorosity = 1d0    ! RWPT
     doubleprecision :: uniformRetardation = 1d0 ! RWPT
-    type(TimeDiscretizationDataType), pointer :: tdisData ! RWPT
+    class(TimeDiscretizationDataType), pointer :: tdisData ! RWPT
   contains
     procedure :: ReadFileHeaders=>pr_ReadFileHeaders
     procedure :: ReadData=>pr_ReadData
@@ -140,7 +140,7 @@ contains
     integer,intent(in) :: inUnit, outUnit
     integer,dimension(:),allocatable :: cellsPerLayer
     integer,dimension(grid%CellCount),intent(in) :: ibound
-    type(TimeDiscretizationDataType),intent(in),target :: timeDiscretization
+    class(TimeDiscretizationDataType),intent(in),target :: timeDiscretization
     integer :: icol, istart, istop, n, nc, kper, kstp, seqNumber, particleCount, nn, slocUnit, errorCode
     integer :: releaseOption, releaseTimeCount
     doubleprecision :: initialReleaseTime, releaseInterval
@@ -729,7 +729,7 @@ contains
     integer, intent(in)                      :: gpkdeUnit
     integer, intent(in)                      :: outUnit
     ! local
-    integer :: isThisFileOpen = -1
+    integer :: isThisFileOpen
     integer :: icol,istart,istop,n
     doubleprecision    :: r
     character(len=200) :: line
@@ -740,6 +740,7 @@ contains
     write(outUnit, '(1x,a)') '--------------------------'
 
     ! Verify if GPKDE unit is open 
+    isThisFileOpen = -1
     inquire( file=gpkdeFile, number=isThisFileOpen )
     if ( isThisFileOpen .lt. 0 ) then 
       ! No gpkde 
@@ -920,7 +921,7 @@ contains
     integer :: readStyle, no, cellNumber, layer, row, column, ocount
     integer,dimension(:),allocatable :: obsCells
     integer,dimension(:),allocatable :: cellsPerLayer
-    integer :: isThisFileOpen = -1
+    integer :: isThisFileOpen
     integer :: icol,istart,istop,n,nc
     integer :: ioInUnit = 0
     doubleprecision    :: r
@@ -934,6 +935,7 @@ contains
     write(outUnit, '(1x,a)') '--------------------------'
 
     ! Verify if OBS unit is open 
+    isThisFileOpen = -1
     inquire( file=obsFile, number=isThisFileOpen )
     if ( isThisFileOpen .lt. 0 ) then 
       ! No obs
@@ -1184,7 +1186,7 @@ contains
     class(ModflowRectangularGridType),intent(in) :: grid
     ! local
     type(ParticleTrackingOptionsType), pointer :: trackingOptions
-    integer :: isThisFileOpen = -1
+    integer :: isThisFileOpen
     integer :: icol,istart,istop,n,nd,currentDim,dcount
     doubleprecision    :: r
     character(len=200) :: line
@@ -1198,6 +1200,7 @@ contains
     write(outUnit, '(1x,a)') '---------------------------'
 
     ! Verify if unit is open 
+    isThisFileOpen = -1
     inquire( file=rwoptsFile, number=isThisFileOpen )
     if ( isThisFileOpen .lt. 0 ) then 
       ! No rwopts file
@@ -1397,7 +1400,7 @@ contains
     class(ModflowRectangularGridType),intent(in) :: grid
     doubleprecision, dimension(:), intent(in)    :: porosity
     ! local
-    integer :: isThisFileOpen = -1
+    integer :: isThisFileOpen
     integer :: icol,istart,istop,n
     integer :: nc, nic, nd, m
     doubleprecision    :: r
@@ -1431,7 +1434,8 @@ contains
     write(outUnit, '(1x,a)') 'MODPATH-RW IC file data'
     write(outUnit, '(1x,a)') '-----------------------'
 
-    ! Verify if unit is open 
+    ! Verify if unit is open
+    isThisFileOpen = -1
     inquire( file=icFile, number=isThisFileOpen )
     if ( isThisFileOpen .lt. 0 ) then 
       ! No ic 
@@ -1776,7 +1780,7 @@ contains
     doubleprecision, dimension(:), intent(in)    :: porosity
     ! local
     type(ParticleTrackingOptionsType), pointer :: trackingOptions
-    integer :: isThisFileOpen = -1
+    integer :: isThisFileOpen
     integer :: icol,istart,istop,n,nd,currentDim
     doubleprecision    :: r
     character(len=200) :: line
@@ -1831,6 +1835,7 @@ contains
     allocate(this%ICBound(grid%CellCount))
 
     ! Verify if unit is open 
+    isThisFileOpen = -1
     inquire( file=bcFile, number=isThisFileOpen )
     if ( isThisFileOpen .lt. 0 ) then 
       ! No bc file
@@ -2437,7 +2442,7 @@ contains
     class(ModflowRectangularGridType),intent(in) :: grid
     class(FlowModelDataType),intent(in)          :: flowModelData
     ! local
-    integer :: isThisFileOpen = -1
+    integer :: isThisFileOpen
     integer :: nSources, nValidSources
     integer :: particleCount, totalParticleCount, currentParticleCount
     integer :: nsrc, nSrcBudgets, nsb
@@ -2530,6 +2535,7 @@ contains
     write(outUnit, '(1x,a)') '------------------------'
 
     ! Verify if unit is open 
+    isThisFileOpen = -1
     inquire( file=srcFile, number=isThisFileOpen )
     if ( isThisFileOpen .lt. 0 ) then 
       ! No bc file
@@ -4167,6 +4173,7 @@ print*, shape(cummMassTimeseries)
         end do ! nsb=1,nSrcBudgets
 
 
+
       case default
         ! Not implemented
         write(message,'(A,A,A)') 'The SRC specification kind ',trim(adjustl(srcSpecKind)),' has not been implemented. Stop.'
@@ -4180,6 +4187,7 @@ print*, shape(cummMassTimeseries)
 
     end do ! nSources/specs
 
+    print *, 'WTF'
         
     ! Close data file
     close( srcUnit )

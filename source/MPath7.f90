@@ -72,7 +72,7 @@ program MPath7
   class(RectangularGridDisvMf6Type), allocatable, target :: disvMf6Grid
   class(RectangularGridDisuMfusgType), allocatable, target :: disuMfusgGrid
 
-  type(TimeDiscretizationDataType), allocatable :: tdisData
+  type(TimeDiscretizationDataType) :: tdisData
   type(ParticleTrackingEngineType) :: trackingEngine
   type(FlowModelDataType), allocatable :: flowModelData
   type(TransportModelDataType), allocatable, target:: transportModelData  ! RWPT
@@ -114,9 +114,6 @@ program MPath7
   character(len=80) compilerVersionText
   logical :: isTimeSeriesPoint, timeseriesRecordWritten
       
-  ! UTILS
-  integer :: isThisFileOpen = -1
-
 
   ! GPKDE
   doubleprecision, dimension(:,:), allocatable :: activeParticleCoordinates
@@ -271,8 +268,8 @@ program MPath7
   ! Process spatial and time discretization data
   call ulog('Allocate rectangular unstructured grid component.', logUnit)
   allocate(modelGrid)
-  call ulog('Allocate time discretization data component ...', logUnit)
-  allocate(tdisData)
+  !call ulog('Allocate time discretization data component ...', logUnit)
+  !allocate(tdisData)
   
   write(mplistUnit, '(1x/a)') 'Grid data'
   write(mplistUnit, '(a)')    '---------'
@@ -470,7 +467,7 @@ program MPath7
   else
       klast = 1
       kincr = -1
-  end if 
+  end if
 
   ! Set the appropriate value of stoptime. Start by setting stoptime to correspond to the start or the
   ! end of the simulation (depending on the tracking direction)
@@ -2057,7 +2054,7 @@ program MPath7
   call ulog('Begin memory deallocation.', logUnit)
   if(allocated(headReader)) deallocate(headReader)
   if(allocated(budgetReader)) deallocate(budgetReader)
-  if(allocated(tdisData)) deallocate(tdisData)
+  !if(allocated(tdisData)) deallocate(tdisData)
   !if(allocated(trackingEngine)) deallocate(trackingEngine)
   if(allocated(flowModelData)) deallocate(flowModelData)
   if(allocated(transportModelData)) deallocate(transportModelData)
