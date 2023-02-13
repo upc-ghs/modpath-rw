@@ -2448,9 +2448,9 @@ contains
     character(len=20) :: srcName
     character(len=20) :: srcSpecKind, srcPkgName
     integer :: nAuxNames, naux, nTimes, nt, nCells, nc, nd, nr
-    character(len=16),allocatable,dimension(:) :: srcPkgTypes
-    character(len=16),allocatable,dimension(:) :: srcPkgNames
-    character(len=16),allocatable,dimension(:) :: auxNames
+    character(len=20),allocatable,dimension(:) :: srcPkgTypes
+    character(len=20),allocatable,dimension(:) :: srcPkgNames
+    character(len=20),allocatable,dimension(:) :: auxNames
     integer,allocatable,dimension(:)           :: srcIFaceOpt
     logical :: validAuxNames = .false.
     doubleprecision, allocatable, dimension(:) :: auxMasses
