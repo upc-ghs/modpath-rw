@@ -902,7 +902,7 @@ contains
     ! input
     class(FlowModelDataType) :: this
     character(len=16), intent(in) :: sourcePkgName
-    character(len=16), dimension(:), intent(in) :: auxVarNames
+    character(len=20), dimension(:), intent(in) :: auxVarNames
     logical, intent(in) :: isMF6
     doubleprecision, intent(in) :: initialTime, finalTime
     class( TimeDiscretizationDataType ), intent(in) :: tdisData
@@ -1395,7 +1395,7 @@ contains
     ! input
     class(FlowModelDataType) :: this
     character(len=16), intent(in) :: sourcePkgName
-    character(len=16), dimension(:), intent(in) :: auxVarNames
+    character(len=20), dimension(:), intent(in) :: auxVarNames
     logical, intent(in) :: isMF6
     logical, optional, intent(in) :: iFaceOption
     ! output

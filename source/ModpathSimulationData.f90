@@ -915,8 +915,6 @@ contains
     class(ModflowRectangularGridType),intent(in) :: grid
     ! local
     integer :: nObservations  = 0
-    character(len=100) :: tempChar
-    integer :: layerCount, rowCount, columnCount, cellCount
     type( ObservationType ), pointer :: obs => null()
     integer :: readStyle, no, cellNumber, layer, row, column, ocount
     integer,dimension(:),allocatable :: obsCells
@@ -928,6 +926,11 @@ contains
     character(len=200) :: line
     character(len=24)  :: aname(1)
     DATA aname(1) /'                OBSCELLS'/
+    integer :: baseObsUnit    = 1000
+    integer :: baseObsAuxUnit = 4000 
+    integer :: baseObsRecUnit = 7000 
+    character(len=16) :: tempChar='tmp'
+    character(len=16) :: recordChar='rec'
     !--------------------------------------------------------------
 
     write(outUnit, *)
@@ -961,19 +964,13 @@ contains
       ! Allocate observation arrays
       call this%TrackingOptions%InitializeObservations( nObservations )
 
-      ! It might be needed downstream
-      layerCount  = grid%LayerCount
-      rowCount    = grid%RowCount
-      columnCount = grid%ColumnCount
-      cellCount   = grid%CellCount
-      
       ! Allocate id arrays in tracking options
       if(allocated(this%TrackingOptions%isObservation)) & 
           deallocate(this%TrackingOptions%isObservation)
-      allocate(this%TrackingOptions%isObservation(cellCount))
+      allocate(this%TrackingOptions%isObservation(grid%CellCount))
       if(allocated(this%TrackingOptions%idObservation)) & 
           deallocate(this%TrackingOptions%idObservation)
-      allocate(this%TrackingOptions%idObservation(cellCount))
+      allocate(this%TrackingOptions%idObservation(grid%CellCount))
       this%TrackingOptions%isObservation(:) = .false.
       this%TrackingOptions%idObservation(:) = -999
 
@@ -984,33 +981,51 @@ contains
         ! A pointer
         obs => this%TrackingOptions%Observations(nc) 
 
-        ! Read observation id
-        read(obsUnit, '(a)', iostat=ioInUnit) line
+        ! Read obs name/stringid
+        read(obsUnit, '(a)') line
         icol = 1
-        call urword(line, icol, istart, istop, 2, n, r, 0, 0)
+        call urword(line,icol,istart,istop,0,n,r,0,0)
+        obs%stringid = line(istart:istop)
+
+        ! Assign it increasingly, internal id
         obs%id = n 
-       
-        ! Read observation filename and assign an output unit 
+
+        ! Report which OBS is being read 
+        write(outUnit,'(A,A)') 'Reading OBS specification: ', trim(adjustl(obs%stringid))
+
+
+        ! Interpret observation kind
+        read(obsUnit, '(a)') line
+        icol = 1
+        call urword(line,icol,istart,istop,1,n,r,0,0)
+        obs%stylestringid = line(istart:istop)
+
+        ! Assing the observation style
+        select case(obs%stylestringid)
+        case('RES','RESIDENT')
+          obs%style = 1
+          ! Report
+          write(outUnit,'(A)') 'Observation is of RESIDENT concentration type.'
+        case('SINK','FLUX')
+          obs%style = 2
+          ! Report 
+          write(outUnit,'(A)') 'Observation is of SINK type for flux concentrations.'
+          ! Flag used to indicate that needs to save flow-rates
+          this%TrackingOptions%anySinkObservation = .true.
+        end select
+
+        ! Read observation filename and assign output units 
         read(obsUnit, '(a)') obs%outputFileName
         icol = 1
         call urword(obs%outputFileName,icol,istart,istop,0,n,r,0,0)
         obs%outputFileName = obs%outputFileName(istart:istop)
-        obs%outputUnit     = 5500 + nc
-        obs%auxOutputUnit  = 7700 + nc
-        tempChar           = 'temp'
+        obs%outputUnit     = baseObsUnit + nc
+        obs%auxOutputUnit  = baseObsAuxUnit + nc
         write( unit=obs%auxOutputFileName, fmt='(a)')&
             trim(adjustl(tempChar))//'_'//trim(adjustl(obs%outputFileName))
-
-        ! Read observation style (sink obs, normal count of particles obs)
-        read(obsUnit, '(a)', iostat=ioInUnit) line
-        icol = 1
-        call urword(line, icol, istart, istop, 2, n, r, 0, 0)
-        obs%style = n 
-
-        ! Is the style that requires flow-rates ?
-        if ( obs%style .eq. 2 ) then 
-          this%TrackingOptions%anySinkObservation = .true.
-        end if 
+        obs%recOutputUnit  = baseObsRecUnit + nc
+        write( unit=obs%recOutputFileName, fmt='(a)')&
+            trim(adjustl(recordChar))//'_'//trim(adjustl(obs%outputFileName))
 
         ! Read observation cell option
         ! Determine how to read cells
@@ -1018,6 +1033,13 @@ contains
         icol = 1
         call urword(line, icol, istart, istop, 2, n, r, 0, 0)
         obs%cellOption = n 
+  
+        !print *, obs%outputFileName
+        !print *, obs%auxOutputFileName
+        !print *, obs%recOutputFileName
+        !print *, 'CELLOPTION', obs%cellOption
+        !call exit(0)
+
 
         ! Load observation cells
         select case( obs%cellOption )
@@ -1045,14 +1067,18 @@ contains
             readStyle = n
 
             ! Load the observation cells
-            if( readStyle .eq. 1) then
+            if( readStyle .eq. 0) then
               ! Read as layer, row, column
               do no = 1, obs%nCells
                 read(obsUnit, *) layer, row, column
-                call ugetnode(layerCount, rowCount, columnCount, layer, row, column,cellNumber)
+                call ugetnode(& 
+                  grid%LayerCount, & 
+                  grid%RowCount,   & 
+                  grid%ColumnCount,&
+                  layer, row, column,cellNumber)
                 obs%cells(no) = cellNumber
               end do 
-            else if ( readStyle .eq. 2 ) then 
+            else if ( readStyle .eq. 1 ) then 
               do no = 1, obs%nCells
                 read(obsUnit,*)  cellNumber
                 obs%cells(no) = cellNumber
