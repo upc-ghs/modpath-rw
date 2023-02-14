@@ -19,21 +19,16 @@ module ParticleTrackingOptionsModule
     integer :: StopZone = 0
 
     ! RWPT
-    logical                       :: RandomWalkParticleTracking = .false.
-    integer                       :: timeStepKind
-    doubleprecision, dimension(2) :: timeStepParameters = 0
-    integer                       :: advectionKind
-
-    ! RW displacements, defaults to 3D
+    logical                            :: RandomWalkParticleTracking = .false.
+    integer                            :: timeStepKind
+    doubleprecision, dimension(2)      :: timeStepParameters = 0
+    integer                            :: advectionKind
     integer, dimension(3)              :: dimensionMask = 1
     integer                            :: nDim = 3
     integer                            :: idDim1, idDim2
     integer, dimension(:), allocatable :: dimensions
+    integer                            :: dispersionModel ! Needed to indicate dispersion function
     logical                            :: twoDimensions = .false. ! DEPRECATE
-    
-    ! Needed while initializing RWPT displacements
-    integer :: dispersionModel
-
 
     ! GPKDE
     logical                       :: GPKDEReconstruction = .false.
@@ -54,22 +49,23 @@ module ParticleTrackingOptionsModule
 
     ! Observation Cells 
     integer :: nObservations
-    logical :: observationSimulation = .false.
+    logical :: anyObservation = .false.
+    logical :: anyResObservation = .false.
+    logical :: anySinkObservation = .false.
     integer, allocatable, dimension(:) :: observationCells
     integer, allocatable, dimension(:) :: observationUnits
     character(len=200), allocatable, dimension(:) :: observationFiles
     integer, allocatable, dimension(:) :: obsRecordCounts
     logical, allocatable, dimension(:) :: isObservation
     integer, allocatable, dimension(:) :: idObservation
-    logical :: anySinkObservation = .false.
     type( ObservationType ), allocatable, dimension(:) :: Observations
 
-    ! Prescribed concentration boundaries
-    type( PrescribedType ), allocatable, dimension(:) :: PrescribedBoundaries
-    logical, allocatable, dimension(:) :: isPrescribed
-    integer, allocatable, dimension(:) :: idPrescribed
-    integer :: nPrescribed
-    integer :: npcs
+    !! Prescribed concentration boundaries
+    !type( PrescribedType ), allocatable, dimension(:) :: PrescribedBoundaries
+    !logical, allocatable, dimension(:) :: isPrescribed
+    !integer, allocatable, dimension(:) :: idPrescribed
+    !integer :: nPrescribed
+    !integer :: npcs
 
     ! DEPRECATION WARNNING
     ! NONLINEAR DISPERSION RWPT (TEMP)
@@ -86,7 +82,7 @@ module ParticleTrackingOptionsModule
      procedure :: InitializeObservations=>pr_InitializeObservations 
      procedure :: IdObservationCell=>pr_IdObservationCell
      ! Prescribed boundaries
-     procedure :: InitializePrescribedBoundaries=>pr_InitializePrescribedBoundaries 
+     !procedure :: InitializePrescribedBoundaries=>pr_InitializePrescribedBoundaries 
   end type
   
 contains
@@ -100,10 +96,13 @@ contains
       class(ParticleTrackingOptionsType) :: this
       !-----------------------------------------------------
 
+      ! This function is incomplete
+
       ! Deallocate observation cells 
       this%nObservations         = 0
-      this%observationSimulation = .false.
+      this%anyObservation        = .false.
       this%anySinkObservation    = .false.
+      this%anyResObservation     = .false.
       if(allocated(this%observationCells)) deallocate(this%observationCells)
       if(allocated(this%observationUnits)) deallocate(this%observationUnits)
       if(allocated(this%observationFiles)) deallocate(this%observationFiles)
@@ -133,12 +132,10 @@ contains
 
       ! Allocate observation files arrays
       this%nObservations = nObservations
-      this%observationSimulation = .true.
       allocate(this%observationCells(nObservations))
       allocate(this%observationUnits(nObservations))
       allocate(this%observationFiles(nObservations))
       allocate(this%obsRecordCounts(nObservations))
-
       allocate(this%Observations(nObservations))
 
   end subroutine pr_InitializeObservations
@@ -178,26 +175,26 @@ contains
   end function pr_IdObservationCell 
 
 
-  ! TEMPORARY, find a better place
-  subroutine pr_InitializePrescribedBoundaries( this, nPrescribed )
-    !-----------------------------------------------------
-    ! Initialize observation cells data
-    !-----------------------------------------------------
-    ! Specifications
-    !-----------------------------------------------------
-    implicit none
-    class(ParticleTrackingOptionsType) :: this
-    ! input
-    integer, intent(in) :: nPrescribed
-    integer :: n 
-    !-------------------------
+  !! TEMPORARY, find a better place
+  !subroutine pr_InitializePrescribedBoundaries( this, nPrescribed )
+  !  !-----------------------------------------------------
+  !  ! Initialize observation cells data
+  !  !-----------------------------------------------------
+  !  ! Specifications
+  !  !-----------------------------------------------------
+  !  implicit none
+  !  class(ParticleTrackingOptionsType) :: this
+  !  ! input
+  !  integer, intent(in) :: nPrescribed
+  !  integer :: n 
+  !  !-------------------------
 
-    ! Allocate observation files arrays
-    this%nPrescribed = nPrescribed
+  !  ! Allocate observation files arrays
+  !  this%nPrescribed = nPrescribed
 
-    allocate(this%PrescribedBoundaries(nPrescribed))
+  !  allocate(this%PrescribedBoundaries(nPrescribed))
 
-  end subroutine pr_InitializePrescribedBoundaries
+  !end subroutine pr_InitializePrescribedBoundaries
 
 
 end module ParticleTrackingOptionsModule

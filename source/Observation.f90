@@ -15,6 +15,9 @@ module ObservationModule
     character(len=20)                  :: stylestringid
     integer                            :: cellOption
     integer                            :: timeOption
+    integer                            :: outputOption
+    integer                            :: postprocessOption
+    logical                            :: doPostprocess
     integer                            :: outputUnit
     character(len=200)                 :: outputFileName
     integer                            :: recOutputUnit

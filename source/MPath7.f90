@@ -143,14 +143,14 @@ program MPath7
   logical :: anyFromThisSolute = .false.
 
 
-  ! Boundary conditions
-  integer :: npcb
-  type( PrescribedType ), pointer :: pcb => null()
-  doubleprecision :: effectiveTime = 0d0 ! Effective flow sim time (stoptime-reftime)
-  integer :: nEffectiveTimes
-  doubleprecision, allocatable, dimension(:) :: effectiveTimes ! Relative to reftime
-  integer, allocatable, dimension(:) :: fluxCellNumbers
-  integer :: nFluxCells
+  !! Boundary conditions
+  !integer :: npcb
+  !type( PrescribedType ), pointer :: pcb => null()
+  !doubleprecision :: effectiveTime = 0d0 ! Effective flow sim time (stoptime-reftime)
+  !integer :: nEffectiveTimes
+  !doubleprecision, allocatable, dimension(:) :: effectiveTimes ! Relative to reftime
+  !integer, allocatable, dimension(:) :: fluxCellNumbers
+  !integer :: nFluxCells
 
   ! Parallel variables
   integer :: ompNumThreads
@@ -635,8 +635,6 @@ program MPath7
   end if
 
 
-
-
   write(*,*)
   write(*,'(A)') 'Run particle tracking simulation ...'    
   write(mplistUnit, *)
@@ -657,9 +655,8 @@ program MPath7
   if(allocated(tPoint)) deallocate(tPoint)
   allocate(tPoint(tPointCount))
   
-  ! These OPENING operations could be moved UP
 
-  ! Open particle output files
+  ! Open output files
 
   ! Endpoint
   open(unit=endpointUnit, file=simulationData%EndpointFile, status='replace', &
@@ -677,7 +674,6 @@ program MPath7
         simulationData%ReferenceTime, modelGrid%OriginX, modelGrid%OriginY,   &
         modelGrid%RotationAngle)
   end if
-
 
   ! Timeseries
   if (.not.simulationData%TrackingOptions%skipTimeseriesWriter) then 
@@ -762,50 +758,54 @@ program MPath7
     end if
   end if
 
-
   ! Trace
   if(simulationData%TraceMode .gt. 0) then
-      open(unit=traceModeUnit, file=simulationData%TraceFile,                 &
-        status='replace', form='formatted', access='sequential')
-      write(traceModeUnit, '(1X,A,I10)')                                      &
-        'Particle group: ',simulationData%TraceGroup
-      write(traceModeUnit, '(1X,A,I10)')                                      &
-        'Particle ID: ',simulationData%TraceID
+    open(unit=traceModeUnit, file=simulationData%TraceFile,                 &
+      status='replace', form='formatted', access='sequential')
+    write(traceModeUnit, '(1X,A,I10)')                                      &
+      'Particle group: ',simulationData%TraceGroup
+    write(traceModeUnit, '(1X,A,I10)')                                      &
+      'Particle ID: ',simulationData%TraceID
   end if
 
 
-  ! Open observation cells files
-  if ( simulationData%TrackingOptions%observationSimulation ) then
-      ! Open the unit and write the header
-      do n = 1, simulationData%TrackingOptions%nObservations
-          open( unit=simulationData%TrackingOptions%Observations(n)%outputUnit, &
-                file=simulationData%TrackingOptions%Observations(n)%outputFileName,& 
+  ! Observations
+  if ( simulationData%TrackingOptions%anyObservation ) then
+    ! Open the unit and write the header
+    do n = 1, simulationData%TrackingOptions%nObservations
+      obs => simulationData%TrackingOptions%Observations(n)
+      ! For a RESIDENT observation
+      if ( obs%style .eq. 1 ) then 
+        ! Assumed already validated at simdata
+        select case(obs%outputOption)
+        case(0)
+          ! Open only records unit in text-plain format
+          open( unit=obs%recOutputUnit, &
+                file=obs%recOutputFileName,& 
                 status='replace', form='formatted', access='sequential')
-          ! For a normal observation
-          if ( simulationData%TrackingOptions%Observations(n)%style .eq. 1 )  then 
-            ! Remember to replace by binary once in production
-            open( unit=simulationData%TrackingOptions%Observations(n)%auxOutputUnit, &
-                  file=simulationData%TrackingOptions%Observations(n)%auxOutputFileName,& 
-                  status='replace', form='formatted', access='sequential')
-          end if
-          ! For a sink observation
-          if ( simulationData%TrackingOptions%Observations(n)%style .eq. 2 )  then 
-            ! Remember to replace by binary once in production
-            open( unit=simulationData%TrackingOptions%Observations(n)%auxOutputUnit, &
-                  file=simulationData%TrackingOptions%Observations(n)%auxOutputFileName,& 
-                  status='replace', form='formatted', access='sequential')
-          end if
-          !open( unit=simulationData%TrackingOptions%observationUnits(n),     &
-          !      file=simulationData%TrackingOptions%observationFiles(n),     & 
-          !      status='replace', form='formatted', access='sequential')
-          ! Write the corresponding header
-          !call WriteObservationHeader(                              &
-          !    simulationData%TrackingOptions%observationUnits(n),   &
-          !    simulationData%TrackingOptions%observationCells(n),   &
-          !    simulationData%ReferenceTime,                         &
-          !    modelGrid%OriginX, modelGrid%OriginY,                 &
-          !    modelGrid%RotationAngle)
-      end do 
+        case(1)
+          ! Both records and output unit as text plain 
+          open( unit=obs%recOutputUnit, &
+                file=obs%recOutputFileName,& 
+                status='replace', form='formatted', access='sequential')
+          open( unit=obs%outputUnit, &
+                file=obs%outputFileName,& 
+                status='replace', form='formatted', access='sequential')
+        end select
+
+      end if
+
+      !open( unit=simulationData%TrackingOptions%Observations(n)%outputUnit, &
+      !      file=simulationData%TrackingOptions%Observations(n)%outputFileName,& 
+      !      status='replace', form='formatted', access='sequential')
+      !! For a sink observation
+      !if ( simulationData%TrackingOptions%Observations(n)%style .eq. 2 )  then 
+      !  ! Remember to replace by binary once in production
+      !  open( unit=simulationData%TrackingOptions%Observations(n)%auxOutputUnit, &
+      !        file=simulationData%TrackingOptions%Observations(n)%auxOutputFileName,& 
+      !        status='replace', form='formatted', access='sequential')
+      !end if
+    end do 
   end if 
 
 
@@ -1099,7 +1099,7 @@ program MPath7
         !$omp private( ompThreadId )                     &
         !$omp private( cellDataBuffer )                  &
         !$omp private( obs, nobs )                       &
-        !$omp private( pcb, npcb )                       &
+!        !$omp private( pcb, npcb )                       &
         !$omp firstprivate( trackingEngine )             &
         !$omp firstprivate( WriteTimeseries )            &
         !$omp reduction( +:pendingCount )                &
@@ -1256,7 +1256,7 @@ program MPath7
                   end if 
                   timeseriesRecordWritten = .true. ! ?
                   
-                  if ( simulationData%anyObservation ) then  
+                  if ( simulationData%TrackingOptions%anyResObservation ) then  
                     ! Write record for resident observations
                     if ( &
                       simulationData%TrackingOptions%isObservation(pCoordTP%CellNumber) ) then 
@@ -1270,39 +1270,39 @@ program MPath7
                           ! Temp proxy !
                           call WriteTimeseriesRecordCritical(& 
                               p%SequenceNumber, p%ID, groupIndex, ktime, &
-                                nt, pCoordTP, geoRef, obs%auxOutputUnit, & 
+                                nt, pCoordTP, geoRef, obs%recOutputUnit, & 
                             timeseriesRecordCounts, timeseriesTempUnits  )
                         end do 
                       end if
                     end if
                   end if
 
-                  ! Prototype prescribed concentration 
-                  if ( simulationData%anyPrescribedConcentration ) then  
-                    ! Write info for prescribed concentrations
-                    ! Count mass ?
-                    if ( &
-                      simulationData%TrackingOptions%isPrescribed(pCoordTP%CellNumber) ) then 
-                      pcb => simulationData%TrackingOptions%PrescribedBoundaries(&
-                          simulationData%TrackingOptions%idPrescribed(pCoordTP%CellNumber) )
-                        do npcb=1,pcb%nCells
-                          if( pcb%cells(npcb) .ne. pCoordTP%CellNumber ) cycle
-                          ! If it is part of the cells in the obs, write
-                          ! record to auxOutputUnit
-                          ! Temp proxy !
-                          !call WriteTimeseriesRecordCritical(& 
-                          !    p%SequenceNumber, p%ID, groupIndex, ktime, &
-                          !      nt, pCoordTP, geoRef, obs%auxOutputUnit, & 
-                          !  timeseriesRecordCounts, timeseriesTempUnits  )
+                  !! Prototype prescribed concentration 
+                  !if ( simulationData%anyPrescribedConcentration ) then  
+                  !  ! Write info for prescribed concentrations
+                  !  ! Count mass ?
+                  !  if ( &
+                  !    simulationData%TrackingOptions%isPrescribed(pCoordTP%CellNumber) ) then 
+                  !    pcb => simulationData%TrackingOptions%PrescribedBoundaries(&
+                  !        simulationData%TrackingOptions%idPrescribed(pCoordTP%CellNumber) )
+                  !      do npcb=1,pcb%nCells
+                  !        if( pcb%cells(npcb) .ne. pCoordTP%CellNumber ) cycle
+                  !        ! If it is part of the cells in the obs, write
+                  !        ! record to auxOutputUnit
+                  !        ! Temp proxy !
+                  !        !call WriteTimeseriesRecordCritical(& 
+                  !        !    p%SequenceNumber, p%ID, groupIndex, ktime, &
+                  !        !      nt, pCoordTP, geoRef, obs%auxOutputUnit, & 
+                  !        !  timeseriesRecordCounts, timeseriesTempUnits  )
 
-                          ! Prescribed concentrations should write 
-                          ! something simpler: particleID, soluteID, mass
-                          pcb%nAuxRecords = pcb%nAuxRecords + 1
-                          pcb%totalMassCounter = pcb%totalMassCounter + p%Mass
+                  !        ! Prescribed concentrations should write 
+                  !        ! something simpler: particleID, soluteID, mass
+                  !        pcb%nAuxRecords = pcb%nAuxRecords + 1
+                  !        pcb%totalMassCounter = pcb%totalMassCounter + p%Mass
 
-                        end do 
-                    end if
-                  end if
+                  !      end do 
+                  !  end if
+                  !end if
 
 
                 end if
@@ -1335,7 +1335,7 @@ program MPath7
                                     timeseriesRecordCounts, timeseriesTempUnits)
                   end if
 
-                  if ( simulationData%anyObservation ) then  
+                  if ( simulationData%TrackingOptions%anyResObservation ) then  
                     ! Write record for resident observations
                     if ( &
                       simulationData%TrackingOptions%isObservation(pCoordTP%CellNumber) ) then 
@@ -1348,7 +1348,7 @@ program MPath7
                           ! record to auxOutputUnit
                           call WriteTimeseriesRecordCritical(& 
                               p%SequenceNumber, p%ID, groupIndex, ktime, &
-                                nt, pCoordTP, geoRef, obs%auxOutputUnit, & 
+                                nt, pCoordTP, geoRef, obs%recOutputUnit, & 
                             timeseriesRecordCounts, timeseriesTempUnits  )
                         end do 
                       end if
@@ -1539,49 +1539,37 @@ program MPath7
 
   ! RWPT
   ! Process observation cells for reconstruction
-  if ( simulationData%TrackingOptions%observationSimulation ) then
+  if ( simulationData%TrackingOptions%anyObservation ) then
 
     write(mplistUnit, *) 
     write(mplistUnit, '(A)') ' Postprocess OBS cells '
     write(mplistUnit, '(A)') '-----------------------'
 
-    ! If so, reset gpkde
-    !call ulog('Reset and reinitialize GPKDE for observation cells ', logUnit)
-
     ! Loop over observations
     do nobs=1, simulationData%TrackingOptions%nObservations
       obs => simulationData%TrackingOptions%Observations(nobs)
 
-      ! Observation cell of resident concentration 
+      ! If no postprocess for this obs, go the next
+      if ( .not. obs%doPostprocess ) cycle
+
+      ! Postprocess RESIDENT observation 
       if ( obs%style .eq. 1 ) then 
 
         write(mplistUnit, *) 
         write(mplistUnit, '(A,I3,A,I3)') 'Resident concentration OBS, nobs ', nobs ,', obs id ', obs%id
 
-        ! The length of the timeseries is needed
-
-        ! This would work only for timeseries simulations
-        ! with regular timestep definition
+        ! Compute a bin size for histogram/gpkde postprocess
+        ! Works for timeseries with uniform time steps
         dTObsSeries = simulationData%TimePoints(2)-simulationData%TimePoints(1)  ! binSize
-
-        ! Consider irregular binsize GPKDE Reconstruction
-
-        ! If no timeseries run, it would be possible to 
-        ! create an histogram based on stoptime for example 
-        ! and given number of bins. Still, this 
-        ! should probably be done before, while reading
-        ! simulation data, in order to force a timeseries
-        ! run, hand craft a timeseries sim writing records
-        ! at the specified times
 
         ! Read the observation file
         ! and pass it to gpkde for reconstruction
     
         ! It needs some obs record count or something
-        rewind( obs%auxOutputUnit )
+        rewind( obs%recOutputUnit )
         nlines = 0
         do
-          read(obs%auxOutputUnit,*,iostat=io)
+          read(obs%recOutputUnit,*,iostat=io)
           if (io/=0) exit
           nlines = nlines + 1
         end do
@@ -1605,11 +1593,11 @@ program MPath7
         ! from records. 
 
         ! Load file records into array
-        rewind( obs%auxOutputUnit )
+        rewind( obs%recOutputUnit )
         do n = 1, nlines
             ! Read from obs file
             ! Based on TS record, it could be reduced 
-            read( obs%auxOutputUnit, '(2I8,es18.9e3,i10,i5,2i10,6es18.9e3,i10)')          &
+            read( obs%recOutputUnit, '(2I8,es18.9e3,i10,i5,2i10,6es18.9e3,i10)')          &
               timePointIndex, timeStep, initialTime, sequenceNumber, groupIndex,  &
               particleID, cellNumber, pCoord%LocalX, pCoord%LocalY, pCoord%LocalZ, &
               modelX, modelY, pCoord%GlobalZ, pCoord%Layer
@@ -1622,8 +1610,7 @@ program MPath7
             ! the particle directly, avoiding the identification stage 
             ! coming further down
 
-            ! Particle mass corrected by retardation factor,
-            ! dissolved mass 
+            ! Particle mass corrected by retardation factor: dissolved mass 
             activeParticleMasses(n) = &
             simulationData%ParticleGroups(groupIndex)%Particles(particleID)%Mass/&
                                             simulationData%Retardation(cellNumber)
@@ -1637,7 +1624,8 @@ program MPath7
         call gpkde%Initialize(& 
             (/maxval(simulationData%TimePoints(:)),0d0,0d0/),                  &
             (/dtObsSeries,0d0,0d0/),                                           &
-            domainOrigin=(/simulationData%ReferenceTime,0d0,0d0/),             &
+            domainOrigin=(/0d0,0d0,0d0/),                                      &
+            !domainOrigin=(/simulationData%ReferenceTime,0d0,0d0/),             &
             nOptimizationLoops=simulationData%TrackingOptions%gpkdeNOptLoops,  &
             databaseOptimization=.false.,                                      &
             outFileName=mplistFile &
@@ -1677,8 +1665,7 @@ program MPath7
           ! Not necessarily the most efficient,
           ! think about cases with lots of pgroups per
           ! solute. Is either this or write the solute id 
-          ! to the observation record. This would require
-          ! modification of the TrackPath interfaces at trackingEngine
+          ! to the observation record.
           irow = 0
           do n=1,nlines
             anyFromThisSolute = .false.
@@ -1729,16 +1716,6 @@ program MPath7
 
         ! Once the accumulated porous volume is known, compute resident
         ! concentration
-
-        ! Apply the logic to determine where to write the obs records
-        ! Case 1: write to the same file as before: close it, open again and dump
-        close( obs%outputUnit )
-        open( unit=obs%outputUnit, &
-              file=obs%outputFileName,& 
-              status='replace', form='formatted', access='sequential')
-        ! Case 2: close the previous file and open a new one using the same
-        ! unit number for the obs, but with a different filename: keep the arrival records
-       
 
         ! And write
         ! Remember to decide what to do for different species, pgroups (?)
@@ -1797,20 +1774,14 @@ program MPath7
         ! This would work only for timeseries simulations
         dTObsSeries = simulationData%TimePoints(2)-simulationData%TimePoints(1)  ! binSize
 
-        ! Consider irregular binsize GPKDE Reconstruction
-
-        ! If no timeseries run, it would be possible to 
-        ! create an histogram based on stoptime for example 
-        ! and given number of bins
-
-        ! Read the observation file to extract arrival times
+        ! Read the records file to extract arrival times
         ! and pass it to gpkde for reconstruction
     
         ! It needs some obs record count or something
-        rewind( obs%outputUnit )
+        rewind( obs%recOutputUnit )
         nlines = 0
         do
-          read(obs%outputUnit,*,iostat=io)
+          read(obs%recOutputUnit,*,iostat=io)
           if (io/=0) exit
           nlines = nlines + 1
         end do
@@ -1821,7 +1792,8 @@ program MPath7
           cycle ! nobs
         end if
 
-        ! If no aux records, don't even try
+        ! If no aux records, don't even try.
+        ! Flow-rates.
         if ( obs%nAuxRecords .lt. 2 ) then 
           write(mplistUnit, '(A)') 'Not enough aux records for this observation, continue to the next'
           cycle ! nobs
@@ -1837,10 +1809,10 @@ program MPath7
         activeParticleMasses = 0d0
 
         ! Load file records into array
-        rewind( obs%outputUnit )
+        rewind( obs%recOutputUnit )
         do n = 1, nlines
             ! Read from obs file
-            read( obs%outputUnit, '(3I8,5es18.9e3)' ) &
+            read( obs%recOutputUnit, '(3I8,5es18.9e3)' ) &
               groupIndex, particleID, cellNumber,     &
               initialTime, initialGlobalX, initialGlobalY, initialGlobalZ, QSinkCell
             ! Needs some kind of understanding of the particle group, and that it
@@ -1863,7 +1835,8 @@ program MPath7
         call gpkde%Initialize(& 
             (/simulationData%TimePoints(obs%nAuxRecords),0d0,0d0/),            &
             (/dtObsSeries,0d0,0d0/),                                           &
-            domainOrigin=(/simulationData%ReferenceTime,0d0,0d0/),             &
+            domainOrigin=(/0d0,0d0,0d0/),                                      &
+            !domainOrigin=(/simulationData%ReferenceTime,0d0,0d0/),             &
             nOptimizationLoops=simulationData%TrackingOptions%gpkdeNOptLoops,  &
             databaseOptimization=.false.,                                      &
             outFileName=mplistFile     &
@@ -1950,15 +1923,9 @@ program MPath7
         ! Once flow-rates are known, can compute flux-concentration
 
         ! Something to verify if sink flows were zero the whole time
+        
+        ! Should compute flux-concentrations only for non zero flow-rates
 
-        ! Apply the logic to determine where to write the obs records
-        ! Case 1: write to the same file as before: close it, open again and dump
-        close( obs%outputUnit )
-        open( unit=obs%outputUnit, &
-              file=obs%outputFileName,& 
-              status='replace', form='formatted', access='sequential')
-        ! Case 2: close the previous file and open a new one using the same
-        ! unit number for the obs, but with a different filename: keep the arrival records
     
         ! Probably should be as a property from  obs 
         select case(idColFormat)
@@ -2003,8 +1970,8 @@ program MPath7
             continue
         end select 
 
-        ! RESET SEEMS TO NOT BE WORKING PROPERLY
-        ! And reset gpkde 
+        ! It seems that gpkde%reset() is not working properly
+        ! or needs some reorder of variables
         !call gpkde%Reset()
 
         ! Deallocate 
@@ -2032,19 +1999,20 @@ program MPath7
 !100 continue    
 
   ! RWPT
-  ! Close observation units if any
-  if ( simulationData%TrackingOptions%observationSimulation ) then
-      do n = 1, simulationData%TrackingOptions%nObservations
-          close( simulationData%TrackingOptions%Observations(n)%outputUnit )
-          if ( simulationData%TrackingOptions%Observations(n)%style .eq. 1 ) then 
-            close( simulationData%TrackingOptions%Observations(n)%auxOutputUnit )
-          end if 
-          if ( simulationData%TrackingOptions%Observations(n)%style .eq. 2 ) then 
-            close( simulationData%TrackingOptions%Observations(n)%auxOutputUnit )
-          end if 
-      end do 
-      ! And deallocate arrays of observation information
-      call simulationData%TrackingOptions%Reset()
+  ! Close observation units if any is open
+  if ( simulationData%TrackingOptions%anyObservation ) then
+    do n = 1, simulationData%TrackingOptions%nObservations
+      obs => simulationData%TrackingOptions%Observations(n)
+      io = -1
+      inquire( file=obs%outputFileName, number=io )
+      if ( .not.(io .lt. 0) ) close(obs%outputUnit)
+      io = -1
+      inquire( file=obs%auxOutputFileName, number=io )
+      if ( .not.(io .lt. 0) ) close(obs%auxOutputUnit)
+      io = -1
+      inquire( file=obs%recOutputFileName, number=io )
+      if ( .not.(io .lt. 0) ) close(obs%recOutputUnit)
+    end do 
   end if 
 
 
@@ -2714,33 +2682,6 @@ program MPath7
     write(*, '(a)') ' '
     
   end subroutine WriteParticleSummaryInfo
-
-
-
-
-
-!  ! OBSERVATION CELLS
-!  ! Candidate to be deprecated
-!  subroutine WriteObservationHeader(outUnit, cellNumber, referenceTime,   &
-!                                           originX, originY, rotationAngle)
-!      !---------------------------------------------------------------------
-!      ! Doc me
-!      !---------------------------------------------------------------------
-!      ! Specifications
-!      !---------------------------------------------------------------------
-!      implicit none
-!      integer,intent(in) :: outUnit, cellNumber
-!      doubleprecision,intent(in) :: referenceTime, originX, originY, rotationAngle
-!      integer :: version, subversion
-!      !----------------------------------- 
-!      version = 7
-!      subversion = 2
-!      write(outUnit, '(a,2i10)') 'MODPATH_CELL_OBSERVATION_FILE', version, subversion
-!      write(outUnit, '(i8,1x,4e18.10)') cellNumber, referenceTime, originX, originY, &
-!      rotationAngle
-!      write(outUnit, '(a)') 'END HEADER'
-!
-!  end subroutine WriteObservationHeader
 
 
 end program MPath7

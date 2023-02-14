@@ -48,7 +48,6 @@ module ModpathSimulationDataModule
     character(len=200) :: TraceFile
     character(len=200) :: AdvectiveObservationsFile
     character(len=200) :: DispersionFile          ! RWPT
-    logical            :: anyObservation =.false. ! RWPT
     integer            :: ParticlesMassOption     ! RWPT
     integer            :: SolutesOption           ! RWPT
     logical            :: shouldUpdateDispersion = .false.     ! RWPT
@@ -916,7 +915,7 @@ contains
     ! local
     integer :: nObservations  = 0
     type( ObservationType ), pointer :: obs => null()
-    integer :: readStyle, no, cellNumber, layer, row, column, ocount
+    integer :: readStyle, nobs, no, cellNumber, layer, row, column, ocount
     integer,dimension(:),allocatable :: obsCells
     integer,dimension(:),allocatable :: cellsPerLayer
     integer :: isThisFileOpen
@@ -958,8 +957,8 @@ contains
     else
       ! ok, initialize
       nObservations = n
-      this%anyObservation = .true.
-      write(outUnit,'(1X,A,I6)') 'Given number of observations: ', nObservations
+      this%TrackingOptions%anyObservation = .true.
+      write(outUnit,'(A,I5)')'Given number of observations: ', nObservations
 
       ! Allocate observation arrays
       call this%TrackingOptions%InitializeObservations( nObservations )
@@ -976,10 +975,10 @@ contains
 
       ! Read observation cells and assign 
       ! proper variables
-      do nc = 1, nObservations
+      do nobs = 1, nObservations
 
         ! A pointer
-        obs => this%TrackingOptions%Observations(nc) 
+        obs => this%TrackingOptions%Observations(nobs) 
 
         ! Read obs name/stringid
         read(obsUnit, '(a)') line
@@ -993,7 +992,6 @@ contains
         ! Report which OBS is being read 
         write(outUnit,'(A,A)') 'Reading OBS specification: ', trim(adjustl(obs%stringid))
 
-
         ! Interpret observation kind
         read(obsUnit, '(a)') line
         icol = 1
@@ -1006,26 +1004,60 @@ contains
           obs%style = 1
           ! Report
           write(outUnit,'(A)') 'Observation is of RESIDENT concentration type.'
+          ! Enable flag
+          this%TrackingOptions%anyResObservation = .true.
         case('SINK','FLUX')
           obs%style = 2
           ! Report 
           write(outUnit,'(A)') 'Observation is of SINK type for flux concentrations.'
-          ! Flag used to indicate that needs to save flow-rates
+          ! Enable flag
           this%TrackingOptions%anySinkObservation = .true.
         end select
 
-        ! Read observation filename and assign output units 
+        ! Read observation filename 
         read(obsUnit, '(a)') obs%outputFileName
         icol = 1
         call urword(obs%outputFileName,icol,istart,istop,0,n,r,0,0)
         obs%outputFileName = obs%outputFileName(istart:istop)
-        obs%outputUnit     = baseObsUnit + nc
-        obs%auxOutputUnit  = baseObsAuxUnit + nc
-        write( unit=obs%auxOutputFileName, fmt='(a)')&
-            trim(adjustl(tempChar))//'_'//trim(adjustl(obs%outputFileName))
-        obs%recOutputUnit  = baseObsRecUnit + nc
-        write( unit=obs%recOutputFileName, fmt='(a)')&
-            trim(adjustl(recordChar))//'_'//trim(adjustl(obs%outputFileName))
+
+        ! Read output option
+        read(obsUnit, '(a)', iostat=ioInUnit) line
+        icol = 1
+        call urword(line, icol, istart, istop, 2, n, r, 0, 0)
+        obs%outputOption = n 
+
+        ! Do postprocess ?
+        obs%doPostprocess = .true.
+        if ( obs%outputOption .eq. 0 ) obs%doPostprocess = .false.
+        if ( obs%doPostprocess ) then 
+          ! Read postprocess option
+          call urword(line, icol, istart, istop, 2, n, r, 0, 0)
+          obs%postprocessOption = n 
+        end if 
+
+        ! Assign output units, according to 
+        ! obs output option
+        select case ( obs%outputOption )
+        case(0)
+          ! Only records, no postprocess
+          ! Copy outputFileName to recOutputFileName
+          obs%recOutputUnit = baseObsRecUnit + nobs
+          obs%recOutputFileName = obs%outputFileName
+        case(1,2)
+          ! Records and postprocess, also initialize aux params
+          ! cases 1 and 2, only aux unit is initialized as scratch
+          ! case 2 both records and aux units are initailized as scratch
+          obs%outputUnit = baseObsUnit + nobs
+          obs%recOutputUnit = baseObsRecUnit + nobs
+          write( unit=obs%recOutputFileName, fmt='(a)')&
+              trim(adjustl(recordChar))//'_'//trim(adjustl(obs%outputFileName))
+          obs%auxOutputUnit = baseObsAuxUnit + nobs
+          write( unit=obs%auxOutputFileName, fmt='(a)')&
+              trim(adjustl(tempChar))//'_'//trim(adjustl(obs%outputFileName))
+        case default
+          call ustop('Invalid output option for observation. Stop.')
+        end select
+
 
         ! Read observation cell option
         ! Determine how to read cells
@@ -1034,37 +1066,30 @@ contains
         call urword(line, icol, istart, istop, 2, n, r, 0, 0)
         obs%cellOption = n 
   
-        !print *, obs%outputFileName
-        !print *, obs%auxOutputFileName
-        !print *, obs%recOutputFileName
-        !print *, 'CELLOPTION', obs%cellOption
-        !call exit(0)
-
-
         ! Load observation cells
         select case( obs%cellOption )
           ! In case 1, a list of cell ids is specified, that 
           ! compose the observation.  
           case (1)
             ! Read number of observation cells 
-            read(obsUnit, '(a)', iostat=ioInUnit) line
-            icol = 1
             call urword(line, icol, istart, istop, 2, n, r, 0, 0)
             obs%nCells = n 
             
+            ! Are these ids as (lay,row,col) or (cellid) ?
+            call urword(line, icol, istart, istop, 2, n, r, 0, 0)
+            readStyle = n
+
             ! Depending on the number of cells 
             ! allocate array for cell ids
             if ( allocated( obs%cells ) ) deallocate( obs%cells )
             allocate( obs%cells(obs%nCells) )
-            if ( allocated( obs%nRecordsCell ) ) deallocate( obs%nRecordsCell )
-            allocate( obs%nRecordsCell(obs%nCells) )
-            obs%nRecordsCell(:) = 0
 
-            ! Are these ids as (lay,row,col) or (cellid) ?
-            read(obsUnit, '(a)', iostat=ioInUnit) line
-            icol = 1
-            call urword(line, icol, istart, istop, 2, n, r, 0, 0)
-            readStyle = n
+            ! Observation of RESIDENT concentration cannot directly
+            ! count inside particles loop. Needs some reduction 
+            ! spec for consistent counting do to OpenMP
+            !if ( allocated( obs%nRecordsCell ) ) deallocate( obs%nRecordsCell )
+            !allocate( obs%nRecordsCell(obs%nCells) )
+            !obs%nRecordsCell(:) = 0
 
             ! Load the observation cells
             if( readStyle .eq. 0) then
@@ -1128,9 +1153,10 @@ contains
             ! allocate array for cell ids
             if ( allocated( obs%cells ) ) deallocate( obs%cells )
             allocate( obs%cells(obs%nCells) )
-            if ( allocated( obs%nRecordsCell ) ) deallocate( obs%nRecordsCell )
-            allocate( obs%nRecordsCell(obs%nCells) )
-            obs%nRecordsCell(:) = 0
+
+            !if ( allocated( obs%nRecordsCell ) ) deallocate( obs%nRecordsCell )
+            !allocate( obs%nRecordsCell(obs%nCells) )
+            !obs%nRecordsCell(:) = 0
 
             ! Fill obs%cells with the corresponding cell numbers
             ocount = 0
@@ -1145,42 +1171,40 @@ contains
             call ustop('Invalid observation cells reading option. Stop.')
         end select
 
-
         ! Assign into id arrays
         do no =1, obs%nCells
           this%TrackingOptions%isObservation(obs%cells(no)) = .true.
           ! The id on the list of cells !
-          this%TrackingOptions%idObservation(obs%cells(no)) = nc
+          this%TrackingOptions%idObservation(obs%cells(no)) = nobs
         end do
 
+        !! Read observation cell time option
+        !! Determine how to reconstruct timeseries
+        !read(obsUnit, '(a)', iostat=ioInUnit) line
+        !icol = 1
+        !call urword(line, icol, istart, istop, 2, n, r, 0, 0)
+        !obs%timeOption = n 
 
-        ! Read observation cell time option
-        ! Determine how to reconstruct timeseries
-        read(obsUnit, '(a)', iostat=ioInUnit) line
-        icol = 1
-        call urword(line, icol, istart, istop, 2, n, r, 0, 0)
-        obs%timeOption = n 
+        !! Timeoption determine from where 
+        !! to obtain the timeseries considered for 
+        !! reconstruction
+        !select case(obs%timeOption)
+        !  case(1)
+        !    ! Get it from the timeseries run 
+        !    ! Is there any gpkde config for this ?
+        !    continue
+        !  case (2)
+        !    ! Create it by reading input 
+        !    ! params like for example the 
+        !    ! number of datapoints
 
-        ! Timeoption determine from where 
-        ! to obtain the timeseries considered for 
-        ! reconstruction
-        select case(obs%timeOption)
-          case(1)
-            ! Get it from the timeseries run 
-            ! Is there any gpkde config for this ?
-            continue
-          case (2)
-            ! Create it by reading input 
-            ! params like for example the 
-            ! number of datapoints
+        !    ! Needs reading
 
-            ! Needs reading
-
-            continue
-          case default
-            ! Get it from the timeseries run 
-            continue
-        end select
+        !    continue
+        !  case default
+        !    ! Get it from the timeseries run 
+        !    continue
+        !end select
 
         ! Depending on parameters, initialize observation file as 
         ! binary or plain-text 
@@ -1891,555 +1915,555 @@ contains
     dimensionMask => this%TrackingOptions%dimensionMask
     nDim => this%TrackingOptions%nDim
     
-    ! Read FLUX BC's
-    read(bcUnit, *) nFluxConditions
-    write(outUnit,*)
-    write(outUnit,'(A,I5)') 'Given number of flux boundary conditions = ', nFluxConditions
+    !! Read FLUX BC's
+    !read(bcUnit, *) nFluxConditions
+    !write(outUnit,*)
+    !write(outUnit,'(A,I5)') 'Given number of flux boundary conditions = ', nFluxConditions
 
-    if(nFluxConditions .le. 0) then
-      ! No flux  
-      ! It shall continue to the next BC kind
-      write(outUnit,'(A)') 'Number of given flux conditions is .le. 0. Will not interpret flux boundaries.'
-      continue
-    end if
-    nValidFluxConditions = 0 ! Monitors whether the boundary has any particle
+    !if(nFluxConditions .le. 0) then
+    !  ! No flux  
+    !  ! It shall continue to the next BC kind
+    !  write(outUnit,'(A)') 'Number of given flux conditions is .le. 0. Will not interpret flux boundaries.'
+    !  continue
+    !end if
+    !nValidFluxConditions = 0 ! Monitors whether the boundary has any particle
 
 
-    ! FORCING 1 NOW !    
-    !nFluxConditions = 1
-    if ( nFluxConditions .gt. 0 ) then 
+    !! FORCING 1 NOW !    
+    !!nFluxConditions = 1
+    !if ( nFluxConditions .gt. 0 ) then 
 
-      particleCount = 0
+    !  particleCount = 0
 
-      !! Carrier for candidate particle groups 
-      !allocate(particleGroups(nFluxConditions))
+    !  !! Carrier for candidate particle groups 
+    !  !allocate(particleGroups(nFluxConditions))
  
-      !! Loop over flux conditions
-      !do nfc = 1, nFluxConditions
-      !  
-      !  ! Report which FLUX BC will be processed
-      !  write(outUnit,'(A,I5)') 'Processing flux boundary condition: ', nfc
-
-      !  ! Increase pgroup counter
-      !  particleGroups(nfc)%Group = this%ParticleGroupCount + nfc
-
-      !end do
-      !print *, 'AT MODPATHSIMDATA...'
-      !kfirst = this%tdisData%FindContainingTimeStep(this%ReferenceTime)
-      !call this%tdisData%GetPeriodAndStep(this%tdisData%CumulativeTimeStepCount, period, step)
-      !print *, 'REFERENCE TIME          : ', this%ReferenceTime
-      !print *, 'CUMULATIVETIMESTEPCOUNT : ', this%tdisData%CumulativeTimeStepCount
-      !print *, 'PERIOD,STEP             : ', period, step
-      !print *, 'TIMESTEPCOUNTS : ', this%tdisData%TimeStepCounts
-
-      !!this%BudgetReader%GetRecordHeaderRange(stressPeriod, timeStep, firstRecord, lastRecord)
-      !!call thistdisData%GetPeriodAndStep(tdisData%CumulativeTimeStepCount, period, step)
-      !!print *, 'EARLY LEAVING AT FLUX'
-      !!call exit(0)
-
-
-      !! So when defining a prescribed-flux boundary condition
-
-      !! Request the number of stress periods 
-      !print *, 'STRESSPERIODSCOUNT : ', this%tdisData%StressPeriodCount
-      !print *, 'STRESSPERIODTYPES : ', this%tdisData%StressPeriodTypes
-      !!print *, 'TOTALTIMES: ', this%tdisData%TotalTimes
-
-
-    end if 
-
-
-    ! Read PRESCRIBED BC's
-    read(bcUnit, *) nPrescribedConditions
-    write(outUnit,*)
-    write(outUnit,'(A,I5)') 'Given number of prescribed boundary conditions = ', nPrescribedConditions
-
-    if(nPrescribedConditions .le. 0) then
-      ! No prescribed
-      ! It shall continue to the next BC kind
-      write(outUnit,'(A)') 'Number of given prescribed conditions is .le. 0. Will not interpret prescribed boundaries.'
-      continue
-    end if
-    nValidPrescribedConditions = 0 ! Monitors whether the boundary has any particle
-
-    ! Process prescribed boundaries
-    if ( nPrescribedConditions .gt. 0 ) then 
-
-      ! ok, initialize
-      this%anyPrescribedConcentration = .true. 
-
-      ! Allocate prescribed boundaries 
-      call this%TrackingOptions%InitializePrescribedBoundaries( nPrescribedConditions )
-
-      particleCount = 0
-      cellCount   = grid%CellCount
-      rowCount    = grid%RowCount
-      columnCount = grid%ColumnCount
-      cellCount   = grid%CellCount
-     
-
-      ! This needs to be improved 
-      ! Allocate id arrays in tracking options
-      if(allocated(this%TrackingOptions%isPrescribed)) & 
-          deallocate(this%TrackingOptions%isPrescribed)
-      allocate(this%TrackingOptions%isPrescribed(cellCount))
-      if(allocated(this%TrackingOptions%idPrescribed)) & 
-          deallocate(this%TrackingOptions%idPrescribed)
-      allocate(this%TrackingOptions%idPrescribed(cellCount))
-      this%TrackingOptions%isPrescribed(:) = .false.
-      this%TrackingOptions%idPrescribed(:) = -999
-
-      ! Carrier for candidate particle groups 
-      allocate(particleGroups(nPrescribedConditions))
-
-      ! Loop over prescribed conditions
-      do npc=1,nPrescribedConditions
-
-        ! A pointer
-        pcb => this%TrackingOptions%PrescribedBoundaries(npc)
-       
-        ! Increase pgroup counter
-        particleGroups(npc)%Group = this%ParticleGroupCount + npc
-
-        ! Read id
-        read(bcUnit, '(a)') line
-        icol = 1
-        call urword(line, icol, istart, istop, 2, n, r, 0, 0)
-        pcb%id = n 
-
-        ! Read the string id
-        read(bcUnit, '(a)') line
-        icol = 1
-        call urword(line, icol, istart, istop, 0, n, r, 0, 0)
-        pcb%stringid = line(istart:istop)
-        particleGroups(npc)%Name = pcb%stringid
-        write(outUnit,'(a,I3,a,a)')'Interpreting information for prescribed boundary:', pcb%id, ' - ', pcb%stringid
-
+    !  !! Loop over flux conditions
+    !  !do nfc = 1, nFluxConditions
+    !  !  
+    !  !  ! Report which FLUX BC will be processed
+    !  !  write(outUnit,'(A,I5)') 'Processing flux boundary condition: ', nfc
+
+    !  !  ! Increase pgroup counter
+    !  !  particleGroups(nfc)%Group = this%ParticleGroupCount + nfc
+
+    !  !end do
+    !  !print *, 'AT MODPATHSIMDATA...'
+    !  !kfirst = this%tdisData%FindContainingTimeStep(this%ReferenceTime)
+    !  !call this%tdisData%GetPeriodAndStep(this%tdisData%CumulativeTimeStepCount, period, step)
+    !  !print *, 'REFERENCE TIME          : ', this%ReferenceTime
+    !  !print *, 'CUMULATIVETIMESTEPCOUNT : ', this%tdisData%CumulativeTimeStepCount
+    !  !print *, 'PERIOD,STEP             : ', period, step
+    !  !print *, 'TIMESTEPCOUNTS : ', this%tdisData%TimeStepCounts
+
+    !  !!this%BudgetReader%GetRecordHeaderRange(stressPeriod, timeStep, firstRecord, lastRecord)
+    !  !!call thistdisData%GetPeriodAndStep(tdisData%CumulativeTimeStepCount, period, step)
+    !  !!print *, 'EARLY LEAVING AT FLUX'
+    !  !!call exit(0)
+
+
+    !  !! So when defining a prescribed-flux boundary condition
+
+    !  !! Request the number of stress periods 
+    !  !print *, 'STRESSPERIODSCOUNT : ', this%tdisData%StressPeriodCount
+    !  !print *, 'STRESSPERIODTYPES : ', this%tdisData%StressPeriodTypes
+    !  !!print *, 'TOTALTIMES: ', this%tdisData%TotalTimes
+
+
+    !end if 
+
+
+    !! Read PRESCRIBED BC's
+    !read(bcUnit, *) nPrescribedConditions
+    !write(outUnit,*)
+    !write(outUnit,'(A,I5)') 'Given number of prescribed boundary conditions = ', nPrescribedConditions
+
+    !if(nPrescribedConditions .le. 0) then
+    !  ! No prescribed
+    !  ! It shall continue to the next BC kind
+    !  write(outUnit,'(A)') 'Number of given prescribed conditions is .le. 0. Will not interpret prescribed boundaries.'
+    !  continue
+    !end if
+    !nValidPrescribedConditions = 0 ! Monitors whether the boundary has any particle
+
+    !! Process prescribed boundaries
+    !if ( nPrescribedConditions .gt. 0 ) then 
+
+    !  ! ok, initialize
+    !  this%anyPrescribedConcentration = .true. 
+
+    !  ! Allocate prescribed boundaries 
+    !  call this%TrackingOptions%InitializePrescribedBoundaries( nPrescribedConditions )
+
+    !  particleCount = 0
+    !  cellCount   = grid%CellCount
+    !  rowCount    = grid%RowCount
+    !  columnCount = grid%ColumnCount
+    !  cellCount   = grid%CellCount
+    ! 
+
+    !  ! This needs to be improved 
+    !  ! Allocate id arrays in tracking options
+    !  if(allocated(this%TrackingOptions%isPrescribed)) & 
+    !      deallocate(this%TrackingOptions%isPrescribed)
+    !  allocate(this%TrackingOptions%isPrescribed(cellCount))
+    !  if(allocated(this%TrackingOptions%idPrescribed)) & 
+    !      deallocate(this%TrackingOptions%idPrescribed)
+    !  allocate(this%TrackingOptions%idPrescribed(cellCount))
+    !  this%TrackingOptions%isPrescribed(:) = .false.
+    !  this%TrackingOptions%idPrescribed(:) = -999
+
+    !  ! Carrier for candidate particle groups 
+    !  allocate(particleGroups(nPrescribedConditions))
+
+    !  ! Loop over prescribed conditions
+    !  do npc=1,nPrescribedConditions
+
+    !    ! A pointer
+    !    pcb => this%TrackingOptions%PrescribedBoundaries(npc)
+    !   
+    !    ! Increase pgroup counter
+    !    particleGroups(npc)%Group = this%ParticleGroupCount + npc
+
+    !    ! Read id
+    !    read(bcUnit, '(a)') line
+    !    icol = 1
+    !    call urword(line, icol, istart, istop, 2, n, r, 0, 0)
+    !    pcb%id = n 
+
+    !    ! Read the string id
+    !    read(bcUnit, '(a)') line
+    !    icol = 1
+    !    call urword(line, icol, istart, istop, 0, n, r, 0, 0)
+    !    pcb%stringid = line(istart:istop)
+    !    particleGroups(npc)%Name = pcb%stringid
+    !    write(outUnit,'(a,I3,a,a)')'Interpreting information for prescribed boundary:', pcb%id, ' - ', pcb%stringid
+
 
-        ! Needs to read some soluteId
-        !if ( ( this%ParticlesMassOption .eq. 2 ) ) then 
-        !  ! Read solute id
-        !  ! Requires some validation/health check
-        !  read(bcUnit, *) soluteId
-        !end if
-
-
-        ! Read the particles mass 
-        read(bcUnit, '(a)') line
-        icol = 1
-        call urword(line, icol, istart, istop, 3, n, r, 0, 0)
-        particlesMass = r
-
-
-        ! Read the concentration
-        read(bcUnit, '(a)') line
-        icol = 1
-        call urword(line, icol, istart, istop, 3, n, r, 0, 0)
-        pcb%concentration = r
-
-        
-        ! Health checks for particlesMass and concentration ! 
-        
-
-        ! Determine how to read cells
-        read(bcUnit, '(a)') line
-        icol = 1
-        call urword(line, icol, istart, istop, 2, n, r, 0, 0)
-        pcb%cellOption = n 
-
-
-        ! Load cells
-        select case( pcb%cellOption )
-          ! In case 1, a list of cell ids is specified, that 
-          ! compose the observation.  
-          case (1)
-            ! Read number of cells 
-            read(bcUnit, '(a)') line
-            icol = 1
-            call urword(line, icol, istart, istop, 2, n, r, 0, 0)
-            pcb%nCells = n 
-            
-            ! Allocate array for cell ids
-            if ( allocated( pcb%cells ) ) deallocate( pcb%cells )
-            allocate( pcb%cells(pcb%nCells) )
-            if ( allocated( pcb%nRecordsCell ) ) deallocate( pcb%nRecordsCell )
-            allocate( pcb%nRecordsCell(pcb%nCells) )
-            pcb%nRecordsCell(:) = 0
-
-            ! Are these ids as (lay,row,col) or (cellid) ?
-            read(bcUnit, '(a)') line
-            icol = 1
-            call urword(line, icol, istart, istop, 2, n, r, 0, 0)
-            readStyle = n
-
-            ! Load the observation cells
-            if( readStyle .eq. 1) then
-              ! Read as layer, row, column
-              do nc = 1, pcb%nCells
-                read(bcUnit, *) layer, row, column
-                call ugetnode(layerCount, rowCount, columnCount, layer, row, column,cellNumber)
-                pcb%cells(nc) = cellNumber
-              end do 
-            else if ( readStyle .eq. 2 ) then 
-              do nc = 1, pcb%nCells
-                read(bcUnit,*)  cellNumber
-                pcb%cells(nc) = cellNumber
-              end do 
-            else
-              call ustop('Invalid readStyle for prescribed concentration. Stop.')
-            end if
-
-          case (2)
-            ! In case 2, observation cells are given by specifying a 3D array
-            ! with 0 (not observation) and 1 (observation) 
-
-            ! Required for u3d
-            if(allocated(pcbCells)) deallocate(pcbCells)
-            allocate(pcbCells(grid%CellCount))
-            pcbCells(:) = 0
-         
-            ! Read cells
-            if((grid%GridType .eq. 1) .or. (grid%GridType .eq. 3)) then
-              call u3dintmp(bcUnit, outUnit, grid%LayerCount, grid%RowCount,      &
-                grid%ColumnCount, grid%CellCount, pcbCells, anamepc(1)) 
-            else if((grid%GridType .eq. 2) .or. (grid%GridType .eq. 4)) then
-              call u3dintmpusg(bcUnit, outUnit, grid%CellCount, grid%LayerCount,  &
-                pcbCells, anamepc(1), cellsPerLayer)
-            else
-              write(outUnit,*) 'Invalid grid type specified when reading PCELLS array data.'
-              write(outUnit,*) 'Stopping.'
-              call ustop(' ')          
-            end if
-
-            ! Count how many obs cells specified 
-            pcb%nCells = count(pcbCells/=0)
-
-            if ( pcb%nCells .eq. 0 ) then 
-              write(outUnit,*) 'No cells in the array of cells for prescribed boundary:', pcb%id
-              write(outUnit,*) 'Stopping.'
-              ! Maybe allow continuation
-              call ustop('No cells for prescribed boundary condition. Stop.')
-            end if
-
-            ! Depending on the number of cells 
-            ! allocate array for cell ids
-            if ( allocated( pcb%cells ) ) deallocate( pcb%cells )
-            allocate( pcb%cells(pcb%nCells) )
-            if ( allocated( pcb%nRecordsCell ) ) deallocate( pcb%nRecordsCell )
-            allocate( pcb%nRecordsCell(pcb%nCells) )
-            pcb%nRecordsCell(:) = 0
-
-            ! Fill pcb%cells with the corresponding cell numbers
-            pcount = 0
-            do n =1,grid%CellCount
-              if(pcbCells(n).eq.0) cycle
-              pcount = pcount + 1
-              pcb%cells(pcount) = n 
-            end do
-
-          case default
-            ! Invalid option
-            call ustop('Invalid cells reading option in prescribed boundaries. Stop.')
-        end select
-
-
-        ! Assign into id arrays
-        do nc =1, pcb%nCells
-          this%TrackingOptions%isPrescribed(pcb%cells(nc)) = .true.
-          ! The id on the list of cells !
-          this%TrackingOptions%idPrescribed(pcb%cells(nc)) = npc
-        end do
-
-        ! Allocate subdivisions
-        if (allocated(subDivisions)) deallocate(subDivisions)
-        allocate( subDivisions(pcb%nCells,3) )
-        subDivisions(:,:) = 0
-
-
-        ! Loop over cells assigned to the boundary
-        ! and determine the number of particles,
-        ! given the cell properties
-        totalParticleCount = 0
-        singleReleaseParticleCount = 0
-        do nc = 1, pcb%nCells
-
-          cid = pcb%cells(nc)
-
-          ! Compute cell volume
-          cellVolume = 1d0
-          do nd=1,3
-            if( dimensionMask(nd).eq.0 ) cycle
-            select case(nd)
-            case(1)
-              cellVolume = cellVolume*grid%DelX(cid)
-            case(2)
-              cellVolume = cellVolume*grid%DelY(cid)
-            case(3)
-              ! simple dZ
-              cellVolume = cellVolume*(grid%Top(cid)-grid%Bottom(cid))
-            end select
-          end do
-          cellDissolvedMass = 0d0
-          cellTotalMass = 0d0
-          ! Absolute value is required for the weird case that 
-          ! densityDistribution contains negative values
-          cellDissolvedMass = abs(pcb%concentration)*porosity(cid)*cellVolume
-          cellTotalMass = cellDissolvedMass*this%Retardation(cid)
-          
-          ! nParticlesCell: estimate the number of particles 
-          ! for the cell using the specified mass 
-          nParticlesCell = cellTotalMass/particlesMass
-
-          ! If less than 0.5 particle, cycle to the next cell
-          if ( nParticlesCell .lt. 0.5 ) then 
-             write(outUnit, *) 'nParticlesCell .lt. 0.5 for the prescribed boundary, not enough particles. Reduce particlesMass.'
-             call ustop('nParticlesCell .lt. 0.5 for the prescribed boundary, not enough particles. Reduce particlesMass. Stop.')          
-          end if
-
-          ! Compute shapeFactors only if dimension is active
-          ! If not, will remain as zero
-          sX = 0
-          sY = 0
-          sZ = 0
-          do nd=1,3
-            if( dimensionMask(nd).eq.0 ) cycle
-            select case(nd)
-            case(1)
-              sX = grid%DelX(cid)/(cellVolume**(1d0/nDim))
-            case(2)
-              sY = grid%DelY(cid)/(cellVolume**(1d0/nDim))
-            case(3)
-              ! simple dZ
-              sZ = (grid%Top(cid)-grid%Bottom(cid))/(cellVolume**(1d0/nDim))
-            end select
-          end do
-
-          ! Estimate subdivisions
-          nPX    = sX*( (nParticlesCell)**(1d0/nDim) ) 
-          nPY    = sY*( (nParticlesCell)**(1d0/nDim) )
-          nPZ    = sZ*( (nParticlesCell)**(1d0/nDim) )
-          iNPX   = int( nPX ) + 1
-          iNPY   = int( nPY ) + 1
-          iNPZ   = int( nPZ ) + 1
-          NPCELL = iNPX*iNPY*iNPZ
-          singleReleaseParticleCount = singleReleaseParticleCount + NPCELL
-
-          ! Assign into subdivisions
-          subDivisions(nc,1) = iNPX 
-          subDivisions(nc,2) = iNPY 
-          subDivisions(nc,3) = iNPZ 
-
-          ! effective particles mass
-          effParticlesMass = cellTotalMass/NPCELL
-          pcb%particlesMass = effParticlesMass
-          ! Needs to aggregate over all cells before computing effective particles mass ?
-
-
-          write(outUnit,'(A,es18.9e3)')'Original particle mass for prescribed boundary = ', particlesMass
-          write(outUnit,'(A,es18.9e3)')'Effective particle mass for prescribed boundary = ', effParticlesMass
-          write(outUnit,'(A,I3)')'Total number of particles for this cell = ', NPCELL
-
-
-          ! TEMPORARY, PROTOTYPING
-          pcb%nParticles = NPCELL
-          pcb%iNPX = iNPX
-          pcb%iNPY = iNPY
-          pcb%iNPZ = iNPZ
-
-          pcb%totalPrescribedMass = cellTotalMass
-
-          exit
-
-        end do ! nc=1,pcb%nCells
-
-        ! Verify whether there is any particle in the 
-        ! prescribed boundary condition 
-        if ( singleReleaseParticleCount .eq. 0 ) then 
-          write(outUnit,*) ' Warning: prescribed condition ',&
-              particleGroups(npc)%Name,' has zero particles, it will skip this group.'
-          ! Process the next one
-          cycle
-        end if 
-
-
-        ! Once the number of particles per cell is known, 
-        ! these could be assigned to a particleGroup.
-
-        ! For a prescribed concentration cell, it seems that 
-        ! the release time is unknown for particles. There is 
-        ! for sure an initial release, placing an array of particles
-        ! within the cell. 
-
-        ! The fact that all releaasetimes are unknown beforehand, 
-        ! complicates how to allocate the total number of particles 
-        ! for the particlegroup.
-
-        ! Tompson et al. 1988 proposes restarting particles at all Delta T's.
-        ! In such case, for a given time step (timeseries step), the total
-        ! number of releases would be known. 
+    !    ! Needs to read some soluteId
+    !    !if ( ( this%ParticlesMassOption .eq. 2 ) ) then 
+    !    !  ! Read solute id
+    !    !  ! Requires some validation/health check
+    !    !  read(bcUnit, *) soluteId
+    !    !end if
+
+
+    !    ! Read the particles mass 
+    !    read(bcUnit, '(a)') line
+    !    icol = 1
+    !    call urword(line, icol, istart, istop, 3, n, r, 0, 0)
+    !    particlesMass = r
+
+
+    !    ! Read the concentration
+    !    read(bcUnit, '(a)') line
+    !    icol = 1
+    !    call urword(line, icol, istart, istop, 3, n, r, 0, 0)
+    !    pcb%concentration = r
+
+    !    
+    !    ! Health checks for particlesMass and concentration ! 
+    !    
+
+    !    ! Determine how to read cells
+    !    read(bcUnit, '(a)') line
+    !    icol = 1
+    !    call urword(line, icol, istart, istop, 2, n, r, 0, 0)
+    !    pcb%cellOption = n 
+
+
+    !    ! Load cells
+    !    select case( pcb%cellOption )
+    !      ! In case 1, a list of cell ids is specified, that 
+    !      ! compose the observation.  
+    !      case (1)
+    !        ! Read number of cells 
+    !        read(bcUnit, '(a)') line
+    !        icol = 1
+    !        call urword(line, icol, istart, istop, 2, n, r, 0, 0)
+    !        pcb%nCells = n 
+    !        
+    !        ! Allocate array for cell ids
+    !        if ( allocated( pcb%cells ) ) deallocate( pcb%cells )
+    !        allocate( pcb%cells(pcb%nCells) )
+    !        if ( allocated( pcb%nRecordsCell ) ) deallocate( pcb%nRecordsCell )
+    !        allocate( pcb%nRecordsCell(pcb%nCells) )
+    !        pcb%nRecordsCell(:) = 0
+
+    !        ! Are these ids as (lay,row,col) or (cellid) ?
+    !        read(bcUnit, '(a)') line
+    !        icol = 1
+    !        call urword(line, icol, istart, istop, 2, n, r, 0, 0)
+    !        readStyle = n
+
+    !        ! Load the observation cells
+    !        if( readStyle .eq. 1) then
+    !          ! Read as layer, row, column
+    !          do nc = 1, pcb%nCells
+    !            read(bcUnit, *) layer, row, column
+    !            call ugetnode(layerCount, rowCount, columnCount, layer, row, column,cellNumber)
+    !            pcb%cells(nc) = cellNumber
+    !          end do 
+    !        else if ( readStyle .eq. 2 ) then 
+    !          do nc = 1, pcb%nCells
+    !            read(bcUnit,*)  cellNumber
+    !            pcb%cells(nc) = cellNumber
+    !          end do 
+    !        else
+    !          call ustop('Invalid readStyle for prescribed concentration. Stop.')
+    !        end if
+
+    !      case (2)
+    !        ! In case 2, observation cells are given by specifying a 3D array
+    !        ! with 0 (not observation) and 1 (observation) 
+
+    !        ! Required for u3d
+    !        if(allocated(pcbCells)) deallocate(pcbCells)
+    !        allocate(pcbCells(grid%CellCount))
+    !        pcbCells(:) = 0
+    !     
+    !        ! Read cells
+    !        if((grid%GridType .eq. 1) .or. (grid%GridType .eq. 3)) then
+    !          call u3dintmp(bcUnit, outUnit, grid%LayerCount, grid%RowCount,      &
+    !            grid%ColumnCount, grid%CellCount, pcbCells, anamepc(1)) 
+    !        else if((grid%GridType .eq. 2) .or. (grid%GridType .eq. 4)) then
+    !          call u3dintmpusg(bcUnit, outUnit, grid%CellCount, grid%LayerCount,  &
+    !            pcbCells, anamepc(1), cellsPerLayer)
+    !        else
+    !          write(outUnit,*) 'Invalid grid type specified when reading PCELLS array data.'
+    !          write(outUnit,*) 'Stopping.'
+    !          call ustop(' ')          
+    !        end if
+
+    !        ! Count how many obs cells specified 
+    !        pcb%nCells = count(pcbCells/=0)
+
+    !        if ( pcb%nCells .eq. 0 ) then 
+    !          write(outUnit,*) 'No cells in the array of cells for prescribed boundary:', pcb%id
+    !          write(outUnit,*) 'Stopping.'
+    !          ! Maybe allow continuation
+    !          call ustop('No cells for prescribed boundary condition. Stop.')
+    !        end if
+
+    !        ! Depending on the number of cells 
+    !        ! allocate array for cell ids
+    !        if ( allocated( pcb%cells ) ) deallocate( pcb%cells )
+    !        allocate( pcb%cells(pcb%nCells) )
+    !        if ( allocated( pcb%nRecordsCell ) ) deallocate( pcb%nRecordsCell )
+    !        allocate( pcb%nRecordsCell(pcb%nCells) )
+    !        pcb%nRecordsCell(:) = 0
+
+    !        ! Fill pcb%cells with the corresponding cell numbers
+    !        pcount = 0
+    !        do n =1,grid%CellCount
+    !          if(pcbCells(n).eq.0) cycle
+    !          pcount = pcount + 1
+    !          pcb%cells(pcount) = n 
+    !        end do
+
+    !      case default
+    !        ! Invalid option
+    !        call ustop('Invalid cells reading option in prescribed boundaries. Stop.')
+    !    end select
+
+
+    !    ! Assign into id arrays
+    !    do nc =1, pcb%nCells
+    !      this%TrackingOptions%isPrescribed(pcb%cells(nc)) = .true.
+    !      ! The id on the list of cells !
+    !      this%TrackingOptions%idPrescribed(pcb%cells(nc)) = npc
+    !    end do
+
+    !    ! Allocate subdivisions
+    !    if (allocated(subDivisions)) deallocate(subDivisions)
+    !    allocate( subDivisions(pcb%nCells,3) )
+    !    subDivisions(:,:) = 0
+
+
+    !    ! Loop over cells assigned to the boundary
+    !    ! and determine the number of particles,
+    !    ! given the cell properties
+    !    totalParticleCount = 0
+    !    singleReleaseParticleCount = 0
+    !    do nc = 1, pcb%nCells
+
+    !      cid = pcb%cells(nc)
+
+    !      ! Compute cell volume
+    !      cellVolume = 1d0
+    !      do nd=1,3
+    !        if( dimensionMask(nd).eq.0 ) cycle
+    !        select case(nd)
+    !        case(1)
+    !          cellVolume = cellVolume*grid%DelX(cid)
+    !        case(2)
+    !          cellVolume = cellVolume*grid%DelY(cid)
+    !        case(3)
+    !          ! simple dZ
+    !          cellVolume = cellVolume*(grid%Top(cid)-grid%Bottom(cid))
+    !        end select
+    !      end do
+    !      cellDissolvedMass = 0d0
+    !      cellTotalMass = 0d0
+    !      ! Absolute value is required for the weird case that 
+    !      ! densityDistribution contains negative values
+    !      cellDissolvedMass = abs(pcb%concentration)*porosity(cid)*cellVolume
+    !      cellTotalMass = cellDissolvedMass*this%Retardation(cid)
+    !      
+    !      ! nParticlesCell: estimate the number of particles 
+    !      ! for the cell using the specified mass 
+    !      nParticlesCell = cellTotalMass/particlesMass
+
+    !      ! If less than 0.5 particle, cycle to the next cell
+    !      if ( nParticlesCell .lt. 0.5 ) then 
+    !         write(outUnit, *) 'nParticlesCell .lt. 0.5 for the prescribed boundary, not enough particles. Reduce particlesMass.'
+    !         call ustop('nParticlesCell .lt. 0.5 for the prescribed boundary, not enough particles. Reduce particlesMass. Stop.')          
+    !      end if
+
+    !      ! Compute shapeFactors only if dimension is active
+    !      ! If not, will remain as zero
+    !      sX = 0
+    !      sY = 0
+    !      sZ = 0
+    !      do nd=1,3
+    !        if( dimensionMask(nd).eq.0 ) cycle
+    !        select case(nd)
+    !        case(1)
+    !          sX = grid%DelX(cid)/(cellVolume**(1d0/nDim))
+    !        case(2)
+    !          sY = grid%DelY(cid)/(cellVolume**(1d0/nDim))
+    !        case(3)
+    !          ! simple dZ
+    !          sZ = (grid%Top(cid)-grid%Bottom(cid))/(cellVolume**(1d0/nDim))
+    !        end select
+    !      end do
+
+    !      ! Estimate subdivisions
+    !      nPX    = sX*( (nParticlesCell)**(1d0/nDim) ) 
+    !      nPY    = sY*( (nParticlesCell)**(1d0/nDim) )
+    !      nPZ    = sZ*( (nParticlesCell)**(1d0/nDim) )
+    !      iNPX   = int( nPX ) + 1
+    !      iNPY   = int( nPY ) + 1
+    !      iNPZ   = int( nPZ ) + 1
+    !      NPCELL = iNPX*iNPY*iNPZ
+    !      singleReleaseParticleCount = singleReleaseParticleCount + NPCELL
+
+    !      ! Assign into subdivisions
+    !      subDivisions(nc,1) = iNPX 
+    !      subDivisions(nc,2) = iNPY 
+    !      subDivisions(nc,3) = iNPZ 
+
+    !      ! effective particles mass
+    !      effParticlesMass = cellTotalMass/NPCELL
+    !      pcb%particlesMass = effParticlesMass
+    !      ! Needs to aggregate over all cells before computing effective particles mass ?
+
+
+    !      write(outUnit,'(A,es18.9e3)')'Original particle mass for prescribed boundary = ', particlesMass
+    !      write(outUnit,'(A,es18.9e3)')'Effective particle mass for prescribed boundary = ', effParticlesMass
+    !      write(outUnit,'(A,I3)')'Total number of particles for this cell = ', NPCELL
+
+
+    !      ! TEMPORARY, PROTOTYPING
+    !      pcb%nParticles = NPCELL
+    !      pcb%iNPX = iNPX
+    !      pcb%iNPY = iNPY
+    !      pcb%iNPZ = iNPZ
+
+    !      pcb%totalPrescribedMass = cellTotalMass
+
+    !      exit
+
+    !    end do ! nc=1,pcb%nCells
+
+    !    ! Verify whether there is any particle in the 
+    !    ! prescribed boundary condition 
+    !    if ( singleReleaseParticleCount .eq. 0 ) then 
+    !      write(outUnit,*) ' Warning: prescribed condition ',&
+    !          particleGroups(npc)%Name,' has zero particles, it will skip this group.'
+    !      ! Process the next one
+    !      cycle
+    !    end if 
+
+
+    !    ! Once the number of particles per cell is known, 
+    !    ! these could be assigned to a particleGroup.
+
+    !    ! For a prescribed concentration cell, it seems that 
+    !    ! the release time is unknown for particles. There is 
+    !    ! for sure an initial release, placing an array of particles
+    !    ! within the cell. 
+
+    !    ! The fact that all releaasetimes are unknown beforehand, 
+    !    ! complicates how to allocate the total number of particles 
+    !    ! for the particlegroup.
+
+    !    ! Tompson et al. 1988 proposes restarting particles at all Delta T's.
+    !    ! In such case, for a given time step (timeseries step), the total
+    !    ! number of releases would be known. 
    
-        ! In order to implement something close to the proposed by Tompson et al. 1988
-        ! the simulation needs to be a timeseries.
-        if ( (this%SimulationType.eq. 3) .or. & 
-             (this%SimulationType.eq. 4) .or. &
-             (this%SimulationType.eq. 5) .or. &
-             (this%SimulationType.eq. 6) ) then
+    !    ! In order to implement something close to the proposed by Tompson et al. 1988
+    !    ! the simulation needs to be a timeseries.
+    !    if ( (this%SimulationType.eq. 3) .or. & 
+    !         (this%SimulationType.eq. 4) .or. &
+    !         (this%SimulationType.eq. 5) .or. &
+    !         (this%SimulationType.eq. 6) ) then
 
-          ! Determine release time parameters
-          if ( this%TimePointOption .eq. 1 ) then 
-            initialReleaseTime = this%ReferenceTime
-            releaseTimeCount = this%TimePointCount 
-            releaseInterval = this%TimePointInterval
-            write(outUnit,'(A)')'TimePointOption .eq. 1. ReleaseInterval extracted from timepoint specs.'
-          else
-            initialReleaseTime = this%ReferenceTime
-            releaseTimeCount = this%TimePointCount 
-            releaseInterval = this%TimePoints(2)-this%TimePoints(1)
-            write(outUnit,'(A)')'TimePointOption .eq. 2. ReleaseInterval assumed tpoints(2)-tpoints(1). Needs to be equispaced.'
-          end if
+    !      ! Determine release time parameters
+    !      if ( this%TimePointOption .eq. 1 ) then 
+    !        initialReleaseTime = this%ReferenceTime
+    !        releaseTimeCount = this%TimePointCount 
+    !        releaseInterval = this%TimePointInterval
+    !        write(outUnit,'(A)')'TimePointOption .eq. 1. ReleaseInterval extracted from timepoint specs.'
+    !      else
+    !        initialReleaseTime = this%ReferenceTime
+    !        releaseTimeCount = this%TimePointCount 
+    !        releaseInterval = this%TimePoints(2)-this%TimePoints(1)
+    !        write(outUnit,'(A)')'TimePointOption .eq. 2. ReleaseInterval assumed tpoints(2)-tpoints(1). Needs to be equispaced.'
+    !      end if
 
-          ! Assign release time parameters
-          call particleGroups(npc)%SetReleaseOption2(initialReleaseTime, &
-            releaseTimeCount, releaseInterval)
+    !      ! Assign release time parameters
+    !      call particleGroups(npc)%SetReleaseOption2(initialReleaseTime, &
+    !        releaseTimeCount, releaseInterval)
 
-          ! Calculate the total number of particles for all release time points.
-          totalParticleCount = singleReleaseParticleCount*particleGroups(npc)%GetReleaseTimeCount()
-          if(allocated(particleGroups(npc)%Particles)) deallocate(particleGroups(npc)%Particles)
-          allocate(particleGroups(npc)%Particles(totalParticleCount))
-          particleGroups(npc)%TotalParticleCount = totalParticleCount
+    !      ! Calculate the total number of particles for all release time points.
+    !      totalParticleCount = singleReleaseParticleCount*particleGroups(npc)%GetReleaseTimeCount()
+    !      if(allocated(particleGroups(npc)%Particles)) deallocate(particleGroups(npc)%Particles)
+    !      allocate(particleGroups(npc)%Particles(totalParticleCount))
+    !      particleGroups(npc)%TotalParticleCount = totalParticleCount
 
-          !print *, 'INITIAL RELEASETIME', initialReleaseTime
-          !print *, 'RELEASETIMECOUNT', releaseTimeCount
-          !print *, 'RELEASEINTERVAl', releaseInterval
-          !print *, 'SINGLERELEASECOUNT', singleReleaseParticleCount
-          !print *, 'TOTALPARTICLECOUNT', totalParticleCount
+    !      !print *, 'INITIAL RELEASETIME', initialReleaseTime
+    !      !print *, 'RELEASETIMECOUNT', releaseTimeCount
+    !      !print *, 'RELEASEINTERVAl', releaseInterval
+    !      !print *, 'SINGLERELEASECOUNT', singleReleaseParticleCount
+    !      !print *, 'TOTALPARTICLECOUNT', totalParticleCount
 
-          ! Loop over cells to create particles
-          m = 0
-          cellCounter = 0
-          do nc=1,pcb%nCells
+    !      ! Loop over cells to create particles
+    !      m = 0
+    !      cellCounter = 0
+    !      do nc=1,pcb%nCells
 
-            ! Skip this cell if all subDivisions remained as zero
-            if ( all( subDivisions( nc, : ) .eq. 0 ) ) cycle
+    !        ! Skip this cell if all subDivisions remained as zero
+    !        if ( all( subDivisions( nc, : ) .eq. 0 ) ) cycle
 
-            ! 0: is for drape. TEMPORARY
-            ! Drape = 0: particle placed in the cell. If dry, status to unreleased
-            ! Drape = 1: particle placed in the uppermost active cell
-            !call CreateMassParticlesAsInternalArray(& 
-            !  particleGroups(npc), pcb%cells(nc), m, &
-            !  subDivisions(nc,1),&
-            !  subDivisions(nc,2),&
-            !  subDivisions(nc,3),& 
-            !  0, pcb%particlesMass, particleGroups(npc)%GetReleaseTime(1) )
-            call pr_CreateParticlesAsInternalArray(& 
-              particleGroups(npc), pcb%cells(nc), m, &
-              subDivisions(nc,1),&
-              subDivisions(nc,2),&
-              subDivisions(nc,3),& 
-              0 )
+    !        ! 0: is for drape. TEMPORARY
+    !        ! Drape = 0: particle placed in the cell. If dry, status to unreleased
+    !        ! Drape = 1: particle placed in the uppermost active cell
+    !        !call CreateMassParticlesAsInternalArray(& 
+    !        !  particleGroups(npc), pcb%cells(nc), m, &
+    !        !  subDivisions(nc,1),&
+    !        !  subDivisions(nc,2),&
+    !        !  subDivisions(nc,3),& 
+    !        !  0, pcb%particlesMass, particleGroups(npc)%GetReleaseTime(1) )
+    !        call pr_CreateParticlesAsInternalArray(& 
+    !          particleGroups(npc), pcb%cells(nc), m, &
+    !          subDivisions(nc,1),&
+    !          subDivisions(nc,2),&
+    !          subDivisions(nc,3),& 
+    !          0 )
 
-            exit ! TEMP
+    !        exit ! TEMP
 
-          end do
+    !      end do
 
-          ! Assign layer value to each particle
-          idmax = 0
-          seqNumber = 0
-          do m = 1, singleReleaseParticleCount
-            seqNumber = seqNumber + 1
-            if(particleGroups(npc)%Particles(m)%Id .gt. idmax) idmax = particleGroups(npc)%Particles(m)%Id
-            particleGroups(npc)%Particles(m)%Group = particleGroups(npc)%Group
-            particleGroups(npc)%Particles(m)%SequenceNumber = seqNumber
-            particleGroups(npc)%Particles(m)%InitialLayer =                       &
-              grid%GetLayer(particleGroups(npc)%Particles(m)%InitialCellNumber)
-            particleGroups(npc)%Particles(m)%Layer =                              &
-              grid%GetLayer(particleGroups(npc)%Particles(m)%CellNumber)
-          end do
+    !      ! Assign layer value to each particle
+    !      idmax = 0
+    !      seqNumber = 0
+    !      do m = 1, singleReleaseParticleCount
+    !        seqNumber = seqNumber + 1
+    !        if(particleGroups(npc)%Particles(m)%Id .gt. idmax) idmax = particleGroups(npc)%Particles(m)%Id
+    !        particleGroups(npc)%Particles(m)%Group = particleGroups(npc)%Group
+    !        particleGroups(npc)%Particles(m)%SequenceNumber = seqNumber
+    !        particleGroups(npc)%Particles(m)%InitialLayer =                       &
+    !          grid%GetLayer(particleGroups(npc)%Particles(m)%InitialCellNumber)
+    !        particleGroups(npc)%Particles(m)%Layer =                              &
+    !          grid%GetLayer(particleGroups(npc)%Particles(m)%CellNumber)
+    !      end do
 
-          ! Initialize particle data for all additional releases
-          if(particleGroups(npc)%GetReleaseTimeCount() .gt. 1) then
-           do n = 2, particleGroups(npc)%GetReleaseTimeCount()
-            offset = (n - 1) * singleReleaseParticleCount
-            do m = 1, singleReleaseParticleCount
-             idmax = idmax + 1
-             seqNumber = seqNumber + 1
-             particleGroups(npc)%Particles(offset+m)%Id = idmax
-             particleGroups(npc)%Particles(offset+m)%SequenceNumber = seqNumber
-             particleGroups(npc)%Particles(offset+m)%Group = particleGroups(npc)%Group
-             particleGroups(npc)%Particles(offset+m)%Drape = particleGroups(npc)%Particles(m)%Drape
-             particleGroups(npc)%Particles(offset+m)%Status = particleGroups(npc)%Particles(m)%Status
-             particleGroups(npc)%Particles(offset+m)%InitialCellNumber = particleGroups(npc)%Particles(m)%InitialCellNumber
-             particleGroups(npc)%Particles(offset+m)%InitialLayer = particleGroups(npc)%Particles(m)%InitialLayer
-             particleGroups(npc)%Particles(offset+m)%InitialFace = particleGroups(npc)%Particles(m)%InitialFace
-             particleGroups(npc)%Particles(offset+m)%InitialLocalX = particleGroups(npc)%Particles(m)%InitialLocalX
-             particleGroups(npc)%Particles(offset+m)%InitialLocalY = particleGroups(npc)%Particles(m)%InitialLocalY
-             particleGroups(npc)%Particles(offset+m)%InitialLocalZ = particleGroups(npc)%Particles(m)%InitialLocalZ
-             particleGroups(npc)%Particles(offset+m)%InitialTrackingTime = particleGroups(npc)%GetReleaseTime(n)
-             particleGroups(npc)%Particles(offset+m)%TrackingTime = particleGroups(npc)%Particles(offset+m)%InitialTrackingTime
-             particleGroups(npc)%Particles(offset+m)%CellNumber = particleGroups(npc)%Particles(m)%CellNumber
-             particleGroups(npc)%Particles(offset+m)%Layer = particleGroups(npc)%Particles(m)%Layer
-             particleGroups(npc)%Particles(offset+m)%Face = particleGroups(npc)%Particles(m)%Face
-             particleGroups(npc)%Particles(offset+m)%LocalX = particleGroups(npc)%Particles(m)%LocalX
-             particleGroups(npc)%Particles(offset+m)%LocalY = particleGroups(npc)%Particles(m)%LocalY
-             particleGroups(npc)%Particles(offset+m)%LocalZ = particleGroups(npc)%Particles(m)%LocalZ
-            end do
-           end do
-          end if
-          particleGroups(npc)%Mass = effParticlesMass
-          particleGroups(npc)%Particles(:)%Mass = particleGroups(npc)%Mass
+    !      ! Initialize particle data for all additional releases
+    !      if(particleGroups(npc)%GetReleaseTimeCount() .gt. 1) then
+    !       do n = 2, particleGroups(npc)%GetReleaseTimeCount()
+    !        offset = (n - 1) * singleReleaseParticleCount
+    !        do m = 1, singleReleaseParticleCount
+    !         idmax = idmax + 1
+    !         seqNumber = seqNumber + 1
+    !         particleGroups(npc)%Particles(offset+m)%Id = idmax
+    !         particleGroups(npc)%Particles(offset+m)%SequenceNumber = seqNumber
+    !         particleGroups(npc)%Particles(offset+m)%Group = particleGroups(npc)%Group
+    !         particleGroups(npc)%Particles(offset+m)%Drape = particleGroups(npc)%Particles(m)%Drape
+    !         particleGroups(npc)%Particles(offset+m)%Status = particleGroups(npc)%Particles(m)%Status
+    !         particleGroups(npc)%Particles(offset+m)%InitialCellNumber = particleGroups(npc)%Particles(m)%InitialCellNumber
+    !         particleGroups(npc)%Particles(offset+m)%InitialLayer = particleGroups(npc)%Particles(m)%InitialLayer
+    !         particleGroups(npc)%Particles(offset+m)%InitialFace = particleGroups(npc)%Particles(m)%InitialFace
+    !         particleGroups(npc)%Particles(offset+m)%InitialLocalX = particleGroups(npc)%Particles(m)%InitialLocalX
+    !         particleGroups(npc)%Particles(offset+m)%InitialLocalY = particleGroups(npc)%Particles(m)%InitialLocalY
+    !         particleGroups(npc)%Particles(offset+m)%InitialLocalZ = particleGroups(npc)%Particles(m)%InitialLocalZ
+    !         particleGroups(npc)%Particles(offset+m)%InitialTrackingTime = particleGroups(npc)%GetReleaseTime(n)
+    !         particleGroups(npc)%Particles(offset+m)%TrackingTime = particleGroups(npc)%Particles(offset+m)%InitialTrackingTime
+    !         particleGroups(npc)%Particles(offset+m)%CellNumber = particleGroups(npc)%Particles(m)%CellNumber
+    !         particleGroups(npc)%Particles(offset+m)%Layer = particleGroups(npc)%Particles(m)%Layer
+    !         particleGroups(npc)%Particles(offset+m)%Face = particleGroups(npc)%Particles(m)%Face
+    !         particleGroups(npc)%Particles(offset+m)%LocalX = particleGroups(npc)%Particles(m)%LocalX
+    !         particleGroups(npc)%Particles(offset+m)%LocalY = particleGroups(npc)%Particles(m)%LocalY
+    !         particleGroups(npc)%Particles(offset+m)%LocalZ = particleGroups(npc)%Particles(m)%LocalZ
+    !        end do
+    !       end do
+    !      end if
+    !      particleGroups(npc)%Mass = effParticlesMass
+    !      particleGroups(npc)%Particles(:)%Mass = particleGroups(npc)%Mass
 
-        else
+    !    else
 
-          write(outUnit,'(A)')'Prescribed boundaries require timeseries simulation'
-          call ustop('Prescribed boundaries require timeseries simulation. Stop.') 
+    !      write(outUnit,'(A)')'Prescribed boundaries require timeseries simulation'
+    !      call ustop('Prescribed boundaries require timeseries simulation. Stop.') 
 
-        end if 
+    !    end if 
 
-        ! Increment valid counter
-        nValidPrescribedConditions = nValidPrescribedConditions + 1 
+    !    ! Increment valid counter
+    !    nValidPrescribedConditions = nValidPrescribedConditions + 1 
 
-        ! Assign the solute id 
-        !if ( this%ParticlesMassOption .eq. 2 ) then 
-        !  particleGroups(nic)%Solute = soluteId
-        !end if 
+    !    ! Assign the solute id 
+    !    !if ( this%ParticlesMassOption .eq. 2 ) then 
+    !    !  particleGroups(nic)%Solute = soluteId
+    !    !end if 
 
-        ! Incremenent particleCount
-        particleCount = particleCount + particleGroups(npc)%TotalParticleCount
+    !    ! Incremenent particleCount
+    !    particleCount = particleCount + particleGroups(npc)%TotalParticleCount
 
-      end do ! nPrescribedConditions 
+    !  end do ! nPrescribedConditions 
 
-    end if ! nPrescribedConditions .gt. 0 
-    write(outUnit, '(a,i10)') 'Total number of allocated particles on prescribed conditions = ', particleCount
-    write(outUnit, *)
+    !end if ! nPrescribedConditions .gt. 0 
+    !write(outUnit, '(a,i10)') 'Total number of allocated particles on prescribed conditions = ', particleCount
+    !write(outUnit, *)
 
 
-    ! Extend simulationdata to include these particle groups
-    if ( nValidPrescribedConditions .gt. 0 ) then 
-      newParticleGroupCount = this%ParticleGroupCount + nValidPrescribedConditions
-      allocate(newParticleGroups(newParticleGroupCount))
-      ! If some particle groups existed previously
-      if( this%ParticleGroupCount .gt. 0 ) then 
-        do n = 1, this%ParticleGroupCount
-          newParticleGroups(n) = this%ParticleGroups(n)
-        end do
-      end if 
-      pgCount = 0
-      do n = 1, nPrescribedConditions
-        if ( particleGroups(n)%TotalParticleCount .eq. 0 ) cycle
-        pgCount = pgCount + 1 
-        newParticleGroups(pgCount+this%ParticleGroupCount) = particleGroups(n)
-      end do 
-      if( this%ParticleGroupCount .gt. 0 ) then 
-        call move_alloc( newParticleGroups, this%ParticleGroups )
-        this%ParticleGroupCount = newParticleGroupCount
-        this%TotalParticleCount = this%TotalParticleCount + particleCount
-      else
-        this%ParticleGroupCount = newParticleGroupCount
-        this%TotalParticleCount = particleCount
-        allocate(this%ParticleGroups(this%ParticleGroupCount))
-        call move_alloc( newParticleGroups, this%ParticleGroups )
-      end if
-    end if
+    !! Extend simulationdata to include these particle groups
+    !if ( nValidPrescribedConditions .gt. 0 ) then 
+    !  newParticleGroupCount = this%ParticleGroupCount + nValidPrescribedConditions
+    !  allocate(newParticleGroups(newParticleGroupCount))
+    !  ! If some particle groups existed previously
+    !  if( this%ParticleGroupCount .gt. 0 ) then 
+    !    do n = 1, this%ParticleGroupCount
+    !      newParticleGroups(n) = this%ParticleGroups(n)
+    !    end do
+    !  end if 
+    !  pgCount = 0
+    !  do n = 1, nPrescribedConditions
+    !    if ( particleGroups(n)%TotalParticleCount .eq. 0 ) cycle
+    !    pgCount = pgCount + 1 
+    !    newParticleGroups(pgCount+this%ParticleGroupCount) = particleGroups(n)
+    !  end do 
+    !  if( this%ParticleGroupCount .gt. 0 ) then 
+    !    call move_alloc( newParticleGroups, this%ParticleGroups )
+    !    this%ParticleGroupCount = newParticleGroupCount
+    !    this%TotalParticleCount = this%TotalParticleCount + particleCount
+    !  else
+    !    this%ParticleGroupCount = newParticleGroupCount
+    !    this%TotalParticleCount = particleCount
+    !    allocate(this%ParticleGroups(this%ParticleGroupCount))
+    !    call move_alloc( newParticleGroups, this%ParticleGroups )
+    !  end if
+    !end if
 
         
     ! Close bc data file
