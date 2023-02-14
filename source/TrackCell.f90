@@ -405,8 +405,8 @@ contains
       ! Add the initial location to the TrackingPoints list
       call trackCellResult%TrackingPoints%AddItem(initialLocation)
      
-      ! OBS
       ! Initialize subCellResult with initial locations
+      ! Will be used by sink observations
       call subCellResult%InitializeLocation( initialLocation ) 
       ! Assign subCellResult to TrackSubCell (temp)
       this%TrackSubCell%TrackSubCellResult = subCellResult
@@ -439,7 +439,7 @@ contains
           if(this%TrackingOptions%StopAtWeakSources) then
               if(this%CellData%SourceFlow .ne. 0.0d0) then 
                   trackCellResult%Status = trackCellResult%Status_StopAtWeakSource()
-                  return;
+                  return
               else
                   if(.not. this%SteadyState) stopIfNoSubCellExit = .false.
               end if
@@ -448,7 +448,7 @@ contains
           if(this%TrackingOptions%StopAtWeakSinks) then
               if(this%CellData%SinkFlow .ne. 0.0d0) then
                   trackCellResult%Status = trackCellResult%Status_StopAtWeakSink()
-                  return;
+                  return
               else
                   if(.not. this%SteadyState) stopIfNoSubCellExit = .false.
               end if
