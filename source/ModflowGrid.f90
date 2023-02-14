@@ -38,7 +38,8 @@ module ModflowGridModule
   function GetLayerCellCount(this, layer) result(fval)
   class(ModflowGridType) :: this
   integer,intent(in) :: layer
-  double precision :: fval
+  !double precision :: fval
+  integer :: fval
   
   fval = this%LayerOffsets(layer + 1) - this%LayerOffsets(layer)
   

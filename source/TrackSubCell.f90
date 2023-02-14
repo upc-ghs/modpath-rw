@@ -3673,10 +3673,7 @@ contains
               neighborSubCellPorosity( this%cornerPorosityIndexes( cornerIndex, m ) ) 
       end do
 
-      ! Each cell contribution factor (1/8)
-      ! simplified implicitly 
       cornerPorosity = sumWeightedPorosity/sumVolume
-
 
       return
 

@@ -5,8 +5,8 @@ module GlobalDataModule
       headuUnit, budgetUnit, traceModeUnit, binPathlineUnit
     integer, save :: inUnit, pathlineUnit, endpointUnit, timeseriesUnit,        &
       mplistUnit, mpsimUnit, traceUnit, budchkUnit, aobsUnit, logUnit
-    integer, save :: dispersionUnit, gpkdeUnit, obsUnit, dspUnit, rwoptsUnit  ! RWPT 
-    integer, save :: spcUnit, icUnit, bcUnit, srcUnit ! RWPT 
+    integer, save :: gpkdeUnit, obsUnit, dspUnit, rwoptsUnit  ! RWPT 
+    integer, save :: spcUnit, icUnit, bcUnit, srcUnit         ! RWPT 
     integer, save :: particleGroupCount
     integer, save :: gridFileType
     integer, save :: logType

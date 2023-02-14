@@ -915,8 +915,6 @@ contains
     class(ModflowRectangularGridType),intent(in) :: grid
     ! local
     integer :: nObservations  = 0
-    character(len=100) :: tempChar
-    integer :: layerCount, rowCount, columnCount, cellCount
     type( ObservationType ), pointer :: obs => null()
     integer :: readStyle, no, cellNumber, layer, row, column, ocount
     integer,dimension(:),allocatable :: obsCells
@@ -928,6 +926,11 @@ contains
     character(len=200) :: line
     character(len=24)  :: aname(1)
     DATA aname(1) /'                OBSCELLS'/
+    integer :: baseObsUnit    = 1000
+    integer :: baseObsAuxUnit = 4000 
+    integer :: baseObsRecUnit = 7000 
+    character(len=16) :: tempChar='tmp'
+    character(len=16) :: recordChar='rec'
     !--------------------------------------------------------------
 
     write(outUnit, *)
@@ -961,19 +964,13 @@ contains
       ! Allocate observation arrays
       call this%TrackingOptions%InitializeObservations( nObservations )
 
-      ! It might be needed downstream
-      layerCount  = grid%LayerCount
-      rowCount    = grid%RowCount
-      columnCount = grid%ColumnCount
-      cellCount   = grid%CellCount
-      
       ! Allocate id arrays in tracking options
       if(allocated(this%TrackingOptions%isObservation)) & 
           deallocate(this%TrackingOptions%isObservation)
-      allocate(this%TrackingOptions%isObservation(cellCount))
+      allocate(this%TrackingOptions%isObservation(grid%CellCount))
       if(allocated(this%TrackingOptions%idObservation)) & 
           deallocate(this%TrackingOptions%idObservation)
-      allocate(this%TrackingOptions%idObservation(cellCount))
+      allocate(this%TrackingOptions%idObservation(grid%CellCount))
       this%TrackingOptions%isObservation(:) = .false.
       this%TrackingOptions%idObservation(:) = -999
 
@@ -984,33 +981,51 @@ contains
         ! A pointer
         obs => this%TrackingOptions%Observations(nc) 
 
-        ! Read observation id
-        read(obsUnit, '(a)', iostat=ioInUnit) line
+        ! Read obs name/stringid
+        read(obsUnit, '(a)') line
         icol = 1
-        call urword(line, icol, istart, istop, 2, n, r, 0, 0)
+        call urword(line,icol,istart,istop,0,n,r,0,0)
+        obs%stringid = line(istart:istop)
+
+        ! Assign it increasingly, internal id
         obs%id = n 
-       
-        ! Read observation filename and assign an output unit 
+
+        ! Report which OBS is being read 
+        write(outUnit,'(A,A)') 'Reading OBS specification: ', trim(adjustl(obs%stringid))
+
+
+        ! Interpret observation kind
+        read(obsUnit, '(a)') line
+        icol = 1
+        call urword(line,icol,istart,istop,1,n,r,0,0)
+        obs%stylestringid = line(istart:istop)
+
+        ! Assing the observation style
+        select case(obs%stylestringid)
+        case('RES','RESIDENT')
+          obs%style = 1
+          ! Report
+          write(outUnit,'(A)') 'Observation is of RESIDENT concentration type.'
+        case('SINK','FLUX')
+          obs%style = 2
+          ! Report 
+          write(outUnit,'(A)') 'Observation is of SINK type for flux concentrations.'
+          ! Flag used to indicate that needs to save flow-rates
+          this%TrackingOptions%anySinkObservation = .true.
+        end select
+
+        ! Read observation filename and assign output units 
         read(obsUnit, '(a)') obs%outputFileName
         icol = 1
         call urword(obs%outputFileName,icol,istart,istop,0,n,r,0,0)
         obs%outputFileName = obs%outputFileName(istart:istop)
-        obs%outputUnit     = 5500 + nc
-        obs%auxOutputUnit  = 7700 + nc
-        tempChar           = 'temp'
+        obs%outputUnit     = baseObsUnit + nc
+        obs%auxOutputUnit  = baseObsAuxUnit + nc
         write( unit=obs%auxOutputFileName, fmt='(a)')&
             trim(adjustl(tempChar))//'_'//trim(adjustl(obs%outputFileName))
-
-        ! Read observation style (sink obs, normal count of particles obs)
-        read(obsUnit, '(a)', iostat=ioInUnit) line
-        icol = 1
-        call urword(line, icol, istart, istop, 2, n, r, 0, 0)
-        obs%style = n 
-
-        ! Is the style that requires flow-rates ?
-        if ( obs%style .eq. 2 ) then 
-          this%TrackingOptions%anySinkObservation = .true.
-        end if 
+        obs%recOutputUnit  = baseObsRecUnit + nc
+        write( unit=obs%recOutputFileName, fmt='(a)')&
+            trim(adjustl(recordChar))//'_'//trim(adjustl(obs%outputFileName))
 
         ! Read observation cell option
         ! Determine how to read cells
@@ -1018,6 +1033,13 @@ contains
         icol = 1
         call urword(line, icol, istart, istop, 2, n, r, 0, 0)
         obs%cellOption = n 
+  
+        !print *, obs%outputFileName
+        !print *, obs%auxOutputFileName
+        !print *, obs%recOutputFileName
+        !print *, 'CELLOPTION', obs%cellOption
+        !call exit(0)
+
 
         ! Load observation cells
         select case( obs%cellOption )
@@ -1045,14 +1067,18 @@ contains
             readStyle = n
 
             ! Load the observation cells
-            if( readStyle .eq. 1) then
+            if( readStyle .eq. 0) then
               ! Read as layer, row, column
               do no = 1, obs%nCells
                 read(obsUnit, *) layer, row, column
-                call ugetnode(layerCount, rowCount, columnCount, layer, row, column,cellNumber)
+                call ugetnode(& 
+                  grid%LayerCount, & 
+                  grid%RowCount,   & 
+                  grid%ColumnCount,&
+                  layer, row, column,cellNumber)
                 obs%cells(no) = cellNumber
               end do 
-            else if ( readStyle .eq. 2 ) then 
+            else if ( readStyle .eq. 1 ) then 
               do no = 1, obs%nCells
                 read(obsUnit,*)  cellNumber
                 obs%cells(no) = cellNumber
@@ -1481,10 +1507,7 @@ contains
 
       ! Set release time for initial condition.
       ! It is an initial condition, then
-      ! assumes release at referencetime
-      ! VERIFY!
-      ! IT SHOULD BE ZERO!???
-      !initialReleaseTime = this%ReferenceTime 
+      ! assumes release at the beginning
       initialReleaseTime = 0d0
       call particleGroups(nic)%SetReleaseOption1(initialReleaseTime)
 
@@ -2451,9 +2474,9 @@ contains
     character(len=20) :: srcName
     character(len=20) :: srcSpecKind, srcPkgName
     integer :: nAuxNames, naux, nTimes, nt, nCells, nc, nd, nr
-    character(len=16),allocatable,dimension(:) :: srcPkgTypes
-    character(len=16),allocatable,dimension(:) :: srcPkgNames
-    character(len=16),allocatable,dimension(:) :: auxNames
+    character(len=20),allocatable,dimension(:) :: srcPkgTypes
+    character(len=20),allocatable,dimension(:) :: srcPkgNames
+    character(len=20),allocatable,dimension(:) :: auxNames
     integer,allocatable,dimension(:)           :: srcIFaceOpt
     logical :: validAuxNames = .false.
     doubleprecision, allocatable, dimension(:) :: auxMasses
@@ -2488,7 +2511,7 @@ contains
     integer :: m, idmax, seqNumber, cellCounter, offset, cellNumber
     integer :: nValidPGroup = 0
     integer :: newParticleGroupCount, pgCount
-    integer :: iFaceOptionInt, iFaceNumber
+    integer :: iFaceOptionInt, iFaceNumber, defaultIFaceNumber
     logical :: iFaceOption
     integer :: cellReadFormat
     integer :: layer, row, column
@@ -2503,6 +2526,7 @@ contains
     doubleprecision, allocatable, dimension(:,:,:) :: concTimeseries      ! nt x nc x ns 
     doubleprecision, allocatable, dimension(:,:)   :: flowDataTimeseries  ! nt x ncells
     integer, allocatable, dimension(:)             :: intervalIndex
+    integer, allocatable, dimension(:)             :: soluteIds
     doubleprecision :: minT, maxT 
     integer :: readNTemplates
     integer, allocatable, dimension(:,:) :: nSubDivisions
@@ -2576,7 +2600,7 @@ contains
       ! Interpret specification kind
       read(srcUnit, '(a)') line
       icol = 1
-      call urword(line,icol,istart,istop,0,n,r,0,0)
+      call urword(line,icol,istart,istop,1,n,r,0,0)
       srcSpecKind = line(istart:istop)
 
       select case (srcSpecKind) 
@@ -2609,7 +2633,7 @@ contains
           ! Read the pkg/budget header
           read(srcUnit, '(a)') line
           icol = 1
-          call urword(line,icol,istart,istop,0,n,r,0,0)
+          call urword(line,icol,istart,istop,1,n,r,0,0)
           srcPkgNames(nsb) = line(istart:istop)
 
           ! Read iFaceOption
@@ -2642,6 +2666,14 @@ contains
           if ( allocated( auxSubDivisions ) ) deallocate( auxSubDivisions ) 
           allocate( auxSubDivisions( nAuxNames,3 ) )
 
+          ! Read the solute ids if the simulation demands  
+          if ( ( this%ParticlesMassOption .eq. 2 ) ) then 
+            write(outUnit,'(A)') 'Will try to read solute ids due to ParticlesMassOption.eq.2 '
+            ! Read solute id
+            if( allocated( soluteIds ) ) deallocate( soluteIds )
+            allocate( soluteIds( nSpecies ) )
+          end if
+
           ! Loop over aux names and interpret data
           ! Requires some health checks
           do naux = 1, nAuxNames
@@ -2650,7 +2682,7 @@ contains
 
             ! auxName
             icol = 1
-            call urword(line,icol,istart,istop,0,n,r,0,0)
+            call urword(line,icol,istart,istop,1,n,r,0,0)
             auxNames(naux) = line(istart:istop)
 
             ! particles mass
@@ -2666,11 +2698,13 @@ contains
             auxSubDivisions(naux,3) = n 
             ! Validate template
 
-            ! SOMETHING LIKE THIS
-            ! solute id depending on solutes option
-            !if ( this%ParticlesMassOption .eq. 2 ) then 
-            !  particleGroups(nic)%Solute = soluteId
-            !end if
+            ! Read solute id depending on solutes option
+            if ( this%ParticlesMassOption .eq. 2 ) then 
+              call urword(line,icol,istart,istop,2,n,r,0,0)
+              ! If the soluteid is not given, assign default 1 
+              soluteIds(naux) = n 
+              if ( n.lt.1 ) soluteIds(naux) = 1
+            end if
 
           end do ! naux = 1, nAuxNames 
         
@@ -2788,6 +2822,11 @@ contains
 
             ! Increase pgroup counter
             particleGroups(naux)%Group = this%ParticleGroupCount + naux
+
+            ! Assign soluteIds if simulation demands
+            if ( this%ParticlesMassOption .eq. 2 ) then 
+              particleGroups(naux)%Solute = soluteIds(naux)
+            end if
 
             ! Correction to the particle template based on dimension mask
             ! If dimension is active, leave the given value. 
@@ -3146,7 +3185,9 @@ contains
             end if
           end if
 
+
         end do ! nsb=1,nSrcBudgets
+
 
       ! Concentrations, injection times and cells are specified by the user.
       ! Flow-rates are extracted from a given BUDGET header
@@ -3176,21 +3217,24 @@ contains
           ! Read the budget header
           read(srcUnit, '(a)') line
           icol = 1
-          call urword(line,icol,istart,istop,0,n,r,0,0)
+          call urword(line,icol,istart,istop,1,n,r,0,0)
           srcPkgNames(nsb) = line(istart:istop)
+
+          ! Report
+          write(outUnit,'(A,A)') 'Source budget header: ', trim(adjustl(srcPkgNames(nsb)))
 
           ! Read iFaceOption
           call urword(line,icol,istart,istop,2,n,r,0,0)
           srcIFaceOpt(nsb) = n 
 
-          ! Report
-          write(outUnit,'(A,A)') 'Source budget header: ', trim(adjustl(srcPkgNames(nsb)))
+          ! Read defaultIFaceNumber
+          call urword(line,icol,istart,istop,2,n,r,0,0)
+          defaultIFaceNumber = n 
 
           ! Activate/deactivate iFaceOption for this source
           iFaceOption = .false.
           if ( srcIFaceOpt(nsb) .gt. 0 ) then 
             iFaceOption = .true.
-            write(outUnit,'(A,A)') 'Will interpret IFACE while loading cells.'
           end if  
 
           ! Read cell format 
@@ -3206,10 +3250,16 @@ contains
           case(0)
             write(outUnit,'(A)') 'Cells will be taken from the budget header.'
             readCellsFromBudget = .true.
-            nCells = 0
+            ! nCells is determined after extracting flow-rates
+            if ( iFaceOption ) then 
+              write(outUnit,'(A)') 'IFACE option is activated for this source.'
+            end if 
           ! As list of given cells
           case(1)
             write(outUnit,'(A)') 'Cells are expected to be specified as a list.'
+            if ( iFaceOption ) then 
+              write(outUnit,'(A)') 'Will read IFACE next to the cell ids.'
+            end if 
             ! Number of cells
             nCells = 0
             call urword(line,icol,istart,istop,2,n,r,0,0)
@@ -3228,7 +3278,7 @@ contains
             ! Different concentration per cell
             concPerCell = .false.
             call urword(line,icol,istart,istop,2,n,r,0,0)
-            if ( n .gt. 0 ) then
+            if ( n.gt.0 ) then
               concPerCell = .true. 
               write(outUnit,'(A)') 'Will consider different concentration per cell. Expects nSpecies*nCells columns.'
             end if  
@@ -3260,6 +3310,7 @@ contains
                   cellNumber = n 
                   call urword(line,icol,istart,istop,2,n,r,0,0)
                   iFaceNumber = n 
+                  if ( n.lt.1 ) iFaceNumber = defaultIFaceNumber
                   srcCellNumbers(nc) = cellNumber
                   srcCellIFaces(nc)  = iFaceNumber
                 end do
@@ -3292,6 +3343,7 @@ contains
                   column = n 
                   call urword(line,icol,istart,istop,2,n,r,0,0)
                   iFaceNumber = n 
+                  if ( n.lt.1 ) iFaceNumber = defaultIFaceNumber
                   call ugetnode(&
                     grid%LayerCount,   &
                     grid%RowCount,     &
@@ -3306,6 +3358,10 @@ contains
           ! As 3d array
           case(2)
             write(outUnit,'(A)') 'Cells are expected to be specified as array.'
+
+            if ( iFaceOption ) then 
+              write(outUnit,'(A)') 'IFACE option is activated for this source.'
+            end if 
 
             ! Required for u3d
             if(allocated(cellsHolder)) deallocate(cellsHolder)
@@ -3350,6 +3406,13 @@ contains
               cellCounter = cellCounter + 1
               srcCellNumbers(cellCounter) = nc
             end do
+
+            ! Apply default iface if the iface option was given 
+            if ( iFaceOption ) then 
+              if ( allocated(srcCellIFaces) ) deallocate( srcCellIFaces )
+              allocate( srcCellIFaces(nCells) )
+              srcCellIFaces(:) = defaultIFaceNumber
+            end if
 
             if ( allocated( cellsHolder ) ) deallocate( cellsHolder ) 
           ! Invalid
@@ -3414,12 +3477,15 @@ contains
             call ustop('Error: invalid particles mass. Verify that all are .gt. 0. Stop.')
           end if 
 
-
           ! Read the solute ids if the simulation demands  
-          ! Something that loops over the species to read/load their soluteid
-          ! call urword(line,icol,istart,istop,2,n,r,0,0)
+          if ( ( this%ParticlesMassOption .eq. 2 ) ) then 
+            write(outUnit,'(A)') 'Will try to read solute ids due to ParticlesMassOption.eq.2 '
+            ! Read solute id
+            if( allocated( soluteIds ) ) deallocate( soluteIds )
+            allocate( soluteIds( nSpecies ) )
+            read(srcUnit,*) (soluteIds(ns),ns=1,nSpecies)
+          end if
    
-
           ! Read the number of time intervals
           read(srcUnit, '(a)') line
           icol = 1
@@ -3721,6 +3787,13 @@ contains
             end if
           end do 
 
+          ! Apply default iface if cells were read from budget
+          if ( iFaceOption.and.readCellsFromBudget ) then 
+            if ( allocated(srcCellIFaces) ) deallocate( srcCellIFaces )
+            allocate( srcCellIFaces(nCells) )
+            srcCellIFaces(:) = defaultIFaceNumber
+          end if
+
 
           ! From here until the creation of particles the process 
           ! is the same than for the AUX format so it could be considered 
@@ -3754,7 +3827,6 @@ contains
           auxSubDivisions = nSubDivisions
           if ( (.not. iFaceOption).and.allocated(srcCellIFaces) ) then
             deallocate( srcCellIFaces ) 
-            allocate( srcCellIFaces(nCells) ) 
           end if
           if ( allocated(auxMasses) ) deallocate( auxMasses ) 
           auxMasses = particlesMass
@@ -3809,6 +3881,11 @@ contains
 
             ! Increase pgroup counter
             particleGroups(naux)%Group = this%ParticleGroupCount + naux
+
+            ! Assign soluteIds if simulation demands
+            if ( this%ParticlesMassOption .eq. 2 ) then 
+              particleGroups(naux)%Solute = soluteIds(naux)
+            end if
 
             ! Correction to the particle template based on dimension mask
             ! If dimension is active, leave the given value. 

@@ -21,8 +21,7 @@ program MPath7
       disUnit, tdisUnit, gridMetaUnit, headUnit, headuUnit, budgetUnit,       &
       inUnit, pathlineUnit, endpointUnit, timeseriesUnit, binPathlineUnit,    &
       mplistUnit, traceUnit, budchkUnit, aobsUnit, logUnit, mpsimUnit,        &
-      dispersionUnit, gpkdeUnit, obsUnit, dspUnit, rwoptsUnit, spcUnit,       & ! RWPT
-      icUnit, bcUnit, srcUnit,                                                & ! RWPT
+      gpkdeUnit,obsUnit,dspUnit,rwoptsUnit,spcUnit,icUnit,bcUnit,srcUnit,     & ! RWPT
       traceModeUnit, mpnamFile, mplistFile, mpbasFile, disFile, tdisFile,     &
       gridFile, headFile, budgetFile, mpsimFile, traceFile,  gridMetaFile,    &
       mplogFile, logType, particleGroupCount, gridFileType, gpkdeFile,        & ! RWPT
@@ -198,16 +197,15 @@ program MPath7
   traceModeUnit = 115
   binPathlineUnit = 116
   gridMetaUnit = 117
-  dispersionUnit = 118 ! RWPT ! TO BE DEPRECATED
-  gpkdeUnit      = 119 ! RWPT
-  obsUnit        = 120 ! RWPT
-  dspUnit        = 121 ! RWPT ! TEMP
-  rwoptsUnit     = 122 ! RWPT
-  spcUnit        = 123 ! RWPT
-  icUnit         = 124 ! RWPT
-  bcUnit         = 125 ! RWPT
-  srcUnit        = 126 ! RWPT
-  baseTimeseriesUnit = 6600 ! OpenMP
+  gpkdeUnit      = 118 ! RWPT
+  obsUnit        = 119 ! RWPT
+  dspUnit        = 120 ! RWPT
+  rwoptsUnit     = 121 ! RWPT
+  spcUnit        = 122 ! RWPT
+  icUnit         = 123 ! RWPT
+  bcUnit         = 124 ! RWPT
+  srcUnit        = 125 ! RWPT
+  baseTimeseriesUnit = 660 ! OpenMP
   !-----------------------------------------------------------------------
 
   ! Parse the command line for simulation file name, log file name, and options

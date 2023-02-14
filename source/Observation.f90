@@ -10,13 +10,17 @@ module ObservationModule
     integer, allocatable, dimension(:) :: nRecordsCell
     integer                            :: nAuxRecords = 0
     integer                            :: id
+    character(len=20)                  :: stringid
     integer                            :: style
+    character(len=20)                  :: stylestringid
     integer                            :: cellOption
     integer                            :: timeOption
-    character(len=300)                 :: outputFileName
     integer                            :: outputUnit
+    character(len=200)                 :: outputFileName
+    integer                            :: recOutputUnit
+    character(len=200)                 :: recOutputFileName
     integer                            :: auxOutputUnit
-    character(len=300)                 :: auxOutputFileName
+    character(len=200)                 :: auxOutputFileName
   end type
 
 
