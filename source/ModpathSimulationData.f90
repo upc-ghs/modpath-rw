@@ -1043,8 +1043,8 @@ contains
           ! Copy outputFileName to recOutputFileName
           obs%recOutputUnit = baseObsRecUnit + nobs
           obs%recOutputFileName = obs%outputFileName
-        case(1)
-        !case(1,2)
+        !case(1)
+        case(1,2)
           ! Records and postprocess, also initialize aux params
           ! cases 1 and 2, only aux unit is initialized as scratch
           ! case 2 both records and aux units are initailized as scratch

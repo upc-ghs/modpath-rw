@@ -791,6 +791,14 @@ program MPath7
           open( unit=obs%outputUnit, &
                 file=obs%outputFileName,& 
                 status='replace', form='formatted', access='sequential')
+        case(2)
+          ! Records as temporary binary
+          open( unit=obs%recOutputUnit, &
+                status='scratch', form='unformatted',&
+                access='stream', action='readwrite')
+          open( unit=obs%outputUnit, &
+                file=obs%outputFileName,& 
+                status='replace', form='formatted', access='sequential')
         end select
 
       end if
@@ -1292,6 +1300,10 @@ program MPath7
                           ! If it is part of the cells in the obs, write
                           ! record to auxOutputUnit
                           ! Temp proxy !
+                          !call WriteTimeseriesRecordCritical(& 
+                          !    p%SequenceNumber, p%ID, groupIndex, ktime, &
+                          !      nt, pCoordTP, geoRef, obs%recOutputUnit, & 
+                          !  timeseriesRecordCounts, timeseriesTempUnits  )
                           call WriteTimeseriesRecordCritical(& 
                               p%SequenceNumber, p%ID, groupIndex, ktime, &
                                 nt, pCoordTP, geoRef, obs%recOutputUnit, & 
@@ -1618,7 +1630,9 @@ program MPath7
 
         ! Load file records into array
         rewind( obs%recOutputUnit )
-        do n = 1, nlines
+        if (obs%outputOption.ne.2) then
+          ! Read as formatted file
+          do n = 1, nlines
             ! Read from obs file
             ! Based on TS record, it could be reduced 
             read( obs%recOutputUnit, '(2I8,es18.9e3,i10,i5,2i10,6es18.9e3,i10)')          &
@@ -1638,7 +1652,29 @@ program MPath7
             activeParticleMasses(n) = &
             simulationData%ParticleGroups(groupIndex)%Particles(particleID)%Mass/&
                                             simulationData%Retardation(cellNumber)
-        end do 
+          end do 
+        else
+          ! Read as binary ile
+          do n = 1, nlines
+            read( obs%recOutputUnit ) &
+              timePointIndex, timeStep, initialTime, sequenceNumber, groupIndex,  &
+              particleID, cellNumber, pCoord%LocalX, pCoord%LocalY, pCoord%LocalZ, &
+              modelX, modelY, pCoord%GlobalZ, pCoord%Layer
+            ! Needs some kind of understanding of the particle group, and that it
+            ! means another solute ( column? )
+            activeParticleCoordinates(n,1) = initialTime 
+            activeParticleCoordinates(n,2) = groupIndex
+
+            ! A similar access could be used for getting soluteId from 
+            ! the particle directly, avoiding the identification stage 
+            ! coming further down
+
+            ! Particle mass corrected by retardation factor: dissolved mass 
+            activeParticleMasses(n) = &
+            simulationData%ParticleGroups(groupIndex)%Particles(particleID)%Mass/&
+                                            simulationData%Retardation(cellNumber)
+          end do 
+        end if
 
         ! Allocate gpkde
         if( allocated( gpkde ) ) deallocate(gpkde)
