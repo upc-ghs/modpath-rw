@@ -794,6 +794,30 @@ program MPath7
         end select
 
       end if
+      ! For a SINK observation
+      if ( obs%style .eq. 2 ) then 
+        ! Assumed already validated at simdata
+        select case(obs%outputOption)
+        case(0)
+          ! Open only records unit in text-plain format
+          open( unit=obs%recOutputUnit, &
+                file=obs%recOutputFileName,& 
+                status='replace', form='formatted', access='sequential')
+        case(1)
+          ! Both records and output unit as text plain 
+          open( unit=obs%recOutputUnit, &
+                file=obs%recOutputFileName,& 
+                status='replace', form='formatted', access='sequential')
+          open( unit=obs%outputUnit, &
+                file=obs%outputFileName,& 
+                status='replace', form='formatted', access='sequential')
+          ! Should be scratch
+          open( unit=obs%auxOutputUnit, &
+                file=obs%auxOutputFileName,& 
+                status='replace', form='formatted', access='sequential')
+        end select
+
+      end if
 
       !open( unit=simulationData%TrackingOptions%Observations(n)%outputUnit, &
       !      file=simulationData%TrackingOptions%Observations(n)%outputFileName,& 
@@ -1460,7 +1484,8 @@ program MPath7
       ! Write sink flow rates only for obs of this kind
       do nobs=1,simulationData%TrackingOptions%nObservations
         obs =>simulationData%TrackingOptions%Observations(nobs)
-        if ( obs%style .ne. 2 ) cycle
+        if ( obs%style .ne. 2 ) cycle ! if no sink, try next
+        if ( .not. obs%doPostprocess ) cycle ! if no postprocess for this obs, try next
         if (allocated(qSinkBuffer))deallocate(qSinkBuffer)
         allocate(qSinkBuffer(obs%nCells))
         do n=1,obs%nCells
@@ -1470,7 +1495,6 @@ program MPath7
         write(obs%auxOutputUnit,qSinkFormat) nt, qSinkBuffer(:)
         obs%nAuxRecords = obs%nAuxRecords + 1 ! Count aux records
       end do
-
   end if
 
 
