@@ -90,7 +90,7 @@ program MPath7
   type(GridProjectedKDEType), allocatable:: gpkde                 ! GPKDE
   type(ModpathCellDataType) :: cellDataBuffer                     ! RWPT
   type(SoluteType), pointer :: solute                             ! RWPT
-  doubleprecision,dimension(:),allocatable :: timePoints
+  !doubleprecision,dimension(:),allocatable :: timePoints
   doubleprecision,dimension(:),allocatable :: tPoint
   integer,dimension(7) :: budgetIntervalBins
   doubleprecision,dimension(6) :: budgetIntervalBreaks
@@ -110,7 +110,8 @@ program MPath7
   doubleprecision :: t, stoptime, maxTime, tsMax, time
   character(len=132) message
   character(len=20) version
-  character(len=75) terminationMessage
+  character(len=100) terminationMessage
+  !character(len=75) terminationMessage
   character(len=80) compilerVersionText
   logical :: isTimeSeriesPoint, timeseriesRecordWritten
       
@@ -156,7 +157,6 @@ program MPath7
   integer :: ompNumThreads
   integer :: ompThreadId
   integer :: baseTimeseriesUnit
-  integer :: timeseriesBinUnit
   integer :: reclen, lastRecord
   integer, allocatable, dimension(:) :: timeseriesTempUnits
   integer, allocatable, dimension(:) :: timeseriesRecordCounts
@@ -534,8 +534,8 @@ program MPath7
   if(simulationData%TotalParticleCount .eq. 0) then
     terminationMessage = 'The simulation was terminated because there are no particles to track. Stop.'
     call ustop(terminationMessage)
-    terminationMessage = 'The simulation was terminated because there are no particles to track.'
-    goto 100 ! Requires initialized clock, so far it is not
+    !terminationMessage = 'The simulation was terminated because there are no particles to track.'
+    !goto 100 ! Requires initialized clock, so far it is not
   end if
 
 
@@ -2030,7 +2030,8 @@ program MPath7
   call WriteParticleSummaryInfo(simulationData, mplistUnit)
 
 
-100 continue    
+
+!100 continue    
 
   ! RWPT
   ! Close observation units if any
@@ -2487,7 +2488,7 @@ program MPath7
          end if
      end if
     
-100 continue
+!100 continue
     return
 500 continue
     call ustop(errMessage)
