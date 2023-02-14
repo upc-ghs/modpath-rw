@@ -2574,7 +2574,7 @@ contains
       ! Interpret specification kind
       read(srcUnit, '(a)') line
       icol = 1
-      call urword(line,icol,istart,istop,0,n,r,0,0)
+      call urword(line,icol,istart,istop,1,n,r,0,0)
       srcSpecKind = line(istart:istop)
 
       select case (srcSpecKind) 
@@ -2607,7 +2607,7 @@ contains
           ! Read the pkg/budget header
           read(srcUnit, '(a)') line
           icol = 1
-          call urword(line,icol,istart,istop,0,n,r,0,0)
+          call urword(line,icol,istart,istop,1,n,r,0,0)
           srcPkgNames(nsb) = line(istart:istop)
 
           ! Read iFaceOption
@@ -2656,7 +2656,7 @@ contains
 
             ! auxName
             icol = 1
-            call urword(line,icol,istart,istop,0,n,r,0,0)
+            call urword(line,icol,istart,istop,1,n,r,0,0)
             auxNames(naux) = line(istart:istop)
 
             ! particles mass
@@ -3191,7 +3191,7 @@ contains
           ! Read the budget header
           read(srcUnit, '(a)') line
           icol = 1
-          call urword(line,icol,istart,istop,0,n,r,0,0)
+          call urword(line,icol,istart,istop,1,n,r,0,0)
           srcPkgNames(nsb) = line(istart:istop)
 
           ! Report
