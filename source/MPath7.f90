@@ -166,6 +166,7 @@ program MPath7
 
   ! Interface for timeseries output protocol
   procedure(TimeseriesWriter), pointer :: WriteTimeseries=>null()
+  procedure(ResidentObsWriter), pointer :: WriteResidentObs=>null()
 !-------------------------------------------------------------------------------
   
   ! Set version
@@ -791,6 +792,7 @@ program MPath7
           open( unit=obs%outputUnit, &
                 file=obs%outputFileName,& 
                 status='replace', form='formatted', access='sequential')
+          WriteResidentObs=> WriteResidentObsRecord
         case(2)
           ! Records as temporary binary
           open( unit=obs%recOutputUnit, &
@@ -799,6 +801,7 @@ program MPath7
           open( unit=obs%outputUnit, &
                 file=obs%outputFileName,& 
                 status='replace', form='formatted', access='sequential')
+          WriteResidentObs=> WriteResidentObsRecordBinary
         end select
 
       end if
@@ -1134,6 +1137,7 @@ program MPath7
 !        !$omp private( pcb, npcb )                       &
         !$omp firstprivate( trackingEngine )             &
         !$omp firstprivate( WriteTimeseries )            &
+        !$omp firstprivate( WriteResidentObs )           &
         !$omp reduction( +:pendingCount )                &
         !$omp reduction( +:activeCount )                 &
         !$omp reduction( +:pathlineRecordCount ) 
@@ -1297,17 +1301,13 @@ program MPath7
                       if ( obs%style .eq. 1 ) then  
                         do nobs=1,obs%nCells
                           if( obs%cells(nobs) .ne. pCoordTP%CellNumber ) cycle
-                          ! If it is part of the cells in the obs, write
-                          ! record to auxOutputUnit
-                          ! Temp proxy !
-                          !call WriteTimeseriesRecordCritical(& 
-                          !    p%SequenceNumber, p%ID, groupIndex, ktime, &
-                          !      nt, pCoordTP, geoRef, obs%recOutputUnit, & 
-                          !  timeseriesRecordCounts, timeseriesTempUnits  )
-                          call WriteTimeseriesRecordCritical(& 
+                          ! If it is part of the cells in the obs,
+                          ! write record
+                          !$omp critical(resobservation)
+                          call WriteResidentObs(& 
                               p%SequenceNumber, p%ID, groupIndex, ktime, &
-                                nt, pCoordTP, geoRef, obs%recOutputUnit, & 
-                            timeseriesRecordCounts, timeseriesTempUnits  )
+                                nt, pCoordTP, geoRef, obs%recOutputUnit  )
+                          !$omp end critical(resobservation)
                         end do 
                       end if
                     end if
@@ -1380,12 +1380,13 @@ program MPath7
                       if ( obs%style .eq. 1 ) then  
                         do nobs=1,obs%nCells
                           if( obs%cells(nobs) .ne. pCoordTP%CellNumber ) cycle
-                          ! If it is part of the cells in the obs, write
-                          ! record to auxOutputUnit
-                          call WriteTimeseriesRecordCritical(& 
+                          ! If it is part of the cells in the obs,
+                          ! write record
+                          !$omp critical( resobservation )
+                          call WriteResidentObs(& 
                               p%SequenceNumber, p%ID, groupIndex, ktime, &
-                                nt, pCoordTP, geoRef, obs%recOutputUnit, & 
-                            timeseriesRecordCounts, timeseriesTempUnits  )
+                                nt, pCoordTP, geoRef, obs%recOutputUnit  ) 
+                          !$omp end critical( resobservation )
                         end do 
                       end if
                     end if
@@ -1598,17 +1599,25 @@ program MPath7
         ! Works for timeseries with uniform time steps
         dTObsSeries = simulationData%TimePoints(2)-simulationData%TimePoints(1)  ! binSize
 
-        ! Read the observation file
-        ! and pass it to gpkde for reconstruction
-    
         ! It needs some obs record count or something
         rewind( obs%recOutputUnit )
         nlines = 0
-        do
-          read(obs%recOutputUnit,*,iostat=io)
-          if (io/=0) exit
-          nlines = nlines + 1
-        end do
+        if (obs%outputOption.ne.2) then
+          do
+            read(obs%recOutputUnit,*,iostat=io)
+            if (io/=0) exit 
+            nlines = nlines + 1
+          end do
+        else
+          do
+            read(obs%recOutputUnit,iostat=io) & 
+              timePointIndex, timeStep, initialTime, sequenceNumber, groupIndex,  &
+              particleID, cellNumber, pCoord%LocalX, pCoord%LocalY, pCoord%LocalZ, &
+              modelX, modelY, pCoord%GlobalZ, pCoord%Layer
+            if (io/=0) exit 
+            nlines = nlines + 1
+          end do
+        end if
 
         ! If no records, don't even try
         if ( nlines .eq. 0 ) then 
