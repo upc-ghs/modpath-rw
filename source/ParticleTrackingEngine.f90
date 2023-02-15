@@ -1132,37 +1132,37 @@ contains
         end if
     
 
-        ! If any observation cells
-        if ( this%TrackingOptions%anySinkObservation ) then
-          ! Determine if the current TrackCell is on 
-          ! array of observations cells and get the corresponding unit
+        !!! If any observation cells
+        !!if ( this%TrackingOptions%anySinkObservation ) then
+        !!  ! Determine if the current TrackCell is on 
+        !!  ! array of observations cells and get the corresponding unit
 
-          ! If this is an observation cell
-          if ( this%TrackingOptions%isObservation(this%TrackCell%CellData%CellNumber) ) then
-            
-            ! Assign the obs pointer
-            no = this%TrackingOptions%idObservation(this%TrackCell%CellData%CellNumber)
-            obs => this%TrackingOptions%Observations( no )  
+        !!  ! If this is an observation cell
+        !!  if ( this%TrackingOptions%isObservation(this%TrackCell%CellData%CellNumber) ) then
+        !!    
+        !!    ! Assign the obs pointer
+        !!    no = this%TrackingOptions%idObservation(this%TrackCell%CellData%CellNumber)
+        !!    obs => this%TrackingOptions%Observations( no )  
 
-            ! Process different kind of observations
-            ! At this point, only strong sink is processed here
-            select case( obs%style )
-              case (2)
-                if(this%TrackCellResult%Status .eq. this%TrackCellResult%Status_StopAtWeakSink()) then
-                  ! If a particle is removed due to strong sink
-                  !$omp critical (sinkobservation)
-                  call WriteObservationSinkCellRecord( this, group, particleID,  &
-                       this%TrackCell,                                           &
-                       obs%recOutputUnit)
-                  !$omp end critical (sinkobservation)
-                end if
-              case default 
-                continue
-            end select 
+        !!    ! Process different kind of observations
+        !!    ! At this point, only strong sink is processed here
+        !!    select case( obs%style )
+        !!      case (2)
+        !!        if(this%TrackCellResult%Status .eq. this%TrackCellResult%Status_StopAtWeakSink()) then
+        !!          ! If a particle is removed due to strong sink
+        !!          !$omp critical (sinkobservation)
+        !!          call WriteObservationSinkCellRecord( this, group, particleID,  &
+        !!               this%TrackCell,                                           &
+        !!               obs%recOutputUnit)
+        !!          !$omp end critical (sinkobservation)
+        !!        end if
+        !!      case default 
+        !!        continue
+        !!    end select 
 
-          end if 
+        !!  end if 
 
-        end if
+        !!end if
 
 
         ! If continueLoop is still set to true, go through the loop again. If set to false, exit the loop now.
@@ -2135,80 +2135,80 @@ subroutine pr_FillNeighborCellDataStructured( this, neighborCellData )
 end subroutine pr_FillNeighborCellDataStructured
 
 
-! OBSERVATION CELLS
-subroutine WriteObservationCellRecord( this, groupIndex, particleID, trackCell, outUnit )
-    !---------------------------------
-    ! Write observation cell record
-    !---------------------------------
-    ! Specifications
-    !---------------------------------
-    implicit none
-    class(ParticleTrackingEngineType) :: this
-    ! input
-    type(TrackCellType), intent(in) :: trackCell
-    integer, intent(in)             :: outUnit, groupIndex, particleID
-    ! local
-    doubleprecision     :: initialGlobalX, initialGlobalY, initialGlobalZ
-    doubleprecision     :: finalGlobalX, finalGlobalY, finalGlobalZ
-    doubleprecision     :: initialTime, finalTime
-    !----------------------------------------------
-
-    initialTime = trackCell%TrackSubCell%TrackSubCellResult%InitialLocation%TrackingTime
-    call this%Grid%ConvertToModelXYZ( trackCell%CellData%CellNumber,      &
-        trackCell%TrackSubCell%TrackSubCellResult%InitialLocation%LocalX, & 
-        trackCell%TrackSubCell%TrackSubCellResult%InitialLocation%LocalY, &
-        trackCell%TrackSubCell%TrackSubCellResult%InitialLocation%LocalZ, &
-        initialGlobalX, initialGlobalY, initialGlobalZ )
-
-    finalTime = trackCell%TrackSubCell%TrackSubCellResult%FinalLocation%TrackingTime
-    call this%Grid%ConvertToModelXYZ( trackCell%CellData%CellNumber,    &
-        trackCell%TrackSubCell%TrackSubCellResult%FinalLocation%LocalX, & 
-        trackCell%TrackSubCell%TrackSubCellResult%FinalLocation%LocalY, &
-        trackCell%TrackSubCell%TrackSubCellResult%FinalLocation%LocalZ, &
-        finalGlobalX, finalGlobalY, finalGlobalZ )
-
-    write(outUnit, '(2I8,8es18.9e3,2I8)')                              &
-      groupIndex, particleID,                                          & 
-      initialTime, initialGlobalX, initialGlobalY, initialGlobalZ,     &
-      finalTime, finalGlobalX, finalGlobalY, finalGlobalZ,             & 
-      this%TrackCellResult%ExitFace, this%TrackCellResult%Status
-
-end subroutine WriteObservationCellRecord
-
-
-subroutine WriteObservationSinkCellRecord( this, groupIndex, particleID, trackCell, outUnit )
-    !-----------------------------------
-    ! Write observation sink cell record
-    !-----------------------------------
-    ! Specifications
-    !-----------------------------------
-    implicit none
-    class(ParticleTrackingEngineType) :: this
-    ! input
-    type(TrackCellType), intent(in) :: trackCell
-    integer, intent(in)             :: outUnit, groupIndex, particleID
-    ! local
-    doubleprecision     :: initialGlobalX, initialGlobalY, initialGlobalZ
-    doubleprecision     :: finalGlobalX, finalGlobalY, finalGlobalZ
-    doubleprecision     :: initialTime, finalTime
-    !----------------------------------------------
-
-    ! Arrival time, particle group and cell id
-    ! Flow rate is read during timeseries advance 
-    initialTime = trackCell%TrackSubCell%TrackSubCellResult%InitialLocation%TrackingTime
-    call this%Grid%ConvertToModelXYZ( trackCell%CellData%CellNumber,      &
-        trackCell%TrackSubCell%TrackSubCellResult%InitialLocation%LocalX, & 
-        trackCell%TrackSubCell%TrackSubCellResult%InitialLocation%LocalY, &
-        trackCell%TrackSubCell%TrackSubCellResult%InitialLocation%LocalZ, &
-        initialGlobalX, initialGlobalY, initialGlobalZ )
-
-    write(outUnit, '(3I8,5es18.9e3)')      &
-      groupIndex, particleID, trackCell%CellData%CellNumber, & 
-      initialTime, initialGlobalX, initialGlobalY, initialGlobalZ, &
-      trackCell%CellData%SinkFlow
-
-
-end subroutine WriteObservationSinkCellRecord
+!! OBSERVATION CELLS
+!subroutine WriteObservationCellRecord( this, groupIndex, particleID, trackCell, outUnit )
+!    !---------------------------------
+!    ! Write observation cell record
+!    !---------------------------------
+!    ! Specifications
+!    !---------------------------------
+!    implicit none
+!    class(ParticleTrackingEngineType) :: this
+!    ! input
+!    type(TrackCellType), intent(in) :: trackCell
+!    integer, intent(in)             :: outUnit, groupIndex, particleID
+!    ! local
+!    doubleprecision     :: initialGlobalX, initialGlobalY, initialGlobalZ
+!    doubleprecision     :: finalGlobalX, finalGlobalY, finalGlobalZ
+!    doubleprecision     :: initialTime, finalTime
+!    !----------------------------------------------
+!
+!    initialTime = trackCell%TrackSubCell%TrackSubCellResult%InitialLocation%TrackingTime
+!    call this%Grid%ConvertToModelXYZ( trackCell%CellData%CellNumber,      &
+!        trackCell%TrackSubCell%TrackSubCellResult%InitialLocation%LocalX, & 
+!        trackCell%TrackSubCell%TrackSubCellResult%InitialLocation%LocalY, &
+!        trackCell%TrackSubCell%TrackSubCellResult%InitialLocation%LocalZ, &
+!        initialGlobalX, initialGlobalY, initialGlobalZ )
+!
+!    finalTime = trackCell%TrackSubCell%TrackSubCellResult%FinalLocation%TrackingTime
+!    call this%Grid%ConvertToModelXYZ( trackCell%CellData%CellNumber,    &
+!        trackCell%TrackSubCell%TrackSubCellResult%FinalLocation%LocalX, & 
+!        trackCell%TrackSubCell%TrackSubCellResult%FinalLocation%LocalY, &
+!        trackCell%TrackSubCell%TrackSubCellResult%FinalLocation%LocalZ, &
+!        finalGlobalX, finalGlobalY, finalGlobalZ )
+!
+!    write(outUnit, '(2I8,8es18.9e3,2I8)')                              &
+!      groupIndex, particleID,                                          & 
+!      initialTime, initialGlobalX, initialGlobalY, initialGlobalZ,     &
+!      finalTime, finalGlobalX, finalGlobalY, finalGlobalZ,             & 
+!      this%TrackCellResult%ExitFace, this%TrackCellResult%Status
+!
+!end subroutine WriteObservationCellRecord
+!
+!
+!subroutine WriteObservationSinkCellRecord( this, groupIndex, particleID, trackCell, outUnit )
+!    !-----------------------------------
+!    ! Write observation sink cell record
+!    !-----------------------------------
+!    ! Specifications
+!    !-----------------------------------
+!    implicit none
+!    class(ParticleTrackingEngineType) :: this
+!    ! input
+!    type(TrackCellType), intent(in) :: trackCell
+!    integer, intent(in)             :: outUnit, groupIndex, particleID
+!    ! local
+!    doubleprecision     :: initialGlobalX, initialGlobalY, initialGlobalZ
+!    doubleprecision     :: finalGlobalX, finalGlobalY, finalGlobalZ
+!    doubleprecision     :: initialTime, finalTime
+!    !----------------------------------------------
+!
+!    ! Arrival time, particle group and cell id
+!    ! Flow rate is read during timeseries advance 
+!    initialTime = trackCell%TrackSubCell%TrackSubCellResult%InitialLocation%TrackingTime
+!    call this%Grid%ConvertToModelXYZ( trackCell%CellData%CellNumber,      &
+!        trackCell%TrackSubCell%TrackSubCellResult%InitialLocation%LocalX, & 
+!        trackCell%TrackSubCell%TrackSubCellResult%InitialLocation%LocalY, &
+!        trackCell%TrackSubCell%TrackSubCellResult%InitialLocation%LocalZ, &
+!        initialGlobalX, initialGlobalY, initialGlobalZ )
+!
+!    write(outUnit, '(3I8,5es18.9e3)')      &
+!      groupIndex, particleID, trackCell%CellData%CellNumber, & 
+!      initialTime, initialGlobalX, initialGlobalY, initialGlobalZ, &
+!      trackCell%CellData%SinkFlow
+!
+!
+!end subroutine WriteObservationSinkCellRecord
 
 
 !subroutine WriteObservationSinkCellRecordNew( particle, groupIndex, particleID, trackCell, outUnit )

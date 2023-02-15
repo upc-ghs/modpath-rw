@@ -1262,6 +1262,23 @@ program MPath7
                   p%Status = 2
               else if(status .eq. trackPathResult%Status_StopAtWeakSink()) then
                   p%Status = 3
+
+                  ! If any observation cells
+                  if ( simulationData%TrackingOptions%anySinkObservation ) then
+                    ! Is this an observation cell ?
+                    if ( &
+                      simulationData%TrackingOptions%isObservation(p%CellNumber) ) then
+                      ! Assign the obs pointer
+                      obs => simulationData%TrackingOptions%Observations(&
+                          simulationData%TrackingOptions%idObservation(p%CellNumber) )
+                      if ( obs%style .ne. 2 ) cycle
+                      ! If a particle is removed due to strong sink
+                      !$omp critical (sinkobservation)
+                      call WriteSinkObsRecord(ktime, nt, p, obs%recOutputUnit)
+                      !$omp end critical (sinkobservation)
+                    end if 
+                  end if
+
               else if(status .eq. trackPathResult%Status_StopAtWeakSource()) then
                   p%Status = 4
               else if(status .eq. trackPathResult%Status_NoExitPossible()) then
