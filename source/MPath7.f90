@@ -125,7 +125,9 @@ program MPath7
   ! Observations
   integer :: nlines, io, irow, krow, nobs, nit, countTS, nTimesHigher, cellNumber 
   integer :: baserow, lastrow, srow, timeIndex, solCount
+  integer :: soluteID
   doubleprecision :: dTObsSeries
+  doubleprecision :: waterVolume, rFactor, particleMass 
   doubleprecision :: initialTime, initialGlobalX, initialGlobalY, initialGlobalZ, QSinkCell 
   doubleprecision, dimension(3) :: sbuffer
   type( ObservationType ), pointer :: obs => null()
@@ -1134,6 +1136,7 @@ program MPath7
         !$omp private( ompThreadId )                     &
         !$omp private( cellDataBuffer )                  &
         !$omp private( obs, nobs )                       &
+        !$omp private( waterVolume )                     &
 !        !$omp private( pcb, npcb )                       &
         !$omp firstprivate( trackingEngine )             &
         !$omp firstprivate( WriteTimeseries )            &
@@ -1302,11 +1305,12 @@ program MPath7
                         do nobs=1,obs%nCells
                           if( obs%cells(nobs) .ne. pCoordTP%CellNumber ) cycle
                           ! If it is part of the cells in the obs,
-                          ! write record
+                          ! get water volume and write record
+                          waterVolume = trackingEngine%TrackCell%CellData%GetWaterVolume()
                           !$omp critical(resobservation)
-                          call WriteResidentObs(& 
-                              p%SequenceNumber, p%ID, groupIndex, ktime, &
-                                nt, pCoordTP, geoRef, obs%recOutputUnit  )
+                          call WriteResidentObs(ktime, nt, p, pCoordTP, &
+                                simulationData%Retardation(pCoordTP%CellNumber), &
+                                waterVolume, obs%recOutputUnit)
                           !$omp end critical(resobservation)
                         end do 
                       end if
@@ -1374,19 +1378,20 @@ program MPath7
                   if ( simulationData%TrackingOptions%anyResObservation ) then  
                     ! Write record for resident observations
                     if ( &
-                      simulationData%TrackingOptions%isObservation(pCoordTP%CellNumber) ) then 
+                      simulationData%TrackingOptions%isObservation(pCoord%CellNumber) ) then 
                       obs => simulationData%TrackingOptions%Observations(&
-                          simulationData%TrackingOptions%idObservation(pCoordTP%CellNumber) )
+                          simulationData%TrackingOptions%idObservation(pCoord%CellNumber) )
                       if ( obs%style .eq. 1 ) then  
                         do nobs=1,obs%nCells
-                          if( obs%cells(nobs) .ne. pCoordTP%CellNumber ) cycle
+                          if( obs%cells(nobs) .ne. pCoord%CellNumber ) cycle
                           ! If it is part of the cells in the obs,
-                          ! write record
-                          !$omp critical( resobservation )
-                          call WriteResidentObs(& 
-                              p%SequenceNumber, p%ID, groupIndex, ktime, &
-                                nt, pCoordTP, geoRef, obs%recOutputUnit  ) 
-                          !$omp end critical( resobservation )
+                          ! get water volume and write record
+                          waterVolume = trackingEngine%TrackCell%CellData%GetWaterVolume()
+                          !$omp critical(resobservation)
+                          call WriteResidentObs(ktime, nt, p, pCoord, &
+                                simulationData%Retardation(pCoord%CellNumber), &
+                                waterVolume, obs%recOutputUnit)
+                          !$omp end critical(resobservation)
                         end do 
                       end if
                     end if
@@ -1611,9 +1616,9 @@ program MPath7
         else
           do
             read(obs%recOutputUnit,iostat=io) & 
-              timePointIndex, timeStep, initialTime, sequenceNumber, groupIndex,  &
-              particleID, cellNumber, pCoord%LocalX, pCoord%LocalY, pCoord%LocalZ, &
-              modelX, modelY, pCoord%GlobalZ, pCoord%Layer
+              timePointIndex, timeStep, initialTime, particleID, particleMass, & 
+                      groupIndex, soluteID, cellNumber, pCoord%Layer, rFactor, & 
+                                  waterVolume, modelX, modelY, pCoord%GlobalZ
             if (io/=0) exit 
             nlines = nlines + 1
           end do
@@ -1644,10 +1649,10 @@ program MPath7
           do n = 1, nlines
             ! Read from obs file
             ! Based on TS record, it could be reduced 
-            read( obs%recOutputUnit, '(2I8,es18.9e3,i10,i5,2i10,6es18.9e3,i10)')          &
-              timePointIndex, timeStep, initialTime, sequenceNumber, groupIndex,  &
-              particleID, cellNumber, pCoord%LocalX, pCoord%LocalY, pCoord%LocalZ, &
-              modelX, modelY, pCoord%GlobalZ, pCoord%Layer
+            read( obs%recOutputUnit,'(2I8,es18.9e3,i10,es18.9e3,2i5,2i10,5es18.9e3)')&
+                    timePointIndex, timeStep, initialTime, particleID, particleMass, & 
+                            groupIndex, soluteID, cellNumber, pCoord%Layer, rFactor, & 
+                                        waterVolume, modelX, modelY, pCoord%GlobalZ
             ! Needs some kind of understanding of the particle group, and that it
             ! means another solute ( column? )
             activeParticleCoordinates(n,1) = initialTime 
@@ -1666,9 +1671,9 @@ program MPath7
           ! Read as binary ile
           do n = 1, nlines
             read( obs%recOutputUnit ) &
-              timePointIndex, timeStep, initialTime, sequenceNumber, groupIndex,  &
-              particleID, cellNumber, pCoord%LocalX, pCoord%LocalY, pCoord%LocalZ, &
-              modelX, modelY, pCoord%GlobalZ, pCoord%Layer
+              timePointIndex, timeStep, initialTime, particleID, particleMass, & 
+                      groupIndex, soluteID, cellNumber, pCoord%Layer, rFactor, & 
+                                  waterVolume, modelX, modelY, pCoord%GlobalZ
             ! Needs some kind of understanding of the particle group, and that it
             ! means another solute ( column? )
             activeParticleCoordinates(n,1) = initialTime 

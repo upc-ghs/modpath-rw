@@ -14,7 +14,7 @@ type,public :: ParticleType
   doubleprecision :: GlobalX, GlobalY
   ! RWPT
   doubleprecision :: Mass   = 1d0
-  integer         :: Solute = 0
+  integer         :: Solute = 1
   ! may be deprecated
   doubleprecision :: DAqueous
 

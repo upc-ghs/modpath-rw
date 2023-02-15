@@ -22,7 +22,6 @@ module ModpathCellDataModule
     ! RWPT: more info for mass transport models could be considered 
     doubleprecision :: ICBound, ICBoundTS 
 
-    
     ! private data
     ! RWPT: remove privates 
     integer :: SubCellRowCount,SubCellColumnCount,ReducedConnectionCount
@@ -91,15 +90,15 @@ module ModpathCellDataModule
     procedure :: FillSubCellFaceAreas      => pr_FillSubCellFaceAreas
     procedure :: FillSubCellFaceFlows      => pr_FillSubCellFaceFlows
     procedure :: GetVolume                 => pr_GetVolume
+    procedure :: GetWaterVolume            => pr_GetWaterVolume
 
-    ! RWPT
+    ! RWPT: could be replaced by getdzrw
     procedure :: VerifyDryCell             => pr_VerifyDryCell
 
   end type
 
+
 contains
-
-
 
 
   function pr_GetDZ(this) result(dz)
@@ -2810,8 +2809,35 @@ contains
         
       return
 
-
   end function pr_GetVolume 
+
+
+  function pr_GetWaterVolume( this ) result( waterVolume )
+  !---------------------------------------------------------
+  !
+  !---------------------------------------------------------
+  implicit none
+  class( ModpathCellDataType ) :: this
+  ! output
+  doubleprecision :: waterVolume
+  ! local
+  doubleprecision :: dx, dy, dz
+  !---------------------------------------------------------
+
+    waterVolume = 0d0
+
+    dx = this%DX
+    dy = this%DY
+    dz = this%GetDZRW() ! brings the saturation
+    
+    ! If dry no water 
+    if ( this%dry ) return
+
+    waterVolume = this%Porosity*dx*dy*dz
+      
+    return
+
+  end function pr_GetWaterVolume 
 
 
   subroutine pr_VerifyDryCell(this)
@@ -2871,25 +2897,24 @@ contains
 
   ! If the layer is convertible, set dz = Head - Bottom if Head < Top
   if(this%LayerType .eq. 1) then
-
-      if(this%Head .lt. this%Top) then 
-          ! if dz < 0, means that the cell is completely dry
-          ! if dz > 0, but Head < Top, cell is partially dry
-          ! this second case can be used for displacing particles by RWPT in 
-          ! that are within the region that is partially saturated.
-          dz = this%Head - this%Bottom
-          this%dry = .false.
-          this%partiallyDry = .true.
-          ! If dz < 0, set dz to an arbitrary, small positive value (MODPATH default)
-          ! RWPT: tighthen the leash
-          if ( &
-              ( dz .lt. 0d0 ) .or. &
-              ( (this%Head - this%Bottom)/dzc .lt. 0.01d0) ) then 
-              dz = this%Top - this%Bottom ! to avoid blow up dzrw/dz
-              this%dry = .true.
-              this%partiallyDry = .false.
-          end if 
+    if(this%Head .lt. this%Top) then 
+      ! if dz < 0, means that the cell is completely dry
+      ! if dz > 0, but Head < Top, cell is partially dry
+      ! this second case can be used for displacing particles by RWPT
+      ! that are within the region that is partially saturated.
+      dz = this%Head - this%Bottom
+      this%dry = .false.
+      this%partiallyDry = .true.
+      ! If dz < 0, set dz to an arbitrary, small positive value (MODPATH default)
+      ! RWPT: tighthen the leash
+      if ( &
+        ( dz .lt. 0d0 ) .or. &
+        ( (this%Head - this%Bottom)/dzc .lt. 0.01d0) ) then 
+        dz = this%Top - this%Bottom ! to avoid blow up dzrw/dz
+        this%dry = .true.
+        this%partiallyDry = .false.
       end if 
+    end if 
   end if
   
   end function pr_GetDZRW

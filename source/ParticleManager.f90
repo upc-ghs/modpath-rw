@@ -9,42 +9,47 @@ module ParticleManagerModule
  
   ! For parallel output in timeseries
   abstract interface
-      subroutine TimeseriesWriter( sequenceNumber, particleID, groupIndex, timeStep, & 
-                 timePointIndex, pCoord, geoRef, outUnit, tsRecordCounts, tsTempUnits)
-          !-------------------------------------------------------------
-          import ParticleCoordinateType
-          import GeoReferenceType
-          !-------------------------------------------------------------
-          type(ParticleCoordinateType),intent(in) :: pCoord
-          type(GeoReferenceType),intent(in) :: geoRef
-          integer,intent(in) :: outUnit, particleID, timePointIndex, & 
-                                groupIndex, timeStep, sequenceNumber
-          integer, dimension(:), intent(inout) :: tsRecordCounts
-          integer, dimension(:) :: tsTempUnits
-      end subroutine TimeseriesWriter
+    subroutine TimeseriesWriter( sequenceNumber, particleID, groupIndex, timeStep, & 
+             timePointIndex, pCoord, geoRef, outUnit, tsRecordCounts, tsTempUnits)
+      !-------------------------------------------------------------
+      import ParticleCoordinateType
+      import GeoReferenceType
+      !-------------------------------------------------------------
+      type(ParticleCoordinateType),intent(in) :: pCoord
+      type(GeoReferenceType),intent(in) :: geoRef
+      integer,intent(in) :: outUnit, particleID, timePointIndex, & 
+                            groupIndex, timeStep, sequenceNumber
+      integer, dimension(:), intent(inout) :: tsRecordCounts
+      integer, dimension(:) :: tsTempUnits
+    end subroutine TimeseriesWriter
   end interface
 
 
   ! Write observation records 
   abstract interface
-      subroutine ResidentObsWriter( sequenceNumber, particleID, groupIndex, timeStep, & 
-                 timePointIndex, pCoord, geoRef, outUnit)
-          !-------------------------------------------------------------
-          import ParticleCoordinateType
-          import GeoReferenceType
-          !-------------------------------------------------------------
-          type(ParticleCoordinateType),intent(in) :: pCoord
-          type(GeoReferenceType),intent(in) :: geoRef
-          integer,intent(in) :: outUnit, particleID, timePointIndex, & 
-                                groupIndex, timeStep, sequenceNumber
-      end subroutine ResidentObsWriter
+    subroutine ResidentObsWriter( timeStep, timePointIndex, particle, &
+                               pCoord, rFactor, waterVolume, outUnit)
+      !-------------------------------------------------------------
+      import ParticleType
+      import ParticleCoordinateType
+      !-------------------------------------------------------------
+      integer,intent(in)                      :: timeStep, timePointIndex
+      type(ParticleType),intent(in)           :: particle
+      type(ParticleCoordinateType),intent(in) :: pCoord
+      doubleprecision, intent(in)             :: rFactor, waterVolume 
+      integer, intent(in)                     :: outUnit
+    end subroutine ResidentObsWriter
   end interface
+
 
   contains
 
   
   subroutine WriteEndpoints(simData, grid, geoRef, outUnit)
   use ModflowRectangularGridModule,only : ModflowRectangularGridType
+  !--------------------------------------------------------------------------------
+  ! Specifications
+  !--------------------------------------------------------------------------------
   implicit none
   integer,intent(in) :: outUnit
   integer :: version, subversion, pgIndex, pIndex, n, face, zone, initialZone,  &
@@ -56,6 +61,7 @@ module ParticleManagerModule
   class(ModflowRectangularGridType),intent(in) :: grid
   type(ModpathSimulationDataType),intent(in),target :: simData
   type(GeoReferenceType),intent(in) :: geoRef
+  !--------------------------------------------------------------------------------
   
   version = 7
   subversion = 2
@@ -119,10 +125,14 @@ module ParticleManagerModule
 
   subroutine WriteTimeseriesHeader(outUnit, trackingDirection, referenceTime,   &
       originX, originY, rotationAngle)
+  !--------------------------------------------------------------------------------
+  ! Specifications
+  !--------------------------------------------------------------------------------
   implicit none
   integer,intent(in) :: outUnit, trackingDirection
   doubleprecision,intent(in) :: referenceTime, originX, originY, rotationAngle
   integer :: version, subversion
+  !--------------------------------------------------------------------------------
   
   version = 7
   subversion = 2
@@ -136,12 +146,16 @@ module ParticleManagerModule
 
   subroutine WriteTimeseriesRecord(sequenceNumber, particleID, groupIndex,      &
     timeStep, timePointIndex, pCoord, geoRef, outUnit)
+  !--------------------------------------------------------------------------------
+  ! Specifications
+  !--------------------------------------------------------------------------------
   implicit none
   type(ParticleCoordinateType),intent(in) :: pCoord
   type(GeoReferenceType),intent(in) :: geoRef
   integer,intent(in) :: outUnit, particleID, timePointIndex, groupIndex,        &
     timeStep, sequenceNumber
   doubleprecision :: modelX, modelY, globalX, globalY
+  !--------------------------------------------------------------------------------
   
   modelX = pCoord%GlobalX
   modelY = pCoord%GlobalY
@@ -156,12 +170,16 @@ module ParticleManagerModule
 
   subroutine WriteTimeseriesRecordStatus(sequenceNumber, particleID, groupIndex,      &
     timeStep, timePointIndex, pCoord, geoRef, particleStatus, outUnit)
+  !--------------------------------------------------------------------------------
+  ! Specifications
+  !--------------------------------------------------------------------------------
   implicit none
   type(ParticleCoordinateType),intent(in) :: pCoord
   type(GeoReferenceType),intent(in) :: geoRef
   integer,intent(in) :: outUnit, particleID, timePointIndex, groupIndex,        &
     timeStep, sequenceNumber, particleStatus
   doubleprecision :: modelX, modelY, globalX, globalY
+    !--------------------------------------------------------------------------------
   
   modelX = pCoord%GlobalX
   modelY = pCoord%GlobalY
@@ -381,11 +399,15 @@ module ParticleManagerModule
 
   subroutine WritePathlineHeader(outUnit, trackingDirection, referenceTime,     &
       originX, originY, rotationAngle)
+  !---------------------------------------------------------------------------------
+  ! Specifications
+  !---------------------------------------------------------------------------------
   implicit none
   integer,intent(in) :: outUnit, trackingDirection
   doubleprecision,intent(in) :: referenceTime, originX, originY, rotationAngle
   integer :: version, subversion
-  
+  !---------------------------------------------------------------------------------
+
   version = 7
   subversion = 2
   write(outUnit, '(a,2i10)') 'MODPATH_PATHLINE_FILE', version, subversion
@@ -398,6 +420,9 @@ module ParticleManagerModule
   subroutine WritePathlineRecord(tpResult, outUnit, stressPeriod, timeStep, geoRef)
   use TrackPathResultModule,only : TrackPathResultType
   use ParticleCoordinateModule,only : ParticleCoordinateType
+  !---------------------------------------------------------------------------------
+  ! Specifications
+  !---------------------------------------------------------------------------------
   implicit none
   integer,intent(in) :: outUnit, stressPeriod, timeStep
   type(TrackPathResultType),intent(in),target :: tpResult
@@ -405,6 +430,7 @@ module ParticleManagerModule
   type(GeoReferenceType) :: geoRef
   integer :: n, count
   doubleprecision :: modelX, modelY, globalX, globalY
+  !---------------------------------------------------------------------------------
   
   count = tpResult%ParticlePath%Pathline%GetItemCount()
   if(count .lt. 2) return
@@ -424,6 +450,9 @@ module ParticleManagerModule
   subroutine WriteBinaryPathlineRecord(tpResult, outUnit, stressPeriod, timeStep, geoRef)
   use TrackPathResultModule,only : TrackPathResultType
   use ParticleCoordinateModule,only : ParticleCoordinateType
+  !---------------------------------------------------------------------------------
+  ! Specifications
+  !---------------------------------------------------------------------------------
   implicit none
   integer,intent(in) :: outUnit, stressPeriod, timeStep
   type(TrackPathResultType),intent(in),target :: tpResult
@@ -431,6 +460,7 @@ module ParticleManagerModule
   type(GeoReferenceType) :: geoRef
   integer :: n, count, currentPosition, dataOffset
   doubleprecision :: modelX, modelY, globalX, globalY
+  !---------------------------------------------------------------------------------
   
   count = tpResult%ParticlePath%Pathline%GetItemCount()
   if(count .lt. 2) return
@@ -449,6 +479,9 @@ module ParticleManagerModule
   end subroutine WriteBinaryPathlineRecord
   
   subroutine ConsolidatePathlines(inUnit, outUnit, recordCount, particleCount)
+  !---------------------------------------------------------------------------------
+  ! Specifications
+  !---------------------------------------------------------------------------------
   implicit none
   integer, intent(in) :: inUnit, outUnit, recordCount, particleCount
   integer, dimension(:), allocatable :: sequenceNumbers, recordPointCounts,     &
@@ -460,6 +493,7 @@ module ParticleManagerModule
   integer :: cellNumber, layer, pointCount
   doubleprecision :: modelX, modelY, globalZ, trackingTime, localX, localY,   &
     localZ
+  !---------------------------------------------------------------------------------
   
   allocate(sequenceNumbers(recordCount))
   allocate(recordPointCounts(recordCount))
@@ -537,9 +571,13 @@ module ParticleManagerModule
   end subroutine ConsolidatePathlines
   
   function FindFace(x, y, z) result(face)
+  !---------------------------------------------------------------------------------
+  ! Specifications
+  !---------------------------------------------------------------------------------
   implicit none
   doubleprecision,intent(in) :: x, y, z
   integer :: face
+  !---------------------------------------------------------------------------------
   
   face = 0
   if(x .eq. 0.0d0) then
@@ -559,44 +597,104 @@ module ParticleManagerModule
   end function FindFace
 
 
-  subroutine WriteResidentObsRecordBinary(sequenceNumber, particleID, groupIndex,      &
-    timeStep, timePointIndex, pCoord, geoRef, outUnit)
+  !subroutine WriteResidentObsRecordBinary(sequenceNumber, particleID, groupIndex,      &
+  !  timeStep, timePointIndex, pCoord, geoRef, outUnit)
+  !!---------------------------------------------------------------------------------
+  !! Specifications
+  !!---------------------------------------------------------------------------------
+  !implicit none
+  !type(ParticleCoordinateType),intent(in) :: pCoord
+  !type(GeoReferenceType),intent(in) :: geoRef
+  !integer,intent(in) :: outUnit, particleID, timePointIndex, groupIndex,        &
+  !  timeStep, sequenceNumber
+  !doubleprecision :: modelX, modelY, globalX, globalY
+  !integer :: ios
+  !!---------------------------------------------------------------------------------
+  !
+  !modelX = pCoord%GlobalX
+  !modelY = pCoord%GlobalY
+  !write(outUnit) &
+  !  timePointIndex, timeStep, pCoord%TrackingTime, sequenceNumber, groupIndex,  &
+  !  particleID, pCoord%CellNumber, pCoord%LocalX, pCoord%LocalY, pCoord%LocalZ, &
+  !  modelX, modelY, pCoord%GlobalZ, pCoord%Layer
+
+  !end subroutine WriteResidentObsRecordBinary
+
+
+  !subroutine WriteResidentObsRecord(sequenceNumber, particleID, groupIndex,      &
+  !  timeStep, timePointIndex, pCoord, geoRef, outUnit)
+  !!---------------------------------------------------------------------------------
+  !! Specifications
+  !!---------------------------------------------------------------------------------
+  !implicit none
+  !type(ParticleCoordinateType),intent(in) :: pCoord
+  !type(GeoReferenceType),intent(in) :: geoRef
+  !integer,intent(in) :: outUnit, particleID, timePointIndex, groupIndex,        &
+  !  timeStep, sequenceNumber
+  !doubleprecision :: modelX, modelY, globalX, globalY
+  !!---------------------------------------------------------------------------------
+  !
+  !modelX = pCoord%GlobalX
+  !modelY = pCoord%GlobalY
+  !
+  !write(outUnit, '(2I8,es18.9e3,i10,i5,2i10,6es18.9e3,i10)')                    &
+  !  timePointIndex, timeStep, pCoord%TrackingTime, sequenceNumber, groupIndex,  &
+  !  particleID, pCoord%CellNumber, pCoord%LocalX, pCoord%LocalY, pCoord%LocalZ, &
+  !  modelX, modelY, pCoord%GlobalZ, pCoord%Layer
+
+  !end subroutine WriteResidentObsRecord
+
+
+  subroutine WriteResidentObsRecord(timeStep, timePointIndex, particle, pCoord, &
+                                                     rFactor, waterVolume, outUnit )
+  !--------------------------------------------------------------------------------
+  ! Specifications
+  !---------------------------------------------------------------------------------
   implicit none
+  integer,intent(in)                      :: timeStep, timePointIndex
+  type(ParticleType),intent(in)           :: particle
   type(ParticleCoordinateType),intent(in) :: pCoord
-  type(GeoReferenceType),intent(in) :: geoRef
-  integer,intent(in) :: outUnit, particleID, timePointIndex, groupIndex,        &
-    timeStep, sequenceNumber
+  doubleprecision, intent(in)             :: rFactor, waterVolume 
+  integer, intent(in)                     :: outUnit
   doubleprecision :: modelX, modelY, globalX, globalY
-  integer :: ios
+  !---------------------------------------------------------------------------------
   
   modelX = pCoord%GlobalX
   modelY = pCoord%GlobalY
-  write(outUnit) &
-    timePointIndex, timeStep, pCoord%TrackingTime, sequenceNumber, groupIndex,  &
-    particleID, pCoord%CellNumber, pCoord%LocalX, pCoord%LocalY, pCoord%LocalZ, &
-    modelX, modelY, pCoord%GlobalZ, pCoord%Layer
-
-  end subroutine WriteResidentObsRecordBinary
-
-
-  subroutine WriteResidentObsRecord(sequenceNumber, particleID, groupIndex,      &
-    timeStep, timePointIndex, pCoord, geoRef, outUnit)
-  implicit none
-  type(ParticleCoordinateType),intent(in) :: pCoord
-  type(GeoReferenceType),intent(in) :: geoRef
-  integer,intent(in) :: outUnit, particleID, timePointIndex, groupIndex,        &
-    timeStep, sequenceNumber
-  doubleprecision :: modelX, modelY, globalX, globalY
   
-  modelX = pCoord%GlobalX
-  modelY = pCoord%GlobalY
-  
-  write(outUnit, '(2I8,es18.9e3,i10,i5,2i10,6es18.9e3,i10)')                    &
-    timePointIndex, timeStep, pCoord%TrackingTime, sequenceNumber, groupIndex,  &
-    particleID, pCoord%CellNumber, pCoord%LocalX, pCoord%LocalY, pCoord%LocalZ, &
-    modelX, modelY, pCoord%GlobalZ, pCoord%Layer
+  write(outUnit, '(2I8,es18.9e3,i10,es18.9e3,2i5,2i10,5es18.9e3)')             &
+    timePointIndex, timeStep, pCoord%TrackingTime, particle%ID, particle%Mass, & 
+             particle%Group, particle%Solute, pCoord%CellNumber, pCoord%Layer, &
+                         rFactor, waterVolume, modelX, modelY, pCoord%GlobalZ
+
 
   end subroutine WriteResidentObsRecord
+
+
+  subroutine WriteResidentObsRecordBinary(timeStep, timePointIndex, particle, pCoord, &
+                                                        rFactor, waterVolume, outUnit )
+  !--------------------------------------------------------------------------------
+  ! Specifications
+  !---------------------------------------------------------------------------------
+  implicit none
+  integer,intent(in)                      :: timeStep, timePointIndex
+  type(ParticleType),intent(in)           :: particle
+  type(ParticleCoordinateType),intent(in) :: pCoord
+  doubleprecision, intent(in)             :: rFactor, waterVolume 
+  integer, intent(in)                     :: outUnit
+  doubleprecision :: modelX, modelY, globalX, globalY
+  !---------------------------------------------------------------------------------
+  
+  modelX = pCoord%GlobalX
+  modelY = pCoord%GlobalY
+  
+  write(outUnit) &
+    timePointIndex, timeStep, pCoord%TrackingTime, particle%ID, particle%Mass, & 
+             particle%Group, particle%Solute, pCoord%CellNumber, pCoord%Layer, &
+                         rFactor, waterVolume, modelX, modelY, pCoord%GlobalZ
+
+
+  end subroutine WriteResidentObsRecordBinary
 
 
 end module ParticleManagerModule

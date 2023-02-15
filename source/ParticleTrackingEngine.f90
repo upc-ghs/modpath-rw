@@ -32,8 +32,10 @@ module ParticleTrackingEngineModule
     type(TransportModelDataType), pointer :: TransportModelData => null()
     class(ModflowRectangularGridType),pointer :: Grid => null()
 
+    ! RWPT: writing resident obs in main file benefits from public trackcell
+    type(TrackCellType) :: TrackCell
     ! Private variables
-    type(TrackCellType),private :: TrackCell
+    !type(TrackCellType),private :: TrackCell
     type(TrackCellResultType),private :: TrackCellResult
 
     ! RWPT
