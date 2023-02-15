@@ -597,54 +597,6 @@ module ParticleManagerModule
   end function FindFace
 
 
-  !subroutine WriteResidentObsRecordBinary(sequenceNumber, particleID, groupIndex,      &
-  !  timeStep, timePointIndex, pCoord, geoRef, outUnit)
-  !!---------------------------------------------------------------------------------
-  !! Specifications
-  !!---------------------------------------------------------------------------------
-  !implicit none
-  !type(ParticleCoordinateType),intent(in) :: pCoord
-  !type(GeoReferenceType),intent(in) :: geoRef
-  !integer,intent(in) :: outUnit, particleID, timePointIndex, groupIndex,        &
-  !  timeStep, sequenceNumber
-  !doubleprecision :: modelX, modelY, globalX, globalY
-  !integer :: ios
-  !!---------------------------------------------------------------------------------
-  !
-  !modelX = pCoord%GlobalX
-  !modelY = pCoord%GlobalY
-  !write(outUnit) &
-  !  timePointIndex, timeStep, pCoord%TrackingTime, sequenceNumber, groupIndex,  &
-  !  particleID, pCoord%CellNumber, pCoord%LocalX, pCoord%LocalY, pCoord%LocalZ, &
-  !  modelX, modelY, pCoord%GlobalZ, pCoord%Layer
-
-  !end subroutine WriteResidentObsRecordBinary
-
-
-  !subroutine WriteResidentObsRecord(sequenceNumber, particleID, groupIndex,      &
-  !  timeStep, timePointIndex, pCoord, geoRef, outUnit)
-  !!---------------------------------------------------------------------------------
-  !! Specifications
-  !!---------------------------------------------------------------------------------
-  !implicit none
-  !type(ParticleCoordinateType),intent(in) :: pCoord
-  !type(GeoReferenceType),intent(in) :: geoRef
-  !integer,intent(in) :: outUnit, particleID, timePointIndex, groupIndex,        &
-  !  timeStep, sequenceNumber
-  !doubleprecision :: modelX, modelY, globalX, globalY
-  !!---------------------------------------------------------------------------------
-  !
-  !modelX = pCoord%GlobalX
-  !modelY = pCoord%GlobalY
-  !
-  !write(outUnit, '(2I8,es18.9e3,i10,i5,2i10,6es18.9e3,i10)')                    &
-  !  timePointIndex, timeStep, pCoord%TrackingTime, sequenceNumber, groupIndex,  &
-  !  particleID, pCoord%CellNumber, pCoord%LocalX, pCoord%LocalY, pCoord%LocalZ, &
-  !  modelX, modelY, pCoord%GlobalZ, pCoord%Layer
-
-  !end subroutine WriteResidentObsRecord
-
-
   subroutine WriteResidentObsRecord(timeStep, timePointIndex, particle, pCoord, &
                                                      rFactor, waterVolume, outUnit )
   !--------------------------------------------------------------------------------

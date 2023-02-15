@@ -142,6 +142,7 @@ program MPath7
   integer            :: sequenceNumber, timePointIndex, timeStep
   doubleprecision, allocatable, dimension(:,:) :: BTCPerSolute
   doubleprecision, allocatable, dimension(:,:) :: BTCHistPerSolute
+  doubleprecision, allocatable, dimension(:,:) :: BTCGpkdePerSolute
   logical :: anyFromThisSolute = .false.
 
 
@@ -1699,26 +1700,23 @@ program MPath7
             (/maxval(simulationData%TimePoints(:)),0d0,0d0/),                  &
             (/dtObsSeries,0d0,0d0/),                                           &
             domainOrigin=(/0d0,0d0,0d0/),                                      &
-            !domainOrigin=(/simulationData%ReferenceTime,0d0,0d0/),             &
             nOptimizationLoops=simulationData%TrackingOptions%gpkdeNOptLoops,  &
             databaseOptimization=.false.,                                      &
             outFileName=mplistFile &
         )
 
 
-        ! idColFormat for observations output
-        ! Should come from the obs input
-        idColFormat = 2
-
-        ! For storing the BTCS
-        if (allocated(BTCPerSolute)) deallocate(BTCPerSolute)
-        allocate(BTCPerSolute(simulationData%TimePointCount, transportModelData%nSolutes))
-        BTCPerSolute = 0d0
-        if (idColFormat.eq.2) then 
-          if (allocated(BTCHistPerSolute)) deallocate(BTCHistPerSolute)
-          allocate(BTCHistPerSolute(simulationData%TimePointCount, transportModelData%nSolutes))
-          BTCHistPerSolute = 0d0
-        end if
+        ! Allocate according to postprocess option 
+        ! 0: only histogram
+        ! 1: histogram + gpkde
+        if (allocated(BTCHistPerSolute)) deallocate(BTCHistPerSolute)
+        allocate(BTCHistPerSolute(simulationData%TimePointCount, transportModelData%nSolutes))
+        BTCHistPerSolute = 0d0
+        if ( obs%postprocessOption .eq. 1 ) then 
+          if (allocated(BTCGpkdePerSolute)) deallocate(BTCGpkdePerSolute)
+          allocate(BTCGpkdePerSolute(simulationData%TimePointCount, transportModelData%nSolutes))
+          BTCGpkdePerSolute = 0d0
+        end if 
 
         ! Loop over solutes
         do ns=1, transportModelData%nSolutes
@@ -1755,21 +1753,32 @@ program MPath7
             gpkdeWeightsCarrier(irow) = activeParticleMasses(n)
           end do
 
-          ! Timeseries reconstruction    
-          call gpkde%ComputeDensity(   &
-            gpkdeDataCarrier,          &
-            unitVolume        = .true.,&
-            computeRawDensity = .true.,&
-            weightedHistogram = .true.,&
-            weights = gpkdeWeightsCarrier )
-
-          BTCPerSolute(:,ns) = gpkde%densityEstimateGrid(:,1,1)
-
-          if (idColFormat.eq.2) then 
-            BTCHistPerSolute(:,ns) = gpkde%rawDensityEstimateGrid(:,1,1)
-          end if 
+          select case(obs%postprocessOption)
+          case(0)
+            ! Only histogram
+            call gpkde%ComputeDensity(      &
+              gpkdeDataCarrier,             &
+              onlyHistogram     = .true.,   &
+              weightedHistogram = .true.,   &
+              weights = gpkdeWeightsCarrier )
+            BTCHistPerSolute(:,ns) = gpkde%histogram%counts(:,1,1)
+          case(1)
+            ! Timeseries reconstruction    
+            call gpkde%ComputeDensity(      &
+              gpkdeDataCarrier,             &
+              unitVolume        = .true.,   &
+              weightedHistogram = .true.,   &
+              weights = gpkdeWeightsCarrier )
+            BTCHistPerSolute(:,ns)  = gpkde%histogram%counts(:,1,1)
+            BTCGpkdePerSolute(:,ns) = gpkde%densityEstimateGrid(:,1,1)
+          end select
 
         end do
+
+
+        ! Similar to what occurs with sink obs, write 
+        ! the cell water volume on a temp file or 
+        ! implement a timeseries extractor.
 
 
         ! Accumulate volumes
@@ -1795,9 +1804,9 @@ program MPath7
         ! Remember to decide what to do for different species, pgroups (?)
         if ( obsAccumPorousVolume .ne. 0d0 ) then 
           ! Probably should be as a property from obs 
-          select case(idColFormat)
-          case (1)
-            ! idTime, time, C-GPKDE(:)
+          select case(obs%postprocessOption)
+          case (0)
+            ! idTime, time, C-HIST(:)
             ! Needs the format 
             write (colFormat,*) '(1I8,',&
                 1 + transportModelData%nSolutes, 'es18.9e3)'
@@ -1805,10 +1814,10 @@ program MPath7
             do nit = 1, simulationData%TimePointCount
               ! idTime, time, C-GPKDE(t,:)
               write(obs%outputUnit, colFormat) nit, simulationData%TimePoints(nit), &
-                                          BTCPerSolute(nit,:)/obsAccumPorousVolume
+                                      BTCHistPerSolute(nit,:)/obsAccumPorousVolume  
             end do 
-          case (2)
-            ! idTime, time, C-GPKDE(:), C-HIST(:)
+          case (1)
+            ! idTime, time, C-HIST(:), C-GPKDE(:)
             ! Needs the format 
             write (colFormat,*) '(1I8,',&
                 1 + 2*transportModelData%nSolutes, 'es18.9e3)'
@@ -1816,11 +1825,9 @@ program MPath7
             do nit = 1, simulationData%TimePointCount
               ! idTime, time, C-GPKDE(t,:), C-HIST(t,:)
               write(obs%outputUnit, colFormat) nit, simulationData%TimePoints(nit), &
-                    BTCPerSolute(nit,:)/obsAccumPorousVolume, &
-                      BTCHistPerSolute(nit,:)/obsAccumPorousVolume
+                                      BTCHistPerSolute(nit,:)/obsAccumPorousVolume, & 
+                                     BTCGpkdePerSolute(nit,:)/obsAccumPorousVolume
             end do
-          case default 
-              continue
           end select 
 
         end if 
