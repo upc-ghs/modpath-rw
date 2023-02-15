@@ -1241,7 +1241,7 @@ program MPath7
               ! Call TrackPath
               call trackingEngine%TrackPath(trackPathResult, traceModeOn, &
                 traceModeUnit, p%Group, p%ID, p%SequenceNumber, pLoc,     &
-                maxTime, tPoint, tPointCount)
+                maxTime, tPoint, tPointCount, p)
               
               ! Update endpoint data. The Face property will only be updated when the endpoint file is written
               plCount = trackPathResult%ParticlePath%Pathline%GetItemCount()
@@ -1633,7 +1633,11 @@ program MPath7
             pathlineRecordCount, simulationData%TotalParticleCount) 
       end if
   end if
- 
+
+print *, 'EARLY LEAVING'
+call exit(0)
+
+
 
   ! RWPT
   ! Process observation cells for reconstruction

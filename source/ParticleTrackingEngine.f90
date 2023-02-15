@@ -11,6 +11,7 @@ module ParticleTrackingEngineModule
   use ParticleTrackingOptionsModule,only : ParticleTrackingOptionsType
   use FlowModelDataModule,only : FlowModelDataType
   use TransportModelDataModule,only : TransportModelDataType
+  use ParticleModule, only : ParticleType
   use ObservationModule,only : ObservationType
   !--------------------------------------------------------------------
 
@@ -84,10 +85,11 @@ module ParticleTrackingEngineModule
       ! ParticleTracker
       subroutine ParticleTracker(this, trackPathResult, traceModeOn, traceModeUnit,   &
         group, particleID, seqNumber, location, maximumTrackingTime, timeseriesPoints,&
-        timeseriesPointCount)
+        timeseriesPointCount, particle)
           import ParticleTrackingEngineType
           import TrackPathResultType
           import ParticleLocationType
+          import ParticleType
           !----------------------------------------
           class(ParticleTrackingEngineType), target :: this
           type(TrackPathResultType),target,intent(out) :: trackPathResult
@@ -97,6 +99,7 @@ module ParticleTrackingEngineModule
           logical,intent(in) :: traceModeOn
           doubleprecision,intent(in) :: maximumTrackingTime
           doubleprecision,dimension(timeseriesPointCount),intent(in) :: timeseriesPoints
+          type(ParticleType),intent(in), optional :: particle
       end subroutine ParticleTracker
 
   end interface
@@ -743,7 +746,7 @@ contains
   ! RWPT: Original TrackPath
   subroutine pr_TrackPath(this, trackPathResult, traceModeOn, traceModeUnit,      &
     group, particleID, seqNumber, location, maximumTrackingTime, timeseriesPoints,&
-    timeseriesPointCount)
+    timeseriesPointCount, particle)
   !***************************************************************************************************************
   !
   !***************************************************************************************************************
@@ -758,6 +761,7 @@ contains
   logical,intent(in) :: traceModeOn
   type(ParticleLocationType) :: loc
   type(ParticleCoordinateType) :: pCoord
+  type(ParticleType),intent(in), optional :: particle ! RWPT, only placeholder
   type(ModpathCellDataType),pointer :: cellData
   type(TrackCellResultType),pointer :: tcResult
   doubleprecision,intent(in) :: maximumTrackingTime
@@ -947,12 +951,12 @@ contains
   ! RWPT
   subroutine pr_RWPTrackPath(this, trackPathResult, traceModeOn, traceModeUnit,   &
     group, particleID, seqNumber, location, maximumTrackingTime, timeseriesPoints,&
-    timeseriesPointCount)
-  !***************************************************************************************************************
+    timeseriesPointCount, particle )
+  !---------------------------------------------------------------------------------
   !
-  !***************************************************************************************************************
+  !---------------------------------------------------------------------------------
   ! Specifications
-  !---------------------------------------------------------------------------------------------------------------
+  !---------------------------------------------------------------------------------
   implicit none
   class(ParticleTrackingEngineType),target :: this
   type(TrackPathResultType),target,intent(out) :: trackPathResult
@@ -964,6 +968,7 @@ contains
   type(ParticleCoordinateType) :: pCoord
   type(ModpathCellDataType),pointer :: cellData
   type(TrackCellResultType),pointer :: tcResult
+  type(ParticleType),intent(in), optional :: particle
   doubleprecision,intent(in) :: maximumTrackingTime
   doubleprecision,dimension(timeseriesPointCount),intent(in) :: timeseriesPoints
   doubleprecision :: stopTime, fromLocalX, fromLocalY, fromLocalZ, globalX,     &
@@ -977,8 +982,7 @@ contains
   ! OBSERVATION CELLS
   integer   :: idObservationCell, cellNumber, no
   type(ObservationType), pointer :: obs
-  !---------------------------------------------------------------------------------------------------------------
-
+  !--------------------------------------------------------------------------------
 
     ! Reset trackPathResult and initialize particleID
     call trackPathResult%Reset()
@@ -2205,6 +2209,41 @@ subroutine WriteObservationSinkCellRecord( this, groupIndex, particleID, trackCe
 
 
 end subroutine WriteObservationSinkCellRecord
+
+
+!subroutine WriteObservationSinkCellRecordNew( particle, groupIndex, particleID, trackCell, outUnit )
+!    !-----------------------------------
+!    ! Write observation sink cell record
+!    !-----------------------------------
+!    ! Specifications
+!    !-----------------------------------
+!    implicit none
+!    class(ParticleTrackingEngineType) :: this
+!    ! input
+!    type(ParticleType), intent(in)  :: particle
+!    type(TrackCellType), intent(in) :: trackCell
+!    integer, intent(in)             :: outUnit
+!    ! local
+!    doubleprecision     :: initialGlobalX, initialGlobalY, initialGlobalZ
+!    doubleprecision     :: finalGlobalX, finalGlobalY, finalGlobalZ
+!    doubleprecision     :: initialTime, finalTime
+!    !----------------------------------------------
+!
+!    ! Arrival time, particle group and cell id
+!    ! Flow rate is read during timeseries advance 
+!    initialTime = trackCell%TrackSubCell%TrackSubCellResult%InitialLocation%TrackingTime
+!    !call this%Grid%ConvertToModelXYZ( trackCell%CellData%CellNumber,      &
+!    !    trackCell%TrackSubCell%TrackSubCellResult%InitialLocation%LocalX, & 
+!    !    trackCell%TrackSubCell%TrackSubCellResult%InitialLocation%LocalY, &
+!    !    trackCell%TrackSubCell%TrackSubCellResult%InitialLocation%LocalZ, &
+!    !    initialGlobalX, initialGlobalY, initialGlobalZ )
+!
+!    !write(outUnit, '(3I8,5es18.9e3)') &
+!    !  initialTime, particleID, trackCell%CellData%CellNumber, &
+!    !     groupIndex, 
+!    !  trackCell%CellData%SinkFlow
+!
+!end subroutine WriteObservationSinkCellRecordNew
 
 
 end module ParticleTrackingEngineModule
