@@ -987,7 +987,7 @@ contains
         obs%stringid = line(istart:istop)
 
         ! Assign it increasingly, internal id
-        obs%id = n 
+        obs%id = nobs 
 
         ! Report which OBS is being read 
         write(outUnit,'(A,A)') 'Reading OBS specification: ', trim(adjustl(obs%stringid))

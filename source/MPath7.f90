@@ -127,7 +127,7 @@ program MPath7
   integer :: baserow, lastrow, srow, timeIndex, solCount
   integer :: soluteID
   doubleprecision :: dTObsSeries
-  doubleprecision :: waterVolume, rFactor, particleMass 
+  doubleprecision :: waterVolume, rFactor, particleMass, qSink 
   doubleprecision :: initialTime, initialGlobalX, initialGlobalY, initialGlobalZ, QSinkCell 
   type( ObservationType ), pointer :: obs => null()
   doubleprecision, allocatable, dimension(:,:) :: obsSinkFlowInTime      ! (ntimes,ncells)
@@ -174,6 +174,7 @@ program MPath7
   ! Interface for timeseries output protocol
   procedure(TimeseriesWriter), pointer :: WriteTimeseries=>null()
   procedure(ResidentObsWriter), pointer :: WriteResidentObs=>null()
+  procedure(SinkObsWriter), pointer :: WriteSinkObs=>null()
 !-------------------------------------------------------------------------------
   
   ! Set version
@@ -799,10 +800,7 @@ program MPath7
           open( unit=obs%outputUnit, &
                 file=obs%outputFileName,& 
                 status='replace', form='formatted', access='sequential')
-          ! Should be scratch
-          !open( unit=obs%auxOutputUnit, &
-          !      file=obs%auxOutputFileName,& 
-          !      status='replace', form='formatted', access='sequential')
+          ! Temporary binary
           open( unit=obs%auxOutputUnit, &
                 status='scratch', form='unformatted',&
                 access='stream', action='readwrite')
@@ -815,13 +813,12 @@ program MPath7
           open( unit=obs%outputUnit, &
                 file=obs%outputFileName,& 
                 status='replace', form='formatted', access='sequential')
-          ! Should be scratch
+          ! Temporary binary
           open( unit=obs%auxOutputUnit, &
-                file=obs%auxOutputFileName,& 
-                status='replace', form='formatted', access='sequential')
+                status='scratch', form='unformatted',&
+                access='stream', action='readwrite')
           WriteResidentObs=> WriteResidentObsRecordBinary
         end select
-
       end if
       ! For a SINK observation
       if ( obs%style .eq. 2 ) then 
@@ -840,24 +837,26 @@ program MPath7
           open( unit=obs%outputUnit, &
                 file=obs%outputFileName,& 
                 status='replace', form='formatted', access='sequential')
-          ! Should be scratch
+          ! Temporary binary
           open( unit=obs%auxOutputUnit, &
-                file=obs%auxOutputFileName,& 
+                status='scratch', form='unformatted',&
+                access='stream', action='readwrite')
+          WriteSinkObs=> WriteSinkObsRecord
+        case(2)
+          ! Records as temporary binary
+          open( unit=obs%recOutputUnit, &
+                status='scratch', form='unformatted',&
+                access='stream', action='readwrite')
+          open( unit=obs%outputUnit, &
+                file=obs%outputFileName,& 
                 status='replace', form='formatted', access='sequential')
+          ! Temporary binary
+          open( unit=obs%auxOutputUnit, &
+                status='scratch', form='unformatted',&
+                access='stream', action='readwrite')
+          WriteSinkObs=> WriteSinkObsRecordBinary
         end select
-
       end if
-
-      !open( unit=simulationData%TrackingOptions%Observations(n)%outputUnit, &
-      !      file=simulationData%TrackingOptions%Observations(n)%outputFileName,& 
-      !      status='replace', form='formatted', access='sequential')
-      !! For a sink observation
-      !if ( simulationData%TrackingOptions%Observations(n)%style .eq. 2 )  then 
-      !  ! Remember to replace by binary once in production
-      !  open( unit=simulationData%TrackingOptions%Observations(n)%auxOutputUnit, &
-      !        file=simulationData%TrackingOptions%Observations(n)%auxOutputFileName,& 
-      !        status='replace', form='formatted', access='sequential')
-      !end if
     end do 
   end if 
 
@@ -1157,6 +1156,7 @@ program MPath7
         !$omp firstprivate( trackingEngine )             &
         !$omp firstprivate( WriteTimeseries )            &
         !$omp firstprivate( WriteResidentObs )           &
+        !$omp firstprivate( WriteSinkObs )               &
         !$omp reduction( +:pendingCount )                &
         !$omp reduction( +:activeCount )                 &
         !$omp reduction( +:pathlineRecordCount ) 
@@ -1241,7 +1241,7 @@ program MPath7
               ! Call TrackPath
               call trackingEngine%TrackPath(trackPathResult, traceModeOn, &
                 traceModeUnit, p%Group, p%ID, p%SequenceNumber, pLoc,     &
-                maxTime, tPoint, tPointCount, p)
+                maxTime, tPoint, tPointCount)
               
               ! Update endpoint data. The Face property will only be updated when the endpoint file is written
               plCount = trackPathResult%ParticlePath%Pathline%GetItemCount()
@@ -1262,7 +1262,6 @@ program MPath7
                   p%Status = 2
               else if(status .eq. trackPathResult%Status_StopAtWeakSink()) then
                   p%Status = 3
-
                   ! If any observation cells
                   if ( simulationData%TrackingOptions%anySinkObservation ) then
                     ! Is this an observation cell ?
@@ -1274,11 +1273,11 @@ program MPath7
                       if ( obs%style .ne. 2 ) cycle
                       ! If a particle is removed due to strong sink
                       !$omp critical (sinkobservation)
-                      call WriteSinkObsRecord(ktime, nt, p, obs%recOutputUnit)
+                      call WriteSinkObs(ktime, nt, p,& 
+                        flowModelData%SinkFlows(p%CellNumber), obs%recOutputUnit)
                       !$omp end critical (sinkobservation)
                     end if 
                   end if
-
               else if(status .eq. trackPathResult%Status_StopAtWeakSource()) then
                   p%Status = 4
               else if(status .eq. trackPathResult%Status_NoExitPossible()) then
@@ -1542,8 +1541,9 @@ program MPath7
       do n=1,obs%nCells
         qSinkBuffer(n) = flowModelData%SinkFlows(obs%cells(n))
       end do
-      write(qSinkFormat,*) '(1I10,', obs%nCells, 'es18.9e3)'
-      write(obs%auxOutputUnit,qSinkFormat) nt, qSinkBuffer(:)
+      !write(qSinkFormat,*) '(1I10,', obs%nCells, 'es18.9e3)'
+      !write(obs%auxOutputUnit,qSinkFormat) nt, qSinkBuffer(:)
+      write(obs%auxOutputUnit) nt, qSinkBuffer(:)
       obs%nAuxRecords = obs%nAuxRecords + 1 ! Count aux records
     end do
   end if
@@ -1651,13 +1651,10 @@ program MPath7
       end if
   end if
 
-print *, 'EARLY LEAVING'
-call exit(0)
-
 
 
   ! RWPT
-  ! Process observation cells for reconstruction
+  ! Process observation cells
   if ( simulationData%TrackingOptions%anyObservation ) then
 
     write(mplistUnit, *) 
@@ -1869,8 +1866,6 @@ call exit(0)
 
         ! Once the accumulated porous volume is known,
         ! compute resident concentration
-
-        ! Probably should be as a property from obs 
         select case(obs%postprocessOption)
         case (0)
           ! idTime, time, WVol, C-HIST(:)
@@ -1883,8 +1878,9 @@ call exit(0)
                                                   obsAccumWaterVolumeInTime(nit), &
                           BTCHistPerSolute(nit,:)/obsAccumWaterVolumeInTime(nit)
            else
-             write(obs%outputUnit, colFormat) nit, simulationData%TimePoints(nit), &
-                                   0d0, spread(0d0,1,transportModelData%nSolutes) 
+            ! No concentrations
+            write(obs%outputUnit, colFormat) nit, simulationData%TimePoints(nit), &
+                                  0d0, spread(0d0,1,transportModelData%nSolutes) 
            end if 
           end do 
         case (1)
@@ -1899,16 +1895,19 @@ call exit(0)
                           BTCHistPerSolute(nit,:)/obsAccumWaterVolumeInTime(nit), &
                          BTCGpkdePerSolute(nit,:)/obsAccumWaterVolumeInTime(nit)
            else
-             write(obs%outputUnit, colFormat) nit, simulationData%TimePoints(nit), &
-                                 0d0, spread(0d0,1,2*transportModelData%nSolutes) 
+            ! No concentrations
+            write(obs%outputUnit, colFormat) nit, simulationData%TimePoints(nit), &
+                                0d0, spread(0d0,1,2*transportModelData%nSolutes) 
            end if 
           end do
         end select 
 
 
-
         ! Deallocate 
         deallocate( gpkde )
+
+        ! continue to next
+        cycle
 
 
       end if ! If obs%style.eq.1
@@ -1935,11 +1934,21 @@ call exit(0)
         ! It needs some obs record count or something
         rewind( obs%recOutputUnit )
         nlines = 0
-        do
-          read(obs%recOutputUnit,*,iostat=io)
-          if (io/=0) exit
-          nlines = nlines + 1
-        end do
+        if (obs%outputOption.ne.2) then
+          do
+            read(obs%recOutputUnit,*,iostat=io)
+            if (io/=0) exit 
+            nlines = nlines + 1
+          end do
+        else
+          do
+            read(obs%recOutputUnit,iostat=io) & 
+              timePointIndex, timeStep, initialTime, particleID, particleMass, & 
+              groupIndex, soluteID, cellNumber, pCoord%Layer, qSink
+            if (io/=0) exit 
+            nlines = nlines + 1
+          end do
+        end if
 
         ! If no records, don't even try
         if ( nlines .eq. 0 ) then 
@@ -1965,22 +1974,49 @@ call exit(0)
 
         ! Load file records into array
         rewind( obs%recOutputUnit )
-        do n = 1, nlines
+        if (obs%outputOption.ne.2) then
+          ! Read as formatted file
+          do n = 1, nlines
             ! Read from obs file
-            read( obs%recOutputUnit, '(3I8,5es18.9e3)' ) &
-              groupIndex, particleID, cellNumber,     &
-              initialTime, initialGlobalX, initialGlobalY, initialGlobalZ, QSinkCell
+            ! Based on TS record, it could be reduced 
+            read(obs%recOutputUnit, '(2I8,es18.9e3,i10,es18.9e3,2i5,2i10,es18.9e3)') &
+                    timePointIndex, timeStep, initialTime, particleID, particleMass, & 
+                    groupIndex, soluteID, cellNumber, pCoord%Layer, qSink
+
             ! Needs some kind of understanding of the particle group, and that it
             ! means another solute ( column? )
             activeParticleCoordinates(n,1) = initialTime 
-            activeParticleCoordinates(n,2) = groupIndex ! remember these indexes
+            activeParticleCoordinates(n,2) = groupIndex
 
             ! A similar access could be used for getting soluteId from 
             ! the particle directly, avoiding the identification stage 
             ! coming further down
+
+            ! A sink extracts total mass 
             activeParticleMasses(n) = &
-              simulationData%ParticleGroups(groupIndex)%Particles(particleID)%Mass
-        end do 
+            simulationData%ParticleGroups(groupIndex)%Particles(particleID)%Mass
+          end do 
+        else
+          ! Read as binary ile
+          do n = 1, nlines
+            read(obs%recOutputUnit,iostat=io) & 
+              timePointIndex, timeStep, initialTime, particleID, particleMass, & 
+              groupIndex, soluteID, cellNumber, pCoord%Layer, qSink
+
+            ! Needs some kind of understanding of the particle group, and that it
+            ! means another solute ( column? )
+            activeParticleCoordinates(n,1) = initialTime 
+            activeParticleCoordinates(n,2) = groupIndex
+
+            ! A similar access could be used for getting soluteId from 
+            ! the particle directly, avoiding the identification stage 
+            ! coming further down
+
+            ! A sink extracts total mass 
+            activeParticleMasses(n) = &
+            simulationData%ParticleGroups(groupIndex)%Particles(particleID)%Mass
+          end do 
+        end if
 
         ! Allocate gpkde
         if( allocated( gpkde ) ) deallocate(gpkde)
@@ -1991,26 +2027,23 @@ call exit(0)
             (/simulationData%TimePoints(obs%nAuxRecords),0d0,0d0/),            &
             (/dtObsSeries,0d0,0d0/),                                           &
             domainOrigin=(/0d0,0d0,0d0/),                                      &
-            !domainOrigin=(/simulationData%ReferenceTime,0d0,0d0/),             &
             nOptimizationLoops=simulationData%TrackingOptions%gpkdeNOptLoops,  &
             databaseOptimization=.false.,                                      &
             outFileName=mplistFile     &
         )
 
-
-        ! idColFormat for observations output
-        ! Should come as input param
-        idColFormat = 2
-
-        ! For storign the BTCS
-        if (allocated(BTCPerSolute)) deallocate(BTCPerSolute)
-        allocate(BTCPerSolute(obs%nAuxRecords, transportModelData%nSolutes))
-        BTCPerSolute = 0d0
-        if (idColFormat.eq.2) then 
-          if (allocated(BTCHistPerSolute)) deallocate(BTCHistPerSolute)
-          allocate(BTCHistPerSolute(obs%nAuxRecords, transportModelData%nSolutes))
-        end if
+        ! Allocate according to postprocess option 
+        ! 0: only histogram
+        ! 1: histogram + gpkde
+        if (allocated(BTCHistPerSolute)) deallocate(BTCHistPerSolute)
+        allocate(BTCHistPerSolute(obs%nAuxRecords, transportModelData%nSolutes))
         BTCHistPerSolute = 0d0
+        if ( obs%postprocessOption .eq. 1 ) then 
+          if (allocated(BTCGpkdePerSolute)) deallocate(BTCGpkdePerSolute)
+          allocate(BTCGpkdePerSolute(obs%nAuxRecords, transportModelData%nSolutes))
+          BTCGpkdePerSolute = 0d0
+        end if 
+
 
         ! Loop over solutes
         do ns=1, transportModelData%nSolutes
@@ -2028,6 +2061,10 @@ call exit(0)
           allocate( gpkdeWeightsCarrier(solCount) )
           gpkdeWeightsCarrier = 0d0
 
+          ! Not necessarily the most efficient,
+          ! think about cases with lots of pgroups per
+          ! solute. Is either this or write the solute id 
+          ! to the observation record.
           irow = 0
           do n=1,nlines
             anyFromThisSolute = .false.
@@ -2043,24 +2080,32 @@ call exit(0)
             gpkdeWeightsCarrier(irow) = activeParticleMasses(n)
           end do
 
-          ! Timeseries reconstruction    
-          call gpkde%ComputeDensity(   &
-            gpkdeDataCarrier,          &
-            computeRawDensity = .true.,&
-            weightedHistogram = .true.,&
-            weights = gpkdeWeightsCarrier )
+          select case(obs%postprocessOption)
+          case(0)
+            ! Only histogram
+            call gpkde%ComputeDensity(      &
+              gpkdeDataCarrier,             &
+              onlyHistogram     = .true.,   &
+              computeRawDensity = .true.,   &
+              weightedHistogram = .true.,   &
+              weights = gpkdeWeightsCarrier )
+            BTCHistPerSolute(:,ns) = gpkde%histogram%counts(:,1,1)
+          case(1)
+            ! Timeseries reconstruction    
+            call gpkde%ComputeDensity(      &
+              gpkdeDataCarrier,             &
+              computeRawDensity = .true.,   &
+              weightedHistogram = .true.,   &
+              weights = gpkdeWeightsCarrier )
+            BTCHistPerSolute(:,ns)  = gpkde%histogram%counts(:,1,1)
+            BTCGpkdePerSolute(:,ns) = gpkde%densityEstimateGrid(:,1,1)
 
-          BTCPerSolute(:,ns) = gpkde%densityEstimateGrid(:,1,1)
-
-          if (idColFormat.eq.2) then 
-            BTCHistPerSolute(:,ns) = gpkde%rawDensityEstimateGrid(:,1,1)
-          end if 
+          end select
 
         end do 
   
 
         ! Flow rates were written to obs file
-        ! And are now sorted by arrival time
         if ( allocated(obsSinkFlowInTime) ) deallocate(obsSinkFlowInTime)
         ! With as many columns as cells
         ! composing the observation
@@ -2069,57 +2114,45 @@ call exit(0)
         ! Fill flow-rate timeseries for each cell
         rewind( obs%auxOutputUnit )
         do n =1, obs%nAuxRecords
-          read(obs%auxOutputUnit,*) timeIndex, obsSinkFlowInTime( n, : )
+          !read(obs%auxOutputUnit,*) timeIndex, obsSinkFlowInTime( n, : )
+          read(obs%auxOutputUnit) timeIndex, obsSinkFlowInTime( n, : ) ! binary
         end do
         ! Accumulate flow rates, absolute values 
         obsAccumSinkFlowInTime = sum( abs(obsSinkFlowInTime), dim=2 )
+
         ! Once flow-rates are known, can compute flux-concentration
-
-        ! Something to verify if sink flows were zero the whole time
-
-        ! Should compute flux-concentrations only for non zero flow-rates
-    
-        ! Probably should be as a property from  obs 
-        select case(idColFormat)
-        case (1)
-          ! idTime, time, QSink, CFlux-GPKDE(:)
-          ! Needs the format 
+        select case(obs%postprocessOption)
+        case (0)
+          ! idTime, time, QSink, C-HIST(:)
           write (colFormat,*) '(1I8,',&
               2 + transportModelData%nSolutes, 'es18.9e3)'
           ! And write
           do nit = 1, obs%nAuxRecords
              if ( obsAccumSinkFlowInTime(nit) .gt. 0d0 ) then 
-                ! idTime, time, QSink, CFlux-GPKDE(t,:)
-                write(obs%outputUnit, colFormat) nit, simulationData%TimePoints(nit), &
-                      obsAccumSinkFlowInTime(nit), BTCPerSolute(nit,:)/obsAccumSinkFlowInTime(nit)
+              write(obs%outputUnit, colFormat) nit, simulationData%TimePoints(nit), &
+                obsAccumSinkFlowInTime(nit), BTCHistPerSolute(nit,:)/obsAccumSinkFlowInTime(nit)
              else
-               ! No concentrations
-               ! idTime, time, QSink, CFlux-GPKDE(t,:), CFlux-HIST(t,:)
-               write(obs%outputUnit, colFormat) nit, simulationData%TimePoints(nit), &
-                     0d0, spread(0d0,1,transportModelData%nSolutes) 
+              ! No concentrations
+              write(obs%outputUnit, colFormat) nit, simulationData%TimePoints(nit), &
+                    0d0, spread(0d0,1,transportModelData%nSolutes) 
              end if 
           end do 
-        case (2)
-          ! idTime, time, QSink, CFlux-GPKDE(:), CFlux-HIST(:)
-          ! Needs the format 
+        case (1)
+          ! idTime, time, QSink, CFlux-HIST(:), CFlux-GPKDE(:)
           write (colFormat,*) '(1I8,',&
               2 + 2*transportModelData%nSolutes, 'es18.9e3)'
           ! And write
           do nit = 1, obs%nAuxRecords
              if ( obsAccumSinkFlowInTime(nit) .gt. 0d0 ) then 
-                ! idTime, time, QSink, CFlux-GPKDE(t,:), CFlux-HIST(t,:)
-                write(obs%outputUnit, colFormat) nit, simulationData%TimePoints(nit), &
-                      obsAccumSinkFlowInTime(nit), BTCPerSolute(nit,:)/obsAccumSinkFlowInTime(nit), &
-                                                   BTCHistPerSolute(nit,:)/obsAccumSinkFlowInTime(nit) 
+              write(obs%outputUnit, colFormat) nit, simulationData%TimePoints(nit),               &
+                obsAccumSinkFlowInTime(nit), BTCHistPerSolute(nit,:)/obsAccumSinkFlowInTime(nit), &
+                                            BTCGpkdePerSolute(nit,:)/obsAccumSinkFlowInTime(nit) 
              else
-               ! No concentrations
-               ! idTime, time, QSink, CFlux-GPKDE(t,:), CFlux-HIST(t,:)
-               write(obs%outputUnit, colFormat) nit, simulationData%TimePoints(nit), &
-                     0d0, spread(0d0,1,2*transportModelData%nSolutes) 
+              ! No concentrations
+              write(obs%outputUnit, colFormat) nit, simulationData%TimePoints(nit), &
+                    0d0, spread(0d0,1,2*transportModelData%nSolutes) 
              end if 
           end do
-        case default 
-            continue
         end select 
 
         ! It seems that gpkde%reset() is not working properly
@@ -2128,6 +2161,9 @@ call exit(0)
 
         ! Deallocate 
         deallocate( gpkde )
+
+        ! continue to next
+        cycle
 
       end if ! If obs%style.eq.2
 
