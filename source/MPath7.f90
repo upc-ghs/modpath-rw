@@ -129,15 +129,19 @@ program MPath7
   doubleprecision :: dTObsSeries
   doubleprecision :: waterVolume, rFactor, particleMass 
   doubleprecision :: initialTime, initialGlobalX, initialGlobalY, initialGlobalZ, QSinkCell 
-  doubleprecision, dimension(3) :: sbuffer
   type( ObservationType ), pointer :: obs => null()
-  doubleprecision, allocatable, dimension(:,:) :: obsSinkFlowInTime ! (ntimes,ncells)
+  doubleprecision, allocatable, dimension(:,:) :: obsSinkFlowInTime      ! (ntimes,ncells)
   doubleprecision, allocatable, dimension(:)   :: obsAccumSinkFlowInTime ! (ntimes)
   doubleprecision, allocatable, dimension(:)   :: qSinkBuffer
-  integer            :: idColFormat
+  doubleprecision, allocatable, dimension(:,:) :: obsWaterVolumeInTime      ! (ntimes,ncells)
+  doubleprecision, allocatable, dimension(:)   :: obsAccumWaterVolumeInTime ! (ntimes)
+  doubleprecision, allocatable, dimension(:)   :: waterVolBuffer
+  integer            :: idColFormat ! TO BE DEPRECATED
   character(len=200) :: colFormat
   character(len=200) :: qSinkFormat
-  doubleprecision    :: obsAccumPorousVolume, dX, dY, dZ, porosity
+  character(len=200) :: waterVolFormat
+  doubleprecision    :: obsAccumPorousVolume
+  doubleprecision    :: dX, dY, dZ, dZC, porosity
   doubleprecision    :: modelX, modelY
   integer            :: sequenceNumber, timePointIndex, timeStep
   doubleprecision, allocatable, dimension(:,:) :: BTCPerSolute
@@ -201,14 +205,14 @@ program MPath7
   traceModeUnit = 115
   binPathlineUnit = 116
   gridMetaUnit = 117
-  gpkdeUnit      = 118 ! RWPT
-  obsUnit        = 119 ! RWPT
-  dspUnit        = 120 ! RWPT
-  rwoptsUnit     = 121 ! RWPT
-  spcUnit        = 122 ! RWPT
-  icUnit         = 123 ! RWPT
-  bcUnit         = 124 ! RWPT
-  srcUnit        = 125 ! RWPT
+  gpkdeUnit    = 118 ! RWPT
+  obsUnit      = 119 ! RWPT
+  dspUnit      = 120 ! RWPT
+  rwoptsUnit   = 121 ! RWPT
+  spcUnit      = 122 ! RWPT
+  icUnit       = 123 ! RWPT
+  bcUnit       = 124 ! RWPT
+  srcUnit      = 125 ! RWPT
   baseTimeseriesUnit = 660 ! OpenMP
   !-----------------------------------------------------------------------
 
@@ -795,6 +799,13 @@ program MPath7
           open( unit=obs%outputUnit, &
                 file=obs%outputFileName,& 
                 status='replace', form='formatted', access='sequential')
+          ! Should be scratch
+          !open( unit=obs%auxOutputUnit, &
+          !      file=obs%auxOutputFileName,& 
+          !      status='replace', form='formatted', access='sequential')
+          open( unit=obs%auxOutputUnit, &
+                status='scratch', form='unformatted',&
+                access='stream', action='readwrite')
           WriteResidentObs=> WriteResidentObsRecord
         case(2)
           ! Records as temporary binary
@@ -803,6 +814,10 @@ program MPath7
                 access='stream', action='readwrite')
           open( unit=obs%outputUnit, &
                 file=obs%outputFileName,& 
+                status='replace', form='formatted', access='sequential')
+          ! Should be scratch
+          open( unit=obs%auxOutputUnit, &
+                file=obs%auxOutputFileName,& 
                 status='replace', form='formatted', access='sequential')
           WriteResidentObs=> WriteResidentObsRecordBinary
         end select
@@ -1494,26 +1509,65 @@ program MPath7
   end if ! ParticleGroupCount .gt. 0
  
 
+  ! Sink observations: write a temporary file
+  ! with flow-rates per time. Works for the 
+  ! approach were timeseries points determine 
+  ! the obs postprocess.
+  if( ( simulationData%TrackingOptions%anySinkObservation ) & 
+                                  .and. isTimeSeriesPoint ) then
+    ! Write sink flow rates only for obs of this kind
+    do nobs=1,simulationData%TrackingOptions%nObservations
+      obs =>simulationData%TrackingOptions%Observations(nobs)
+      if ( obs%style .ne. 2 ) cycle ! if no sink, try next
+      if ( .not. obs%doPostprocess ) cycle ! if no postprocess for this obs, try next
+      if (allocated(qSinkBuffer))deallocate(qSinkBuffer)
+      allocate(qSinkBuffer(obs%nCells))
+      do n=1,obs%nCells
+        qSinkBuffer(n) = flowModelData%SinkFlows(obs%cells(n))
+      end do
+      write(qSinkFormat,*) '(1I10,', obs%nCells, 'es18.9e3)'
+      write(obs%auxOutputUnit,qSinkFormat) nt, qSinkBuffer(:)
+      obs%nAuxRecords = obs%nAuxRecords + 1 ! Count aux records
+    end do
+  end if
+
+
   ! Observation cells: if any sink cell observation, 
   ! writing flow rates might be done here.
   ! This works for the approach were the timeseries
   ! points determine the obs records
-  if( ( simulationData%TrackingOptions%anySinkObservation ) & 
-                                  .and. isTimeSeriesPoint ) then
-      ! Write sink flow rates only for obs of this kind
-      do nobs=1,simulationData%TrackingOptions%nObservations
-        obs =>simulationData%TrackingOptions%Observations(nobs)
-        if ( obs%style .ne. 2 ) cycle ! if no sink, try next
-        if ( .not. obs%doPostprocess ) cycle ! if no postprocess for this obs, try next
-        if (allocated(qSinkBuffer))deallocate(qSinkBuffer)
-        allocate(qSinkBuffer(obs%nCells))
-        do n=1,obs%nCells
-          qSinkBuffer(n) = flowModelData%SinkFlows(obs%cells(n))
-        end do
-        write(qSinkFormat,*) '(1I10,', obs%nCells, 'es18.9e3)'
-        write(obs%auxOutputUnit,qSinkFormat) nt, qSinkBuffer(:)
-        obs%nAuxRecords = obs%nAuxRecords + 1 ! Count aux records
+  if( ( simulationData%TrackingOptions%anyResObservation ) & 
+                                 .and. isTimeSeriesPoint ) then
+    ! Write sink flow rates only for obs of this kind
+    do nobs=1,simulationData%TrackingOptions%nObservations
+      obs =>simulationData%TrackingOptions%Observations(nobs)
+      if ( obs%style .ne. 1 ) cycle ! if no res, try next
+      if ( .not. obs%doPostprocess ) cycle ! if no postprocess for this obs, try next
+      if (allocated(waterVolBuffer))deallocate(waterVolBuffer)
+      allocate(waterVolBuffer(obs%nCells))
+      waterVolBuffer(:) = 0d0
+      do n=1,obs%nCells
+        dZ  = modelGrid%Top(obs%cells(n))-modelGrid%Bottom(obs%cells(n))
+        if ( modelGrid%CellType(obs%cells(n)).eq.1 ) then ! only for convertible cells
+          if (&                                           ! not fully saturated
+            flowModelData%Heads(obs%cells(n)) .lt. modelGrid%Top(obs%cells(n)) ) then 
+            dZ  = flowModelData%Heads(obs%cells(n))-modelGrid%Bottom(obs%cells(n))
+            if ( dZ.lt.0d0 ) cycle ! dry cell 
+            ! Can TOP be .lt. BOT ?
+            dZC = modelGrid%Top(obs%cells(n))-modelGrid%Bottom(obs%cells(n))
+            if ( dZ/dZC.lt.0.01d0 ) cycle ! almost dry cell
+          end if
+        end if
+        dX = modelGrid%DelX(obs%cells(n))
+        dY = modelGrid%DelY(obs%cells(n))
+        porosity = flowModelData%Porosity(obs%cells(n))
+        waterVolBuffer(n) = dX*dY*dZ*porosity
       end do
+      !write(waterVolFormat,*) '(1I10,', obs%nCells, 'es18.9e3)'
+      !write(obs%auxOutputUnit,waterVolFormat) nt, waterVolBuffer(:)
+      write(obs%auxOutputUnit) nt, waterVolBuffer(:)
+      obs%nAuxRecords = obs%nAuxRecords + 1 ! Count aux records
+    end do
   end if
 
 
@@ -1536,6 +1590,7 @@ program MPath7
       timeseriesRecordCounts = 0 
     end if
   end if
+
 
   ! Update tracking time
   time = maxTime
@@ -1775,62 +1830,60 @@ program MPath7
 
         end do
 
+        ! Similar to what occurs with sink obs,
+        ! cell water volumes were written to a temp file.
 
-        ! Similar to what occurs with sink obs, write 
-        ! the cell water volume on a temp file or 
-        ! implement a timeseries extractor.
+        ! Water volumes were written to aux obs file
+        if ( allocated(obsWaterVolumeInTime) ) deallocate(obsWaterVolumeInTime)
+        allocate(obsWaterVolumeInTime(obs%nAuxRecords, obs%nCells))
+        obsWaterVolumeInTime(:,:) = 0d0
+        ! Fill water volumes timeseries for each cell
+        rewind( obs%auxOutputUnit )
+        do n =1, obs%nAuxRecords
+          !read(obs%auxOutputUnit,*) timeIndex, obsWaterVolumeInTime( n, : )
+          read(obs%auxOutputUnit) timeIndex, obsWaterVolumeInTime( n, : )
+        end do
+        ! Accumulate water volumes.
+        obsAccumWaterVolumeInTime = sum( obsWaterVolumeInTime, dim=2 )
 
+        ! Once the accumulated porous volume is known,
+        ! compute resident concentration
 
-        ! Accumulate volumes
-        ! Compute porous volume for each cell in the 
-        ! observation and add them for writing the 
-        ! observation record. 
-        ! Assume perfectly saturated cell for all times and 
-        ! volume is computed with dZ = Top - Bottom
-        obsAccumPorousVolume = 0d0
-        do n=1, obs%nCells
-          dX       = modelGrid%DelX(obs%cells(n))
-          dY       = modelGrid%DelY(obs%cells(n))
-          dZ       = abs(modelGrid%Top(obs%cells(n))-modelGrid%Bottom(obs%cells(n)))
-          porosity = flowModelData%Porosity(obs%cells(n))
-          obsAccumPorousVolume = & 
-             obsAccumPorousVolume + dX*dY*dZ*porosity 
-        end do 
+        ! Probably should be as a property from obs 
+        select case(obs%postprocessOption)
+        case (0)
+          ! idTime, time, WVol, C-HIST(:)
+          write (colFormat,*) '(1I8,',&
+              2 + transportModelData%nSolutes, 'es18.9e3)'
+          ! And write
+          do nit = 1, obs%nAuxRecords
+           if ( obsAccumWaterVolumeInTime(nit) .gt. 0d0 ) then 
+            write(obs%outputUnit, colFormat) nit, simulationData%TimePoints(nit), &
+                                                  obsAccumWaterVolumeInTime(nit), &
+                          BTCHistPerSolute(nit,:)/obsAccumWaterVolumeInTime(nit)
+           else
+             write(obs%outputUnit, colFormat) nit, simulationData%TimePoints(nit), &
+                                   0d0, spread(0d0,1,transportModelData%nSolutes) 
+           end if 
+          end do 
+        case (1)
+          ! idTime, time, WVol, C-HIST(:), C-GPKDE(:)
+          write (colFormat,*) '(1I8,',&
+              2 + 2*transportModelData%nSolutes, 'es18.9e3)'
+          ! And write
+          do nit = 1, obs%nAuxRecords
+           if ( obsAccumWaterVolumeInTime(nit) .gt. 0d0 ) then 
+            write(obs%outputUnit, colFormat) nit, simulationData%TimePoints(nit), &
+                                                  obsAccumWaterVolumeInTime(nit), & 
+                          BTCHistPerSolute(nit,:)/obsAccumWaterVolumeInTime(nit), &
+                         BTCGpkdePerSolute(nit,:)/obsAccumWaterVolumeInTime(nit)
+           else
+             write(obs%outputUnit, colFormat) nit, simulationData%TimePoints(nit), &
+                                 0d0, spread(0d0,1,2*transportModelData%nSolutes) 
+           end if 
+          end do
+        end select 
 
-        ! Once the accumulated porous volume is known, compute resident
-        ! concentration
-
-        ! And write
-        ! Remember to decide what to do for different species, pgroups (?)
-        if ( obsAccumPorousVolume .ne. 0d0 ) then 
-          ! Probably should be as a property from obs 
-          select case(obs%postprocessOption)
-          case (0)
-            ! idTime, time, C-HIST(:)
-            ! Needs the format 
-            write (colFormat,*) '(1I8,',&
-                1 + transportModelData%nSolutes, 'es18.9e3)'
-            ! And write
-            do nit = 1, simulationData%TimePointCount
-              ! idTime, time, C-GPKDE(t,:)
-              write(obs%outputUnit, colFormat) nit, simulationData%TimePoints(nit), &
-                                      BTCHistPerSolute(nit,:)/obsAccumPorousVolume  
-            end do 
-          case (1)
-            ! idTime, time, C-HIST(:), C-GPKDE(:)
-            ! Needs the format 
-            write (colFormat,*) '(1I8,',&
-                1 + 2*transportModelData%nSolutes, 'es18.9e3)'
-            ! And write
-            do nit = 1, simulationData%TimePointCount
-              ! idTime, time, C-GPKDE(t,:), C-HIST(t,:)
-              write(obs%outputUnit, colFormat) nit, simulationData%TimePoints(nit), &
-                                      BTCHistPerSolute(nit,:)/obsAccumPorousVolume, & 
-                                     BTCGpkdePerSolute(nit,:)/obsAccumPorousVolume
-            end do
-          end select 
-
-        end if 
 
 
         ! Deallocate 
@@ -1991,22 +2044,19 @@ program MPath7
         ! With as many columns as cells
         ! composing the observation
         allocate(obsSinkFlowInTime(obs%nAuxRecords, obs%nCells))
-        obsSinkFlowInTime = 0d0
-
+        obsSinkFlowInTime(:,:) = 0d0
         ! Fill flow-rate timeseries for each cell
         rewind( obs%auxOutputUnit )
         do n =1, obs%nAuxRecords
           read(obs%auxOutputUnit,*) timeIndex, obsSinkFlowInTime( n, : )
         end do
-
         ! Accumulate flow rates, absolute values 
         obsAccumSinkFlowInTime = sum( abs(obsSinkFlowInTime), dim=2 )
         ! Once flow-rates are known, can compute flux-concentration
 
         ! Something to verify if sink flows were zero the whole time
-        
-        ! Should compute flux-concentrations only for non zero flow-rates
 
+        ! Should compute flux-concentrations only for non zero flow-rates
     
         ! Probably should be as a property from  obs 
         select case(idColFormat)
