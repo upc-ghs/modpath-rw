@@ -2240,8 +2240,6 @@ contains
   if(subCellData%Row .eq. this%SubCellRowCount) then
     count = this%GetSubFaceCount(3)
     subCellData%Connection(3) = 0
-    ! maybe needed
-    ! subCellData%MassBoundary(3) = 0
     if(count .eq. 1) then
       subCellData%Connection(3) = this%SubFaceConn3(1)
       subCellData%MassBoundary(3) = this%MassBoundarySubFace3(1)

@@ -22,10 +22,11 @@ program MPath7
       inUnit, pathlineUnit, endpointUnit, timeseriesUnit, binPathlineUnit,    &
       mplistUnit, traceUnit, budchkUnit, aobsUnit, logUnit, mpsimUnit,        &
       gpkdeUnit,obsUnit,dspUnit,rwoptsUnit,spcUnit,icUnit,bcUnit,srcUnit,     & ! RWPT
-      traceModeUnit, mpnamFile, mplistFile, mpbasFile, disFile, tdisFile,     &
+      impUnit, traceModeUnit,                                                 &
+      mpnamFile, mplistFile, mpbasFile, disFile, tdisFile,                    &
       gridFile, headFile, budgetFile, mpsimFile, traceFile,  gridMetaFile,    &
       mplogFile, logType, particleGroupCount, gridFileType, gpkdeFile,        & ! RWPT
-      obsFile, dspFile, rwoptsFile, spcFile, icFile, bcFile, srcFile            ! RWPT
+      obsFile, dspFile, rwoptsFile, spcFile, icFile, bcFile, srcFile, impFile   ! RWPT
   use UtilMiscModule,only : ulog
   use utl8module,only : freeunitnumber, ustop, ugetnode ! GPDKE
   use ModpathCellDataModule,only : ModpathCellDataType
@@ -212,8 +213,9 @@ program MPath7
   rwoptsUnit   = 121 ! RWPT
   spcUnit      = 122 ! RWPT
   icUnit       = 123 ! RWPT
-  bcUnit       = 124 ! RWPT
+  bcUnit       = 124 ! RWPT ! To BE DEPRECATED
   srcUnit      = 125 ! RWPT
+  impUnit      = 126 ! RWPT
   baseTimeseriesUnit = 660 ! OpenMP
   !-----------------------------------------------------------------------
 
@@ -528,8 +530,8 @@ program MPath7
     call ulog('Read specific IC simulation data.', logUnit)
     call simulationData%ReadICData( icFile, icUnit, mpListUnit, modelGrid, basicData%Porosity )
 
-    call ulog('Read specific BC simulation data.', logUnit)
-    call simulationData%ReadBCData( bcFile, bcUnit, mpListUnit, modelGrid, basicData%Porosity )
+    call ulog('Read specific IMP simulation data.', logUnit)
+    call simulationData%ReadIMPData( impFile, impUnit, mpListUnit, modelGrid )
     
     call ulog('Read specific SRC simulation data.', logUnit)
     call simulationData%ReadSRCData( srcFile, srcUnit, mpListUnit, modelGrid, flowModelData )
@@ -912,20 +914,20 @@ program MPath7
     '----------------------------------------------------------------------------------------------'
   
   ! Check water balance summary for the current time step
-  if(simulationData%BudgetOutputOption .gt. 0)                                &
+  if(simulationData%BudgetOutputOption .gt. 0) &
     call WriteWaterBalanceSummary(mplistUnit, trackingEngine, cellData)
   
   ! Check cell-by-cell budgets for this time step
   if(simulationData%BudgetCellsCount .gt. 0) then
-      write(mplistUnit, *) 
-      write(mplistUnit, '(1X,A,I10,A)') 'Cell data will be printed for',      &
-        simulationData%BudgetCellsCount, ' cells.'
-      do n = 1, simulationData%BudgetCellsCount
-          call trackingEngine%FillCellBuffer(simulationData%BudgetCells(n),   &
-            cellData)
-          call trackingEngine%WriteCellBuffer(mplistUnit, cellData,           &
-            simulationData%TrackingOptions%BackwardTracking)
-      end do
+    write(mplistUnit, *) 
+    write(mplistUnit, '(1X,A,I10,A)') 'Cell data will be printed for',  &
+      simulationData%BudgetCellsCount, ' cells.'
+    do n = 1, simulationData%BudgetCellsCount
+      call trackingEngine%FillCellBuffer(simulationData%BudgetCells(n), &
+        cellData)
+      call trackingEngine%WriteCellBuffer(mplistUnit, cellData,         &
+        simulationData%TrackingOptions%BackwardTracking)
+    end do
   end if
   
   ! Compute the tracking time corresponding to the end or beginning 
@@ -2479,8 +2481,9 @@ program MPath7
     rwoptsFile = ' '
     spcFile    = ' '
     icFile     = ' '
-    bcFile     = ' '
+    bcFile     = ' ' ! TO BE DEPRECATED
     srcFile    = ' '
+    impFile     = ' '
 
     inUnit = 99
     open(unit=inUnit, file=filename, status='old', form='formatted', access='sequential')
@@ -2599,15 +2602,20 @@ program MPath7
             open(unit=icUnit,file=icFile,status='old', form='formatted', access='sequential', err=500, iomsg=errMessage)
             write(outUnit,'(A15,A)') 'IC File: ', icFile(1:iflen)
             !nfiltyp(7) = 1
-        else if(filtyp .eq. 'BC') then 
-            bcFile = fname(1:iflen)
-            open(unit=bcUnit,file=bcFile,status='old', form='formatted', access='sequential', err=500, iomsg=errMessage)
-            write(outUnit,'(A15,A)') 'BC File: ', bcFile(1:iflen)
+        !else if(filtyp .eq. 'BC') then 
+        !    bcFile = fname(1:iflen)
+        !    open(unit=bcUnit,file=bcFile,status='old', form='formatted', access='sequential', err=500, iomsg=errMessage)
+        !    write(outUnit,'(A15,A)') 'BC File: ', bcFile(1:iflen)
+        !    !nfiltyp(7) = 1
+        else if(filtyp .eq. 'IMP') then 
+            impFile = fname(1:iflen)
+            open(unit=impUnit,file=impFile,status='old', form='formatted', access='sequential', err=500, iomsg=errMessage)
+            write(outUnit,'(A15,A)') 'IMP File: ', impFile(1:iflen)
             !nfiltyp(7) = 1
         else if(filtyp .eq. 'SRC') then 
             srcFile = fname(1:iflen)
             open(unit=srcUnit,file=srcFile,status='old', form='formatted', access='sequential', err=500, iomsg=errMessage)
-            write(outUnit,'(A15,A)') 'BC File: ', srcFile(1:iflen)
+            write(outUnit,'(A15,A)') 'SRC File: ', srcFile(1:iflen)
             !nfiltyp(7) = 1
         end if
           

@@ -8,7 +8,8 @@ module SoluteModule
 
   type, public :: SoluteType
     ! Id's
-    integer :: id
+    integer            :: id      ! internal
+    integer            :: userid  ! given by the user
     character(len=300) :: stringid
     logical            :: initialized =.false.
     ! Disperion model foreign key
@@ -21,20 +22,20 @@ module SoluteModule
 
 
 
-    ! TO BE DEPRECATED
-    ! Dispersivities 
-    ! Not necessarily consistent with definition 
-    ! of dispersivity as medium property, but
-    ! allows to implement species specific dispersion
-    doubleprecision,dimension(:),allocatable :: AlphaLong
-    doubleprecision,dimension(:),allocatable :: AlphaTran
-    doubleprecision :: betaLong, betaTrans
-    ! Transport properties
-    doubleprecision :: dAqueous
-    doubleprecision :: aqueousDiffusion
-    doubleprecision :: poreDiffusion  ! or effective diffusion
-    doubleprecision :: effectiveDiffusion  ! Aqueous diffusion with tortuosity correction
-    integer :: dispersionModel = 0
+    !! TO BE DEPRECATED
+    !! Dispersivities 
+    !! Not necessarily consistent with definition 
+    !! of dispersivity as medium property, but
+    !! allows to implement species specific dispersion
+    !doubleprecision,dimension(:),allocatable :: AlphaLong
+    !doubleprecision,dimension(:),allocatable :: AlphaTran
+    !doubleprecision :: betaLong, betaTrans
+    !! Transport properties
+    !doubleprecision :: dAqueous
+    !doubleprecision :: aqueousDiffusion
+    !doubleprecision :: poreDiffusion  ! or effective diffusion
+    !doubleprecision :: effectiveDiffusion  ! Aqueous diffusion with tortuosity correction
+    !integer :: dispersionModel = 0
 
 
   contains

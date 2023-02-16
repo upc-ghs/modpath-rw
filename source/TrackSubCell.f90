@@ -438,19 +438,14 @@ contains
 !-------------------------------------------------------------------
   subroutine pr_InitializeRandomWalk(this, trackingOptions)
       !------------------------------------------------------------
-      ! In the meantime:
-      !
-      ! Link pointers for advection model related methods
-      ! 
-      ! called in trackingEngine%Initialize
+      ! Called in trackingEngine%Initialize
+      !------------------------------------------------------------
+      ! Specifications
       !------------------------------------------------------------
       implicit none
       class(TrackSubCellType) :: this
       type(ParticleTrackingOptionsType),intent(in), target :: trackingOptions
       !------------------------------------------------------------
-      ! Specifications
-      !------------------------------------------------------------
-
 
       ! Assign displacement pointers
       if ( trackingOptions%advectionKind .eq. 1 ) then 
@@ -482,18 +477,18 @@ contains
       ! Done
       return
 
-
   end subroutine pr_InitializeRandomWalk
 
 
   subroutine pr_SetDispersionDisplacement(this, dispersionModel)
       !------------------------------------------------------------
+      !
+      !------------------------------------------------------------
+      ! Specifications
       !------------------------------------------------------------
       implicit none
       class(TrackSubCellType) :: this
       integer :: dispersionModel 
-      !------------------------------------------------------------
-      ! Specifications
       !------------------------------------------------------------
 
       ! Assign displacement pointers
@@ -506,13 +501,13 @@ contains
       else 
        ! Not set !
        ! Some kind of error handling
-       print *, 'TrackSubCell:SetDispersionDisplacement: dispersionModel ' , dispersionModel ,' NOT implemented !'
-       call exit(0)
-       !continue
+       write(*,*) 'TrackSubCell:SetDispersionDisplacement: dispersionModel ' , dispersionModel ,' NOT implemented. Stop.'
+       stop
       end if
 
       ! Done
       return
+
 
   end subroutine pr_SetDispersionDisplacement
 

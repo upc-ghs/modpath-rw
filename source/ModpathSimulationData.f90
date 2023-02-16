@@ -72,7 +72,8 @@ module ModpathSimulationDataModule
     procedure :: ReadOBSData=>pr_ReadOBSData       ! RWPT
     procedure :: ReadRWOPTSData=>pr_ReadRWOPTSData ! RWPT
     procedure :: ReadICData=>pr_ReadICData         ! RWPT
-    procedure :: ReadBCData=>pr_ReadBCData         ! RWPT
+    procedure :: ReadIMPData=>pr_ReadIMPData       ! RWPT
+    !procedure :: ReadBCData=>pr_ReadBCData         ! RWPT ! TO BE DEPRECATED
     procedure :: ReadSRCData=>pr_ReadSRCData       ! RWPT
     procedure :: SetUniformPorosity=>pr_SetUniformPorosity ! RWPT
   end type
@@ -1807,6 +1808,86 @@ contains
 
 
   end subroutine pr_ReadICData
+
+
+  ! Read specific IMP data
+  subroutine pr_ReadIMPData( this, impFile, impUnit, outUnit, grid )
+    use UTL8MODULE,only : urword,ustop,u3dintmpusg,u3dintmp,ugetnode
+    !--------------------------------------------------------------
+    ! Specifications
+    !--------------------------------------------------------------
+    implicit none
+    ! input 
+    class(ModpathSimulationDataType), target     :: this
+    character(len=200), intent(in)               :: impFile
+    integer, intent(in)                          :: impUnit
+    integer, intent(in)                          :: outUnit
+    class(ModflowRectangularGridType),intent(in) :: grid
+    ! local
+    type(ParticleTrackingOptionsType), pointer :: trackingOptions
+    integer :: isThisFileOpen
+    integer :: icol,istart,istop,n,nd,currentDim
+    doubleprecision    :: r
+    character(len=200) :: line
+    integer, dimension(:), allocatable :: cellsPerLayer
+        ! icbound
+    character(len=24),dimension(1) :: aname
+    data aname(1)   /'       ICBOUND'/
+    !--------------------------------------------------------------
+
+    write(outUnit, *)
+    write(outUnit, '(1x,a)') 'MODPATH-RW IMP file data'
+    write(outUnit, '(1x,a)') '------------------------'
+
+    ! CellsPerLayer, required for u3d reader
+    allocate(cellsPerLayer(grid%LayerCount))
+    do n = 1, grid%LayerCount
+      cellsPerLayer(n) = grid%GetLayerCellCount(n)
+    end do
+
+    ! Allocate ICBound array, is needed downstream
+    if(allocated(this%ICBound)) deallocate(this%ICBound)
+    allocate(this%ICBound(grid%CellCount))
+
+    ! Verify if unit is open 
+    isThisFileOpen = -1
+    inquire( file=impFile, number=isThisFileOpen )
+    if ( isThisFileOpen .lt. 0 ) then 
+      ! No bc file
+      write(outUnit,'(A)') 'IMP package was not specified in name file.'
+      ! Initialize ICBound with only zeroes
+      this%ICBound(:) = 0
+      ! And leave
+      return
+    end if
+
+    write(outUnit,'(A)') 'Will read impermeable/rebound cells.'
+
+    ! Read ICBOUND
+    if((grid%GridType .eq. 1) .or. (grid%GridType .eq. 3)) then
+      call u3dintmp(impUnit, outUnit, grid%LayerCount, grid%RowCount,      &
+        grid%ColumnCount, grid%CellCount, this%ICBound, aname(1))
+    else if((grid%GridType .eq. 2) .or. (grid%GridType .eq. 4)) then
+      call u3dintmpusg(impUnit, outUnit, grid%CellCount, grid%LayerCount,  &
+        this%ICBound, aname(1), cellsPerLayer)
+    else
+      write(outUnit,*) 'Invalid grid type specified when reading ICBOUND array data.'
+      write(outUnit,*) 'Stopping.'
+      call ustop(' ')          
+    end if
+
+    ! Check that not all cells are impermeable
+    if ( all(this%ICBound(:).gt.0) ) then 
+      write(outUnit,'(A)')'Invalid IMP specification. All cells were marked as impermable. Stop.'
+      call ustop('Invalid IMP specification. All cells were marked as impermable. Stop.')          
+    end if 
+
+    ! Close file
+    close( impUnit )
+
+
+  end subroutine pr_ReadIMPData
+
 
 
   ! Read specific BC data

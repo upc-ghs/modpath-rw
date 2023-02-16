@@ -18,16 +18,15 @@ module TransportModelDataModule
       ! Local dispersion parameters
       doubleprecision,dimension(:),pointer :: AlphaLong => null()
       doubleprecision,dimension(:),pointer :: AlphaTran => null()
-      doubleprecision,dimension(:),pointer :: AlphaL  => null()
-      doubleprecision,dimension(:),pointer :: AlphaTH => null()
-      doubleprecision,dimension(:),pointer :: AlphaTV => null()
-      doubleprecision,dimension(:),pointer :: DMEff   => null()
+      doubleprecision,dimension(:),pointer :: AlphaL    => null()
+      doubleprecision,dimension(:),pointer :: AlphaTH   => null()
+      doubleprecision,dimension(:),pointer :: AlphaTV   => null()
+      doubleprecision,dimension(:),pointer :: DMEff     => null()
 
 
       ! Local ICBound
-      integer,dimension(:), pointer            :: ICBound
-      !integer,allocatable,dimension(:)         :: ICBound
-      integer,allocatable,dimension(:)         :: ICBoundTS
+      integer,dimension(:), pointer    :: ICBound
+      integer,allocatable,dimension(:) :: ICBoundTS
 
       ! Simulation data
       class( ModpathSimulationDataType ), pointer :: simulationData
@@ -228,6 +227,7 @@ contains
           end do 
           this%Solutes(ns)%nParticleGroups = pgcount
           this%Solutes(ns)%id = minSolId
+          this%Solutes(ns)%userid = minSolId
           tempChar1 = ''
           write( unit=tempChar1, fmt=* )ns 
           this%Solutes(ns)%stringid = 'SPC'//trim(adjustl(tempChar1))
@@ -304,8 +304,9 @@ contains
         if(this%nSolutes .le. 0) then
           ! No spc's
           write(outUnit,'(A)') 'Number of given species/solutes is .le. 0.'
+          call ustop('Number of given species/solutes is .le. 0.')
           ! Shall initialize BaseSolute?
-          return
+          !return
         end if
 
         ! Allocate solutes
@@ -318,10 +319,7 @@ contains
           ! Of course needs some attributes 
           ! of the solute
 
-          ! Read the integer id 
-          read(spcUnit, '(a)') line
-          icol = 1
-          call urword(line, icol, istart, istop, 2, n, r, 0, 0)
+          ! Internal id assigned increasingly
           this%Solutes(ns)%id = n 
           
           ! Read the string id
@@ -329,6 +327,7 @@ contains
           icol = 1
           call urword(line, icol, istart, istop, 0, n, r, 0, 0)
           this%Solutes(ns)%stringid = line(istart:istop)
+
 
           ! Assign pgroups related to the solute
           if ( simulationData%ParticlesMassOption .ne. 2 ) then
@@ -339,26 +338,32 @@ contains
             read(spcUnit, '(a)') line
             icol = 1
             call urword(line, icol, istart, istop, 2, n, r, 0, 0)
+            if ( n.lt.1 ) then 
+              write(outUnit,'(A)') 'Given number of particle groups is .lt. than 1. Stop.'
+              call ustop('Given number of particle groups is .lt. than 1. Stop.')
+            end if 
             this%Solutes(ns)%nParticleGroups = n 
-           
-            ! Some health check
+            
             if ( allocated( this%Solutes(ns)%pGroups ) ) deallocate( this%Solutes(ns)%pGroups )
             allocate(this%Solutes(ns)%pGroups(this%Solutes(ns)%nParticleGroups))
             
-            ! Read related particle groups
-            do npg =1,this%Solutes(ns)%nParticleGroups
-              ! Read the pgroups
-              read(spcUnit, '(a)') line
-              icol = 1
-              call urword(line, icol, istart, istop, 2, n, r, 0, 0)
-              this%Solutes(ns)%pGroups(npg) = n
+            read(spcUnit, *) (this%Solutes(ns)%pGroups(npg), npg = 1,this%Solutes(ns)%nParticleGroups)
 
-              ! It needs to assign the soluteId back to the 
-              ! corresponding pgroup for simulations 
-              ! where the solute is not specified in the pgroup
-              simulationData%ParticleGroups(&
-                  this%Solutes(ns)%pGroups(npg) )%Solute = ns
-            end do
+            !! Read related particle groups
+            !do npg =1,this%Solutes(ns)%nParticleGroups
+            !  ! Read the pgroups
+            !  read(spcUnit, '(a)') line
+            !  icol = 1
+            !  call urword(line, icol, istart, istop, 2, n, r, 0, 0)
+            !  this%Solutes(ns)%pGroups(npg) = n
+            !end do
+
+            ! It needs to assign the soluteId back to the 
+            ! corresponding pgroup for simulations 
+            ! where the solute is not specified in the pgroup
+            simulationData%ParticleGroups(&
+                this%Solutes(ns)%pGroups(npg) )%Solute = ns
+
 
           else if ( simulationData%ParticlesMassOption .eq. 2 ) then
             ! Read pgroups related to the solute ids at pgroups
@@ -503,7 +508,6 @@ contains
     end if   
     this%nDispersion = nDispersion
 
-
     ! Allocate dispersion data array
     if ( allocated(this%DispersionData) ) deallocate(this%DispersionData)
     allocate( this%DispersionData(this%nDispersion) )
@@ -514,20 +518,17 @@ contains
       cellsPerLayer(n) = grid%GetLayerCellCount(n)
     end do
 
-
     ! Loop over dispersion data
     do ndis=1,this%nDispersion
+
       ! Report which DSP will be processed
       write(outUnit,'(A,I5)') 'Processing dispersion data: ', ndis
 
       ! Assing local pointer 
       disp => this%DispersionData(ndis)
 
-      ! Read the integer id 
-      read(dspUnit, '(a)') line
-      icol = 1
-      call urword(line, icol, istart, istop, 2, n, r, 0, 0)
-      disp%id = n 
+      ! Dispersion id assigned increasingly
+      disp%id = ndis 
       
       ! Read the string id
       read(dspUnit, '(a)') line
@@ -541,14 +542,24 @@ contains
       call urword(line, icol, istart, istop, 2, n, r, 0, 0)
       disp%modelKind = n 
 
+      ! Validate dispersion model 
+      select case ( disp%modelKind )
+        ! Linear, isotropic
+        case(1)
+          continue
+        case default
+          write(outUnit,*) 'Invalid dispersion model. Given ', disp%modelKind
+          call ustop('Invalid dispersion model. Stop')          
+      end select
+
       ! Allocate
       call disp%InitializeByModelKind( grid%CellCount )
 
       ! Read dispersion data
       select case ( disp%modelKind )
-        ! Linear
+        ! Linear, isotropic
         case(1)
-          write(outUnit,'(A)') 'Dispersion model is linear, will read dmeff and dispersivities'
+          write(outUnit,'(A)') 'Dispersion model is linear, isotropic: will read dmeff and dispersivities'
 
           ! Read DMEFF
           if((grid%GridType .eq. 1) .or. (grid%GridType .eq. 3)) then
@@ -589,110 +600,109 @@ contains
             call ustop(' ')          
           end if
 
-          ! Read ALPHATV
-          if((grid%GridType .eq. 1) .or. (grid%GridType .eq. 3)) then
-            call u3ddblmp(dspUnit, outUnit, grid%LayerCount, grid%RowCount,      &
-              grid%ColumnCount, grid%CellCount, disp%AlphaTV, anamelin(4))                      
-          else if((grid%GridType .eq. 2) .or. (grid%GridType .eq. 4)) then
-            call u3ddblmpusg(dspUnit, outUnit, grid%CellCount, grid%LayerCount,  &
-              disp%AlphaTV, anamelin(4), cellsPerLayer)
-          else
-            write(outUnit,*) 'Invalid grid type specified when reading ALPHATV array data.'
-            write(outUnit,*) 'Stopping.'
-            call ustop(' ')          
-          end if
+          !! Read ALPHATV
+          !if((grid%GridType .eq. 1) .or. (grid%GridType .eq. 3)) then
+          !  call u3ddblmp(dspUnit, outUnit, grid%LayerCount, grid%RowCount,      &
+          !    grid%ColumnCount, grid%CellCount, disp%AlphaTV, anamelin(4))                      
+          !else if((grid%GridType .eq. 2) .or. (grid%GridType .eq. 4)) then
+          !  call u3ddblmpusg(dspUnit, outUnit, grid%CellCount, grid%LayerCount,  &
+          !    disp%AlphaTV, anamelin(4), cellsPerLayer)
+          !else
+          !  write(outUnit,*) 'Invalid grid type specified when reading ALPHATV array data.'
+          !  write(outUnit,*) 'Stopping.'
+          !  call ustop(' ')          
+          !end if
 
-        ! Nonlinear
-        case(2)
-          write(outUnit,'(A)') 'Dispersion model is nonlinear'
+        !! Nonlinear
+        !case(2)
+        !  write(outUnit,'(A)') 'Dispersion model is nonlinear'
 
-          ! Aqueous molecular diffusion 
-          read( dspUnit, * ) line
-          icol = 1
-          call urword(line,icol,istart,istop,3,n,r,0,0)
-          disp%dmaqueous = r
+        !  ! Aqueous molecular diffusion 
+        !  read( dspUnit, * ) line
+        !  icol = 1
+        !  call urword(line,icol,istart,istop,3,n,r,0,0)
+        !  disp%dmaqueous = r
 
-          ! Read DMEFF
-          if((grid%GridType .eq. 1) .or. (grid%GridType .eq. 3)) then
-            call u3ddblmp(dspUnit, outUnit, grid%LayerCount, grid%RowCount,      &
-              grid%ColumnCount, grid%CellCount, disp%DMEff, anamenlin(1))                      
-          else if((grid%GridType .eq. 2) .or. (grid%GridType .eq. 4)) then
-            call u3ddblmpusg(dspUnit, outUnit, grid%CellCount, grid%LayerCount,  &
-              disp%DMEff, anamenlin(1), cellsPerLayer)
-          else
-            write(outUnit,*) 'Invalid grid type specified when reading DMEFF array data.'
-            write(outUnit,*) 'Stopping.'
-            call ustop(' ')          
-          end if
+        !  ! Read DMEFF
+        !  if((grid%GridType .eq. 1) .or. (grid%GridType .eq. 3)) then
+        !    call u3ddblmp(dspUnit, outUnit, grid%LayerCount, grid%RowCount,      &
+        !      grid%ColumnCount, grid%CellCount, disp%DMEff, anamenlin(1))                      
+        !  else if((grid%GridType .eq. 2) .or. (grid%GridType .eq. 4)) then
+        !    call u3ddblmpusg(dspUnit, outUnit, grid%CellCount, grid%LayerCount,  &
+        !      disp%DMEff, anamenlin(1), cellsPerLayer)
+        !  else
+        !    write(outUnit,*) 'Invalid grid type specified when reading DMEFF array data.'
+        !    write(outUnit,*) 'Stopping.'
+        !    call ustop(' ')          
+        !  end if
 
-          ! Read BETAL
-          if((grid%GridType .eq. 1) .or. (grid%GridType .eq. 3)) then
-            call u3ddblmp(dspUnit, outUnit, grid%LayerCount, grid%RowCount,      &
-              grid%ColumnCount, grid%CellCount, disp%BetaL, anamenlin(2))
-          else if((grid%GridType .eq. 2) .or. (grid%GridType .eq. 4)) then
-            call u3ddblmpusg(dspUnit, outUnit, grid%CellCount, grid%LayerCount,  &
-              disp%BetaL, anamenlin(2), cellsPerLayer)
-          else
-            write(outUnit,*) 'Invalid grid type specified when reading BETAL array data.'
-            write(outUnit,*) 'Stopping.'
-            call ustop(' ')          
-          end if
+        !  ! Read BETAL
+        !  if((grid%GridType .eq. 1) .or. (grid%GridType .eq. 3)) then
+        !    call u3ddblmp(dspUnit, outUnit, grid%LayerCount, grid%RowCount,      &
+        !      grid%ColumnCount, grid%CellCount, disp%BetaL, anamenlin(2))
+        !  else if((grid%GridType .eq. 2) .or. (grid%GridType .eq. 4)) then
+        !    call u3ddblmpusg(dspUnit, outUnit, grid%CellCount, grid%LayerCount,  &
+        !      disp%BetaL, anamenlin(2), cellsPerLayer)
+        !  else
+        !    write(outUnit,*) 'Invalid grid type specified when reading BETAL array data.'
+        !    write(outUnit,*) 'Stopping.'
+        !    call ustop(' ')          
+        !  end if
 
-          ! Read BETATH
-          if((grid%GridType .eq. 1) .or. (grid%GridType .eq. 3)) then
-            call u3ddblmp(dspUnit, outUnit, grid%LayerCount, grid%RowCount,      &
-              grid%ColumnCount, grid%CellCount, disp%BetaTH, anamenlin(3))
-          else if((grid%GridType .eq. 2) .or. (grid%GridType .eq. 4)) then
-            call u3ddblmpusg(dspUnit, outUnit, grid%CellCount, grid%LayerCount,  &
-              disp%BetaTH, anamenlin(3), cellsPerLayer)
-          else
-            write(outUnit,*) 'Invalid grid type specified when reading BETATH array data.'
-            write(outUnit,*) 'Stopping.'
-            call ustop(' ')          
-          end if
+        !  ! Read BETATH
+        !  if((grid%GridType .eq. 1) .or. (grid%GridType .eq. 3)) then
+        !    call u3ddblmp(dspUnit, outUnit, grid%LayerCount, grid%RowCount,      &
+        !      grid%ColumnCount, grid%CellCount, disp%BetaTH, anamenlin(3))
+        !  else if((grid%GridType .eq. 2) .or. (grid%GridType .eq. 4)) then
+        !    call u3ddblmpusg(dspUnit, outUnit, grid%CellCount, grid%LayerCount,  &
+        !      disp%BetaTH, anamenlin(3), cellsPerLayer)
+        !  else
+        !    write(outUnit,*) 'Invalid grid type specified when reading BETATH array data.'
+        !    write(outUnit,*) 'Stopping.'
+        !    call ustop(' ')          
+        !  end if
 
-          ! Read BETATV
-          if((grid%GridType .eq. 1) .or. (grid%GridType .eq. 3)) then
-            call u3ddblmp(dspUnit, outUnit, grid%LayerCount, grid%RowCount,      &
-              grid%ColumnCount, grid%CellCount, disp%BetaTV, anamenlin(4))
-          else if((grid%GridType .eq. 2) .or. (grid%GridType .eq. 4)) then
-            call u3ddblmpusg(dspUnit, outUnit, grid%CellCount, grid%LayerCount,  &
-              disp%BetaTV, anamenlin(4), cellsPerLayer)
-          else
-            write(outUnit,*) 'Invalid grid type specified when reading BETATV array data.'
-            write(outUnit,*) 'Stopping.'
-            call ustop(' ')          
-          end if
+        !  ! Read BETATV
+        !  if((grid%GridType .eq. 1) .or. (grid%GridType .eq. 3)) then
+        !    call u3ddblmp(dspUnit, outUnit, grid%LayerCount, grid%RowCount,      &
+        !      grid%ColumnCount, grid%CellCount, disp%BetaTV, anamenlin(4))
+        !  else if((grid%GridType .eq. 2) .or. (grid%GridType .eq. 4)) then
+        !    call u3ddblmpusg(dspUnit, outUnit, grid%CellCount, grid%LayerCount,  &
+        !      disp%BetaTV, anamenlin(4), cellsPerLayer)
+        !  else
+        !    write(outUnit,*) 'Invalid grid type specified when reading BETATV array data.'
+        !    write(outUnit,*) 'Stopping.'
+        !    call ustop(' ')          
+        !  end if
 
-          ! Read DELTA
-          if((grid%GridType .eq. 1) .or. (grid%GridType .eq. 3)) then
-            call u3ddblmp(dspUnit, outUnit, grid%LayerCount, grid%RowCount,      &
-              grid%ColumnCount, grid%CellCount, disp%Delta, anamenlin(5)) 
-          else if((grid%GridType .eq. 2) .or. (grid%GridType .eq. 4)) then
-            call u3ddblmpusg(dspUnit, outUnit, grid%CellCount, grid%LayerCount,  &
-              disp%Delta, anamenlin(5), cellsPerLayer)
-          else
-            write(outUnit,*) 'Invalid grid type specified when reading DELTA array data.'
-            write(outUnit,*) 'Stopping.'
-            call ustop(' ')          
-          end if
+        !  ! Read DELTA
+        !  if((grid%GridType .eq. 1) .or. (grid%GridType .eq. 3)) then
+        !    call u3ddblmp(dspUnit, outUnit, grid%LayerCount, grid%RowCount,      &
+        !      grid%ColumnCount, grid%CellCount, disp%Delta, anamenlin(5)) 
+        !  else if((grid%GridType .eq. 2) .or. (grid%GridType .eq. 4)) then
+        !    call u3ddblmpusg(dspUnit, outUnit, grid%CellCount, grid%LayerCount,  &
+        !      disp%Delta, anamenlin(5), cellsPerLayer)
+        !  else
+        !    write(outUnit,*) 'Invalid grid type specified when reading DELTA array data.'
+        !    write(outUnit,*) 'Stopping.'
+        !    call ustop(' ')          
+        !  end if
 
-          ! Read DGRAIN
-          if((grid%GridType .eq. 1) .or. (grid%GridType .eq. 3)) then
-            call u3ddblmp(dspUnit, outUnit, grid%LayerCount, grid%RowCount,      &
-              grid%ColumnCount, grid%CellCount, disp%DGrain, anamenlin(6)) 
-          else if((grid%GridType .eq. 2) .or. (grid%GridType .eq. 4)) then
-            call u3ddblmpusg(dspUnit, outUnit, grid%CellCount, grid%LayerCount,  &
-              disp%DGrain, anamenlin(6), cellsPerLayer)
-          else
-            write(outUnit,*) 'Invalid grid type specified when reading DGRAIN array data.'
-            write(outUnit,*) 'Stopping.'
-            call ustop(' ')          
-          end if
+        !  ! Read DGRAIN
+        !  if((grid%GridType .eq. 1) .or. (grid%GridType .eq. 3)) then
+        !    call u3ddblmp(dspUnit, outUnit, grid%LayerCount, grid%RowCount,      &
+        !      grid%ColumnCount, grid%CellCount, disp%DGrain, anamenlin(6)) 
+        !  else if((grid%GridType .eq. 2) .or. (grid%GridType .eq. 4)) then
+        !    call u3ddblmpusg(dspUnit, outUnit, grid%CellCount, grid%LayerCount,  &
+        !      disp%DGrain, anamenlin(6), cellsPerLayer)
+        !  else
+        !    write(outUnit,*) 'Invalid grid type specified when reading DGRAIN array data.'
+        !    write(outUnit,*) 'Stopping.'
+        !    call ustop(' ')          
+        !  end if
 
         case default
-          write(outUnit,*) 'Invalid dispersion model. Accepts 1 or 2, given ', disp%modelKind
-          write(outUnit,*) 'Stopping.'
+          write(outUnit,*) 'Invalid dispersion model. Given ', disp%modelKind
           call ustop('Invalid dispersion model. Stop')          
       end select
 

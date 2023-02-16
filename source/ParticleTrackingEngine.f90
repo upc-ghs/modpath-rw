@@ -411,7 +411,8 @@ contains
       ! RWPT
       if ( .not. present( transportModelData ) ) then
         ! REQUIRES Proper error handling
-        print *, 'Error: ParticleTrackingEngine:Initialize: RWPT requires transportModelData, not given.'
+        write(*,*)'Error: ParticleTrackingEngine:Initialize: RWPT requires transportModelData, not given.'
+        stop
       end if 
 
       ! Define transport data pointer 
@@ -421,6 +422,7 @@ contains
       select case( this%Grid%GridType ) 
           case (1)
               ! Set for structured grid
+              ! NEEDS MASS BOUNDARIES!
               this%FillCellBuffer=>pr_FillTransportCellBufferStructured
               this%FillNeighborCellData=> pr_FillNeighborCellDataStructured
           case (2)
