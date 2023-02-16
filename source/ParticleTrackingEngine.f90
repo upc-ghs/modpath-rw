@@ -636,7 +636,7 @@ contains
         this%FlowModelData%StorageFlows(cellNumber),this%FlowModelData%SourceFlows(cellNumber), &
         this%FlowModelData%SinkFlows(cellNumber), this%FlowModelData%FlowsJA, boundaryFlows,    &
         this%FlowModelData%Heads(cellNumber), cellType, this%FlowModelData%Zones(cellNumber),   &
-                            this%TransportModelData%ICBound, this%TransportModelData%ICBoundTS  ) 
+                    this%TransportModelData%ICBoundTS, this%TransportModelData%defaultICBound   ) 
 
 
       ! If AlphaLong or AlphaTran are constants, then 
@@ -701,9 +701,26 @@ contains
   integer,intent(in) :: cellNumber
   type(ModpathCellDataType),intent(inout) :: cellBuffer
   doubleprecision,dimension(6) :: boundaryFlows
+  integer :: n, layer, boundaryFlowsOffset, gridType, cellType
   !----------------------------------------------------------------------------
   
-    call pr_FillCellBufferStructured(this, cellNumber, cellBuffer)
+    !call pr_FillCellBufferStructured(this, cellNumber, cellBuffer)
+
+    boundaryFlowsOffset = 6 * (cellNumber - 1)
+    do n = 1, 6
+        boundaryFlows(n) = this%FlowModelData%BoundaryFlows(boundaryFlowsOffset + n)
+    end do
+
+    ! Set cell buffer data for a structured grid
+    call cellBuffer%SetMassTransportDataStructured(cellNumber,this%Grid%CellCount,            &
+      this%Grid,this%FlowModelData%IBound,this%FlowModelData%IBoundTS,                        &
+      this%FlowModelData%Porosity(cellNumber),this%FlowModelData%Retardation(cellNumber),     &
+      this%FlowModelData%StorageFlows(cellNumber),this%FlowModelData%SourceFlows(cellNumber), &
+      this%FlowModelData%SinkFlows(cellNumber), this%FlowModelData%FlowsRightFace,            &
+      this%FlowModelData%FlowsFrontFace, this%FlowModelData%FlowsLowerFace, boundaryFlows,    &
+      this%FlowModelData%Heads(cellNumber), cellType, this%FlowModelData%Zones(cellNumber),   &
+                  this%TransportModelData%ICBoundTS, this%TransportModelData%defaultICBound   ) 
+
 
     ! If AlphaLong or AlphaTran are constants, then 
     ! it should handle said scenario to avoid unnecessary memory usage
@@ -712,6 +729,7 @@ contains
     cellBuffer%dMEff  = this%TransportModelData%DMEff(cellNumber)
 
     return
+
 
   end subroutine pr_FillTransportCellBufferStructured
 

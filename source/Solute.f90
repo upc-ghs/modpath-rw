@@ -20,18 +20,19 @@ module SoluteModule
     integer                            :: nParticleGroups = 0
     integer, dimension(:), allocatable :: pGroups
 
+    ! Dispersivities 
+    ! Not necessarily consistent with definition 
+    ! of dispersivity as medium property, but
+    ! allows to implement species specific dispersion
+    doubleprecision,dimension(:),allocatable :: AlphaLong
+    doubleprecision,dimension(:),allocatable :: AlphaTran
+
+    ! Transport properties
+    doubleprecision :: dAqueous
 
 
     !! TO BE DEPRECATED
-    !! Dispersivities 
-    !! Not necessarily consistent with definition 
-    !! of dispersivity as medium property, but
-    !! allows to implement species specific dispersion
-    !doubleprecision,dimension(:),allocatable :: AlphaLong
-    !doubleprecision,dimension(:),allocatable :: AlphaTran
     !doubleprecision :: betaLong, betaTrans
-    !! Transport properties
-    !doubleprecision :: dAqueous
     !doubleprecision :: aqueousDiffusion
     !doubleprecision :: poreDiffusion  ! or effective diffusion
     !doubleprecision :: effectiveDiffusion  ! Aqueous diffusion with tortuosity correction

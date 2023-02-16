@@ -23,10 +23,13 @@ module TransportModelDataModule
       doubleprecision,dimension(:),pointer :: AlphaTV   => null()
       doubleprecision,dimension(:),pointer :: DMEff     => null()
 
-
-      ! Local ICBound
-      integer,dimension(:), pointer    :: ICBound
-      integer,allocatable,dimension(:) :: ICBoundTS
+      ! ICBound
+      integer,allocatable, dimension(:) :: ICBound
+      integer, pointer, dimension(:)    :: ICBoundTS
+      !integer,allocatable, dimension(:) :: ICBoundTS
+      integer                           :: defaultICBound ! applied to model bounadaries
+      logical                           :: followIBoundTS
+      logical                           :: followIBound
 
       ! Simulation data
       class( ModpathSimulationDataType ), pointer :: simulationData
@@ -49,7 +52,7 @@ module TransportModelDataModule
       integer,private :: CurrentTimeStep = 0
 
       ! Flow model data
-      !type( FlowModelDataType ), pointer :: flowModelData => null()
+      type( FlowModelDataType ), pointer :: flowModelData => null()
 
       ! Budget reader
       !type(BudgetReaderType), pointer :: budgetReader => null()
@@ -62,6 +65,7 @@ module TransportModelDataModule
 
       procedure :: Initialize=>pr_Initialize
       procedure :: Reset=>pr_Reset
+      procedure :: ReadIMPData=>pr_ReadIMPData
       procedure :: ReadSPCData=>pr_ReadSPCData
       procedure :: ReadDSPData=>pr_ReadDSPData
       procedure :: ValidateDataRelations => pr_ValidateDataRelations
@@ -74,14 +78,15 @@ module TransportModelDataModule
 contains
 
 
-  subroutine pr_Initialize( this, grid, simulationData )
+  subroutine pr_Initialize( this, grid, simulationData, flowModelData )
   !---------------------------------------------------------------------------------------------------------------
   ! Specifications
   !---------------------------------------------------------------------------------------------------------------
   implicit none
   class(TransportModelDataType) :: this
-  class(ModflowRectangularGridType),intent(inout),pointer :: grid
-  type(ModpathSimulationDataType),intent(in),pointer :: simulationData
+  class(ModflowRectangularGridType), intent(in), target :: grid
+  type(ModpathSimulationDataType), intent(in), target :: simulationData
+  type(FlowModelDataType), intent(in), target :: flowModelData
 
   integer :: cellCount, gridType
   !---------------------------------------------------------------------------------------------------------------
@@ -101,14 +106,15 @@ contains
       ! simulationData
       this%simulationData => simulationData
 
-      ! IBounds
-      if(allocated(this%ICBoundTS)) deallocate(this%ICBoundTS)
-      allocate(this%ICBoundTS(grid%CellCount))
+      ! flowModelData
+      this%flowModelData => flowModelData
 
-      ! OLD
+      ! IBounds
+      !if(allocated(this%ICBoundTS)) deallocate(this%ICBoundTS)
+      !allocate(this%ICBoundTS(grid%CellCount))
       !if(allocated(this%ICBound)) deallocate(this%ICBound)
       !allocate(this%ICBound(grid%CellCount))
-      this%ICBound => simulationData%ICBound
+      !this%ICBound => simulationData%ICBound
 
       this%Initialized = .true.
 
@@ -134,12 +140,143 @@ contains
       this%AlphaTran => null()
       this%DMEff => null()
 
-      if(allocated(this%ICBoundTS)) deallocate( this%ICBoundTS )
-      !if(allocated(this%ICBound)) deallocate( this%ICBound )
-      this%ICBound => null()
+      !if(allocated(this%ICBoundTS)) deallocate( this%ICBoundTS )
+      if(allocated(this%ICBound)) deallocate( this%ICBound )
+      this%ICBoundTS => null()
 
 
   end subroutine pr_Reset
+
+
+  ! Read specific IMP data
+  subroutine pr_ReadIMPData( this, impFile, impUnit, outUnit, grid )
+    use UTL8MODULE,only : urword,ustop,u3dintmpusg,u3dintmp,ugetnode
+    !--------------------------------------------------------------
+    ! Specifications
+    !--------------------------------------------------------------
+    implicit none
+    ! input 
+    class(TransportModelDataType), target        :: this
+    character(len=200), intent(in)               :: impFile
+    integer, intent(in)                          :: impUnit
+    integer, intent(in)                          :: outUnit
+    class(ModflowRectangularGridType),intent(in) :: grid
+    ! local
+    integer            :: isThisFileOpen
+    integer            :: icol,istart,istop,n,nd,currentDim
+    integer            :: impFormat
+    doubleprecision    :: r
+    character(len=200) :: line
+    integer, dimension(:), allocatable :: cellsPerLayer
+    ! icbound
+    character(len=24),dimension(1) :: aname
+    data aname(1)   /'      IMPCELLS'/
+    !--------------------------------------------------------------
+
+    write(outUnit, *)
+    write(outUnit, '(1x,a)') 'MODPATH-RW IMP file data'
+    write(outUnit, '(1x,a)') '------------------------'
+
+    ! CellsPerLayer, required for u3d reader
+    allocate(cellsPerLayer(grid%LayerCount))
+    do n = 1, grid%LayerCount
+      cellsPerLayer(n) = grid%GetLayerCellCount(n)
+    end do
+
+    ! Allocate ICBound array, is needed downstream
+    if(allocated(this%ICBound)) deallocate(this%ICBound)
+    allocate(this%ICBound(grid%CellCount))
+
+    ! Verify if unit is open 
+    isThisFileOpen = -1
+    inquire( file=impFile, number=isThisFileOpen )
+    if ( isThisFileOpen .lt. 0 ) then 
+      ! No file
+      write(outUnit,'(A)') 'IMP package was not specified in name file.'
+      ! Initialize ICBound with only zeroes
+      this%ICBound(:) = 0
+      ! Assign defaultICBound as rebound
+      this%defaultICBound = 1
+      ! And leave
+      return
+    end if
+
+    write(outUnit,'(A)') 'Will interpret specification of impermeable cells.'
+
+    ! Read defaultICBound
+    read(impUnit, '(a)') line
+    icol = 1
+    call urword(line, icol, istart, istop, 2, n, r, 0, 0)
+    if ( n.ge.1) then 
+     this%defaultICBound = 1
+     write(outUnit,'(A,I1)') 'Default ICBOUND set to rebound when no cell connection: ', 1
+    else
+     this%defaultICBound = 0
+     write(outUnit,'(A,I1)') 'Default ICBOUND set to open when no cell connection: ', 0
+    end if
+    
+
+    ! Read impFormat
+    read(impUnit, '(a)') line
+    icol = 1
+    call urword(line, icol, istart, istop, 2, n, r, 0, 0)
+    ! Validate
+    select case(n)
+    case(0,1,2)
+      continue
+    case default
+      write(outUnit,'(A)') 'Invalid format for IMP package. Stop.'
+      call ustop('Invalid format for IMP package. Stop.')          
+    end select
+    impFormat = n
+
+    this%followIBound = .false.
+    this%followIBoundTS = .false.
+    select case(impFormat)
+    case(0)
+     ! Copy IBound into ICBound and assign pointer, does not 
+     ! change in time
+     this%followIBound = .true.
+     this%ICBound(:) = this%flowModelData%IBound(:)
+     this%ICBoundTS => this%ICBound
+     write(outUnit,'(A)') 'Impermeable cells follow flowModelData%IBound.'
+    case(1)
+     ! Activate flag, ICBoundTS is updated every time step
+     this%followIBoundTS = .true.
+     write(outUnit,'(A)') 'Impermeable cells follow flowModelData%IBoundTS, includes dry cells.'
+    case(2)
+     write(outUnit,'(A)') 'Impermeable cells read from IMPCELLS.'
+     ! Read IMPCELLS
+     if((grid%GridType .eq. 1) .or. (grid%GridType .eq. 3)) then
+       call u3dintmp(impUnit, outUnit, grid%LayerCount, grid%RowCount,      &
+         grid%ColumnCount, grid%CellCount, this%ICBound, aname(1))
+     else if((grid%GridType .eq. 2) .or. (grid%GridType .eq. 4)) then
+       call u3dintmpusg(impUnit, outUnit, grid%CellCount, grid%LayerCount,  &
+         this%ICBound, aname(1), cellsPerLayer)
+     else
+       write(outUnit,*) 'Invalid grid type specified when reading IMPCELLS array data.'
+       write(outUnit,*) 'Stopping.'
+       call ustop(' ')          
+     end if
+
+     ! Check that not all cells are impermeable
+     if ( all(this%ICBound(:).gt.0) ) then 
+       write(outUnit,'(A)')'Invalid IMP specification. All cells were marked as impermable. Stop.'
+       call ustop('Invalid IMP specification. All cells were marked as impermable. Stop.')          
+     end if 
+
+     ! Assign pointer, does not change in time.
+     this%ICBoundTS => this%ICBound
+
+    end select
+
+
+    ! Close file
+    close( impUnit )
+
+
+  end subroutine pr_ReadIMPData
+
 
 
   ! Read specific SPC data
@@ -833,7 +970,8 @@ contains
   !-----------------------------------------------------------------------------------
   !   - Huge simplification from flowModelData%LoadTimeStep
   !   - It could be employed for loading time variable data for dispersion
-  !   - In the meantime, only update time references and ICBOUND 
+  !   - In the meantime, only update time references and ICBOUND
+  !   - It considers execution after flowModelData%LoadTimeStep  
   !-----------------------------------------------------------------------------------
   ! Specifications:
   !-----------------------------------------------------------------------------------
@@ -846,15 +984,9 @@ contains
   !-----------------------------------------------------------------------------------
 
 
-    cellCount = this%Grid%CellCount
-    if(this%Grid%GridType .gt. 2) then
-      do n = 1, cellCount
-        this%ICBoundTS(n) = this%ICBound(n)
-      end do
-    else
-      do n = 1, cellCount
-        this%ICBoundTS(n) = this%ICBound(n)
-      end do
+    if ( this%followIBoundTS ) then
+      this%ICBoundTS => null()
+      this%ICBoundTS => this%flowModelData%IBoundTS
     end if
 
     this%CurrentStressPeriod = stressPeriod

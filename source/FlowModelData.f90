@@ -732,15 +732,15 @@ contains
     !---------------------------------------------------------------------------------------------------------------
       
         if(arraySize .ne. this%Grid%CellCount) then
-            write(*,*) "FlowModelDataType: The IBound array size does not match the cell count for the grid. stop"
-            stop
+          write(*,*) "FlowModelDataType: The IBound array size does not match the cell count for the grid. stop"
+          stop
         end if
        
         this%IBound => ibound
         ! Initialize the IBoundTS array to the same values as IBound whenever the IBound array is set.
         ! The values of IBoundTS will be updated for dry cells every time that data for a time step is loaded.
         do n = 1, arraySize
-            this%IBoundTS(n) = this%IBound(n)
+          this%IBoundTS(n) = this%IBound(n)
         end do
   
 

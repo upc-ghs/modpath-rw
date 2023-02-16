@@ -530,9 +530,6 @@ program MPath7
     call ulog('Read specific IC simulation data.', logUnit)
     call simulationData%ReadICData( icFile, icUnit, mpListUnit, modelGrid, basicData%Porosity )
 
-    call ulog('Read specific IMP simulation data.', logUnit)
-    call simulationData%ReadIMPData( impFile, impUnit, mpListUnit, modelGrid )
-    
     call ulog('Read specific SRC simulation data.', logUnit)
     call simulationData%ReadSRCData( srcFile, srcUnit, mpListUnit, modelGrid, flowModelData )
 
@@ -559,8 +556,11 @@ program MPath7
 
     allocate( transportModelData ) 
     call ulog('Initialize transport model data component.', logUnit)
-    call transportModelData%Initialize( modelGrid, simulationData )
+    call transportModelData%Initialize( modelGrid, simulationData, flowModelData )
 
+    call ulog('Read specific IMP simulation data.', logUnit)
+    call transportModelData%ReadIMPData( impFile, impUnit, mpListUnit, modelGrid )
+call exit(0)
     call ulog('Read specific SPC data.', logUnit)
     call transportModelData%ReadSPCData( spcFile, spcUnit, mpListUnit )
 
