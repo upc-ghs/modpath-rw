@@ -162,9 +162,9 @@ contains
   logical,intent(in) :: backwardTracking
   type(ModpathCellDataType),intent(in) :: cellData
   type(ModpathSubCellDataType) :: subCellData
-  integer :: m, n, count, row, column, subRowCount, subColumnCount
+  integer :: n, row, column, subRowCount, subColumnCount
   doubleprecision :: balance, totalFaceInflow, totalFaceOutflow, sourceInflow,  &
-    sinkOutflow, storageInflow, storageOutflow, netFaceInflow
+    sinkOutflow, storageInflow, storageOutflow
   doubleprecision :: totalInflow, totalOutflow, netInflow
   !---------------------------------------------------------------------------------------------------------------
 
@@ -251,9 +251,8 @@ contains
   type(TrackCellType),intent(in),target :: trackCell
   type(TrackCellResultType),intent(in),target :: tcResult
   type(ModpathCellDataType),pointer :: cellData
-  type(ModpathSubCellDataType) :: subCellData
   integer,intent(in) :: unit, stressPeriod, timeStep
-  integer :: m, n, count, row, column, subRowCount, subColumnCount
+  integer :: n, count
   character(len=28) :: statusText
   !---------------------------------------------------------------------------------------------------------------
 
@@ -371,7 +370,6 @@ contains
     doubleprecision,dimension(timePointsCount),intent(in) :: timeSeriesPoints
     doubleprecision,intent(in) :: currentTime, maximumTime
     integer :: index, n
-    doubleprecision :: t
   !---------------------------------------------------------------------------------------------------------------
     index = -1
     
@@ -516,7 +514,7 @@ contains
   integer,intent(in) :: bufferSize
   doubleprecision,intent(inout),dimension(bufferSize) :: buffer
   integer,intent(inout) :: count
-  integer :: n,offset
+  integer :: n
   !---------------------------------------------------------------------------------------------------------------
     
       do n = 1, bufferSize
@@ -573,7 +571,7 @@ contains
   integer,intent(in) :: cellNumber
   type(ModpathCellDataType),intent(inout) :: cellBuffer
   doubleprecision,dimension(6) :: boundaryFlows
-  integer :: n, layer, boundaryFlowsOffset, gridType, cellType
+  integer :: n, boundaryFlowsOffset, cellType
   !---------------------------------------------------------------------------------------------------------------
   
       boundaryFlowsOffset = 6 * (cellNumber - 1)
@@ -614,7 +612,7 @@ contains
   integer,intent(in) :: cellNumber
   type(ModpathCellDataType),intent(inout) :: cellBuffer
   doubleprecision,dimension(6) :: boundaryFlows
-  integer :: n, layer, boundaryFlowsOffset, gridType, cellType
+  integer :: n, boundaryFlowsOffset, cellType
   !---------------------------------------------------------------------------------------------------------------
   
 
@@ -664,7 +662,7 @@ contains
   integer,intent(in) :: cellNumber
   type(ModpathCellDataType),intent(inout) :: cellBuffer
   doubleprecision,dimension(6) :: boundaryFlows
-  integer :: n, layer, boundaryFlowsOffset, gridType, cellType
+  integer :: n, boundaryFlowsOffset, cellType
   !---------------------------------------------------------------------------------------------------------------
   
       boundaryFlowsOffset = 6 * (cellNumber - 1)
@@ -701,7 +699,7 @@ contains
   integer,intent(in) :: cellNumber
   type(ModpathCellDataType),intent(inout) :: cellBuffer
   doubleprecision,dimension(6) :: boundaryFlows
-  integer :: n, layer, boundaryFlowsOffset, gridType, cellType
+  integer :: n, boundaryFlowsOffset, cellType
   !----------------------------------------------------------------------------
   
     !call pr_FillCellBufferStructured(this, cellNumber, cellBuffer)
@@ -777,12 +775,9 @@ contains
   logical,intent(in) :: traceModeOn
   type(ParticleLocationType) :: loc
   type(ParticleCoordinateType) :: pCoord
-  type(ModpathCellDataType),pointer :: cellData
-  type(TrackCellResultType),pointer :: tcResult
   doubleprecision,intent(in) :: maximumTrackingTime
   doubleprecision,dimension(timeseriesPointCount),intent(in) :: timeseriesPoints
-  doubleprecision :: stopTime, fromLocalX, fromLocalY, fromLocalZ, globalX,     &
-    globalY, globalZ
+  doubleprecision :: stopTime, fromLocalX, fromLocalY, fromLocalZ
   integer :: timeIndex, n, count, nextCell
   logical :: continueLoop, isTimeSeriesPoint, isMaximumTime
 
@@ -979,12 +974,9 @@ contains
   logical,intent(in) :: traceModeOn
   type(ParticleLocationType) :: loc
   type(ParticleCoordinateType) :: pCoord
-  type(ModpathCellDataType),pointer :: cellData
-  type(TrackCellResultType),pointer :: tcResult
   doubleprecision,intent(in) :: maximumTrackingTime
   doubleprecision,dimension(timeseriesPointCount),intent(in) :: timeseriesPoints
-  doubleprecision :: stopTime, fromLocalX, fromLocalY, fromLocalZ, globalX,     &
-    globalY, globalZ
+  doubleprecision :: stopTime, fromLocalX, fromLocalY, fromLocalZ
   integer :: timeIndex, n, count, nextCell
   logical :: continueLoop, isTimeSeriesPoint, isMaximumTime
 
@@ -1186,7 +1178,7 @@ subroutine pr_FillNeighborCellDataUnstructured( this, neighborCellData )
     implicit none
     class(ParticleTrackingEngineType) :: this
     type(ModpathCellDataType), dimension(2, 18), intent(inout) :: neighborCellData
-    integer :: n, m, id, cellCounter, firstNeighborFaceNumber
+    integer :: n, m, cellCounter, firstNeighborFaceNumber
     logical :: forceCellRefinement
     !------------------------------------------------------------------
     
@@ -1295,7 +1287,7 @@ subroutine pr_FillNeighborCellsSubBuffer( this, &
     integer :: sameParentCellBufferIndex
     integer :: notSameParentCellBufferIndex
     integer :: notSameParentCellFaceConnection
-    integer :: n, m 
+    integer :: m 
     integer :: directionId
     !---------------------------------------------------------------------
 
@@ -1607,7 +1599,6 @@ subroutine pr_FillNeighborCellsConnectionFromHorizontalFace(this, centerCellData
     integer, dimension(2)                    :: orthogonalConnections
     integer                                  :: directConnection
     integer, dimension(2,2)                  :: subCellIndexes
-    integer                                  :: directConnectionSubRow
     integer                                  :: subCellIndexesRow
     integer                                  :: directionId
     integer                                  :: subRow, subColumn
@@ -1831,7 +1822,8 @@ end subroutine pr_FillNeighborCellsConnectionFromHorizontalFace
 ! RWPT
 subroutine pr_FillCellBufferFromSubCell( this, parentCellBuffer, subRow, subColumn, &
                                                     cellBuffer, forceCellRefinement )
-    !----------------------------------------------------------------------------- 
+    !-----------------------------------------------------------------------------
+    ! 
     !-----------------------------------------------------------------------------
     implicit none 
     class(ParticleTrackingEngineType) :: this
@@ -1951,7 +1943,6 @@ subroutine pr_FillNeighborCellDataStructured( this, neighborCellData )
     type(ModpathCellDataType), dimension(2, 18), intent(inout) :: neighborCellData
     integer :: n, m
     integer :: cellCounter, subCount
-    integer :: firstNeighborFaceNumber
     !------------------------------------------------------------------
 
 
@@ -2051,62 +2042,6 @@ subroutine pr_FillNeighborCellDataStructured( this, neighborCellData )
             cellCounter = cellCounter + 2
         endif
     end do
-
-    ! Prototype (SLOWER)
-    !! Reset all buffers
-    !do m = 1, 18 
-    !    call neighborcelldata( 1, m )%reset() 
-    !end do 
-
-    !! Loop through cell faces and fill neighborhood
-    !cellCounter = 0
-    !do n = 1, 6
-
-    !    ! Each cell face gives three neighbor cells. 
-    !    ! Itself, and two other orthogonal connections
-    !    cellCounter = ( n - 1 )*3 + 1
-
-    !    ! If connection exists
-    !    if ( this%TrackCell%CellData%GetFaceConnection(n,1) .gt. 0) then
-
-
-    !        ! From the cell connected at face n,
-    !        ! create TrackCells from two connections 
-    !        ! starting from firstNeighborFaceNumber  
-    !        if ( n .le. 2 ) then
-    !            firstNeighborFaceNumber = 3
-    !        else if ( n .le. 4 ) then
-    !            firstNeighborFaceNumber = 5
-    !        else
-    !            firstNeighborFaceNumber = 1
-    !        end if
-
-    !        ! Fill the data buffer
-    !        call this%FillCellBuffer( this%TrackCell%CellData%GetFaceConnection(n,1) , neighborCellData( 1, cellCounter ) )
-
-    !        if ( neighborCellData( 1, cellCounter )%GetFaceConnection(firstNeighborFaceNumber,1) .gt. 0 ) then
-    !            call this%FillCellBuffer( &
-    !                neighborCellData( 1, cellCounter )%GetFaceConnection( firstNeighborFaceNumber, 1 ), & 
-    !                                                             neighborCellData( 1, cellCounter + 1 ) )
-    !        else
-    !            call neighborcelldata( 1, cellCounter + 1 )%reset() 
-    !        end if
-
-    !        if ( neighborCellData( 1, cellCounter )%GetFaceConnection(firstNeighborFaceNumber+1,1) .gt. 0 ) then
-    !            call this%FillCellBuffer( &
-    !                neighborCellData( 1, cellCounter )%GetFaceConnection( firstNeighborFaceNumber+1, 1 ), & 
-    !                                                               neighborCellData( 1, cellCounter + 2 ) )
-    !        else
-    !            call neighborcelldata( 1, cellCounter + 2 )%reset() 
-    !        end if
-    !    else
-    !        ! If no connection reset buffers
-    !        call neighborcelldata( 1, cellCounter     )%reset() 
-    !        call neighborcelldata( 1, cellCounter + 1 )%reset() 
-    !        call neighborcelldata( 1, cellCounter + 2 )%reset() 
-    !    end if
-
-    !end do
 
 
 end subroutine pr_FillNeighborCellDataStructured

@@ -165,7 +165,7 @@ contains
     class(ModflowRectangularGridType),intent(in) :: grid
     ! local
     integer            :: isThisFileOpen
-    integer            :: icol,istart,istop,n,nd,currentDim
+    integer            :: icol,istart,istop,n
     integer            :: impFormat
     doubleprecision    :: r
     character(len=200) :: line
@@ -890,7 +890,7 @@ contains
     integer, intent(in)                      :: outUnit
     ! local 
     class(ModpathSimulationDataType), pointer :: simulationData
-    integer :: ns, ndis, did
+    integer :: ns, ndis
     integer :: fnb1, fnb2, tl1, tl2, lnb1, lnb2
     character(len=300) :: dsid
     logical :: validRelation 
@@ -1022,8 +1022,6 @@ contains
   ! input
   class(TransportModelDataType) :: this
   integer,intent(in) :: stressPeriod, timeStep
-  ! local
-  integer :: n, cellCount
   !-----------------------------------------------------------------------------------
 
 
