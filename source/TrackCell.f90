@@ -373,7 +373,6 @@ contains
       logical :: stopIfNoSubCellExit,hasExit
       integer :: subRow,subColumn,count, layer, stopZone
       ! RWPT
-      integer :: n
       type(ModpathCellDataType), dimension(2, 18) :: neighborCellData
       !------------------------------------------------------------------
 

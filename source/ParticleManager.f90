@@ -70,8 +70,8 @@ contains
   integer,intent(in) :: outUnit
   integer :: version, subversion, pgIndex, pIndex, n, face, zone, initialZone,  &
     totalCount, releaseCount, maximumID
-  doubleprecision :: initialGlobalX, initialGlobalY, initialGlobalZ, globalX,   &
-    globalY, globalZ, initialModelX, initialModelY, modelX, modelY
+  doubleprecision :: initialGlobalZ, globalZ, initialModelX, initialModelY,&
+                     modelX, modelY
   integer,dimension(0:9) :: statusSums
   type(ParticleType),pointer :: p
   class(ModflowRectangularGridType),intent(in) :: grid
@@ -170,7 +170,7 @@ contains
   type(GeoReferenceType),intent(in) :: geoRef
   integer,intent(in) :: outUnit, particleID, timePointIndex, groupIndex,        &
     timeStep, sequenceNumber
-  doubleprecision :: modelX, modelY, globalX, globalY
+  doubleprecision :: modelX, modelY
   !--------------------------------------------------------------------------------
   
   modelX = pCoord%GlobalX
@@ -194,7 +194,7 @@ contains
   type(GeoReferenceType),intent(in) :: geoRef
   integer,intent(in) :: outUnit, particleID, timePointIndex, groupIndex,        &
     timeStep, sequenceNumber, particleStatus
-  doubleprecision :: modelX, modelY, globalX, globalY
+  doubleprecision :: modelX, modelY
     !--------------------------------------------------------------------------------
   
   modelX = pCoord%GlobalX
@@ -219,8 +219,7 @@ contains
     integer,intent(in) :: outUnit, particleID, timePointIndex, groupIndex,        &
       timeStep, sequenceNumber
     integer, intent(in) :: recordID
-    integer :: currentPosition
-    doubleprecision :: modelX, modelY, globalX, globalY
+    doubleprecision :: modelX, modelY
     !--------------------------------------------------------------------------------
     
     modelX = pCoord%GlobalX
@@ -338,10 +337,9 @@ contains
   integer, intent(in)    :: outUnit
   integer, intent(inout) :: lastRecord
   type(ParticleCoordinateType) :: pCoord
-  type(GeoReferenceType) :: geoRef
   integer :: timePointIndex, timeStep, sequenceNumber,  groupIndex, particleID
   doubleprecision :: modelX, modelY
-  integer :: n, m, i
+  integer :: n, i
   integer :: nThreads, recordID
   integer :: reclen, reclencumm
   integer :: startFromRecord(size(recordCounts)+1)
@@ -445,7 +443,7 @@ contains
   type(ParticleCoordinateType),pointer :: c
   type(GeoReferenceType) :: geoRef
   integer :: n, count
-  doubleprecision :: modelX, modelY, globalX, globalY
+  doubleprecision :: modelX, modelY
   !---------------------------------------------------------------------------------
   
   count = tpResult%ParticlePath%Pathline%GetItemCount()
@@ -475,7 +473,7 @@ contains
   type(ParticleCoordinateType),pointer :: c
   type(GeoReferenceType) :: geoRef
   integer :: n, count, currentPosition, dataOffset
-  doubleprecision :: modelX, modelY, globalX, globalY
+  doubleprecision :: modelX, modelY
   !---------------------------------------------------------------------------------
   
   count = tpResult%ParticlePath%Pathline%GetItemCount()
@@ -503,7 +501,7 @@ contains
   integer, dimension(:), allocatable :: sequenceNumbers, recordPointCounts,     &
     particlePointCounts, particleRecordCounts
   integer (kind=8), dimension(:), allocatable :: recordPointers
-  integer :: currentPos, dataOffset, n, m, i, count, group, id,               &
+  integer :: dataOffset, n, m, i, count, group, id,               &
     stressPeriod, timeStep
   integer (kind=8) :: pos, ptr
   integer :: cellNumber, layer, pointCount
@@ -624,7 +622,7 @@ contains
   type(ParticleCoordinateType),intent(in) :: pCoord
   doubleprecision, intent(in)             :: rFactor, waterVolume 
   integer, intent(in)                     :: outUnit
-  doubleprecision :: modelX, modelY, globalX, globalY
+  doubleprecision :: modelX, modelY
   !---------------------------------------------------------------------------------
   
   modelX = pCoord%GlobalX
@@ -650,7 +648,7 @@ contains
   type(ParticleCoordinateType),intent(in) :: pCoord
   doubleprecision, intent(in)             :: rFactor, waterVolume 
   integer, intent(in)                     :: outUnit
-  doubleprecision :: modelX, modelY, globalX, globalY
+  doubleprecision :: modelX, modelY
   !---------------------------------------------------------------------------------
   
   modelX = pCoord%GlobalX
