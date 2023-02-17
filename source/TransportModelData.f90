@@ -919,8 +919,29 @@ contains
      return
 
     else if ( simulationData%SolutesOption .eq. 1 ) then
+
+     ! If it was specified to be multi species dispersion
+     ! but no SPC package was read, then defaults to 
+     ! single dispersion and go on, or kill ?
+     if ( .not. this%readSPCPkg ) then
+     write(outUnit,'(A)')'Simulation is marked to be multispecies dispersion but SPC pkg was not given. Stop.'
+     call ustop('Simulation is marked to be multispecies dispersion but SPC pkg was not given. Stop.')
+
+       !write(outUnit,'(A)') 'Simulation will default to single dispersion because no SPC package was given.'
+       !write(outUnit,'(A)') 'Will use the first dispersion model for all particles.'
+       !this%Solutes(1)%dispersion => this%DispersionData(1)
+       !this%AlphaLong => this%Solutes(1)%Dispersion%AlphaL
+       !this%AlphaTran => this%Solutes(1)%Dispersion%AlphaTH
+       !this%DMEff     => this%Solutes(1)%Dispersion%DMEff
+       !this%currentDispersionModelKind = this%DispersionData(1)%modelKind
+       !this%DMol = this%Solutes(1)%Dispersion%dmaqueous ! TO BE DEPRECATED
+
+       !! Leave
+       !return 
+     end if
+
      ! If simulation is multidispersion
-     write(outUnit,'(A)') 'Simulation is multidispersion, will validate specifications.'
+     write(outUnit,'(A)') 'Simulation is multispecies dispersion, will validate specifications.'
 
      ! Should confirm that dispersion models 
      ! specified for the different solutes
@@ -961,7 +982,6 @@ contains
 
     end if
    
-
   end subroutine pr_ValidateDataRelations
 
 
