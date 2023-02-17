@@ -27,7 +27,6 @@ module ParticleTrackingOptionsModule
     integer                            :: nDim = 3
     integer                            :: idDim1, idDim2
     integer, dimension(:), allocatable :: dimensions
-    integer                            :: dispersionModel ! Needed to indicate dispersion function
     logical                            :: twoDimensions = .false. ! DEPRECATE
 
     ! GPKDE

@@ -7,7 +7,7 @@ module DispersionDataModule
 
   type, public :: DispersionDataType
     integer            :: id
-    character(len=300) :: stringid
+    character(len=20)  :: stringid
     ! 1: linear, 2: nonlinear
     integer            :: modelKind = 1
 
@@ -18,7 +18,6 @@ module DispersionDataModule
     doubleprecision,dimension(:),allocatable :: AlphaTH ! AlphaTran is pointing HERE!
     doubleprecision,dimension(:),allocatable :: AlphaTV
     doubleprecision,dimension(:),allocatable :: DMEff   ! Effective, corrected by tortuosity
-
 
     ! Parameters for nonlinear dispersion model 
     doubleprecision :: dmaqueous = 0d0
@@ -79,24 +78,24 @@ contains
         if(allocated(this%DMEff)) deallocate(this%DMEff)
         if(allocated(this%AlphaL)) deallocate(this%AlphaL)
         if(allocated(this%AlphaTH)) deallocate(this%AlphaTH)
-        if(allocated(this%AlphaTV)) deallocate(this%AlphaTV)
+        !if(allocated(this%AlphaTV)) deallocate(this%AlphaTV)
         allocate(this%DMEff(cellCount))
         allocate(this%AlphaL(cellCount))
         allocate(this%AlphaTH(cellCount))
-        allocate(this%AlphaTV(cellCount))
-      case (2)
-        if(allocated(this%DMEff)) deallocate(this%DMEff)
-        if(allocated(this%BetaL)) deallocate(this%BetaL)
-        if(allocated(this%BetaTH)) deallocate(this%BetaTH)
-        if(allocated(this%BetaTV)) deallocate(this%BetaTV)
-        if(allocated(this%Delta)) deallocate(this%Delta)
-        if(allocated(this%DGrain)) deallocate(this%DGrain)
-        allocate(this%DMEff(cellCount))
-        allocate(this%BetaL(cellCount))
-        allocate(this%BetaTH(cellCount))
-        allocate(this%BetaTV(cellCount))
-        allocate(this%Delta(cellCount))
-        allocate(this%DGrain(cellCount))
+        !allocate(this%AlphaTV(cellCount))
+      !case (2)
+      !  if(allocated(this%DMEff)) deallocate(this%DMEff)
+      !  if(allocated(this%BetaL)) deallocate(this%BetaL)
+      !  if(allocated(this%BetaTH)) deallocate(this%BetaTH)
+      !  if(allocated(this%BetaTV)) deallocate(this%BetaTV)
+      !  if(allocated(this%Delta)) deallocate(this%Delta)
+      !  if(allocated(this%DGrain)) deallocate(this%DGrain)
+      !  allocate(this%DMEff(cellCount))
+      !  allocate(this%BetaL(cellCount))
+      !  allocate(this%BetaTH(cellCount))
+      !  allocate(this%BetaTV(cellCount))
+      !  allocate(this%Delta(cellCount))
+      !  allocate(this%DGrain(cellCount))
     end select
 
   end subroutine pr_InitializeByModelKind

@@ -566,10 +566,8 @@ program MPath7
 
     call ulog('Read specific DSP data.', logUnit)
     call transportModelData%ReadDSPData( dspFile, dspUnit, mpListUnit )
-call exit(0)
 
-    ! Validate if given relations for 
-    ! SPC and DSP and PGROUPS are consistent/well defined.
+    ! Validate if given relations for are consistent
     call ulog('Validate data relations for DSP and SPC.', logUnit)
     call transportModelData%ValidateDataRelations( mpListUnit )
 
@@ -1130,7 +1128,7 @@ call exit(0)
             call transportModelData%SetSoluteDispersion( &
               simulationData%ParticleGroups(groupIndex)%Solute )
             ! Update dispersion function interface
-            ! depending on dispersion model 
+            ! depending on dispersion model
             call trackingEngine%UpdateDispersionFunction( &
               transportModelData%Solutes(&
               simulationData%ParticleGroups(groupIndex)%Solute )%Dispersion%modelKind )

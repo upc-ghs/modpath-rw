@@ -442,16 +442,14 @@ contains
       ! Assign tracking function with RWPT
       this%TrackPath => pr_RWPTrackPath
 
-      ! If simulation is single dispersion
-      ! Set in trackingoptions the dispersion modelKind 
-      ! of the only solute. It is required for the 
-      ! function InitializeRandomWalk 
+      ! If simulation is single dispersion, set displacement function 
+      ! to currentDispersionModelKind
       if (this%TransportModelData%simulationData%SolutesOption .eq. 0 ) then 
-        this%TrackingOptions%dispersionModel = & 
-          this%TransportModelData%Solutes(1)%Dispersion%modelKind
+        call this%UpdateDispersionFunction(&
+          this%TransportModelData%currentDispersionModelKind )
       end if
 
-      ! Assign methods for RWPT tracking in tracksubcell
+      ! Assign additional params for RWPT in trackSubCell
       call this%TrackCell%TrackSubCell%InitializeRandomWalk( &
           this%TrackingOptions )
 
@@ -498,9 +496,11 @@ contains
   integer, intent(in) :: dispersionModel 
   !---------------------------------------------------------------------------------------------------------------
 
+    ! Keep the variable consistent
+    this%TransportModelData%currentDispersionModelKind = dispersionModel
+
     ! Assign methods for RWPT tracking in tracksubcell
     call this%TrackCell%TrackSubCell%SetDispersionDisplacement( dispersionModel )
-
 
   end subroutine pr_UpdateDispersionFunction 
   
@@ -1656,7 +1656,8 @@ subroutine pr_FillNeighborCellsConnectionFromHorizontalFace(this, centerCellData
                 m = centerCellDataBuffer%parentSubColumn  
             else if ( directionId .eq. 1 ) then
                 ! It should not happen under the current neighborhood generation scheme
-                print *, 'ParticleTrackingEngine:FillNeighborCellsConnectionFromHorizontalFace: inconsistency'
+                write(*,*)'ParticleTrackingEngine:FillNeighborCellsConnectionFromHorizontalFace: inconsistency'
+                stop
                 m = centerCellDataBuffer%parentSubRow 
             end if
 

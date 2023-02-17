@@ -25,7 +25,7 @@ module TransportModelDataModule
 
       ! ICBound
       integer,allocatable, dimension(:) :: ICBound
-      integer, pointer, dimension(:)    :: ICBoundTS
+      integer, pointer, dimension(:)    :: ICBoundTS => null()
       !integer,allocatable, dimension(:) :: ICBoundTS
       integer                           :: defaultICBound ! applied to model bounadaries
       logical                           :: followIBoundTS
@@ -44,6 +44,7 @@ module TransportModelDataModule
       type( DispersionDataType ), allocatable, dimension(:) :: DispersionData 
       type( DispersionDataType ) :: BaseDispersionData
       integer                    :: nDispersion
+      integer                    :: currentDispersionModelKind
 
       ! grid
       class(ModflowRectangularGridType),pointer :: Grid => null()
@@ -196,6 +197,8 @@ contains
       write(outUnit,'(A)') 'IMP package was not specified in name file.'
       ! Initialize ICBound with only zeroes
       this%ICBound(:) = 0
+      ! Link pointer
+      this%ICBoundTS => this%ICBound
       ! Assign defaultICBound as rebound
       this%defaultICBound = 1
       ! And leave
@@ -536,19 +539,13 @@ contains
 
       ! If simulation is multispecies dispersiom
       if ( simulationData%SolutesOption.eq.1 ) then
-       ! Read the dispersion id
-       read(spcUnit, '(a)') line
-       icol = 1
-       call urword(line, icol, istart, istop, 2, n, r, 0, 0)
-       this%Solutes(ns)%dispersionId = n
-
        ! Read the dispersion string id
        read(spcUnit, '(a)') line
        icol = 1
        call urword(line, icol, istart, istop, 0, n, r, 0, 0)
        this%Solutes(ns)%dispersionStringid = line(istart:istop)
 
-       write(outUnit,'(A,A,A)')&
+       write(outUnit,'(A,A,A,A)')&
        'Species ',trim(adjustl(this%Solutes(ns)%stringid)),&
        ' will be related to dispersion ',trim(adjustl(this%Solutes(ns)%dispersionStringid))
       end if 
@@ -582,6 +579,7 @@ contains
   ! Read specific DSP data
   subroutine pr_ReadDSPData( this, dspFile, dspUnit, outUnit )
     use UTL8MODULE,only : urword,ustop,u3ddblmpusg, u3ddblmp
+    use UtilMiscModule,only : TrimAll
     !--------------------------------------------------------------
     ! Specifications
     !--------------------------------------------------------------
@@ -613,6 +611,8 @@ contains
     data anamenlin(4) /'         BETATV'/
     data anamenlin(5) /'          DELTA'/
     data anamenlin(6) /'         DGRAIN'/
+    character(len=20), allocatable, dimension(:) :: dispnames
+    integer :: dnindex 
     !--------------------------------------------------------------
 
     write(outUnit, *)
@@ -632,11 +632,6 @@ contains
     simulationData => this%simulationData
     grid => this%Grid
 
-    !! Maybe it helps in reducing the amount of parameters 
-    !! to be read
-    !! RW dimensionality vars
-    !dimensionMask => this%TrackingOptions%dimensionMask
-    !nDim => this%TrackingOptions%nDim
 
     ! Process DSP's
     read(dspUnit, *) nDispersion
@@ -661,6 +656,10 @@ contains
     if ( allocated(this%DispersionData) ) deallocate(this%DispersionData)
     allocate( this%DispersionData(this%nDispersion) )
 
+    if ( allocated( dispnames ) ) deallocate( dispnames )
+    allocate( dispnames( this%nDispersion ) )
+    dispnames(:) = ''
+
     ! CellsPerLayer, required for u3d reader
     allocate(cellsPerLayer(grid%LayerCount))
     do n = 1, grid%LayerCount
@@ -683,7 +682,15 @@ contains
       read(dspUnit, '(a)') line
       icol = 1
       call urword(line, icol, istart, istop, 0, n, r, 0, 0)
-      disp%stringid = line(istart:istop)
+      ! Validate that it was not already given
+      dnindex = 0
+      dnindex = findloc( dispnames, line(istart:istop), 1 )
+      if ( dnindex.gt.0 ) then 
+       write(outUnit,'(a,a,a)') 'Dispersion name ', trim(adjustl(line(istart:istop))),' was already given  Stop.'
+       call ustop('Dispersion name was already given. Stop.')
+      end if
+      dispnames(ndis) = line(istart:istop)
+      disp%stringid   = line(istart:istop)
 
       ! Read the dispersion modelKind
       read(dspUnit, '(a)') line
@@ -867,6 +874,7 @@ contains
 
   subroutine pr_ValidateDataRelations(this, outUnit)
     use UTL8MODULE,only : ustop
+    use UtilMiscModule,only : TrimAll
     !--------------------------------------------------------------
     ! Specifications
     !--------------------------------------------------------------
@@ -883,6 +891,7 @@ contains
     ! local 
     class(ModpathSimulationDataType), pointer :: simulationData
     integer :: ns, ndis, did
+    integer :: fnb1, fnb2, tl1, tl2, lnb1, lnb2
     character(len=300) :: dsid
     logical :: validRelation 
     !--------------------------------------------------------------
@@ -891,19 +900,18 @@ contains
     write(outUnit, '(1x,a)') 'TransportModelData: verify SPC-DSP relations '
     write(outUnit, '(1x,a)') '---------------------------------------------'
 
-
     simulationData => this%simulationData
 
     if ( simulationData%SolutesOption .eq. 0 ) then
      ! If simulation is single dispersion 
-     write(outUnit,'(A)') 'Simulation is single dispersion. Is consistent. '
+     write(outUnit,'(A)') 'Simulation is single dispersion. Is consistent.'
 
-     ! TEMPORARY
+     ! NAMES ARE TEMPORARY
      this%Solutes(1)%dispersion => this%DispersionData(1)
      this%AlphaLong => this%Solutes(1)%Dispersion%AlphaL
      this%AlphaTran => this%Solutes(1)%Dispersion%AlphaTH
      this%DMEff     => this%Solutes(1)%Dispersion%DMEff
-
+     this%currentDispersionModelKind = this%DispersionData(1)%modelKind
 
      this%DMol = this%Solutes(1)%Dispersion%dmaqueous ! TO BE DEPRECATED
 
@@ -912,7 +920,7 @@ contains
 
     else if ( simulationData%SolutesOption .eq. 1 ) then
      ! If simulation is multidispersion
-     write(outUnit,'(A)') 'Simulation is multidispersion... '
+     write(outUnit,'(A)') 'Simulation is multidispersion, will validate specifications.'
 
      ! Should confirm that dispersion models 
      ! specified for the different solutes
@@ -920,14 +928,19 @@ contains
 
      do ns = 1, this%nSolutes
 
-      did  = this%Solutes(ns)%dispersionId
       dsid = this%Solutes(ns)%dispersionStringId
+      call TrimAll(dsid, fnb1, lnb1, tl1)
 
       validRelation = .false.
       ! Loop over dispersion models
       do ndis = 1, this%nDispersion
-       if ( this%DispersionData(ndis)%id .eq. did ) then
-        write(outUnit,'(A,I3,A,I3)') 'Solute ', ns, ' relation with dispersion ', did, ' is consistent.'
+       call TrimAll( this%DispersionData(ndis)%stringid, fnb2, lnb2, tl2 )
+       if (&
+       dsid(fnb1:lnb1) .eq. &
+       this%DispersionData(ndis)%stringid(fnb2:lnb2) ) then
+        write(outUnit,'(A,A,A,A,A)')&
+        'Species ', trim(adjustl(this%Solutes(ns)%stringid)),&
+        ' relation with dispersion ', trim(adjustl(dsid)), ' is consistent.'
         validRelation = .true.
         ! If relation is valid then assign dispersion pointer
         this%Solutes(ns)%dispersion => this%DispersionData(ndis)
@@ -936,7 +949,8 @@ contains
       end do 
 
       if ( .not. validRelation ) then 
-       write(outUnit,'(A,I4,A,A)') 'Invalid dispersion id ',did,' for solute ', this%Solutes(ns)%stringid
+       write(outUnit,'(A,A,A,A)') 'Invalid dispersion ',&
+               trim(adjustl(dsid)),' given to species ', trim(adjustl(this%Solutes(ns)%stringid))
        call ustop('Invalid relation between dispersion model and solute. Stop.')
       end if 
 
@@ -947,9 +961,6 @@ contains
 
     end if
    
-    
-    ! Same thing for PGROUPS and SPC (?)
-
 
   end subroutine pr_ValidateDataRelations
 

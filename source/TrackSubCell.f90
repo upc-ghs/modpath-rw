@@ -462,8 +462,8 @@ contains
       ! Set indexes for corner porosities
       call this%SetCornerPorosityIndexes()
 
-      ! Should set dispersion model (linear vs nonlinear)
-      call this%SetDispersionDisplacement( trackingOptions%dispersionModel )
+      ! Dispersion displacement function is set in particletrackingengine
+      !call this%SetDispersionDisplacement( trackingOptions%dispersionModel )
 
       ! Initialize displacement flags
       ! Temporary (?)
