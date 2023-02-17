@@ -501,7 +501,7 @@ program MPath7
     call simulationData%ReadOBSData(obsFile, obsUnit, mplistUnit, modelGrid )
 
     call ulog('Read specific RWOPTS simulation data.', logUnit)
-    call simulationData%ReadRWOPTSData( rwoptsFile, rwoptsUnit, mpListUnit, modelGrid )
+    call simulationData%ReadRWOPTSData( rwoptsFile, rwoptsUnit, mpListUnit )
 
     call ulog('Read specific IC simulation data.', logUnit)
     call simulationData%ReadICData( icFile, icUnit, mpListUnit, modelGrid, basicData%Porosity )

@@ -472,7 +472,7 @@ contains
   type(TrackPathResultType),intent(in),target :: tpResult
   type(ParticleCoordinateType),pointer :: c
   type(GeoReferenceType) :: geoRef
-  integer :: n, count, currentPosition, dataOffset
+  integer :: n, count, currentPosition
   doubleprecision :: modelX, modelY
   !---------------------------------------------------------------------------------
   

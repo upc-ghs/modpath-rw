@@ -137,11 +137,11 @@ contains
     integer,dimension(:),allocatable :: cellsPerLayer
     integer,dimension(grid%CellCount),intent(in) :: ibound
     class(TimeDiscretizationDataType),intent(in),target :: timeDiscretization
-    integer :: icol, istart, istop, n, nc, kper, kstp, seqNumber, particleCount, nn, slocUnit, errorCode
+    integer :: icol, istart, istop, n, kper, kstp, seqNumber, particleCount, nn, slocUnit, errorCode
     integer :: releaseOption, releaseTimeCount
     doubleprecision :: initialReleaseTime, releaseInterval
     doubleprecision,dimension(:),allocatable :: releaseTimes
-    doubleprecision :: frac, r, tinc
+    doubleprecision :: frac, r
     character*24 aname(2)
     character(len=200) line
     DATA aname(1) /'              ZONE ARRAY'/
@@ -930,7 +930,7 @@ contains
     integer,dimension(:),allocatable :: obsCells
     integer,dimension(:),allocatable :: cellsPerLayer
     integer :: isThisFileOpen
-    integer :: icol,istart,istop,n,nc
+    integer :: icol,istart,istop,n
     integer :: ioInUnit = 0
     doubleprecision    :: r
     character(len=200) :: line
@@ -1201,7 +1201,7 @@ contains
 
 
   ! Read specific RWOPTS data
-  subroutine pr_ReadRWOPTSData( this, rwoptsFile, rwoptsUnit, outUnit, grid )
+  subroutine pr_ReadRWOPTSData( this, rwoptsFile, rwoptsUnit, outUnit )
     use UTL8MODULE,only : urword,ustop,u3dintmpusg, u3dintmp
     !--------------------------------------------------------------
     ! Specifications
@@ -1212,14 +1212,12 @@ contains
     character(len=200), intent(in)               :: rwoptsFile
     integer, intent(in)                          :: rwoptsUnit
     integer, intent(in)                          :: outUnit
-    class(ModflowRectangularGridType),intent(in) :: grid
     ! local
     type(ParticleTrackingOptionsType), pointer :: trackingOptions
     integer :: isThisFileOpen
     integer :: icol,istart,istop,n,nd,currentDim,dcount
     doubleprecision    :: r
     character(len=200) :: line
-    integer, dimension(:), allocatable :: cellsPerLayer
     character(len=24),dimension(1) :: aname
     data aname(1) /'       ICBOUND'/
     !--------------------------------------------------------------
@@ -1827,9 +1825,8 @@ contains
     integer, dimension(:), pointer :: dimensionMask
     integer, pointer               :: nDim
     character(len=20) :: srcName
-    character(len=20) :: srcSpecKind, srcPkgName
+    character(len=20) :: srcSpecKind
     integer :: nAuxNames, naux, nTimes, nt, nCells, nc, nd, nr
-    character(len=20),allocatable,dimension(:) :: srcPkgTypes
     character(len=20),allocatable,dimension(:) :: srcPkgNames
     character(len=20),allocatable,dimension(:) :: auxNames
     integer,allocatable,dimension(:)           :: srcIFaceOpt
@@ -1846,7 +1843,6 @@ contains
     integer        , allocatable, dimension(:)       :: srcCellIFaces      ! nCells
     doubleprecision, allocatable, dimension(:,:,:)   :: cummMassTimeseries ! nt x ncells x nauxvars
     integer        , allocatable, dimension(:,:)     :: auxNPCell
-    integer        , allocatable, dimension(:)       :: auxNPTot 
     doubleprecision, allocatable, dimension(:)       :: totMass
     integer        , allocatable, dimension(:)       :: totMassLoc
     doubleprecision, allocatable, dimension(:)       :: nParticlesDbl
@@ -1854,11 +1850,10 @@ contains
     integer        , allocatable, dimension(:)       :: nReleases
     doubleprecision, allocatable, dimension(:)       :: releaseTimes
     doubleprecision, allocatable, dimension(:)       :: cummMassSeries
-    doubleprecision, allocatable, dimension(:)       :: diffCummMassSeries
-    doubleprecision :: initialTime, finalTime
+    doubleprecision :: initialTime, finalTime, minT
     doubleprecision :: effectiveMass, cummEffectiveMass, lastCummMass
     doubleprecision :: npAuxDbl
-    integer :: npAuxInt, npThisRelease, npNextRelease
+    integer :: npThisRelease, npNextRelease
     logical :: lastRelease = .false.
     integer :: firstnonzero, nti, nte  
     character(len=20) :: tempChar1
@@ -1866,7 +1861,7 @@ contains
     integer :: m, idmax, seqNumber, cellCounter, offset, cellNumber
     integer :: nValidPGroup = 0
     integer :: newParticleGroupCount, pgCount
-    integer :: iFaceOptionInt, iFaceNumber, defaultIFaceNumber
+    integer :: iFaceNumber, defaultIFaceNumber
     logical :: iFaceOption
     integer :: cellReadFormat
     integer :: layer, row, column
@@ -1882,7 +1877,6 @@ contains
     doubleprecision, allocatable, dimension(:,:)   :: flowDataTimeseries  ! nt x ncells
     integer, allocatable, dimension(:)             :: intervalIndex
     integer, allocatable, dimension(:)             :: soluteIds
-    doubleprecision :: minT, maxT 
     integer :: readNTemplates
     integer, allocatable, dimension(:,:) :: nSubDivisions
     integer, allocatable, dimension(:)   :: cellsHolder
