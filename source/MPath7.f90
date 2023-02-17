@@ -17,18 +17,17 @@ program MPath7
 !
 !   Specifications:
 !---------------------------------------------------------------------------------
-  use GlobalDataModule,only : niunit, narealsp, issflg, nper, mpbasUnit,      &
-      disUnit, tdisUnit, gridMetaUnit, headUnit, headuUnit, budgetUnit,       &
-      inUnit, pathlineUnit, endpointUnit, timeseriesUnit, binPathlineUnit,    &
-      mplistUnit, traceUnit, budchkUnit, aobsUnit, logUnit, mpsimUnit,        &
-      gpkdeUnit,obsUnit,dspUnit,rwoptsUnit,spcUnit,icUnit,bcUnit,srcUnit,     & ! RWPT
-      impUnit, traceModeUnit,                                                 &
-      mpnamFile, mplistFile, mpbasFile, disFile, tdisFile,                    &
-      gridFile, headFile, budgetFile, mpsimFile, traceFile,  gridMetaFile,    &
-      mplogFile, logType, particleGroupCount, gridFileType, gpkdeFile,        & ! RWPT
-      obsFile, dspFile, rwoptsFile, spcFile, icFile, bcFile, srcFile, impFile   ! RWPT
+  use GlobalDataModule,only : mpbasUnit, disUnit, tdisUnit, gridMetaUnit, & 
+      headUnit, budgetUnit, pathlineUnit, endpointUnit, timeseriesUnit,   & 
+      binPathlineUnit,  mplistUnit, traceUnit, budchkUnit, aobsUnit,      & 
+      logUnit, mpsimUnit, gpkdeUnit, obsUnit, dspUnit, rwoptsUnit,        & 
+      spcUnit, icUnit, srcUnit, impUnit, traceModeUnit,                   &
+      mpnamFile, mplistFile, mpbasFile, tdisFile, gridFile, headFile,     & 
+      budgetFile, mpsimFile, gridMetaFile, mplogFile, logType,            & 
+      gridFileType, gpkdeFile, obsFile, dspFile, rwoptsFile, spcFile,     & 
+      icFile, srcFile, impFile
   use UtilMiscModule,only : ulog
-  use utl8module,only : freeunitnumber, ustop, ugetnode ! GPDKE
+  use utl8module,only : freeunitnumber, ustop, ugetnode
   use ModpathCellDataModule,only : ModpathCellDataType
   use ModpathBasicDataModule,only : ModpathBasicDataType
   use ModpathSimulationDataModule,only : ModpathSimulationDataType
@@ -57,7 +56,6 @@ program MPath7
   use SoluteModule, only : SoluteType ! RWPT
   use ObservationModule, only : ObservationType ! OBS
   use GridProjectedKDEModule, only : GridProjectedKDEType ! GPKDE
-  use BoundaryConditionsModule, only : PrescribedType ! BC's
   use omp_lib ! OpenMP
   !--------------------------------------------------------------------------
   implicit none
@@ -83,35 +81,26 @@ program MPath7
   type(ParticleLocationType) :: pLoc
   type(ParticleCoordinateType),pointer :: pCoordFirst, pCoordLast, pCoordTP
   type(ParticleCoordinateType) :: pCoord
-  type(ParticleGroupType),pointer :: pGroup
   type(ParticleType),pointer :: p
-  type(BudgetRecordHeaderType) :: budgetRecordHeader
   type(GeoReferenceType) :: geoRef
   type(GridProjectedKDEType), allocatable:: gpkde                 ! GPKDE
   type(ModpathCellDataType) :: cellDataBuffer                     ! RWPT
   type(SoluteType), pointer :: solute                             ! RWPT
-  !doubleprecision,dimension(:),allocatable :: timePoints
   doubleprecision,dimension(:),allocatable :: tPoint
-  integer,dimension(7) :: budgetIntervalBins
-  doubleprecision,dimension(6) :: budgetIntervalBreaks
   logical :: traceModeOn
-  integer :: budgetIntervalBreakCount, maxErrorCell
-  doubleprecision :: maxError
   integer :: clockCountStart, clockCountStop, clockCountRate, clockCountMax
   doubleprecision :: elapsedTime
   integer :: groupIndex, particleIndex, pendingCount,  &
-    activeCount, timePointCount, tPointCount, pathlineRecordCount
-  integer :: stressPeriodCount, recordHeaderCount
+    activeCount, tPointCount, pathlineRecordCount
+  integer :: stressPeriodCount
   integer :: n, m, ktime, kfirst, klast, kincr, period, step, nt, count,      &
-    plCount, tsCount, status, itend, particleID, topActiveCellNumber,         &
-    auxCount, kstoptime
+    plCount, tsCount, status, itend, particleID, topActiveCellNumber
   integer :: bufferSize, cellConnectionCount
   integer,dimension(:),allocatable :: buffer
-  doubleprecision :: t, stoptime, maxTime, tsMax, time
+  doubleprecision :: stoptime, maxTime, tsMax, time
   character(len=132) message
   character(len=20) version
   character(len=100) terminationMessage
-  !character(len=75) terminationMessage
   character(len=80) compilerVersionText
   logical :: isTimeSeriesPoint, timeseriesRecordWritten
       
@@ -119,17 +108,17 @@ program MPath7
   ! GPKDE
   doubleprecision, dimension(:,:), allocatable :: activeParticleCoordinates
   doubleprecision, dimension(:), allocatable   :: activeParticleMasses
-  integer :: activeCounter, itcount, ns, npg, pgid
+  integer :: activeCounter, itcount, ns, npg
   doubleprecision, dimension(:,:), allocatable :: gpkdeDataCarrier
   doubleprecision, dimension(:), allocatable :: gpkdeWeightsCarrier
 
   ! Observations
-  integer :: nlines, io, irow, krow, nobs, nit, countTS, nTimesHigher, cellNumber 
-  integer :: baserow, lastrow, srow, timeIndex, solCount
+  integer :: nlines, io, irow, nobs, nit, cellNumber 
+  integer :: timeIndex, solCount
   integer :: soluteID
   doubleprecision :: dTObsSeries
   doubleprecision :: waterVolume, rFactor, particleMass, qSink 
-  doubleprecision :: initialTime, initialGlobalX, initialGlobalY, initialGlobalZ, QSinkCell 
+  doubleprecision :: initialTime
   type( ObservationType ), pointer :: obs => null()
   doubleprecision, allocatable, dimension(:,:) :: obsSinkFlowInTime      ! (ntimes,ncells)
   doubleprecision, allocatable, dimension(:)   :: obsAccumSinkFlowInTime ! (ntimes)
@@ -137,28 +126,16 @@ program MPath7
   doubleprecision, allocatable, dimension(:,:) :: obsWaterVolumeInTime      ! (ntimes,ncells)
   doubleprecision, allocatable, dimension(:)   :: obsAccumWaterVolumeInTime ! (ntimes)
   doubleprecision, allocatable, dimension(:)   :: waterVolBuffer
-  integer            :: idColFormat ! TO BE DEPRECATED
+  !integer            :: idColFormat ! TO BE DEPRECATED
   character(len=200) :: colFormat
-  character(len=200) :: qSinkFormat
-  character(len=200) :: waterVolFormat
-  doubleprecision    :: obsAccumPorousVolume
+  !character(len=200) :: qSinkFormat
+  !character(len=200) :: waterVolFormat ! TO BE DEPRECATED
   doubleprecision    :: dX, dY, dZ, dZC, porosity
   doubleprecision    :: modelX, modelY
-  integer            :: sequenceNumber, timePointIndex, timeStep
-  doubleprecision, allocatable, dimension(:,:) :: BTCPerSolute
+  integer            :: timePointIndex, timeStep
   doubleprecision, allocatable, dimension(:,:) :: BTCHistPerSolute
   doubleprecision, allocatable, dimension(:,:) :: BTCGpkdePerSolute
   logical :: anyFromThisSolute = .false.
-
-
-  !! Boundary conditions
-  !integer :: npcb
-  !type( PrescribedType ), pointer :: pcb => null()
-  !doubleprecision :: effectiveTime = 0d0 ! Effective flow sim time (stoptime-reftime)
-  !integer :: nEffectiveTimes
-  !doubleprecision, allocatable, dimension(:) :: effectiveTimes ! Relative to reftime
-  !integer, allocatable, dimension(:) :: fluxCellNumbers
-  !integer :: nFluxCells
 
   ! Parallel variables
   integer :: ompNumThreads
@@ -213,9 +190,8 @@ program MPath7
   rwoptsUnit   = 121 ! RWPT
   spcUnit      = 122 ! RWPT
   icUnit       = 123 ! RWPT
-  bcUnit       = 124 ! RWPT ! To BE DEPRECATED
-  srcUnit      = 125 ! RWPT
-  impUnit      = 126 ! RWPT
+  srcUnit      = 124 ! RWPT
+  impUnit      = 125 ! RWPT
   baseTimeseriesUnit = 660 ! OpenMP
   !-----------------------------------------------------------------------
 
@@ -540,8 +516,6 @@ program MPath7
   if(simulationData%TotalParticleCount .eq. 0) then
     terminationMessage = 'The simulation was terminated because there are no particles to track. Stop.'
     call ustop(terminationMessage)
-    !terminationMessage = 'The simulation was terminated because there are no particles to track.'
-    !goto 100 ! Requires initialized clock, so far it is not
   end if
 
 
@@ -608,40 +582,6 @@ program MPath7
          file=simulationData%TrackingOptions%gpkdeOutputFile, &
        status='replace', form='formatted', access='sequential')
     
-    !! Is there a way to verify whether gpkde and the flow-model have the
-    !! same cells structure ?
-    !select case (gridFileType)
-    !    case (1)
-    !      ! MODFLOW-2005 discretization file (DIS)
-    !      if(&
-    !        ( gpkde%nBins(1) .eq. modelGrid%columnCount ) .and. &
-    !        ( gpkde%nBins(2) .eq. modelGrid%rowCount    ) .and. &
-    !        ( gpkde%nBins(3) .eq. modelGrid%layerCount  ) )
-    !        ! Is the same grid
-    !        print *, 'MF62005DIS: YES IS THE SAME !'
-    !        continue
-    !      end if
-    !    case (2)
-    !      ! MODPATH spatial(MPUGRID) and time (TDIS) discretization files 
-    !      continue
-    !    case (3) 
-    !      ! MODFLOW-6 DIS binary grid file
-    !      if(&
-    !        ( gpkde%nBins(1) .eq. modelGrid%columnCount ) .and. &
-    !        ( gpkde%nBins(2) .eq. modelGrid%rowCount    ) .and. &
-    !        ( gpkde%nBins(3) .eq. modelGrid%layerCount  ) )
-    !        ! Is the same grid
-    !        print *, 'MF6DIS: YES IS THE SAME !'
-    !        continue
-    !      end if 
-    !    case (4)
-    !      ! MODFLOW-6 DISV binary grid file
-    !      continue
-    !    case (5)
-    !      ! MODFLOW-6 DISU binary grid file
-    !      continue
-    !end select
-
   end if
 
 
@@ -1160,7 +1100,6 @@ program MPath7
         !$omp private( cellDataBuffer )                  &
         !$omp private( obs, nobs )                       &
         !$omp private( waterVolume )                     &
-!        !$omp private( pcb, npcb )                       &
         !$omp firstprivate( trackingEngine )             &
         !$omp firstprivate( WriteTimeseries )            &
         !$omp firstprivate( WriteResidentObs )           &
@@ -1171,13 +1110,6 @@ program MPath7
         do particleIndex = 1, simulationData%ParticleGroups(groupIndex)%TotalParticleCount
             timeseriesRecordWritten = .false.
             p => simulationData%ParticleGroups(groupIndex)%Particles(particleIndex)
-!!            ! Check particle status. 
-!!            ! Skip over particles unless they are active or pending release.
-!!            if(p%Status .gt. 1) then
-!!                ! Add code here later to deal with advective observations
-!!                ! For now, just cycle to the next particle
-!!                cycle
-!!            end if
             
             ! Check to see if trace mode should be turned on for this particle
             traceModeOn = .false.
@@ -1357,34 +1289,6 @@ program MPath7
                     end if
                   end if
 
-                  !! Prototype prescribed concentration 
-                  !if ( simulationData%anyPrescribedConcentration ) then  
-                  !  ! Write info for prescribed concentrations
-                  !  ! Count mass ?
-                  !  if ( &
-                  !    simulationData%TrackingOptions%isPrescribed(pCoordTP%CellNumber) ) then 
-                  !    pcb => simulationData%TrackingOptions%PrescribedBoundaries(&
-                  !        simulationData%TrackingOptions%idPrescribed(pCoordTP%CellNumber) )
-                  !      do npcb=1,pcb%nCells
-                  !        if( pcb%cells(npcb) .ne. pCoordTP%CellNumber ) cycle
-                  !        ! If it is part of the cells in the obs, write
-                  !        ! record to auxOutputUnit
-                  !        ! Temp proxy !
-                  !        !call WriteTimeseriesRecordCritical(& 
-                  !        !    p%SequenceNumber, p%ID, groupIndex, ktime, &
-                  !        !      nt, pCoordTP, geoRef, obs%auxOutputUnit, & 
-                  !        !  timeseriesRecordCounts, timeseriesTempUnits  )
-
-                  !        ! Prescribed concentrations should write 
-                  !        ! something simpler: particleID, soluteID, mass
-                  !        pcb%nAuxRecords = pcb%nAuxRecords + 1
-                  !        pcb%totalMassCounter = pcb%totalMassCounter + p%Mass
-
-                  !      end do 
-                  !  end if
-                  !end if
-
-
                 end if
               end if
             end if ! p%Status .eq. 1
@@ -1442,26 +1346,6 @@ program MPath7
         !$omp end parallel do
     end do ! ParticleGroups Loop
 
-    
-    !! Prescribed concentration cells
-    !! Should be processed before GPKDE reconstruction
-    !! to apply necessary corrections
-    !if ( simulationData%anyPrescribedConcentration ) then  
-    !  print *, 'PROTOTYPE PRESCRIBED CONCENTRATIONS: '
-    !  ! Loop over prescribed boundaries
-    !  do npcb=1, simulationData%TrackingOptions%nPrescribed
-    !    pcb => simulationData%TrackingOptions%PrescribedBoundaries(npcb)
-
-    !    ! Prescribed concentration boundary
-    !    print *, 'PCB ID ', pcb%id , ' HAS N PARTICLES', pcb%nAuxRecords, ' OF ', pcb%nParticles
-    !    print *, 'PCB ID ', pcb%id , ' HAS MASS ', pcb%totalMassCounter, ' OF ', pcb%totalPrescribedMass
-
-    !    ! It should be restarted to count once again in the next tracking loop
-    !    pcb%nAuxRecords = 0
-    !    pcb%totalMassCounter = 0d0
-    !  
-    !  end do
-    !end if 
 
     ! Once it finished transporting all 
     ! particle groups, reconstruction 
@@ -2285,11 +2169,10 @@ program MPath7
   integer,intent(inout) :: tsOutputType
   integer :: defaultTsOutputType
   character*200 comlin
-  integer :: narg, length, status, ndot, nlast, na, nc
+  integer :: narg, length, status, na
   integer :: nprocs
   character*200 nprocschar
   character*200 tsoutchar
-  logical :: exists
   !---------------------------------------------------------------------------------
     
     ! Get the number of command-line arguments
@@ -2425,7 +2308,6 @@ program MPath7
   character*(*),intent(inout) :: mpsimFile
   integer :: icol, istart, istop, n
   real(kind=4) :: r
-  logical :: exists
   !---------------------------------------------------------------------------------
 
     ! Prompt user to enter simulation file name
@@ -2483,11 +2365,10 @@ program MPath7
   character(len=200) :: line
   character(len=200) :: fname
   character(len=16) :: filtyp
-  character(len=30) :: gridFileTypeString
   character(len=80) :: message
   character(len=132) :: errMessage
   integer,dimension(6) :: nfiltyp
-  integer :: inUnit, n, icol, ityp1, ityp2, inam1, inam2, nc, iflen, numflag, istart, istop
+  integer :: inUnit, n, icol, iflen, numflag, istart, istop
   doubleprecision :: r
   logical :: complete
   !---------------------------------------------------------------------------------
@@ -2510,7 +2391,6 @@ program MPath7
     rwoptsFile = ' '
     spcFile    = ' '
     icFile     = ' '
-    bcFile     = ' ' ! TO BE DEPRECATED
     srcFile    = ' '
     impFile     = ' '
 
@@ -2605,47 +2485,34 @@ program MPath7
             gpkdeFile = fname(1:iflen)
             open(unit=gpkdeUnit,file=gpkdeFile,status='old', form='formatted', access='sequential', err=500, iomsg=errMessage)
             write(outUnit,'(A15,A)') 'GPKDE File: ', gpkdeFile(1:iflen)
-            !nfiltyp(7) = 1
         else if(filtyp .eq. 'OBS') then 
             obsFile = fname(1:iflen)
             open(unit=obsUnit,file=obsFile,status='old', form='formatted', access='sequential', err=500, iomsg=errMessage)
             write(outUnit,'(A15,A)') 'OBS File: ', obsFile(1:iflen)
-            !nfiltyp(7) = 1
         else if(filtyp .eq. 'DSP') then 
             dspFile = fname(1:iflen)
             open(unit=dspUnit,file=dspFile,status='old', form='formatted', access='sequential', err=500, iomsg=errMessage)
             write(outUnit,'(A15,A)') 'DSP File: ', dspFile(1:iflen)
-            !nfiltyp(7) = 1
         else if(filtyp .eq. 'RWOPTS') then 
             rwoptsFile = fname(1:iflen)
             open(unit=rwoptsUnit,file=rwoptsFile,status='old', form='formatted', access='sequential', err=500, iomsg=errMessage)
             write(outUnit,'(A15,A)') 'RWOPTS File: ', rwoptsFile(1:iflen)
-            !nfiltyp(7) = 1
         else if(filtyp .eq. 'SPC') then 
             spcFile = fname(1:iflen)
             open(unit=spcUnit,file=spcFile,status='old', form='formatted', access='sequential', err=500, iomsg=errMessage)
             write(outUnit,'(A15,A)') 'SPC File: ', spcFile(1:iflen)
-            !nfiltyp(7) = 1
         else if(filtyp .eq. 'IC') then 
             icFile = fname(1:iflen)
             open(unit=icUnit,file=icFile,status='old', form='formatted', access='sequential', err=500, iomsg=errMessage)
             write(outUnit,'(A15,A)') 'IC File: ', icFile(1:iflen)
-            !nfiltyp(7) = 1
-        !else if(filtyp .eq. 'BC') then 
-        !    bcFile = fname(1:iflen)
-        !    open(unit=bcUnit,file=bcFile,status='old', form='formatted', access='sequential', err=500, iomsg=errMessage)
-        !    write(outUnit,'(A15,A)') 'BC File: ', bcFile(1:iflen)
-        !    !nfiltyp(7) = 1
         else if(filtyp .eq. 'IMP') then 
             impFile = fname(1:iflen)
             open(unit=impUnit,file=impFile,status='old', form='formatted', access='sequential', err=500, iomsg=errMessage)
             write(outUnit,'(A15,A)') 'IMP File: ', impFile(1:iflen)
-            !nfiltyp(7) = 1
         else if(filtyp .eq. 'SRC') then 
             srcFile = fname(1:iflen)
             open(unit=srcUnit,file=srcFile,status='old', form='formatted', access='sequential', err=500, iomsg=errMessage)
             write(outUnit,'(A15,A)') 'SRC File: ', srcFile(1:iflen)
-            !nfiltyp(7) = 1
         end if
           
         cycle

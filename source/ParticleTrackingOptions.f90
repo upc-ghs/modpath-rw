@@ -1,6 +1,5 @@
 module ParticleTrackingOptionsModule
   use ObservationModule, only : ObservationType
-  use BoundaryConditionsModule, only : PrescribedType
   implicit none
   
 ! Set default access status to private
@@ -59,13 +58,6 @@ module ParticleTrackingOptionsModule
     integer, allocatable, dimension(:) :: idObservation
     type( ObservationType ), allocatable, dimension(:) :: Observations
 
-    !! Prescribed concentration boundaries
-    !type( PrescribedType ), allocatable, dimension(:) :: PrescribedBoundaries
-    !logical, allocatable, dimension(:) :: isPrescribed
-    !integer, allocatable, dimension(:) :: idPrescribed
-    !integer :: nPrescribed
-    !integer :: npcs
-
     ! DEPRECATION WARNNING
     ! NONLINEAR DISPERSION RWPT (TEMP)
     doubleprecision :: betaTrans, betaLong
@@ -76,124 +68,92 @@ module ParticleTrackingOptionsModule
   contains
 
      procedure :: Reset=>pr_Reset
-
      ! Observations
      procedure :: InitializeObservations=>pr_InitializeObservations 
      procedure :: IdObservationCell=>pr_IdObservationCell
-     ! Prescribed boundaries
-     !procedure :: InitializePrescribedBoundaries=>pr_InitializePrescribedBoundaries 
   end type
   
 contains
 
 
   subroutine pr_Reset(this)
-      !-----------------------------------------------------
-      ! Specifications
-      !-----------------------------------------------------
-      implicit none
-      class(ParticleTrackingOptionsType) :: this
-      !-----------------------------------------------------
-
-      ! This function is incomplete
-
-      ! Deallocate observation cells 
-      this%nObservations         = 0
-      this%anyObservation        = .false.
-      this%anySinkObservation    = .false.
-      this%anyResObservation     = .false.
-      if(allocated(this%observationCells)) deallocate(this%observationCells)
-      if(allocated(this%observationUnits)) deallocate(this%observationUnits)
-      if(allocated(this%observationFiles)) deallocate(this%observationFiles)
-      if(allocated(this%obsRecordCounts)) deallocate(this%obsRecordCounts)
-
-      if(allocated(this%Observations)) deallocate(this%Observations)
-
-      if(allocated(this%isObservation)) deallocate(this%isObservation)
-      if(allocated(this%idObservation)) deallocate(this%idObservation)
-      
+    !-----------------------------------------------------
+    ! 
+    !-----------------------------------------------------
+    ! Specifications
+    !-----------------------------------------------------
+    implicit none
+    class(ParticleTrackingOptionsType) :: this
+    !-----------------------------------------------------
+    ! Deallocate observation cells 
+    this%nObservations         = 0
+    this%anyObservation        = .false.
+    this%anySinkObservation    = .false.
+    this%anyResObservation     = .false.
+    if(allocated(this%observationCells)) deallocate(this%observationCells)
+    if(allocated(this%observationUnits)) deallocate(this%observationUnits)
+    if(allocated(this%observationFiles)) deallocate(this%observationFiles)
+    if(allocated(this%obsRecordCounts)) deallocate(this%obsRecordCounts)
+    if(allocated(this%Observations)) deallocate(this%Observations)
+    if(allocated(this%isObservation)) deallocate(this%isObservation)
+    if(allocated(this%idObservation)) deallocate(this%idObservation)
   end subroutine pr_Reset
 
 
   subroutine pr_InitializeObservations( this, nObservations )
-      !-----------------------------------------------------
-      ! Initialize observation cells data
-      !
-      !-----------------------------------------------------
-      ! Specifications
-      !-----------------------------------------------------
-      implicit none
-      class(ParticleTrackingOptionsType) :: this
-      ! input
-      integer, intent(in) :: nObservations
-      integer :: n 
-      !-------------------------
+    !-----------------------------------------------------
+    ! Initialize observation cells data
+    !-----------------------------------------------------
+    ! Specifications
+    !-----------------------------------------------------
+    implicit none
+    class(ParticleTrackingOptionsType) :: this
+    ! input
+    integer, intent(in) :: nObservations
+    integer :: n 
+    !-------------------------
 
-      ! Allocate observation files arrays
-      this%nObservations = nObservations
-      allocate(this%observationCells(nObservations))
-      allocate(this%observationUnits(nObservations))
-      allocate(this%observationFiles(nObservations))
-      allocate(this%obsRecordCounts(nObservations))
-      allocate(this%Observations(nObservations))
-
+    ! Allocate observation files arrays
+    this%nObservations = nObservations
+    allocate(this%observationCells(nObservations))
+    allocate(this%observationUnits(nObservations))
+    allocate(this%observationFiles(nObservations))
+    allocate(this%obsRecordCounts(nObservations))
+    allocate(this%Observations(nObservations))
   end subroutine pr_InitializeObservations
 
   
   function pr_IdObservationCell( this, cellNumber ) result( output )
-      !-------------------------------------------------------------
-      ! Determine if cellNumber in the list of observation cells 
-      ! 
-      ! return the index
-      !-------------------------------------------------------------
-      ! Specifications
-      !-------------------------------------------------------------
-      implicit none
-      class(ParticleTrackingOptionsType) :: this
-      ! input
-      integer, intent(in) :: cellNumber
-      ! output
-      !logical :: output = .false.
-      integer :: output 
-      ! local
-      integer :: n
-      !-------------------------
+    !-------------------------------------------------------------
+    ! Determine if cellNumber in the list of observation cells
+    ! 
+    ! return the index
+    !-------------------------------------------------------------
+    ! Specifications
+    !-------------------------------------------------------------
+    implicit none
+    class(ParticleTrackingOptionsType) :: this
+    ! input
+    integer, intent(in) :: cellNumber
+    ! output
+    !logical :: output = .false.
+    integer :: output 
+    ! local
+    integer :: n
+    !-------------------------
 
-      output = -999
+    output = -999
 
-      ! Check if cellNumber is on the list of observation cells     
-      do n=1, this%nObservations
-          if ( this%observationCells( n ) .eq. cellNumber ) then 
-              output = n
-              return
-          end if 
-      end do 
+    ! Check if cellNumber is on the list of observation cells     
+    do n=1, this%nObservations
+        if ( this%observationCells( n ) .eq. cellNumber ) then 
+            output = n
+            return
+        end if 
+    end do 
 
-      return 
-
+    return 
   end function pr_IdObservationCell 
-
-
-  !! TEMPORARY, find a better place
-  !subroutine pr_InitializePrescribedBoundaries( this, nPrescribed )
-  !  !-----------------------------------------------------
-  !  ! Initialize observation cells data
-  !  !-----------------------------------------------------
-  !  ! Specifications
-  !  !-----------------------------------------------------
-  !  implicit none
-  !  class(ParticleTrackingOptionsType) :: this
-  !  ! input
-  !  integer, intent(in) :: nPrescribed
-  !  integer :: n 
-  !  !-------------------------
-
-  !  ! Allocate observation files arrays
-  !  this%nPrescribed = nPrescribed
-
-  !  allocate(this%PrescribedBoundaries(nPrescribed))
-
-  !end subroutine pr_InitializePrescribedBoundaries
 
 
 end module ParticleTrackingOptionsModule

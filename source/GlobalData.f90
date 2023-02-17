@@ -6,7 +6,7 @@ module GlobalDataModule
     integer, save :: inUnit, pathlineUnit, endpointUnit, timeseriesUnit,        &
       mplistUnit, mpsimUnit, traceUnit, budchkUnit, aobsUnit, logUnit
     integer, save :: gpkdeUnit, obsUnit, dspUnit, rwoptsUnit   ! RWPT 
-    integer, save :: spcUnit, icUnit, bcUnit, srcUnit, impUnit ! RWPT 
+    integer, save :: spcUnit, icUnit, srcUnit, impUnit         ! RWPT 
     integer, save :: particleGroupCount
     integer, save :: gridFileType
     integer, save :: logType
@@ -14,5 +14,5 @@ module GlobalDataModule
     character*200 :: mpnamFile, mpsimFile, mplistFile, mpbasFile, disFile,      &
       tdisFile, gridFile, headFile, budgetFile, traceFile, gridMetaFile,        &
       mplogFile, gpkdeFile, obsFile, dspFile, rwoptsFile, spcFile, icFile,      & 
-      bcFile, srcFile, impFile ! RWPT
+      srcFile, impFile ! RWPT
 end module

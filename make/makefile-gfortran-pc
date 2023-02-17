@@ -6,7 +6,7 @@
 # the executable, and the executable name and path.
 OBJDIR = ./obj_temp
 BINDIR = .
-PROGRAM = mpathrwpt
+PROGRAM = mpathrw
 
 SOURCEDIR1=../source
 SOURCEDIR2=../lib/gpkde/src
@@ -23,9 +23,7 @@ ${SOURCEDIR3}
 # Define the Fortran compile flags
 FC = gfortran
 #FFLAGS = -O2 -fbacktrace -fopenmp 
-#FFLAGS = -g -fbacktrace -fopenmp -ffpe-trap=invalid,zero,overflow
-FFLAGS = -g -fbacktrace -fopenmp -Wall -fbounds-check -fcheck=all -ffpe-trap=invalid,zero,overflow
-#FFLAGS = -g -fbacktrace -fopenmp -Wall -fbounds-check -fcheck=all -ffpe-trap=invalid,zero,overflow -Wextra -pedantic
+FFLAGS =  -g -fbacktrace -fopenmp -Wall -fbounds-check -fcheck=all -ffpe-trap=invalid,zero,overflow -Wextra
 
 
 # Define the C compile flags
@@ -53,7 +51,6 @@ $(OBJDIR)/GlobalData.o \
 $(OBJDIR)/DispersionData.o \
 $(OBJDIR)/Solute.o \
 $(OBJDIR)/Observation.o \
-$(OBJDIR)/BoundaryConditions.o \
 $(OBJDIR)/ParticleTrackingOptions.o \
 $(OBJDIR)/compilerversion.o \
 $(OBJDIR)/openspec.o \
