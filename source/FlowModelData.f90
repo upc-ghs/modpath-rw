@@ -73,10 +73,6 @@ module FlowModelDataModule
       procedure :: ValidateBudgetHeader => pr_ValidateBudgetHeader
       procedure :: LoadFlowTimeseries => pr_LoadFlowTimeseries
 
-
-      ! DEPRECATE
-      !!procedure :: SetLayerTypes=>pr_SetLayerTypes
-
     end type
 
 
@@ -95,7 +91,7 @@ contains
     type(HeadReaderType),intent(inout),target :: headReader
     class(ModflowRectangularGridType),intent(inout),pointer :: grid
     integer :: cellCount,gridType
-    integer :: n, flowArraySize
+    integer :: flowArraySize
     doubleprecision :: hNoFlow, hDry
     !---------------------------------------------------------------------------
 
@@ -234,7 +230,6 @@ contains
     type(BudgetRecordHeaderType) :: header
     character(len=16) :: textLabel
     character(len=132) message
-    doubleprecision :: top 
     real :: HDryTol, HDryDiff
     !------------------------------------------------------------------------
       
@@ -831,7 +826,7 @@ contains
     integer,intent(in) :: arraySize
     integer,dimension(arraySize),intent(in) :: defaultIfaceValues
     character(len=16),dimension(arraySize),intent(in) :: defaultIfaceLabels
-    integer :: n, firstNonBlank, lastNonBlank, trimmedLength
+    integer :: n
     character(len=16) :: label
     !---------------------------------------------------------------------------------------------------------------
       
@@ -924,7 +919,7 @@ contains
     integer :: firstNonBlank,lastNonBlank,trimmedLength
     integer :: firstNonBlankIn,lastNonBlankIn,trimmedLengthIn
     integer :: firstNonBlankLoc,lastNonBlankLoc,trimmedLengthLoc
-    integer :: spaceAssigned, status, cellCount, iface, index, auxindex, cellindex
+    integer :: spaceAssigned, status, auxindex, cellindex
     integer :: listItemBufferSize, cellNumber
     type(BudgetRecordHeaderType) :: header
     character(len=16)  :: textLabel
@@ -1403,10 +1398,9 @@ contains
     ! local
     integer :: timeStep = 1 ! to look for aux vars, use as ref...
     integer :: stressPeriod = 1 ! the first stperiod, first tstep
-    integer :: n, m, naux, nx, nval, auxindex
-    integer :: cellNumber, status
+    integer :: n, naux, nx, nval, auxindex
     integer :: firstRecord,lastRecord
-    integer :: listItemBufferSize, spaceAssigned
+    integer :: listItemBufferSize
     integer :: firstNonBlank,lastNonBlank,trimmedLength
     integer :: firstNonBlankIn,lastNonBlankIn,trimmedLengthIn
     integer :: firstNonBlankLoc,lastNonBlankLoc,trimmedLengthLoc
@@ -1626,22 +1620,17 @@ contains
     ! local
     integer :: timeStep = 1 ! to look for aux vars, use as ref the first tstep 
     integer :: stressPeriod ! the first stperiod, first tstep
-    integer :: n, m, naux, nx, nval, auxindex
-    integer :: cellNumber, status
+    integer :: n
     integer :: firstRecord,lastRecord
-    integer :: listItemBufferSize, spaceAssigned
     integer :: firstNonBlank,lastNonBlank,trimmedLength
     integer :: firstNonBlankIn,lastNonBlankIn,trimmedLengthIn
-    integer :: firstNonBlankLoc,lastNonBlankLoc,trimmedLengthLoc
     type(BudgetRecordHeaderType) :: header
     character(len=16)  :: textLabel
-    character(len=16)  :: textNameLabel
     character(len=132) :: message
     integer :: kfinal, kinitial
     integer :: spInit, spEnd, tsInit, tsEnd
-    integer :: nb, nbindex, nsp
+    integer :: nsp
     integer :: nStressPeriods, nTimeIntervals, nTimes
-    integer :: nbmax = 5
     character(len=16)  :: anamebud(5)
     DATA anamebud(1) /'           WELLS'/ ! WEL
     DATA anamebud(2) /'    DRAINS (DRT)'/ ! DRT
@@ -2024,21 +2013,19 @@ contains
     ! out
     doubleprecision, allocatable, dimension(:,:)  , intent(inout) :: flowTimeseries ! nt x ncells
     ! local
-    integer :: n, m, naux
+    integer :: n, m
     integer :: stressPeriod, timeStep
     integer :: firstRecord,lastRecord
     integer :: firstNonBlank,lastNonBlank,trimmedLength
     integer :: firstNonBlankIn,lastNonBlankIn,trimmedLengthIn
-    integer :: firstNonBlankLoc,lastNonBlankLoc,trimmedLengthLoc
-    integer :: spaceAssigned, status, cellCount, auxindex, cellindex
+    integer :: spaceAssigned, status, cellCount, cellindex
     integer :: listItemBufferSize, cellNumber
     type(BudgetRecordHeaderType) :: header
     character(len=16)  :: textLabel
-    character(len=16)  :: textNameLabel
     character(len=132) :: message
     integer :: nCells, newcounter
     integer :: kinitial, kfinal, ktime, kcounter
-    integer :: nTimes, nTimeIntervals, nAuxVars, cellCounter 
+    integer :: nTimes, nTimeIntervals, cellCounter 
     integer :: spInit, tsInit, spEnd, tsEnd, nStressPeriods, nsp 
     integer, allocatable, dimension(:) :: tempCellNumbers
     integer, allocatable, dimension(:) :: spCellNumbers
