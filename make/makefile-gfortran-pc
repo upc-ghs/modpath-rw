@@ -22,8 +22,10 @@ ${SOURCEDIR3}
 
 # Define the Fortran compile flags
 FC = gfortran
-#FFLAGS = -O2 -fbacktrace -fopenmp 
-FFLAGS =  -g -fbacktrace -fopenmp -Wall -fbounds-check -fcheck=all -ffpe-trap=invalid,zero,overflow -Wextra
+# FROM MODPATH-OMP
+FFLAGS = -O2 -fbacktrace -fopenmp
+# DEBUG
+#FFLAGS =  -g -fbacktrace -fopenmp -Wall -fbounds-check -fcheck=all -ffpe-trap=invalid,zero,overflow
 
 
 # Define the C compile flags

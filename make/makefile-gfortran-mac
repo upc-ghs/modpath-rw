@@ -6,9 +6,11 @@
 # the executable, and the executable name and path.
 OBJDIR = ./obj_temp
 BINDIR = .
-PROGRAM = mpathrwpt
+PROGRAM = mpathrw
 
 SOURCEDIR1=../source
+SOURCEDIR2=../lib/gpkde/src
+SOURCEDIR3=../lib/finterp/src
 
 VPATH = \
 ${SOURCEDIR1} 
@@ -27,54 +29,63 @@ CFLAGS = -O3 -D_UF
 SYSLIBS = -lc 
 
 OBJECTS = \
-$(OBJDIR)/GlobalData.o \
-$(OBJDIR)/ParticleTrackingOptions.o \
-$(OBJDIR)/UtilMisc.o \
+$(OBJDIR)/Histogram.o \
+$(OBJDIR)/KernelMultiGaussian.o \
+$(OBJDIR)/GridCell.o \
+$(OBJDIR)/GridProjectedKDE.o \
+$(OBJDIR)/linear_interpolation_module.o \
 $(OBJDIR)/Coordinate.o \
-$(OBJDIR)/utl7.o \
-$(OBJDIR)/compilerversion.o \
-$(OBJDIR)/BudgetListItem.o \
 $(OBJDIR)/TrackCellOptions.o \
-$(OBJDIR)/ModpathUnstructuredBasicData.o \
-$(OBJDIR)/GridLocation.o \
-$(OBJDIR)/openspec.o \
+$(OBJDIR)/BudgetListItem.o \
 $(OBJDIR)/HeadRecordHeader.o \
-$(OBJDIR)/GeoReference.o \
+$(OBJDIR)/GridLocation.o \
+$(OBJDIR)/GlobalData.o \
+$(OBJDIR)/DispersionData.o \
+$(OBJDIR)/Solute.o \
+$(OBJDIR)/Observation.o \
+$(OBJDIR)/ParticleTrackingOptions.o \
+$(OBJDIR)/compilerversion.o \
+$(OBJDIR)/openspec.o \
 $(OBJDIR)/Particle.o \
-$(OBJDIR)/BudgetRecordHeader.o \
+$(OBJDIR)/utl7.o \
 $(OBJDIR)/GridLocationList.o \
+$(OBJDIR)/GeoReference.o \
+$(OBJDIR)/ModpathUnstructuredBasicData.o \
+$(OBJDIR)/UtilMisc.o \
 $(OBJDIR)/ParticleLocation.o \
-$(OBJDIR)/ParticleGroup.o \
-$(OBJDIR)/utl8.o \
-$(OBJDIR)/BudgetReader.o \
-$(OBJDIR)/ModpathSubCellData.o \
-$(OBJDIR)/HeadReader.o \
-$(OBJDIR)/TrackSubCellResult.o \
+$(OBJDIR)/BudgetRecordHeader.o \
 $(OBJDIR)/ParticleCoordinate.o \
-$(OBJDIR)/ParticleLocationPtr.o \
+$(OBJDIR)/ParticleGroup.o \
 $(OBJDIR)/ParticleLocationList.o \
-$(OBJDIR)/TimeDiscretizationData.o \
-$(OBJDIR)/ModflowGrid.o \
 $(OBJDIR)/ParticleCoordinateList.o \
-$(OBJDIR)/TrackSubCell.o \
-$(OBJDIR)/ModflowRectangularGrid.o \
-$(OBJDIR)/RectangularGridDisuMfusg.o \
+$(OBJDIR)/utl8.o \
+$(OBJDIR)/ParticleLocationPtr.o \
+$(OBJDIR)/ModflowGrid.o \
+$(OBJDIR)/BudgetReader.o \
+$(OBJDIR)/TimeDiscretizationData.o \
+$(OBJDIR)/ModpathSubCellData.o \
 $(OBJDIR)/ParticlePath.o \
-$(OBJDIR)/StartingLocationReader.o \
-$(OBJDIR)/ModpathSimulationData.o \
-$(OBJDIR)/RectangularGridDisuMf6.o \
-$(OBJDIR)/ModpathBasicData.o \
-$(OBJDIR)/RectangularGridDisvMf6.o \
-$(OBJDIR)/ModpathCellData.o \
-$(OBJDIR)/RectangularGridDisMf6.o \
-$(OBJDIR)/RectangularGridDis.o \
+$(OBJDIR)/TrackSubCellResult.o \
+$(OBJDIR)/HeadReader.o \
 $(OBJDIR)/TrackPathResult.o \
+$(OBJDIR)/ModflowRectangularGrid.o \
+$(OBJDIR)/ModpathBasicData.o \
+$(OBJDIR)/RectangularGridDisMf6.o \
+$(OBJDIR)/ModpathCellData.o \
+$(OBJDIR)/TrackSubCell.o \
+$(OBJDIR)/RectangularGridDisvMf6.o \
+$(OBJDIR)/StartingLocationReader.o \
+$(OBJDIR)/RectangularGridDis.o \
+$(OBJDIR)/RectangularGridDisuMfusg.o \
 $(OBJDIR)/TrackCellResult.o \
-$(OBJDIR)/TrackCell.o \
-$(OBJDIR)/FlowModelData.o \
-$(OBJDIR)/ParticleTrackingEngine.o \
+$(OBJDIR)/RectangularGridDisuMf6.o \
 $(OBJDIR)/ModpathCellDataContainer.o \
+$(OBJDIR)/FlowModelData.o \
+$(OBJDIR)/ModpathSimulationData.o \
 $(OBJDIR)/ParticleManager.o \
+$(OBJDIR)/TrackCell.o \
+$(OBJDIR)/TransportModelData.o \
+$(OBJDIR)/ParticleTrackingEngine.o \
 $(OBJDIR)/MPath7.o 
 
 # Define task functions

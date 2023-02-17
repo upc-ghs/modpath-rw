@@ -6,13 +6,10 @@
 # the executable, and the executable name and path.
 OBJDIR = ./obj_temp
 BINDIR = .
-PROGRAM = mpathrwpt
+PROGRAM = mpathrw
 
 SOURCEDIR1=../source
-SOURCEDIR2=../gpkde/src
-
-SOURCEDIR1=../source
-SOURCEDIR2=../gpkde/src
+SOURCEDIR2=../lib/gpkde/src
 SOURCEDIR3=../lib/finterp/src
 
 VPATH = \
@@ -24,12 +21,10 @@ ${SOURCEDIR3}
 
 # Define the Fortran compile flags
 FC = ifort
-# FROM MF6
-#FFLAGS = -Ofast -traceback -qopenmp -ipo -no-heap-arrays -fpe0 -traceback -fpp
 # FROM MODPATH-OMP
-#FFLAGS = -Ofast -traceback -qopenmp -ipo
+FFLAGS = -Ofast -traceback -qopenmp -ipo
 # DEBUG
-FFLAGS = -O0 -g -debug extended -traceback -qopenmp
+#FFLAGS = -O0 -g -debug extended -traceback -qopenmp
 
 
 # Define the C compile flags
@@ -39,8 +34,9 @@ CFLAGS = -O3 -D_UF
 # Define the libraries
 SYSLIBS = 
 
-# Start with objects from GPKDE then
-# continues to modpath
+# Start with objects from GPKDE, 
+# then the library for linear interpolation, 
+# and then modpath files
 OBJECTS = \
 $(OBJDIR)/Histogram.o \
 $(OBJDIR)/KernelMultiGaussian.o \
@@ -56,7 +52,6 @@ $(OBJDIR)/GlobalData.o \
 $(OBJDIR)/DispersionData.o \
 $(OBJDIR)/Solute.o \
 $(OBJDIR)/Observation.o \
-$(OBJDIR)/BoundaryConditions.o \
 $(OBJDIR)/ParticleTrackingOptions.o \
 $(OBJDIR)/compilerversion.o \
 $(OBJDIR)/openspec.o \
