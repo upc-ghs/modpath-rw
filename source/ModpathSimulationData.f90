@@ -653,16 +653,30 @@ contains
 
         ! RWPT
         if ( this%ParticlesMassOption .ge. 1 ) then 
+          write(outUnit, '(a)') 'Will read ParticlesMass'
           ! Read group mass, is a proxy for concentrations
           ! when mass is uniform for a pgroup
-          read(inUnit, *) this%ParticleGroups(n)%Mass
+          read(inUnit, '(a)') line
+          icol = 1
+          call urword(line,icol,istart,istop,3,n,r,0,0)
+          if ( r.lt.0d0 ) then 
+            write(outUnit,'(A)')'Given particles mass is negative, it should be positive. Stop.'
+            call ustop('Given particles mass is negative, it should be positive. Stop.')
+          end if
+          this%ParticleGroups(n)%Mass = r
           this%ParticleGroups(n)%Particles(:)%Mass = this%ParticleGroups(n)%Mass
           ! Read the solute id for this group 
           if ( this%ParticlesMassOption .eq. 2 ) then 
-            read(inUnit, *) this%ParticleGroups(n)%Solute
+            write(outUnit, '(a)') 'Will read a SpeciesID'
+            read(inUnit, '(a)') line
+            icol = 1
+            call urword(line,icol,istart,istop,2,this%ParticleGroups(n)%Solute,r,0,0)
+            if ( this%ParticleGroups(n)%Solute.lt.1 ) then 
+              write(outUnit,'(A)')'Given SpeciesID is less than 1. Should be at least 1. Stop.'
+              call ustop('Given SpeciesID is less than 1. Should be at least 1. Stop.')
+            end if
           end if
         end if
-
       end do
 
       this%TotalParticleCount = particleCount
@@ -1552,12 +1566,25 @@ contains
         allocate(densityDistribution(grid%CellCount))
 
         ! Read particles mass
-        read(icUnit, *) particleMass
+        read(icUnit, '(a)') line
+        icol = 1
+        call urword(line,icol,istart,istop,3,n,r,0,0)
+        if ( r.lt.0d0 ) then 
+          write(outUnit,'(A)') 'Given particle mass is negative. Should be positive. Stop.'
+          call ustop('Given particle mass is negative. Should be positive. Stop.')
+        end if
+        particleMass = r 
 
         if ( ( this%ParticlesMassOption .eq. 2 ) ) then 
           ! Read solute id
-          ! Requires some validation/health check
-          read(icUnit, *) soluteId
+          read(icUnit, '(a)') line
+          icol = 1
+          call urword(line,icol,istart,istop,2,n,r,0,0)
+          if ( n.lt.1 ) then 
+            write(outUnit,'(A)')'Given SpeciesID is less than 1. Minimum is 1. Stop.'
+            call ustop('Given SpeciesID is less than 1. Minimum is 1. Stop.')
+          end if
+          soluteId = n
         end if
 
         ! Read concentration
@@ -2029,7 +2056,7 @@ contains
 
           ! Read the solute ids if the simulation demands  
           if ( ( this%ParticlesMassOption .eq. 2 ) ) then 
-            write(outUnit,'(A)') 'Will try to read solute ids due to ParticlesMassOption.eq.2 '
+            write(outUnit,'(A)') 'Will read species ids due to ParticlesMassOption.eq.2 '
             ! Read solute id
             if( allocated( soluteIds ) ) deallocate( soluteIds )
             allocate( soluteIds( nSpecies ) )
@@ -2062,9 +2089,12 @@ contains
             ! Read solute id depending on solutes option
             if ( this%ParticlesMassOption .eq. 2 ) then 
               call urword(line,icol,istart,istop,2,n,r,0,0)
-              ! If the soluteid is not given, assign default 1 
+              ! If the soluteid is not given, stop, it is required by this option
+              if ( n.lt. 1) then 
+               write(outUnit,'(A)') 'SpeciesID for source is invalid. It was not given or is less than 1. Stop.'
+               call ustop('SpeciesID for source is invalid. It was not given or is less than 1. Stop.')
+              end if 
               soluteIds(naux) = n 
-              if ( n.lt.1 ) soluteIds(naux) = 1
             end if
 
           end do ! naux = 1, nAuxNames 
@@ -2501,7 +2531,6 @@ contains
             end do ! nc=1, nCells
 
 
-
             ! Increase counters
             if ( particleGroups(naux)%TotalParticleCount .gt. 0 ) then 
               nValidPGroup = nValidPGroup + 1
@@ -2840,11 +2869,17 @@ contains
 
           ! Read the solute ids if the simulation demands  
           if ( ( this%ParticlesMassOption .eq. 2 ) ) then 
-            write(outUnit,'(A)') 'Will try to read solute ids due to ParticlesMassOption.eq.2 '
+            write(outUnit,'(A)') 'Will read species ids due to ParticlesMassOption.eq.2 '
             ! Read solute id
             if( allocated( soluteIds ) ) deallocate( soluteIds )
             allocate( soluteIds( nSpecies ) )
             read(srcUnit,*) (soluteIds(ns),ns=1,nSpecies)
+            do ns=1,nSpecies
+             if ( soluteIds(ns) .lt. 1 ) then 
+              write(outUnit,'(A)') 'SpeciesID for source is invalid. It was not given or is less than 1. Stop.'
+              call ustop('SpeciesID for source is invalid. It was not given or is less than 1. Stop.')
+             end if 
+            end do
           end if
    
           ! Read the number of time intervals

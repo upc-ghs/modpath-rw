@@ -560,12 +560,13 @@ program MPath7
 
     call ulog('Read specific IMP simulation data.', logUnit)
     call transportModelData%ReadIMPData( impFile, impUnit, mpListUnit, modelGrid )
-call exit(0)
+
     call ulog('Read specific SPC data.', logUnit)
     call transportModelData%ReadSPCData( spcFile, spcUnit, mpListUnit )
 
     call ulog('Read specific DSP data.', logUnit)
     call transportModelData%ReadDSPData( dspFile, dspUnit, mpListUnit )
+call exit(0)
 
     ! Validate if given relations for 
     ! SPC and DSP and PGROUPS are consistent/well defined.
@@ -1013,10 +1014,17 @@ call exit(0)
     ! GPKDE reconstruction for initial 
     ! particles distribution, grouped by solute
     if ( simulationData%TrackingOptions%GPKDEReconstruction ) then
+      call ulog('GPKDE reconstruction for the initial condition', logUnit)
 
       do ns=1,transportModelData%nSolutes
 
         solute => transportModelData%Solutes(ns)
+
+        if ( solute%nParticleGroups .lt. 1 ) then 
+          write(mplistUnit,'(a)') 'Warning: solute does not have particle groups, GPKDE will be skipped.'
+          call ulog('Warning: solute does not have particle groups, it will be skipped.', logUnit)
+          cycle
+        end if 
 
         ! Count the number of particles linked to the current solute 
         activeCounter = 0
@@ -1462,9 +1470,17 @@ call exit(0)
     ! grouped by solute
     if ( simulationData%TrackingOptions%GPKDEReconstruction .and. isTimeSeriesPoint ) then
 
+      call ulog('GPKDE reconstruction for the time point', logUnit)
+
       do ns=1,transportModelData%nSolutes
 
         solute => transportModelData%Solutes(ns)
+
+        if ( solute%nParticleGroups .lt. 1 ) then 
+          write(mplistUnit,'(a,I2,a)') 'Warning: solute ',solute%id,' with no particle groups, skip GPKDE.'
+          call ulog('Warning: solute does not have particle groups, it will be skipped.', logUnit)
+          cycle
+        end if 
 
         ! Count how many active, considering
         ! all the particle groups linked to a given solute 
@@ -1662,6 +1678,7 @@ call exit(0)
     write(mplistUnit, *) 
     write(mplistUnit, '(A)') ' Postprocess OBS cells '
     write(mplistUnit, '(A)') '-----------------------'
+    call ulog('Postprocessing OBS cells', logUnit)
 
     ! Loop over observations
     do nobs=1, simulationData%TrackingOptions%nObservations
@@ -1675,6 +1692,7 @@ call exit(0)
 
         write(mplistUnit, *) 
         write(mplistUnit, '(A,I3,A,I3)') 'Resident concentration OBS, nobs ', nobs ,', obs id ', obs%id
+        call ulog('OBS of resident concentration', logUnit)
 
         ! Compute a bin size for histogram/gpkde postprocess
         ! Works for timeseries with uniform time steps
@@ -1796,6 +1814,12 @@ call exit(0)
         ! Loop over solutes
         do ns=1, transportModelData%nSolutes
           solute => transportModelData%Solutes(ns)
+
+          if ( solute%nParticleGroups .lt. 1 ) then 
+            write(mplistUnit,'(a,I2,a)') 'Warning: solute ',solute%id,' with no particle groups, skip.'
+            call ulog('Warning: solute does not have particle groups, it will be skipped.', logUnit)
+            cycle
+          end if 
 
           ! Count how many for this solute
           solCount = 0
@@ -1919,7 +1943,8 @@ call exit(0)
       if ( obs%style .eq. 2 ) then 
 
         write(mplistUnit, *) 
-        write(mplistUnit, '(A,I3,A,I3)') 'Strong sink OBS, nobs ', nobs ,', obs id ', obs%id
+        write(mplistUnit, '(A,I3,A,I3)') 'Flux concentration OBS, nobs ', nobs ,', obs id ', obs%id
+        call ulog('OBS of flux concentration', logUnit)
 
         ! The length of the timeseries is needed
         if ( size(simulationData%TimePoints) .lt. 2 ) then 
@@ -2051,6 +2076,12 @@ call exit(0)
         do ns=1, transportModelData%nSolutes
           solute => transportModelData%Solutes(ns)
 
+          if ( solute%nParticleGroups .lt. 1 ) then 
+            write(mplistUnit,'(a,I2,a)') 'Warning: solute ',solute%id,' with no particle groups, skip.'
+            call ulog('Warning: solute does not have particle groups, it will be skipped.', logUnit)
+            cycle
+          end if
+
           ! Count how many for this solute
           solCount = 0
           do npg=1,solute%nParticleGroups
@@ -2172,7 +2203,7 @@ call exit(0)
 
     end do ! obsLoop
 
-
+    call ulog('Finished Postprocess OBS cells', logUnit)
     write(mplistUnit, '(A)') ' Finished Postprocess OBS cells '
     write(mplistUnit, '(A)') '--------------------------------'
     write(mplistUnit,  *   ) 

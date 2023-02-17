@@ -38,6 +38,7 @@ module TransportModelDataModule
       type( SoluteType ), allocatable, dimension(:) :: Solutes
       type( SoluteType ) :: BaseSolute
       integer            :: nSolutes
+      logical            :: readSPCPkg
 
       ! Dispersion models 
       type( DispersionDataType ), allocatable, dimension(:) :: DispersionData 
@@ -296,7 +297,8 @@ contains
     integer :: icol,istart,istop,n
     doubleprecision    :: r
     character(len=200) :: line
-    integer :: ns, ncount, npg, pgcount
+    integer :: ns, ncount, npg, pgcount, pgindex
+    integer, allocatable, dimension(:) :: pGroupsIds
     integer, allocatable, dimension(:) :: soluteIds
     integer :: minSolId, maxSolId, countSolId
     character(len=20) :: tempChar1
@@ -305,6 +307,9 @@ contains
     write(outUnit, *)
     write(outUnit, '(1x,a)') 'MODPATH-RW SPC file data'
     write(outUnit, '(1x,a)') '------------------------'
+
+    ! Restart flag
+    this%readSPCPkg = .false.
 
     ! Local pointer to class pointer 
     simulationData => this%simulationData
@@ -364,6 +369,8 @@ contains
           end do 
           this%Solutes(ns)%nParticleGroups = pgcount
           this%Solutes(ns)%id = minSolId
+          ! Assigned increasingly ?
+          !this%Solutes(ns)%id = ns
           this%Solutes(ns)%userid = minSolId
           tempChar1 = ''
           write( unit=tempChar1, fmt=* )ns 
@@ -381,9 +388,11 @@ contains
         ! A single virtual solute storing the same 
         ! transport parameters for all pgroups
         this%Solutes(1)%id = 1
+        this%Solutes(1)%userid = 1
         this%Solutes(1)%stringid = 'SPC1'
 
-        ! All pgroups to base solute 
+        ! All pgroups to base solute
+        ! The way to identify the pGroup is by their position in the pgroups array 
         if ( allocated(this%Solutes(1)%pGroups) ) deallocate(this%Solutes(1)%pGroups)
         allocate(this%Solutes(1)%pGroups(simulationData%ParticleGroupCount))
         do n=1,simulationData%ParticleGroupCount
@@ -400,165 +409,168 @@ contains
 
     ! If the SPC package was specified, 
     ! then read it. 
+    this%readSPCPkg = .true.
+    if( allocated(pGroupsIds) ) deallocate( pGroupsIds )
     ! Interpret solutesoption to determined 
     ! whether the simulation is multidispersion or not
 
-    ! Define dispersion according to solutes option 
-    select case( simulationData%SolutesOption )
-      ! 0: Single solute dispersion 
-      case (0)
-        write(outUnit,'(A)') 'Simulation is single dispersion for all solutes, will not read SPC specs.'
-        this%nSolutes = 1
-        if ( allocated(this%Solutes) ) deallocate( this%Solutes )
-        allocate( this%Solutes(this%nSolutes) )
+    ! How many ?
+    read(spcUnit, '(a)') line
+    icol = 1
+    call urword(line, icol, istart, istop, 2, n, r, 0, 0)
+    this%nSolutes = n 
+    
+    ! Process SPC's
+    write(outUnit,'(A,I5)') 'Given number of species/solutes = ', this%nSolutes
+    if(this%nSolutes .le. 0) then
+      ! No spc's
+      write(outUnit,'(A)') 'Number of given species/solutes is .le. 0.'
+      call ustop('Number of given species/solutes is .le. 0.')
+    end if
 
-        ! A single virtual solute storing the same 
-        ! transport parameters for all pgroups
-        this%Solutes(1)%id = 1
-        this%Solutes(1)%stringid = 'SPC1'
+    ! Allocate solutes
+    if ( allocated(this%Solutes) ) deallocate( this%Solutes )
+    allocate( this%Solutes(this%nSolutes) )
 
-        ! All pgroups to base solute 
-        if ( allocated(this%Solutes(1)%pGroups) ) deallocate(this%Solutes(1)%pGroups)
-        allocate(this%Solutes(1)%pGroups(simulationData%ParticleGroupCount))
-        do n=1,simulationData%ParticleGroupCount
-          this%Solutes(1)%pGroups(n) = n 
-        end do 
-        this%Solutes(1)%nParticleGroups = simulationData%ParticleGroupCount
-        
+    ! Initialize these guys
+    do ns =1,this%nSolutes
+      write(outUnit,'(A,I4)') 'Processing species specification ', ns
 
-      ! 1: Multiple solute, multidispersion
-      case (1)
-        write(outUnit,'(A)') 'Simulation is multidispersion, will read species/solutes specs.'
+      ! Internal id assigned increasingly
+      this%Solutes(ns)%id = n 
+      this%Solutes(ns)%userid = n 
+      
+      ! Read the string id
+      read(spcUnit, '(a)') line
+      icol = 1
+      call urword(line, icol, istart, istop, 0, n, r, 0, 0)
+      this%Solutes(ns)%stringid = line(istart:istop)
 
-        ! How many ?
+      ! Assign pgroups related to the solute
+      if ( simulationData%ParticlesMassOption .ne. 2 ) then
+        ! Read pgroups related to the solute from the pkg
+        write(outUnit,'(A)') 'ParticleMassOption.ne.2: '
+        write(outUnit,'(A)') 'Read pgroups related to this species/solutes from the pkg.'
+
+        if ( .not. allocated( pGroupsIds ) ) then 
+          allocate( pGroupsIds(simulationData%ParticleGroupCount) ) 
+          do npg=1,simulationData%ParticleGroupCount
+            pGroupsIds(npg) = simulationData%ParticleGroups(npg)%Group
+          end do
+        end if
+
+        ! How many pgroups
         read(spcUnit, '(a)') line
         icol = 1
         call urword(line, icol, istart, istop, 2, n, r, 0, 0)
-        this%nSolutes = n 
-       
-        ! Process SPC's
-        write(outUnit,'(A,I5)') 'Given number of species/solutes = ', this%nSolutes
-        if(this%nSolutes .le. 0) then
-          ! No spc's
-          write(outUnit,'(A)') 'Number of given species/solutes is .le. 0.'
-          call ustop('Number of given species/solutes is .le. 0.')
-          ! Shall initialize BaseSolute?
-          !return
-        end if
+        if ( n.lt.1 ) then 
+          write(outUnit,'(A)') 'Given number of particle groups for species is less than 1. Stop.'
+          call ustop('Given number of particle groups for specie is less than 1. Stop.')
+        end if 
+        this%Solutes(ns)%nParticleGroups = n 
+        
+        ! Allocate species particle groups
+        if ( allocated( this%Solutes(ns)%pGroups ) ) deallocate( this%Solutes(ns)%pGroups )
+        allocate(this%Solutes(ns)%pGroups(this%Solutes(ns)%nParticleGroups))
+        
+        ! Read particle groups 
+        read(spcUnit, *) (this%Solutes(ns)%pGroups(npg), npg = 1,this%Solutes(ns)%nParticleGroups)
 
-        ! Allocate solutes
-        if ( allocated(this%Solutes) ) deallocate( this%Solutes )
-        allocate( this%Solutes(this%nSolutes) )
-
-        ! Initialize these guys
-        do ns =1,this%nSolutes
-          write(outUnit,'(A,I4)') 'Processing species/solute ', ns
-          ! Of course needs some attributes 
-          ! of the solute
-
-          ! Internal id assigned increasingly
-          this%Solutes(ns)%id = n 
-          
-          ! Read the string id
-          read(spcUnit, '(a)') line
-          icol = 1
-          call urword(line, icol, istart, istop, 0, n, r, 0, 0)
-          this%Solutes(ns)%stringid = line(istart:istop)
-
-
-          ! Assign pgroups related to the solute
-          if ( simulationData%ParticlesMassOption .ne. 2 ) then
-            ! Read pgroups related to the solute from the pkg
-            write(outUnit,'(A)') 'Read pgroups related to this species/solutes from the pkg.'
-
-            ! How many pgroups
-            read(spcUnit, '(a)') line
-            icol = 1
-            call urword(line, icol, istart, istop, 2, n, r, 0, 0)
-            if ( n.lt.1 ) then 
-              write(outUnit,'(A)') 'Given number of particle groups is .lt. than 1. Stop.'
-              call ustop('Given number of particle groups is .lt. than 1. Stop.')
-            end if 
-            this%Solutes(ns)%nParticleGroups = n 
-            
-            if ( allocated( this%Solutes(ns)%pGroups ) ) deallocate( this%Solutes(ns)%pGroups )
-            allocate(this%Solutes(ns)%pGroups(this%Solutes(ns)%nParticleGroups))
-            
-            read(spcUnit, *) (this%Solutes(ns)%pGroups(npg), npg = 1,this%Solutes(ns)%nParticleGroups)
-
-            !! Read related particle groups
-            !do npg =1,this%Solutes(ns)%nParticleGroups
-            !  ! Read the pgroups
-            !  read(spcUnit, '(a)') line
-            !  icol = 1
-            !  call urword(line, icol, istart, istop, 2, n, r, 0, 0)
-            !  this%Solutes(ns)%pGroups(npg) = n
-            !end do
-
-            ! It needs to assign the soluteId back to the 
-            ! corresponding pgroup for simulations 
-            ! where the solute is not specified in the pgroup
-            simulationData%ParticleGroups(&
-                this%Solutes(ns)%pGroups(npg) )%Solute = ns
-
-
-          else if ( simulationData%ParticlesMassOption .eq. 2 ) then
-            ! Read pgroups related to the solute ids at pgroups
-            write(outUnit,'(A)') 'Interpret pgroups related to this species/solutes from pgroups list.'
-
-            ! Read the soluteId's from simulationData%ParticleGroup list
-            ! and count how many for this solute
-            ncount = 0
-            do npg =1,simulationData%ParticleGroupCount
-              if ( simulationData%ParticleGroups( npg )%Solute .eq. ns ) then
-                ncount = ncount + 1
-              end if 
-            end do
-
-            ! If no pgroups, let it continue ?
-            if ( ncount .eq. 0 ) then 
-              write(outUnit,*) 'Warning: no particle groups associated to solute id ', ns
-            else
-              ! Initialize pgroup ids for the solute
-              this%Solutes(ns)%nParticleGroups = ncount
-          
-              if ( allocated( this%Solutes(ns)%pGroups ) ) deallocate( this%Solutes(ns)%pGroups )
-              allocate( this%Solutes(ns)%pGroups( &
-                 this%Solutes(ns)%nParticleGroups ) )
-
-              ncount = 0 
-              do npg =1,simulationData%ParticleGroupCount
-                if ( simulationData%ParticleGroups( npg )%Solute .eq. ns ) then
-                  ncount = ncount + 1
-                  this%Solutes(ns)%pGroups(ncount) = npg
-                end if 
-              end do
-            end if 
-
+        ! It needs to assign the soluteId back to the 
+        ! corresponding pgroup for simulations 
+        ! where the solute is not specified in the pgroup
+        do npg = 1,this%Solutes(ns)%nParticleGroups
+          pgindex = findloc( pGroupsIds, this%Solutes(ns)%pGroups(npg), 1 )
+          if ( pgindex .eq. 0 ) then 
+            write(outUnit,'(a)')'Given particle group id was not found in the list of avaiable particle groups. Stop.'
+            call ustop('Given particle group id was not found in the list of avaiable particle groups. Stop.')
           end if 
-         
-          ! Read the dispersion id
-          read(spcUnit, '(a)') line
-          icol = 1
-          call urword(line, icol, istart, istop, 2, n, r, 0, 0)
-          this%Solutes(ns)%dispersionId = n
-
-          ! Read the dispersion string id
-          read(spcUnit, '(a)') line
-          icol = 1
-          call urword(line, icol, istart, istop, 0, n, r, 0, 0)
-          this%Solutes(ns)%dispersionStringid = line(istart:istop)
-
-          write(outUnit,'(A,I4,A)')&
-          'Specie/solute ',ns, ' is related to dispersion:',trim(adjustl(this%Solutes(ns)%dispersionStringid))
+          simulationData%ParticleGroups(&
+              this%Solutes(ns)%pGroups(npg) )%Solute = ns
         end do
 
-      case default
-        ! Some error handling
-        call ustop('Invalid specified solutes option. Stop. ') 
-    end select
-    
 
+      else if ( simulationData%ParticlesMassOption .eq. 2 ) then
+        ! Read pgroups related to the solute ids at pgroups
+        write(outUnit,'(A)') 'ParticleMassOption.eq.2: '
+        write(outUnit,'(A)') 'Interpret pgroups related to this species/solutes from pgroups list.'
+
+        ! Read the soluteId's from simulationData%ParticleGroup list
+        ! and count how many for this solute
+        ncount = 0
+        do npg =1,simulationData%ParticleGroupCount
+          if ( (simulationData%ParticleGroups( npg )%Solute .lt. 1) .or. &
+               (simulationData%ParticleGroups( npg )%Solute .gt. this%nSolutes ) ) then 
+            write(outUnit,'(a)')'Given SpeciesID for particle group is outside the valid range. Stop.'
+            call ustop('Given SpeciesID for particle group is outside the valid range. Stop.')
+          end if 
+          if ( simulationData%ParticleGroups( npg )%Solute .eq. ns ) then
+            ncount = ncount + 1
+          end if 
+        end do
+
+        ! If no pgroups, let it continue ?
+        if ( ncount .gt. 0 ) then 
+          ! Initialize pgroup ids for the solute
+          this%Solutes(ns)%nParticleGroups = ncount
+      
+          if ( allocated( this%Solutes(ns)%pGroups ) ) deallocate( this%Solutes(ns)%pGroups )
+          allocate( this%Solutes(ns)%pGroups( &
+             this%Solutes(ns)%nParticleGroups ) )
+
+          ncount = 0 
+          do npg =1,simulationData%ParticleGroupCount
+            if ( simulationData%ParticleGroups( npg )%Solute .eq. ns ) then
+              ncount = ncount + 1
+              this%Solutes(ns)%pGroups(ncount) = npg
+            end if 
+          end do
+        else
+          ! Will it happen ?
+          write(outUnit,*) 'Warning: no particle groups associated to SpeciesID ', ns
+          this%Solutes(ns)%nParticleGroups = 0
+        end if
+        
+      end if
+
+
+      ! If simulation is multispecies dispersiom
+      if ( simulationData%SolutesOption.eq.1 ) then
+       ! Read the dispersion id
+       read(spcUnit, '(a)') line
+       icol = 1
+       call urword(line, icol, istart, istop, 2, n, r, 0, 0)
+       this%Solutes(ns)%dispersionId = n
+
+       ! Read the dispersion string id
+       read(spcUnit, '(a)') line
+       icol = 1
+       call urword(line, icol, istart, istop, 0, n, r, 0, 0)
+       this%Solutes(ns)%dispersionStringid = line(istart:istop)
+
+       write(outUnit,'(A,A,A)')&
+       'Species ',trim(adjustl(this%Solutes(ns)%stringid)),&
+       ' will be related to dispersion ',trim(adjustl(this%Solutes(ns)%dispersionStringid))
+      end if 
+
+
+    end do ! ns =1,this%nSolutes
+
+
+    ! Some verification that not all species 
+    ! remained without particle groups
+    ncount = 0
+    do ns=1,this%nSolutes
+      if( this%Solutes(ns)%nParticleGroups .eq. 0 ) ncount = ncount + 1
+    end do
+    if ( ncount .eq. this%nSolutes ) then 
+      write(outUnit,'(a)') 'Error: all the species remained without particle groups. Stop.'
+      call ustop('Error: all the species remained without particle groups. Stop.')
+    end if  
+
+
+    ! Or some report on relations
+        
 
     ! Close spc data file
     close( spcUnit )
