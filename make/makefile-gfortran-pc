@@ -9,7 +9,7 @@ BINDIR = .
 PROGRAM = mpathrwpt
 
 SOURCEDIR1=../source
-SOURCEDIR2=../gpkde/src
+SOURCEDIR2=../lib/gpkde/src
 SOURCEDIR3=../lib/finterp/src
 
 VPATH = \
