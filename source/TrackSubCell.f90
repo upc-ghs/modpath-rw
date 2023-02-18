@@ -3442,6 +3442,9 @@ contains
       doubleprecision, dimension(4) :: v101
       doubleprecision, dimension(4) :: v011
       doubleprecision, dimension(4) :: v111
+
+      doubleprecision :: sqrtTwoAlphaLVDmR
+      doubleprecision :: sqrtTwoAlphaTVDmR
       !----------------------------------------------------------------
 
       ! Initialize
@@ -3493,19 +3496,31 @@ contains
       B32 = 0d0
       if ( vBnorm .gt. 0d0 ) then
 
+          ! FASTER
           B11 =       vBx*sqrt( 2*( alphaL*vBnorm + dMEff )/RFactor )/vBnorm
           B21 =       vBy*sqrt( 2*( alphaL*vBnorm + dMEff )/RFactor )/vBnorm
           B31 =       vBz*sqrt( 2*( alphaL*vBnorm + dMEff )/RFactor )/vBnorm
           B32 =  vBnormxy*sqrt( 2*( alphaT*vBnorm + dMEff )/RFactor )/vBnorm
-
           if ( vBnormxy .gt. 0d0 ) then
-
             B12 =  -vBx*vBz*sqrt( 2*( alphaT*vBnorm + dMEff )/RFactor )/vBnorm/vBnormxy
             B13 =      -vBy*sqrt( 2*( alphaT*vBnorm + dMEff )/RFactor )/vBnormxy
             B22 =  -vBy*vBz*sqrt( 2*( alphaT*vBnorm + dMEff )/RFactor )/vBnorm/vBnormxy
             B23 =       vBx*sqrt( 2*( alphaT*vBnorm + dMEff )/RFactor )/vBnormxy
-
           end if
+
+          !sqrtTwoAlphaLVDmR = sqrt( 2*( alphaL*vBnorm + dMEff )/RFactor )
+          !sqrtTwoAlphaTVDmR = sqrt( 2*( alphaT*vBnorm + dMEff )/RFactor )
+          !B11 =       vBx*sqrtTwoAlphaLVDmR/vBnorm
+          !B21 =       vBy*sqrtTwoAlphaLVDmR/vBnorm
+          !B31 =       vBz*sqrtTwoAlphaLVDmR/vBnorm
+          !B32 =  vBnormxy*sqrtTwoAlphaTVDmR/vBnorm
+          !if ( vBnormxy .gt. 0d0 ) then
+          !  B12 =  -vBx*vBz*sqrtTwoAlphaTVDmR/vBnorm/vBnormxy
+          !  B13 =      -vBy*sqrtTwoAlphaTVDmR/vBnormxy
+          !  B22 =  -vBy*vBz*sqrtTwoAlphaTVDmR/vBnorm/vBnormxy
+          !  B23 =       vBx*sqrtTwoAlphaTVDmR/vBnormxy
+          !end if
+
 
       end if 
 
@@ -3543,7 +3558,7 @@ contains
       call random_number (harvest)
       random_value = sum(harvest)-6.d0
 
-    
+
       return
 
 

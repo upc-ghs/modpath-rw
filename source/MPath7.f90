@@ -2168,11 +2168,11 @@ program MPath7
   logical,intent(inout) :: parallel
   integer,intent(inout) :: tsOutputType
   integer :: defaultTsOutputType
-  character*200 comlin
+  character(len=200) comlin
   integer :: narg, length, status, na
   integer :: nprocs
-  character*200 nprocschar
-  character*200 tsoutchar
+  character(len=200) nprocschar
+  character(len=200) tsoutchar
   !---------------------------------------------------------------------------------
     
     ! Get the number of command-line arguments

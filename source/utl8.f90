@@ -359,9 +359,9 @@ module UTL8MODULE
 !C     ------------------------------------------------------------------
       double precision,intent(inout) :: r
       CHARACTER*(*) LINE
-      CHARACTER*20 STRING
-      CHARACTER*30 RW
-      CHARACTER*1 TAB
+      CHARACTER(LEN=20) STRING
+      CHARACTER(LEN=30) RW
+      CHARACTER(LEN=1) TAB
 !C     ------------------------------------------------------------------
       TAB=CHAR(9)
 !C
@@ -490,11 +490,11 @@ module UTL8MODULE
 !C     ------------------------------------------------------------------
       USE OpenSpecModule
       double precision :: r,cnstnt
-      CHARACTER*24 ANAME
+      CHARACTER(LEN=24) ANAME
       DIMENSION A(JJ)
-      CHARACTER*20 FMTIN
-      CHARACTER*200 CNTRL
-      CHARACTER*200 FNAME
+      CHARACTER(LEN=20) FMTIN
+      CHARACTER(LEN=200) CNTRL
+      CHARACTER(LEN=200) FNAME
       DATA NUNOPN/99/
 !      INCLUDE 'openspec.inc'
 !C     ------------------------------------------------------------------
@@ -610,12 +610,12 @@ module UTL8MODULE
 !C        SPECIFICATIONS:
 !C     ------------------------------------------------------------------
       USE OpenSpecModule
-      CHARACTER*24 ANAME
+      CHARACTER(LEN=24) ANAME
       DOUBLE PRECISION,DIMENSION(jj),intent(inout) :: A
       double precision :: r,cnstnt
-      CHARACTER*20 FMTIN
-      CHARACTER*200 CNTRL
-      CHARACTER*200 FNAME
+      CHARACTER(LEN=20) FMTIN
+      CHARACTER(LEN=200) CNTRL
+      CHARACTER(LEN=200) FNAME
       DATA NUNOPN/99/
 !      INCLUDE 'openspec.inc'
 !C     ------------------------------------------------------------------
@@ -731,12 +731,12 @@ module UTL8MODULE
 !C        SPECIFICATIONS:
 !C     ------------------------------------------------------------------
       USE OpenSpecModule
-      double precision :: r,cnstnt
-      CHARACTER*24 ANAME
+      double precision :: r
+      CHARACTER(LEN=24) ANAME
       DIMENSION IA(JJ)
-      CHARACTER*20 FMTIN
-      CHARACTER*200 CNTRL
-      CHARACTER*200 FNAME
+      CHARACTER(LEN=20) FMTIN
+      CHARACTER(LEN=200) CNTRL
+      CHARACTER(LEN=200) FNAME
       DATA NUNOPN/99/
       !INCLUDE 'openspec.inc'
 !C     ------------------------------------------------------------------
@@ -857,12 +857,12 @@ module UTL8MODULE
 !C     ------------------------------------------------------------------
       USE OpenSpecModule
       double precision :: r,cnstnt
-      CHARACTER*24 ANAME
+      CHARACTER(LEN=24) ANAME
       DOUBLEPRECISION A(JJ,II)
-      CHARACTER*20 FMTIN
-      CHARACTER*200 CNTRL
-      CHARACTER*16 TEXT
-      CHARACTER*200 FNAME
+      CHARACTER(LEN=20) FMTIN
+      CHARACTER(LEN=200) CNTRL
+      CHARACTER(LEN=16) TEXT
+      CHARACTER(LEN=200) FNAME
       DATA NUNOPN/99/
 !      INCLUDE 'openspec.inc'
 !C     ------------------------------------------------------------------
@@ -1028,12 +1028,12 @@ module UTL8MODULE
 !C     ------------------------------------------------------------------
       USE OpenSpecModule
       double precision :: r,cnstnt
-      CHARACTER*24 ANAME
+      CHARACTER(LEN=24) ANAME
       DOUBLE PRECISION,DIMENSION(JJ,II) :: A
-      CHARACTER*20 FMTIN
-      CHARACTER*200 CNTRL
-      CHARACTER*16 TEXT
-      CHARACTER*200 FNAME
+      CHARACTER(LEN=20) FMTIN
+      CHARACTER(LEN=200) CNTRL
+      CHARACTER(LEN=16) TEXT
+      CHARACTER(LEN=200) FNAME
       DATA NUNOPN/99/
 !      INCLUDE 'openspec.inc'
 !C     ------------------------------------------------------------------
@@ -1200,11 +1200,11 @@ module UTL8MODULE
 !C     ------------------------------------------------------------------
       use OpenSpecModule
       double precision :: r
-      CHARACTER*24 ANAME
+      CHARACTER(LEN=24) ANAME
       DIMENSION IA(JJ,II)
-      CHARACTER*20 FMTIN
-      CHARACTER*200 CNTRL
-      CHARACTER*200 FNAME
+      CHARACTER(LEN=20) FMTIN
+      CHARACTER(LEN=200) CNTRL
+      CHARACTER(LEN=200) FNAME
       DATA NUNOPN/99/
 !C     ------------------------------------------------------------------
 !C
@@ -1432,7 +1432,7 @@ module UTL8MODULE
 !C
 !C        SPECIFICATIONS:
 !C     ------------------------------------------------------------------
-      CHARACTER*16 TEXT,AUXTXT(*)
+      CHARACTER(LEN=16) TEXT,AUXTXT(*)
       double precision,intent(in) :: delt,pertim,totim
 !C     ------------------------------------------------------------------
 !C
@@ -1481,16 +1481,16 @@ module UTL8MODULE
       USE OpenSpecModule
       double precision :: r,sfac
       CHARACTER*(*) LABEL
-      CHARACTER*16 CAUX(NCAUX)
+      CHARACTER(LEN=16) CAUX(NCAUX)
       DIMENSION NODELIST(MXLIST)
       !DIMENSION RLIST(LDIM,MXLIST)
       DOUBLE PRECISION, DIMENSION(LDIM,MXLIST) :: RLIST
       DOUBLE PRECISION, DIMENSION(NAUX,MXLIST) :: AUXVAR
       INTEGER,DIMENSION(MODELNDIM) :: MODELSHAPE
-      CHARACTER*200 LINE,FNAME
-      CHARACTER*20 FMTARG, ACCARG
-      CHARACTER*20 FILEFMT
-      CHARACTER*30 CERR
+      CHARACTER(LEN=200) LINE,FNAME
+      CHARACTER(LEN=20) FMTARG, ACCARG
+      CHARACTER(LEN=20) FILEFMT
+      !CHARACTER(LEN=30) CERR
       LOGICAL LVAL
       DATA NUNOPN/99/
       !INCLUDE 'openspec.inc'
@@ -1762,7 +1762,7 @@ module UTL8MODULE
     integer, dimension(nlay), intent(in) :: layerNodeCounts
     character (len=24), intent(in) :: cval
     !local
-    integer :: n, k, offset, firstElement, lastElement, layerNodeCount
+    integer :: k, offset, firstElement, lastElement, layerNodeCount
     !functions
 ! ------------------------------------------------------------------------------
     !code
@@ -1831,12 +1831,12 @@ module UTL8MODULE
 !C     ------------------------------------------------------------------
       USE OpenSpecModule
       double precision :: r,cnstnt
-      CHARACTER*24 ANAME
+      CHARACTER(LEN=24) ANAME
       DOUBLE PRECISION,DIMENSION(JJ,II) :: A
-      CHARACTER*20 FMTIN
-      CHARACTER*200 CNTRL
-      CHARACTER*16 TEXT
-      CHARACTER*200 FNAME
+      CHARACTER(LEN=20) FMTIN
+      CHARACTER(LEN=200) CNTRL
+      CHARACTER(LEN=16) TEXT
+      CHARACTER(LEN=200) FNAME
       DATA NUNOPN/99/
 !      INCLUDE 'openspec.inc'
 !C     ------------------------------------------------------------------
@@ -1985,13 +1985,13 @@ module UTL8MODULE
 !C        SPECIFICATIONS:
 !C     ------------------------------------------------------------------
       USE OpenSpecModule
-      CHARACTER*24 ANAME
+      CHARACTER(LEN=24) ANAME
       DOUBLE PRECISION,DIMENSION(jj),intent(inout) :: A
       double precision :: r,cnstnt
-      integer :: m, i, j, k, nr, npr, jfirst, jlast
-      CHARACTER*20 FMTIN
-      CHARACTER*200 CNTRL
-      CHARACTER*200 FNAME
+      integer :: m, i, j, nr, npr, jfirst, jlast
+      CHARACTER(LEN=20) FMTIN
+      CHARACTER(LEN=200) CNTRL
+      CHARACTER(LEN=200) FNAME
       DATA NUNOPN/99/
 !      INCLUDE 'openspec.inc'
 !C     ------------------------------------------------------------------
@@ -2157,7 +2157,7 @@ module UTL8MODULE
     integer, dimension(nlay), intent(in) :: layerNodeCounts
     character (len=24), intent(in) :: cval
     !local
-    integer :: n, k, offset, firstElement, lastElement, layerNodeCount
+    integer :: k, offset, firstElement, lastElement, layerNodeCount
     !functions
 ! ------------------------------------------------------------------------------
     !code
@@ -2185,14 +2185,14 @@ module UTL8MODULE
 !C        SPECIFICATIONS:
 !C     ------------------------------------------------------------------
       USE OpenSpecModule
-      double precision :: r,cnstnt
-      integer :: m, i, j, k, nr, npr, jfirst, jlast
+      double precision :: r
+      integer :: m, i, j, nr, npr, jfirst, jlast
       integer, dimension(9) :: nprvals
-      CHARACTER*24 ANAME
+      CHARACTER(LEN=24) ANAME
       DIMENSION IA(JJ)
-      CHARACTER*20 FMTIN
-      CHARACTER*200 CNTRL
-      CHARACTER*200 FNAME
+      CHARACTER(LEN=20) FMTIN
+      CHARACTER(LEN=200) CNTRL
+      CHARACTER(LEN=200) FNAME
       DATA NUNOPN/99/
       data nprvals/60,40,30,25,20,10,25,15,10/
       !INCLUDE 'openspec.inc'
@@ -2343,11 +2343,11 @@ module UTL8MODULE
 !C     ------------------------------------------------------------------
       use OpenSpecModule
       double precision :: r
-      CHARACTER*24 ANAME
+      CHARACTER(LEN=24) ANAME
       DIMENSION IA(JJ,II)
-      CHARACTER*20 FMTIN
-      CHARACTER*200 CNTRL
-      CHARACTER*200 FNAME
+      CHARACTER(LEN=20) FMTIN
+      CHARACTER(LEN=200) CNTRL
+      CHARACTER(LEN=200) FNAME
       DATA NUNOPN/99/
 !C     ------------------------------------------------------------------
 !C

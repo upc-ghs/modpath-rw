@@ -3,7 +3,7 @@ contains
 
 SUBROUTINE UTRIMALL(LINE)
 CHARACTER*(*) LINE
-INTEGER IFIRST,ILAST,NFIRST,NLAST,N,M,LENGTH,OFFSET
+INTEGER IFIRST,NLAST,N,M,LENGTH,OFFSET
 
 NLAST=LEN_TRIM(LINE)
 IF(NLAST.EQ.0) RETURN
@@ -69,7 +69,6 @@ end subroutine ulog
   subroutine TrimAll(string,firstNonBlank,lastNonBlank,trimmedLength)
   implicit none
   character*(*) string
-  character(len=:),allocatable :: newString
   integer,intent(inout) :: firstNonBlank,lastNonBlank,trimmedLength
   integer :: n
   
@@ -161,15 +160,15 @@ end subroutine ulog
       INTEGER                            :: Location
       INTEGER                            :: i
 
-      Minimum  = x(StartValue)		! assume the first is the min
-      Location = StartValue			! record its position
-      DO i = StartValue+1, EndValue		! start with next elements
-         IF (x(i) < Minimum) THEN	!   if x(i) less than the min?
-            Minimum  = x(i)		!      Yes, a new minimum found
-            Location = i                !      record its position
+      Minimum  = x(StartValue)     ! assume the first is the min
+      Location = StartValue        ! record its position
+      DO i = StartValue+1, EndValue! start with next elements
+         IF (x(i) < Minimum) THEN  !   if x(i) less than the min?
+            Minimum  = x(i)        !      Yes, a new minimum found
+            Location = i           !      record its position
          END IF
       END DO
-      FindMinimum = Location        	! return the position
+      FindMinimum = Location       ! return the position
    END FUNCTION  FindMinimum
 
 ! --------------------------------------------------------------------
@@ -200,9 +199,9 @@ end subroutine ulog
       INTEGER                               :: i
       INTEGER                               :: Location
 
-      DO i = 1, Size-1			! except for the last
-         Location = FindMinimum(x, i, Size)	! find min from this to last
-         CALL  Swap(x(i), x(Location))	! swap this and the minimum
+      DO i = 1, Size-1                       ! except for the last
+         Location = FindMinimum(x, i, Size)  ! find min from this to last
+         CALL  Swap(x(i), x(Location))       ! swap this and the minimum
       END DO
    END SUBROUTINE  Sort
 

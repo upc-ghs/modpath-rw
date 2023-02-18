@@ -11,7 +11,7 @@ module GlobalDataModule
     integer, save :: gridFileType
     integer, save :: logType
     integer, parameter :: niunit = 100
-    character*200 :: mpnamFile, mpsimFile, mplistFile, mpbasFile, disFile,      &
+    character(len=200) :: mpnamFile, mpsimFile, mplistFile, mpbasFile, disFile, &
       tdisFile, gridFile, headFile, budgetFile, traceFile, gridMetaFile,        &
       mplogFile, gpkdeFile, obsFile, dspFile, rwoptsFile, spcFile, icFile,      & 
       srcFile, impFile ! RWPT

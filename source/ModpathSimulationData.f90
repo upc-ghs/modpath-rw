@@ -142,7 +142,7 @@ contains
     doubleprecision :: initialReleaseTime, releaseInterval
     doubleprecision,dimension(:),allocatable :: releaseTimes
     doubleprecision :: frac, r
-    character*24 aname(2)
+    character(len=24) aname(2)
     character(len=200) line
     DATA aname(1) /'              ZONE ARRAY'/
     DATA aname(2) /'                 RFACTOR'/

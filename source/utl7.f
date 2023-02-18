@@ -32,9 +32,9 @@ C
 C        SPECIFICATIONS:
 C     ------------------------------------------------------------------
       CHARACTER*(*) LINE
-      CHARACTER*20 STRING
-      CHARACTER*30 RW
-      CHARACTER*1 TAB
+      CHARACTER(LEN=20) STRING
+      CHARACTER(LEN=30) RW
+      CHARACTER(LEN=1)  TAB
 C     ------------------------------------------------------------------
       TAB=CHAR(9)
 C
@@ -206,12 +206,12 @@ C     Read and print a list.  NAUX of the values in the list are
 C     optional -- auxiliary data.
 C     ******************************************************************
       CHARACTER*(*) LABEL
-      CHARACTER*16 CAUX(NCAUX)
+      CHARACTER(LEN=16) CAUX(NCAUX)
       DIMENSION RLIST(LDIM,MXLIST)
-      CHARACTER*200 LINE,FNAME
-      CHARACTER*20 FMTARG, ACCARG
-      CHARACTER*20 FILEFMT
-      CHARACTER*30 CERR
+      CHARACTER(LEN=200) LINE,FNAME
+      CHARACTER(LEN=20)  FMTARG, ACCARG
+      CHARACTER(LEN=20)  FILEFMT
+      CHARACTER(LEN=30)  CERR
       LOGICAL LVAL
       DATA NUNOPN/99/
       INCLUDE 'openspec.inc'
@@ -404,9 +404,9 @@ C
 C        SPECIFICATIONS:
 C     ------------------------------------------------------------------
       CHARACTER*(*) LABEL
-      CHARACTER*16 CAUX(NCAUX)
-      CHARACTER*400 BUF
-      CHARACTER*1 DASH(400)
+      CHARACTER(LEN=16) CAUX(NCAUX)
+      CHARACTER(LEN=400) BUF
+      CHARACTER(LEN=1) DASH(400)
       DATA DASH/400*'-'/
 C     ------------------------------------------------------------------
 C
@@ -446,11 +446,11 @@ C     ******************************************************************
 C
 C        SPECIFICATIONS:
 C     ------------------------------------------------------------------
-      CHARACTER*24 ANAME
+      CHARACTER(LEN=24) ANAME
       DIMENSION A(JJ)
-      CHARACTER*20 FMTIN
-      CHARACTER*200 CNTRL
-      CHARACTER*200 FNAME
+      CHARACTER(LEN=20)  FMTIN
+      CHARACTER(LEN=200) CNTRL
+      CHARACTER(LEN=200) FNAME
       DATA NUNOPN/99/
       INCLUDE 'openspec.inc'
 C     ------------------------------------------------------------------
@@ -560,11 +560,11 @@ C     ******************************************************************
 C
 C        SPECIFICATIONS:
 C     ------------------------------------------------------------------
-      CHARACTER*24 ANAME
+      CHARACTER(LEN=24) ANAME
       DIMENSION IA(JJ,II)
-      CHARACTER*20 FMTIN
-      CHARACTER*200 CNTRL
-      CHARACTER*200 FNAME
+      CHARACTER(LEN=20) FMTIN
+      CHARACTER(LEN=200) CNTRL
+      CHARACTER(LEN=200) FNAME
       DATA NUNOPN/99/
       INCLUDE 'openspec.inc'
 C     ------------------------------------------------------------------
@@ -788,12 +788,12 @@ C     ******************************************************************
 C
 C        SPECIFICATIONS:
 C     ------------------------------------------------------------------
-      CHARACTER*24 ANAME
+      CHARACTER(LEN=24) ANAME
       DOUBLEPRECISION A(JJ,II)
-      CHARACTER*20 FMTIN
-      CHARACTER*200 CNTRL
-      CHARACTER*16 TEXT
-      CHARACTER*200 FNAME
+      CHARACTER(LEN=20) FMTIN
+      CHARACTER(LEN=200) CNTRL
+      CHARACTER(LEN=16) TEXT
+      CHARACTER(LEN=200) FNAME
       DATA NUNOPN/99/
       INCLUDE 'openspec.inc'
 C     ------------------------------------------------------------------
@@ -944,7 +944,7 @@ C     ******************************************************************
 C
 C        SPECIFICATIONS:
 C     ------------------------------------------------------------------
-      CHARACTER*1 DOT,SPACE,DG,BF
+      CHARACTER(LEN=1) DOT,SPACE,DG,BF
       DIMENSION BF(130),DG(10)
 C
       DATA DG(1),DG(2),DG(3),DG(4),DG(5),DG(6),DG(7),DG(8),DG(9),DG(10)/
@@ -1024,7 +1024,7 @@ C     ******************************************************************
 C
 C        SPECIFICATIONS:
 C     ------------------------------------------------------------------
-      CHARACTER*16 TEXT
+      CHARACTER(LEN=16) TEXT
       DIMENSION BUF(NCOL,NROW)
 C     ------------------------------------------------------------------
 C
@@ -1196,7 +1196,7 @@ C     ******************************************************************
 C
 C        SPECIFICATIONS:
 C     ------------------------------------------------------------------
-      CHARACTER*16 TEXT
+      CHARACTER(LEN=16) TEXT
       DOUBLEPRECISION BUF(NCOL,NROW)
 C     ------------------------------------------------------------------
 C
@@ -1395,7 +1395,7 @@ C     ******************************************************************
 C
 C        SPECIFICATIONS:
 C     ------------------------------------------------------------------
-      CHARACTER*16 TEXT
+      CHARACTER(LEN=16) TEXT
       DIMENSION BUF(NCOL,NROW)
 C     ------------------------------------------------------------------
 C
@@ -1418,9 +1418,9 @@ C     ******************************************************************
 C
 C        SPECIFICATIONS:
 C     ------------------------------------------------------------------
-      CHARACTER*16 TEXT
+      CHARACTER(LEN=16) TEXT
       DIMENSION BUFF(NCOL,NROW),IBOUND(NCOL,NROW)
-      CHARACTER*20 FMTOUT
+      CHARACTER(LEN=20) FMTOUT
 C     ------------------------------------------------------------------
 C
 C1------WRITE A LABEL IF LBLSAV IS NOT 0.
@@ -1444,9 +1444,9 @@ C     ******************************************************************
 C
 C        SPECIFICATIONS:
 C     ------------------------------------------------------------------
-      CHARACTER*16 TEXT
+      CHARACTER(LEN=16) TEXT
       DIMENSION IDATA(NCOL,NROW)
-      CHARACTER*20 FMTOUT
+      CHARACTER(LEN=20) FMTOUT
 C     ------------------------------------------------------------------
 C
 C1------WRITE A LABEL IF LBLSAV IS NOT 0.
@@ -1469,7 +1469,7 @@ C     ******************************************************************
 C
 C        SPECIFICATIONS:
 C     ------------------------------------------------------------------
-      CHARACTER*16 TEXT
+      CHARACTER(LEN=16) TEXT
       DIMENSION BUFF(NCOL,NROW,NLAY)
 C     ------------------------------------------------------------------
 C
@@ -1495,7 +1495,7 @@ C     ******************************************************************
 C
 C        SPECIFICATIONS:
 C     ------------------------------------------------------------------
-      CHARACTER*16 TEXT
+      CHARACTER(LEN=16) TEXT
       DIMENSION BUFF(NCOL,NROW,NLAY),IBOUND(NCOL,NROW,NLAY)
 C     ------------------------------------------------------------------
 C
@@ -1523,7 +1523,7 @@ C     ******************************************************************
 C
 C        SPECIFICATIONS:
 C     ------------------------------------------------------------------
-      CHARACTER*16 TEXT
+      CHARACTER(LEN=16) TEXT
       DIMENSION IBOUND(NCOL,NROW,NLAY)
 C     ------------------------------------------------------------------
 C
@@ -1566,7 +1566,7 @@ C     ******************************************************************
 C
 C        SPECIFICATIONS:
 C     ------------------------------------------------------------------
-      CHARACTER*16 TEXT
+      CHARACTER(LEN=16) TEXT
       DIMENSION BUFF(NCOL,NROW,NLAY),IBUFF(NCOL,NROW),
      1          IBOUND(NCOL,NROW,NLAY)
 C     ------------------------------------------------------------------
@@ -1606,7 +1606,7 @@ C     ******************************************************************
 C
 C        SPECIFICATIONS:
 C     ------------------------------------------------------------------
-      CHARACTER*16 TEXT,AUXTXT(*)
+      CHARACTER(LEN=16) TEXT,AUXTXT(*)
       DIMENSION IBOUND(NCOL,NROW,NLAY)
 C     ------------------------------------------------------------------
 C

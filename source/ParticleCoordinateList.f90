@@ -149,7 +149,7 @@ contains
   implicit none
   class(ParticleCoordinateListType) :: this
   type(ParticleCoordinateType),dimension(:),intent(in) :: items
-  integer :: count,sizeItems,n
+  integer :: sizeItems,n
   
   sizeItems = size(items)
   if(sizeItems .gt. 0) then

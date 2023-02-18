@@ -110,7 +110,6 @@ contains
     class(ParticleTrackingOptionsType) :: this
     ! input
     integer, intent(in) :: nObservations
-    integer :: n 
     !-------------------------
 
     ! Allocate observation files arrays
