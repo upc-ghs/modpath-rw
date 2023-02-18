@@ -3454,7 +3454,7 @@ contains
    
 
       ! Displacement matrix terms
-      ! Refs: Fernàndez-García et al. 2005; Salamon et al. 2006
+      ! Refs: Fernàndez-Garcia et al. 2005; Salamon et al. 2006
       ! Handles the case of zero vBnorm
       B11 = 0d0 
       B12 = 0d0

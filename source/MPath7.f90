@@ -159,7 +159,7 @@ program MPath7
   version = '0.0.1'
   
   call get_compiler(compilerVersionText)
-  write(*,'(1x/a,a)') 'MODPATH-RW Version ', version
+  write(*,'(a,a)') 'MODPATH-RW Version ', version
   write(*,'(a)') compilerVersionText
   write(*,*)
   
@@ -2168,16 +2168,20 @@ program MPath7
   logical,intent(inout) :: parallel
   integer,intent(inout) :: tsOutputType
   integer :: defaultTsOutputType
-  character(len=200) comlin
+  character(len=200) :: progname
+  character(len=200) :: comlin
   integer :: narg, length, status, na
   integer :: nprocs
-  character(len=200) nprocschar
-  character(len=200) tsoutchar
+  character(len=200) :: nprocschar
+  character(len=200) :: tsoutchar
   !---------------------------------------------------------------------------------
     
     ! Get the number of command-line arguments
     narg = command_argument_count()
-    
+
+    ! Get program name   
+    call get_command_argument(0, progname)
+
     ! Initialize mpsimFile, mplogFile, and logType
     mpsimFile    = ""
     mplogFile    = ""
@@ -2250,10 +2254,9 @@ program MPath7
                   tsoutchar = comlin(1:length)
                   read(tsoutchar,*) tsOutputType
               end if
-          !case ('-h', "--help")
-          !    ! --help
-          !    print *, ' I NEED HELP! '
-          !    call ustop('') 
+          case ('-h', "--help")
+              ! --help
+              call DisplayHelpMessage(progname)
           case default
               if (comlin(1:1).eq."-") then
                   call ustop('Unrecognized option on the command line. Stop.')
@@ -2293,9 +2296,9 @@ program MPath7
 
 
     return
-   
 
   end subroutine ParseCommandLine
+
 
   subroutine PromptSimulationFile(mpsimFile)
   !---------------------------------------------------------------------------------
@@ -2324,6 +2327,7 @@ program MPath7
 
   end subroutine PromptSimulationFile
 
+
   subroutine CheckSimulationFile(mpsimFile)
   !---------------------------------------------------------------------------------
   ! 
@@ -2350,7 +2354,47 @@ program MPath7
     return
     
   end subroutine CheckSimulationFile
-  
+ 
+
+  subroutine DisplayHelpMessage(progname)
+  !---------------------------------------------------------------------------------
+  ! 
+  !---------------------------------------------------------------------------------
+  ! Specifications
+  !---------------------------------------------------------------------------------
+  use, intrinsic :: iso_fortran_env, only: output_unit 
+  implicit none
+  character(len=*), intent(in) :: progname
+  character(len=*), parameter  :: helpmessage = &
+   "(/,&
+   &'options:',/,&
+   &'                                                                         ',/,&
+   &'  -h         --help                Show this message                     ',/,&
+   &'  -i         --init                Initialize simulation without running ',/,&
+   &'  -l  <str>  --logname    <str>    Write program logs to <str>           ',/,&
+   &'  -nl        --nolog               Do not write log file                 ',/,&
+   &'  -np <int>  --nprocs     <int>    Run with <int> processes              ',/,&
+   &'  -p         --parallel            Run in parallel                       ',/,&
+   &'  -ts <int>  --tsoutput   <int>    Selects timeseries output <int>       ',/,&
+   &'  -s         --shortlog            Simplified logs                       ',/,&
+   &'  -v         --version             Show program version                  ',/,&
+   &'                                                                         ',/,&
+   &'For bug reports and updates, follow:                                     ',/,&
+   &'  https://github.com/upc-ghs/modpath-rw                                  ',/,&
+   &/)"
+  !---------------------------------------------------------------------------------
+
+    write(output_unit, '(a)') 'usage:'
+    write(output_unit, *) 
+    write(output_unit, '(2x,a,1x,a)') trim(adjustl(progname)), 'simfile [options]'
+    write(output_unit, trim(helpmessage), advance='yes')
+
+    call ustop('')
+    
+  end subroutine DisplayHelpMessage
+
+
+
   subroutine ReadNameFile(filename, outUnit, gridFileType)
   !---------------------------------------------------------------------------------
   ! 
