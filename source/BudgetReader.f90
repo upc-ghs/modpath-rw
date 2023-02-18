@@ -385,7 +385,7 @@ module BudgetReaderModule
   integer,intent(in) :: bufferSize
   type(BudgetListItemType),intent(inout),dimension(bufferSize) :: listBuffer
   integer,intent(inout) :: spaceAssigned,status
-  integer :: n, m, requiredSize, auxNamesCount, cellNumber, id2
+  integer :: n, m, requiredSize, auxNamesCount
   integer(kind=8) :: position
   real(kind=4) :: singleValue
   
@@ -455,7 +455,6 @@ module BudgetReaderModule
   character(len=*),intent(in) :: filename
   integer,intent(in) :: inUnit, outputUnit
   integer(kind=8) :: fileLength
-  integer :: recordCount
   character(len=:),allocatable :: openFileMessage
   logical :: fileExists
   
@@ -712,17 +711,22 @@ module BudgetReaderModule
 
 !---------------------------------------------------------
   subroutine pr_ProcessRecordHeaders(this, targetPrecisionType)
+  !---------------------------------------------------------
+  !
+  !---------------------------------------------------------
+  ! Specifications
+  !---------------------------------------------------------
   implicit none
   class(BudgetReaderType) :: this
   integer,intent(in) :: targetPrecisionType
   integer :: n,recordCount,budgetType,precisionType,budgetFileFormat,eq0Count,  &
     gt0Count
   logical :: hasFlowJA,hasFlowFrontOrRightFace
-  integer :: nlay,nrow,ncol,firstChar,lastChar,trimmedLength,                   &
+  integer :: firstChar,lastChar,trimmedLength,                   &
     maxArrayBufferSize,maxListItemCount,bufferSize
   integer(kind=8) :: position,fileSize,nextPosition,temp
-  character(len=16) :: text
   type(BudgetRecordHeaderType) :: header
+  !---------------------------------------------------------
   
   ! Deallocate RecordHeaders array
   if(allocated(this%RecordHeaders)) deallocate(this%RecordHeaders)

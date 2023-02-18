@@ -386,7 +386,6 @@ contains
   subroutine pr_Reset(this)
   implicit none
   class(ModpathCellDataType) :: this
-  integer :: n
   
   this%CellNumber = 0
   this%DX = 0
@@ -460,10 +459,9 @@ contains
     sinkFlow,boundaryFlows)
   implicit none
   class(ModpathCellDataType) :: this
-  integer :: n,index,cellNumber,count,i
+  integer :: n,index,cellNumber,count
   integer,intent(in) :: ibound,faceFlowsCount,arraySize
   integer,intent(in),dimension(arraySize) :: connectionList
-  integer,dimension(6) :: subFaceBoundaryCounts
   doubleprecision :: flow
   doubleprecision,intent(in) :: porosity,retardation,storageFlow,sourceFlow,sinkFlow
   doubleprecision,intent(in),dimension(6) :: boundaryFlows
@@ -1093,6 +1091,11 @@ contains
     iboundTS,porosity,retardation,storageFlow,sourceFlow,sinkFlow,                    &
     flowsRightFace,flowsFrontFace,flowsLowerFace,boundaryFlows, head,                 &
     layerType, zone, icboundTS, defaultICBound )
+  !-----------------------------------------------------------------------------------
+  !
+  !-----------------------------------------------------------------------------------
+  ! Specifications
+  !-----------------------------------------------------------------------------------
   implicit none
   class(ModpathCellDataType) :: this
   class(ModflowRectangularGridType),intent(in) :: grid
@@ -1108,8 +1111,9 @@ contains
   doubleprecision,intent(in),dimension(cellCount) :: flowsFrontFace
   doubleprecision,intent(in),dimension(cellCount) :: flowsLowerFace
   doubleprecision,intent(in) :: head
-  integer :: n,index,count,i,conn
+  integer :: n,count,i,conn
   doubleprecision :: flow
+  !-----------------------------------------------------------------------------------
   
   call this%Reset()
 
@@ -1845,7 +1849,7 @@ contains
   doubleprecision,intent(in),dimension(cellCount) :: flowsFrontFace
   doubleprecision,intent(in),dimension(cellCount) :: flowsLowerFace
   doubleprecision,intent(in) :: head
-  integer :: n,index,count,i,conn
+  integer :: n,count,i,conn
   doubleprecision :: flow
   
   call this%Reset()
@@ -2321,7 +2325,7 @@ contains
   subroutine pr_ComputeSubCellFlows(this)
   implicit none 
   class(ModpathCellDataType) :: this
-  doubleprecision,dimension(4) :: b,h,subFlows
+  doubleprecision,dimension(4) :: b
   doubleprecision :: rhs1,rhs2,rhs3,qfaces,qsrc,qsink,qsto
   
   rhs1 = 0d0
@@ -2426,7 +2430,6 @@ contains
   implicit none 
   class(ModpathCellDataType) :: this
   integer,intent(in) :: faceNumber
-  integer :: n, arraySize
   doubleprecision :: flow
   
   flow = 0d0
@@ -3059,7 +3062,6 @@ contains
   class(ModpathCellDataType) :: this
   integer,intent(in) :: subRow,subColumn
   doubleprecision,dimension(6) :: faceFlows
-  integer :: subCellNumber
   logical, intent(in) :: skipSubCells
   !---------------------------------------------------------
  

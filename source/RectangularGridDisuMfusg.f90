@@ -81,11 +81,10 @@ module RectangularGridDisuMfusgModule
   integer,intent(in) :: iin, iout
   integer,intent(inout) :: stressPeriodCount
   integer,dimension(:),allocatable :: iac, iBuffer, laycbd, nodelay
-  integer :: njags, ivsd, itmuni, lenuni, idsymrd, ierr, lloc, istart, istop, n, offset
+  integer :: ivsd, itmuni, lenuni, idsymrd, ierr, lloc, istart, istop, n, offset
   doubleprecision :: r
   doubleprecision,dimension(:),allocatable :: rBuffer
-  character*20 :: controlrecordflag
-  character (len=24) :: aname
+  character (len=24)  :: aname
   character (len=200) :: line
 
 !   Set grid type
@@ -240,10 +239,9 @@ module RectangularGridDisuMfusgModule
   implicit none
   class(RectangularGridDisuMfusgType),intent(inout) :: grid
   integer,intent(in) :: iin, iout
-  integer :: n, ierr, lloc, nval, istart, istop, ncode
+  integer :: n, ierr, lloc, nval, istart, istop
   integer,dimension(:),allocatable :: cellsPerLayer
   double precision :: rval
-  logical :: isfound
   character (len=132) :: line
   
   call u8rdcom(iin, iout, line, ierr)
@@ -280,7 +278,7 @@ module RectangularGridDisuMfusgModule
   implicit none
   class(RectangularGridDisuMfusgType),intent(inout) :: grid
   integer,intent(in) :: iin, iout
-  integer :: n, ierr, lloc, nval, istart, istop, ncode
+  integer :: n, ierr, lloc, nval, istart, istop
   double precision :: rval
   logical :: isfound
   character (len=132) :: line

@@ -98,8 +98,8 @@ module ModflowRectangularGridModule
   subroutine ComputeFaceAssignments(this)
   implicit none
   class(ModflowRectangularGridType) :: this
-  integer :: i, n, face, m, offset, count, conn, layer, connLayer
-  double precision :: tol, diff, rx, ry
+  integer :: i, n, m, offset, count, conn, layer, connLayer
+  double precision :: tol, rx, ry
   double precision :: left, right, front, back
   double precision :: connLeft, connRight, connFront, connBack
   
@@ -311,7 +311,6 @@ module ModflowRectangularGridModule
   subroutine GetDxDy(this, cellNumber, dx, dy) 
   class(ModflowRectangularGridType) :: this
   integer,intent(in) :: cellNumber
-  integer :: layer, row, column
   doubleprecision, intent(inout) :: dx, dy
   
   dx = this%DelX(cellNumber)
@@ -481,7 +480,7 @@ module ModflowRectangularGridModule
   class(ModflowRectangularGridType) :: this
   integer,intent(in) :: cellNumber,conn
   integer,intent(inout) :: faceNumber,subFaceNumber
-  integer :: count,n,face,index,faceFlag
+  integer :: count,index,faceFlag
   
   faceNumber = 0
   subFaceNumber = 0
@@ -499,7 +498,7 @@ module ModflowRectangularGridModule
   function FindConnectionIndex(this, cellNumber, conn) result(index)
   class(ModflowRectangularGridType) :: this
   integer,intent(in) :: cellNumber,conn
-  integer :: count, n, cn, index, offset
+  integer :: count, n, index, offset
   
   index = 0
   offset = this%JaOffsets(cellNumber)
@@ -519,7 +518,6 @@ module ModflowRectangularGridModule
   doubleprecision,intent(in) :: localZ
   doubleprecision,intent(inout) :: globalZ
   logical,intent(in) :: useSaturatedTop
-  doubleprecision :: bottom,top
   
   end subroutine ConvertToModelZ
 !x------------------------------------------

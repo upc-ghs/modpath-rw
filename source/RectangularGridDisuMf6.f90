@@ -47,7 +47,6 @@ module RectangularGridDisuMf6Module
   integer,intent(in) :: cellNumber,bufferSize
   integer,intent(inout),dimension(bufferSize) :: buffer
   integer,intent(inout) :: reducedConnectionCount
-  integer :: n,face,conn,count,faceConnCount
   
   ! Add override code to implement
   
@@ -57,7 +56,7 @@ module RectangularGridDisuMf6Module
   implicit none
   class(RectangularGridDisuMf6Type) :: this
   integer,intent(in) :: cellNumber
-  integer :: count,face,conn,faceConnCount,n
+  integer :: count
   
   ! Add override code to implement
   count = 0
@@ -68,7 +67,7 @@ module RectangularGridDisuMf6Module
   implicit none
   class(RectangularGridDisuMf6Type) :: this
   integer,intent(in) :: cellNumber
-  integer :: count,face
+  integer :: count
   
   ! Add override code to implement
   count = 0
@@ -154,7 +153,6 @@ module RectangularGridDisuMf6Module
   function GetX(this, cellNumber) result(fval)
   class(RectangularGridDisuMf6Type) :: this
   integer :: cellNumber
-  integer :: layerCellNumber
   double precision :: fval
   
   ! Add override code to implement
@@ -165,7 +163,6 @@ module RectangularGridDisuMf6Module
   function GetY(this, cellNumber) result(fval)
   class(RectangularGridDisuMf6Type) :: this
   integer :: cellNumber
-  integer :: layerCellNumber
   double precision :: fval
   
   ! Add override code to implement
@@ -255,7 +252,6 @@ module RectangularGridDisuMf6Module
   function GetDX(this, cellNumber) result(fval)
   class(RectangularGridDisuMf6Type) :: this
   integer,intent(in) :: cellNumber
-  integer :: layerCellNumber
   double precision :: fval
   
   ! Add override code to implement
@@ -266,7 +262,6 @@ module RectangularGridDisuMf6Module
   function GetDY(this, cellNumber) result(fval)
   class(RectangularGridDisuMf6Type) :: this
   integer,intent(in) :: cellNumber
-  integer :: layerCellNumber
   double precision :: fval
   
   fval = 0.0
@@ -323,7 +318,7 @@ module RectangularGridDisuMf6Module
   function GetFaceConnection(this, cellNumber, face, subface) result(conn)
   class(RectangularGridDisuMf6Type) :: this
   integer,intent(in) :: cellNumber,face,subface
-  integer :: conn,offset
+  integer :: conn
 
   ! Add override code to implement
   conn = -1
@@ -337,8 +332,6 @@ module RectangularGridDisuMf6Module
   integer,intent(in) :: toCellNumber,fromCellNumber
   doubleprecision,intent(in) :: fromLocalX,fromLocalY,fromLocalZ
   class(GridLocationType),intent(inout) :: newLocation
-  integer :: status,faceNumber,subFaceNumber
-  doubleprecision :: localX,localY,localZ,globalX,globalY,tol
   
   ! Add override code to implement
   
@@ -371,7 +364,7 @@ module RectangularGridDisuMf6Module
   function FindConnectionIndex(this, cellNumber, conn) result(index)
   class(RectangularGridDisuMf6Type) :: this
   integer,intent(in) :: cellNumber,conn
-  integer :: count, n, cn, index, offset
+  integer :: index
   
   ! Add override code to implement
   index = 0

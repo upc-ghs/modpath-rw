@@ -29,8 +29,13 @@ contains
 
   subroutine pr_ReadData(this, inUnit, outUnit, grid)
   use utl7module,only : urdcom, upcase
-  use UTL8MODULE,only : urword, ustop, u1dint, u1drel, u1ddbl, u8rdcom,         &
+  use UTL8MODULE,only : urword, ustop, u1dint, u1drel, u1ddbl, u8rdcom, &
     u3dintmp, u3dintmpusg, u3ddblmp, u3ddblmpusg
+  !----------------------------------------------------------------------
+  !
+  !----------------------------------------------------------------------
+  ! Specifications
+  !----------------------------------------------------------------------
   implicit none
   class(ModpathBasicDataType) :: this
   integer,intent(in) :: inUnit, outUnit
@@ -39,11 +44,12 @@ contains
   class(ModflowRectangularGridType),intent(inout) :: grid
   character(len=200) :: line
   character(len=16) :: txt
-  integer :: n, m, nn, length, iface, errorCode, layer
+  integer :: n, m, length, iface, errorCode, layer
   character(len=24),dimension(2) :: aname
   data aname(1) /'          BOUNDARY ARRAY'/
   data aname(2) /'                POROSITY'/
-  
+  !----------------------------------------------------------------------
+
   if(allocated(this%IBound)) deallocate(this%IBound)
   if(allocated(this%Porosity)) deallocate(this%Porosity)
   allocate(this%IBound(grid%CellCount))
@@ -97,7 +103,7 @@ contains
             call ustop('Stress package labels cannot be blank strings.')
           else
             if(length .gt. 16) length = 16
-            this%DefaultIfaceLabels(n) = line
+            this%DefaultIfaceLabels(n) = line(:length)
             call upcase(this%DefaultIfaceLabels(n))
           end if
 

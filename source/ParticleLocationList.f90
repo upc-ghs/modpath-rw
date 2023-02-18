@@ -145,7 +145,7 @@ contains
   implicit none
   class(ParticleLocationListType) :: this
   type(ParticleLocationType),dimension(:),intent(in) :: items
-  integer :: count,sizeItems,n
+  integer :: sizeItems,n
   
   sizeItems = size(items)
   if(sizeItems .gt. 0) then

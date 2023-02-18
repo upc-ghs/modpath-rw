@@ -48,10 +48,9 @@ module RectangularGridDisvMf6Module
   implicit none
   class(RectangularGridDisvMf6Type) :: grid
   integer,intent(in) :: iin, iout
-  integer :: ncells, nlay, nrow, ncol, ncpl, nvert, njavert, idummy, offset
+  integer :: offset
   integer :: version, ntxt, lentxt, ndat, ncom, lloc, istart, istop, n, i
-  doubleprecision :: radAngle, xcell, ycell, r
-  character*20 :: controlrecordflag
+  doubleprecision :: r
   character(len=50) :: headerLine
   character(len=100) :: line
   character(len=100),dimension(:),allocatable :: textLines
@@ -333,7 +332,7 @@ module RectangularGridDisvMf6Module
   integer,dimension(:),allocatable :: failedCellNumbers
   integer,dimension(4) :: tempVert, jx, jy
   integer,dimension(16) :: ix, iy
-  doubleprecision :: d, x1, x2, x3, y1, y2, y3, tol, dx, dy
+  doubleprecision :: x1, x2, x3, y1, y2, y3, tol, dx, dy
   logical :: isRectangular, isSmoothed, validAlignment
   data ix /1, 0, -1, 0, 0, -1, 0, 1, -1, 0, 1, 0, 0, 1, 0, -1/
   data iy /0, -1, 0, 1, -1, 0, 1, 0, 0, 1, 0, -1, 1, 0, -1, 0/

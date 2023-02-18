@@ -55,7 +55,6 @@ module RectangularGridDisMf6Module
   doubleprecision,intent(in) :: fromLocalX,fromLocalY,fromLocalZ
   class(GridLocationType),intent(inout) :: newLocation
   integer :: status,faceNumber,subFaceNumber
-  doubleprecision :: localX,localY,localZ,globalX,globalY,tol
   
   call newLocation%Reset()
   status = 0
@@ -127,11 +126,9 @@ module RectangularGridDisMf6Module
     character(len=50) :: headerLine
     character(len=100) :: line
     character(len=100),dimension(:),allocatable :: textLines
-    integer :: cellNumber,i,j,k,n,m,layer,row,column,level,maxlevel,conn,nc,ptr,count,offset,istart,istop,ierr,lloc
-    integer :: itmuni, lenuni, version, ntxt, lentxt, ndat, ncom, idummy
-    integer,dimension(:),allocatable :: laycbd
+    integer :: i,n,layer,row,column,istart,istop,lloc
+    integer :: version, ntxt, lentxt, ndat, ncom
     doubleprecision :: r
-    doubleprecision,dimension(:,:),allocatable :: bufdbl2d
     double precision,dimension(:),allocatable :: X
     double precision,dimension(:),allocatable :: Y
     double precision,dimension(:),allocatable :: DX

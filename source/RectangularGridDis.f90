@@ -37,15 +37,20 @@ module RectangularGridDisModule
   
   end function GetGridType
 
-  subroutine ConvertFromNeighbor(this, toCellNumber, fromCellNumber,         &
+  subroutine ConvertFromNeighbor(this, toCellNumber, fromCellNumber, &
     fromLocalX, fromLocalY, fromLocalZ, newLocation)
+  !----------------------------------------------------------------------
+  !
+  !----------------------------------------------------------------------
+  ! Specifications
+  !----------------------------------------------------------------------
   implicit none
   class(RectangularGridDisType) :: this
   integer,intent(in) :: toCellNumber,fromCellNumber
   doubleprecision,intent(in) :: fromLocalX,fromLocalY,fromLocalZ
   class(GridLocationType),intent(inout) :: newLocation
   integer :: status,faceNumber,subFaceNumber
-  doubleprecision :: localX,localY,localZ,globalX,globalY,tol
+  !----------------------------------------------------------------------
   
   call newLocation%Reset()
   status = 0
@@ -100,7 +105,7 @@ module RectangularGridDisModule
 
   subroutine ComputeFaceAssignments(this)
   class(RectangularGridDisType) :: this
-  integer :: n, i, m, offset, count, conn
+  integer :: n, m, offset, count, conn
   integer, dimension(6) :: faces, connCodes
 
 ! Initialize temporary arrays
@@ -205,22 +210,27 @@ module RectangularGridDisModule
   end subroutine RectangularGridDisInit1
 
   subroutine ReadDIS(grid, iin, iout, stressPeriodCount)
+  !----------------------------------------------------------------------
+  !
+  !----------------------------------------------------------------------
+  !  Specifications
+  !----------------------------------------------------------------------
   implicit none
   class(RectangularGridDisType) :: grid
   integer,intent(in) :: iin, iout  
   integer,intent(inout) :: stressPeriodCount
-    character*20 :: controlrecordflag
-    character (len=24) :: aname
-    character (len=200) :: line
-    integer :: cellNumber,i,j,k,n,m,layer,row,column,level,maxlevel,conn,nc,ptr,count,offset,istart,istop,ierr,lloc
-    integer :: itmuni, lenuni
-    integer,dimension(:),allocatable :: laycbd
-    doubleprecision :: r
-    doubleprecision,dimension(:,:),allocatable :: bufdbl2d
-    double precision,dimension(:),allocatable :: X
-    double precision,dimension(:),allocatable :: Y
-    double precision,dimension(:),allocatable :: DX
-    double precision,dimension(:),allocatable :: DY
+  character (len=24) :: aname
+  character (len=200) :: line
+  integer :: cellNumber,n,layer,row,column,istart,istop,ierr,lloc
+  integer :: itmuni, lenuni
+  integer,dimension(:),allocatable :: laycbd
+  doubleprecision :: r
+  doubleprecision,dimension(:,:),allocatable :: bufdbl2d
+  double precision,dimension(:),allocatable :: X
+  double precision,dimension(:),allocatable :: Y
+  double precision,dimension(:),allocatable :: DX
+  double precision,dimension(:),allocatable :: DY
+  !----------------------------------------------------------------------
   
 !   Deallocate arrays if they have been allocated previously
     call grid%Reset()    
@@ -396,10 +406,7 @@ module RectangularGridDisModule
   implicit none
   class(RectangularGridDisType),intent(inout) :: grid
   integer,intent(in) :: iin, iout
-  integer :: n, ierr, lloc, nval, istart, istop, ncode
-  integer,dimension(:),allocatable :: cellsPerLayer
-  double precision :: rval
-  logical :: isfound
+  integer :: ierr, lloc, nval, istart, istop
   character (len=132) :: line
   
   call u8rdcom(iin, iout, line, ierr)
@@ -416,7 +423,7 @@ module RectangularGridDisModule
   implicit none
   class(RectangularGridDisType),intent(inout) :: grid
   integer,intent(in) :: iin, iout
-  integer :: n, ierr, lloc, nval, istart, istop, ncode
+  integer :: ierr, lloc, nval, istart, istop
   double precision :: rval
   logical :: isfound
   character (len=132) :: line

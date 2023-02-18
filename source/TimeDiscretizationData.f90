@@ -151,8 +151,7 @@ contains
   implicit none
   class(TimeDiscretizationDataType) :: this
   integer,intent(in) :: inUnit, outUnit, stressPeriodCount
-  integer :: n, period, step, stepCount, cStep, cStepCount
-  doubleprecision :: dt, mult, perlen
+  integer :: n, period, step, cStep, cStepCount
   character(len=2) :: ssFlag
 !---------------------------------------------------------------------------------------------------------------
   
@@ -225,11 +224,9 @@ contains
   implicit none
   class(TimeDiscretizationDataType) :: this
   integer,intent(in) :: inUnit, outUnit
-  integer :: n, period, step, stepCount, cStep, cStepCount, ierr, lloc, nval
-  integer :: istart, istop, ncode
-  doubleprecision :: dt, mult, perlen, rval
-  character(len=2) :: ssFlag
-  character(len=15) :: ctag
+  integer :: n, period, step, cStep, cStepCount, ierr, lloc, nval
+  integer :: istart, istop
+  doubleprecision :: rval
   character(len=132) :: line
   logical :: isfound
 !---------------------------------------------------------------------------------------------------------------
@@ -261,7 +258,7 @@ contains
                   if(ierr .eq. 0) exit
               case default
                 call ustop('Unrecognized keyword in OPTIONS block of TDIS file. Stop.')
-          end select        
+          end select
       end do
   else
       call ustop('OPTIONS block not found in TDIS file. Stop.')
@@ -283,7 +280,7 @@ contains
                 if(ierr .eq. 0) exit
             case default
                 call ustop('Unrecognized keyword in DIMENSIONS block of TDIS file. Stop.')
-          end select        
+          end select
       end do
   else
       call ustop('DIMENSIONS block not found in TDIS file. Stop.')
@@ -364,7 +361,7 @@ contains
 !---------------------------------------------------------------------------------------------------------------
   implicit none
   class(TimeDiscretizationDataType) :: this
-  integer :: n, period, step, stepCount, cStep
+  integer :: period, step, stepCount, cStep
   doubleprecision :: dt, mult, perlen
 !---------------------------------------------------------------------------------------------------------------
   cStep = 0

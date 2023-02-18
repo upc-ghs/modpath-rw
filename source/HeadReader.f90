@@ -265,15 +265,22 @@ contains
   if(this%FileUnit .ne. -1) fileOpened = .true.
   
   end function pr_GetFileOpenStatus
-  
+ 
+
   subroutine pr_OpenFile(this,filename, inUnit ,outputUnit)
+  !------------------------------------------------------------------------------
+  !
+  !------------------------------------------------------------------------------
+  ! Specifications
+  !------------------------------------------------------------------------------
   implicit none
   class(HeadReaderType) :: this
   integer,intent(in) :: inUnit, outputUnit
   character(len=*),intent(in) :: filename
   integer(kind=8) :: fileLength
-  integer :: recordCount, layerCount, cellCount, timeStepCount, n, period, step
+  integer :: layerCount, cellCount, timeStepCount, n, period, step
   character(len=:),allocatable :: openFileMessage
+  !------------------------------------------------------------------------------
   
   this%Filename = trim(filename)
   this%OutputUnit = outputUnit
@@ -346,9 +353,15 @@ contains
   end subroutine pr_OpenFile
 
   subroutine pr_CloseFile(this)
+  !------------------------------------------------------------------------------
+  !
+  !------------------------------------------------------------------------------
+  ! Specifications
+  !------------------------------------------------------------------------------
   implicit none
   class(HeadReaderType) :: this
   logical :: opened
+  !------------------------------------------------------------------------------
   
   if(this%FileUnit .ne. -1) then
       inquire(unit=this%FileUnit,opened=opened)
@@ -362,17 +375,24 @@ contains
   this%RecordCount = 0
   if(allocated(this%RecordHeaders)) deallocate(this%RecordHeaders)
   if(allocated(this%Filename)) deallocate(this%Filename)
-  
+ 
+
   end subroutine pr_CloseFile
 
+
   subroutine pr_ProcessUnstructuredRecordHeaders(this, precisionType)
+  !------------------------------------------------------------------------------
+  !
+  !------------------------------------------------------------------------------
+  ! Specifications
+  !------------------------------------------------------------------------------
   implicit none
   class(HeadReaderType) :: this
   integer,intent(in) :: precisionType  
   integer(kind=8) :: position,fileSize
-  character(len=16) :: text
   type(HeadRecordHeaderType) :: header
   integer :: n, recordCount
+  !------------------------------------------------------------------------------
   
   ! Deallocate RecordHeaders array
   if(allocated(this%RecordHeaders)) deallocate(this%RecordHeaders)
@@ -411,17 +431,24 @@ contains
   this%GridStyle = 0
   this%PrecisionType = 0
   this%RecordCount = 0
-  if(allocated(this%RecordHeaders)) deallocate(this%RecordHeaders)    
+  if(allocated(this%RecordHeaders)) deallocate(this%RecordHeaders)
+
   end subroutine pr_ProcessUnstructuredRecordHeaders
 
+
   subroutine pr_ProcessStructuredRecordHeaders(this, precisionType)
+  !------------------------------------------------------------------------------
+  !
+  !------------------------------------------------------------------------------
+  ! Specifications
+  !------------------------------------------------------------------------------
   implicit none
   class(HeadReaderType) :: this
   integer,intent(in) :: precisionType  
   integer(kind=8) :: position,fileSize
-  character(len=16) :: text
   type(HeadRecordHeaderType) :: header
   integer :: n, recordCount
+  !------------------------------------------------------------------------------
   
   ! Deallocate RecordHeaders array
   if(allocated(this%RecordHeaders)) deallocate(this%RecordHeaders)
@@ -464,16 +491,21 @@ contains
   end subroutine pr_ProcessStructuredRecordHeaders
 
   subroutine pr_ReadUnstructuredRecordHeader(this, position, header, precisionType)
+  !------------------------------------------------------------------------------
+  !
+  !------------------------------------------------------------------------------
+  ! Specifications
+  !------------------------------------------------------------------------------
   class(HeadReaderType) :: this
   type(HeadRecordHeaderType),intent(inout) :: header
   integer(kind=8),intent(in) :: position
   integer,intent(in) :: precisionType
-  integer(kind=8) :: headerOffset
-  integer :: auxCount,n,realBytes,intBytes
+  integer :: realBytes,intBytes
   real(kind=4) :: stressPeriodLength, totalTime
   real(kind=8) :: stressPeriodLengthDbl, totalTimeDbl
   integer :: firstNonBlank, lastNonBlank, trimmedLength
   character(len=16) :: textLabel
+  !------------------------------------------------------------------------------
   
   call header%Initialize()
   
@@ -523,18 +555,24 @@ contains
   call header%Initialize() 
   
   end subroutine pr_ReadUnstructuredRecordHeader
-  
+ 
+
   subroutine pr_ReadStructuredRecordHeader(this, position, header, precisionType)
+  !------------------------------------------------------------------------------
+  !
+  !------------------------------------------------------------------------------
+  ! Specifications
+  !------------------------------------------------------------------------------
   class(HeadReaderType) :: this
   type(HeadRecordHeaderType),intent(inout) :: header
   integer(kind=8),intent(in) :: position
   integer,intent(in) :: precisionType
-  integer(kind=8) :: headerOffset
-  integer :: auxCount,n,realBytes,intBytes,cellsPerLayer
+  integer :: realBytes,intBytes,cellsPerLayer
   real(kind=4) :: stressPeriodLength, totalTime
   real(kind=8) :: stressPeriodLengthDbl, totalTimeDbl
   integer :: firstNonBlank, lastNonBlank, trimmedLength
   character(len=16) :: textLabel
+  !------------------------------------------------------------------------------
   
   call header%Initialize()
   

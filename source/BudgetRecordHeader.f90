@@ -50,7 +50,7 @@ contains
   use utl7module,only : upcase
   implicit none
   class(BudgetRecordHeaderType) :: this
-  integer :: index,n,auxFirst,auxLast,auxTrimmedLength,nameFirst,nameLast,nameTrimmedLength, labelLength, auxNameLength
+  integer :: index,n, labelLength, auxNameLength
   character*(*) name
   character(len=16) :: label, auxName
   
@@ -90,7 +90,6 @@ contains
   subroutine pr_Initialize(this)
   implicit none
   class(BudgetRecordHeaderType) :: this
-  integer :: n
   
   this%PrecisionType = 0
   this%TimeStep = 0

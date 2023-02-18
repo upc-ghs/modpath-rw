@@ -160,8 +160,13 @@ module TrackSubCellModule
 
 
 contains
-!-------------------------------------------------------------------
+
   subroutine pr_ExecuteTracking(this,stopIfNoExit,initialLocation,maximumTime, trackingResult)
+  !-------------------------------------------------------------------
+  !
+  !-------------------------------------------------------------------
+  ! Specifications
+  !-------------------------------------------------------------------
   implicit none
   class(TrackSubCellType) :: this
   logical,intent(in) :: stopIfNoExit
@@ -173,8 +178,9 @@ contains
   doubleprecision :: vx1,vx2,vy1,vy2,vz1,vz2
   doubleprecision :: vx,dvxdx,dtx,vy,dvydy,dty,vz,dvzdz,dtz,dt
   doubleprecision :: t,x,y,z
-  integer :: exitFace,exitStatus
+  integer :: exitFace
   integer :: statusVX,statusVY,statusVZ
+  !-------------------------------------------------------------------
 
   call trackingResult%Reset()
   
@@ -529,8 +535,6 @@ contains
       doubleprecision, intent(inout) :: divDx, divDy, divDz  
       ! local
       doubleprecision :: alphaL, alphaT, dMEff
-      ! dev
-      integer :: nd, did
       !------------------------------------------------------------
       ! Specifications
       !------------------------------------------------------------
@@ -544,41 +548,22 @@ contains
       call this%DisplacementRandomDischarge( x, y, z, alphaL, alphaT, dMEff, dBx, dBy, dBz )
       call this%AdvectionDisplacement( x, y, z, dt, vx, vy, vz, dAdvx, dAdvy, dAdvz )
 
-      !do nd=1,this%nDim
-      !  did = this%disableDimensions(nd)
-      !  select case(did)
-      !    case(1)
-      !      dAdvx = 0
-      !      divDx = 0
-      !      dBx   = 0
-      !    case(2)
-      !      dAdvy = 0
-      !      divDy = 0
-      !      dBy   = 0
-      !    case(3)
-      !      dAdvz = 0
-      !      divDz = 0
-      !      dBz   = 0
-      !  end select
-      !end do
-
-
-      ! Another alternative/prototype
+      ! Prototype
       if ( .not. this%moveX ) then 
-          dAdvx = 0
-          divDx = 0
+          !dAdvx = 0
+          !divDx = 0
           dBx   = 0
       end if
 
       if ( .not. this%moveY ) then 
-          dAdvy = 0
-          divDy = 0
+          !dAdvy = 0
+          !divDy = 0
           dBy   = 0
       end if
 
       if ( .not. this%moveZ ) then 
-          dAdvz = 0
-          divDz = 0
+          !dAdvz = 0
+          !divDz = 0
           dBz   = 0
       end if
 
@@ -666,31 +651,23 @@ contains
       doubleprecision :: initialX,initialY,initialZ,initialTime
       doubleprecision :: vx,vy,vz,dt
       doubleprecision :: t,x,y,z
-      integer :: exitFace,exitStatus
-      integer :: statusVX,statusVY,statusVZ
-
+      integer :: exitFace
       ! RWPT
       type(ParticleTrackingOptionsType),intent(in) :: trackingOptions
-      doubleprecision :: alphaT, alphaL, Dmol
       doubleprecision :: divDx, divDy, divDz
       doubleprecision :: dAdvx, dAdvy, dAdvz
       doubleprecision :: dBx, dBy, dBz
       doubleprecision :: dx, dy, dz
       doubleprecision :: nx, ny, nz
       doubleprecision :: xi, yi, zi
-      doubleprecision :: nnx, nny, nnz ! remove
       doubleprecision :: dxrw, dyrw, dzrw
-      doubleprecision :: drwtol = 1d-14
       logical         :: continueTimeLoop
       logical         :: reachedMaximumTime
       logical         :: twoDimensions
       doubleprecision :: dtold
-      doubleprecision, dimension(3) :: dts
       doubleprecision, dimension(3) :: dtxyz
       integer :: dtLoopCounter, posRestartCounter
       integer :: reboundCounter, intLoopCounter
-      integer, dimension(:), pointer :: dimensions
-      integer, dimension(:), pointer :: dimmask
       logical :: moveX, moveY, moveZ
       !------------------------------------------------------------
 
@@ -2254,268 +2231,266 @@ contains
   integer         :: zcount
   integer         :: rcount
   integer         :: gcount
-  logical         :: continueProcessing
   !----------------------------------------------------------------
 
+    ! Initialize
+    gprimmin  = 1e10
+    gprim     = 1e10
 
-      ! Initialize
-      gprimmin  = 1e10
-      gprim     = 1e10
+    ! Estimate order of initial dt fraction
+    ! Run over very small fractions
+    gcount = 0
+    do while ( ( gprim .gt. 1 ) .and. ( gcount .lt. 7 ) )
 
-      ! Estimate order of initial dt fraction
-      ! Run over very small fractions
-      gcount = 0
-      do while ( ( gprim .gt. 1 ) .and. ( gcount .lt. 7 ) )
+      gcount     = gcount + 1
+      dtfraction = 10d0**( -8 + gcount )
+      dt0        = dt*dtfraction
 
-        gcount     = gcount + 1
-        dtfraction = 10d0**( -8 + gcount )
-        dt0        = dt*dtfraction
-
-        call pr_NewtonRaphsonVariablesExponential( this, dt0, v, v1, v2, &
-                                               dx, dInterface, divD, dB, & 
-                                       nrf0, nrfprim, nrf2prim, nrf3prim )
-        gprim = pr_GetConvergenceFunction( this, nrf0, nrfprim, nrf2prim )
-       
-        if ( gprim .lt. gprimmin ) then 
-            gprimmin  = gprim
-            mindtfrac = dtfraction
-        end if 
-
-      end do
-
-
-      ! Set smaller fraction for gradient descent 
-      if ( ( gprim .lt. 1 ) .and. ( gcount .eq. 1 ) ) then  
-          dtoldfraction = 1d-8 
-      else if ( gprim .lt. 1 ) then 
-          dtoldfraction =  10d0**( -8 + gcount - 1 )
-      else
-          dtfraction    = mindtfrac
-          dtoldfraction = 0.5*dtfraction/10d0      
-      end if 
-   
-      ! Set initial dt, dtold
-      dtnew  = dtfraction*dt
-      dtold  = dtoldfraction*dt 
-
-      ! Do it or leave ? 
-      call pr_NewtonRaphsonVariablesExponential( this, dtnew, v, v1, v2, &
+      call pr_NewtonRaphsonVariablesExponential( this, dt0, v, v1, v2, &
                                              dx, dInterface, divD, dB, & 
                                      nrf0, nrfprim, nrf2prim, nrf3prim )
       gprim = pr_GetConvergenceFunction( this, nrf0, nrfprim, nrf2prim )
+     
+      if ( gprim .lt. gprimmin ) then 
+          gprimmin  = gprim
+          mindtfrac = dtfraction
+      end if 
 
-      if ( gprim .lt. 0.5 ) then 
-          ! Done 
-          return
-      end if
+    end do
+
+
+    ! Set smaller fraction for gradient descent 
+    if ( ( gprim .lt. 1 ) .and. ( gcount .eq. 1 ) ) then  
+        dtoldfraction = 1d-8 
+    else if ( gprim .lt. 1 ) then 
+        dtoldfraction =  10d0**( -8 + gcount - 1 )
+    else
+        dtfraction    = mindtfrac
+        dtoldfraction = 0.5*dtfraction/10d0      
+    end if 
+   
+    ! Set initial dt, dtold
+    dtnew  = dtfraction*dt
+    dtold  = dtoldfraction*dt 
+
+    ! Do it or leave ? 
+    call pr_NewtonRaphsonVariablesExponential( this, dtnew, v, v1, v2, &
+                                           dx, dInterface, divD, dB, & 
+                                   nrf0, nrfprim, nrf2prim, nrf3prim )
+    gprim = pr_GetConvergenceFunction( this, nrf0, nrfprim, nrf2prim )
+
+    if ( gprim .lt. 0.5 ) then 
+        ! Done 
+        return
+    end if
 
     
-      ! Continue to gradient descent  
-      gprimnew = 10d0
-      gprim    = 10d0
-      ccount  = 0
-      bcount  = 0
-      zcount  = 0
-      rcount  = 0
-      counter = 0
-      do while ( counter .lt. maxter )
+    ! Continue to gradient descent  
+    gprimnew = 10d0
+    gprim    = 10d0
+    ccount  = 0
+    bcount  = 0
+    zcount  = 0
+    rcount  = 0
+    counter = 0
+    do while ( counter .lt. maxter )
 
-          counter = counter + 1 
+        counter = counter + 1 
 
-          ! Compute quantities for gradient descent
-          call pr_NewtonRaphsonVariablesExponential( this, dtold, v, v1, v2, &
-                                                   dx, dInterface, divD, dB, & 
-                                           nrf0, nrfprim, nrf2prim, nrf3prim )
-          gprimder  = pr_GetConvergenceFunctionDerivative( this, nrf0, nrfprim, nrf2prim, nrf3prim )
+        ! Compute quantities for gradient descent
+        call pr_NewtonRaphsonVariablesExponential( this, dtold, v, v1, v2, &
+                                                 dx, dInterface, divD, dB, & 
+                                         nrf0, nrfprim, nrf2prim, nrf3prim )
+        gprimder  = pr_GetConvergenceFunctionDerivative( this, nrf0, nrfprim, nrf2prim, nrf3prim )
 
-          call pr_NewtonRaphsonVariablesExponential( this, dtnew, v, v1, v2, &
-                                                   dx, dInterface, divD, dB, & 
-                                           nrf0, nrfprim, nrf2prim, nrf3prim )
-          gprimdernew = pr_GetConvergenceFunctionDerivative( this, nrf0, nrfprim, nrf2prim, nrf3prim )
-          gprim       = pr_GetConvergenceFunction( this, nrf0, nrfprim, nrf2prim )
+        call pr_NewtonRaphsonVariablesExponential( this, dtnew, v, v1, v2, &
+                                                 dx, dInterface, divD, dB, & 
+                                         nrf0, nrfprim, nrf2prim, nrf3prim )
+        gprimdernew = pr_GetConvergenceFunctionDerivative( this, nrf0, nrfprim, nrf2prim, nrf3prim )
+        gprim       = pr_GetConvergenceFunction( this, nrf0, nrfprim, nrf2prim )
 
-          ! Compute gamma gradient descent and update
-          if ( ( gprimdernew - gprimder ) .gt. 0d0 ) then
-              gamman = abs( ( dtnew - dtold )*( gprimdernew - gprimder ) )/( ( gprimdernew - gprimder )**2 )
-          else 
-              gamman = 0d0
-          end if 
-          dtold = dtnew
-          dtnew = dtnew - gamman*gprimdernew
+        ! Compute gamma gradient descent and update
+        if ( ( gprimdernew - gprimder ) .gt. 0d0 ) then
+            gamman = abs( ( dtnew - dtold )*( gprimdernew - gprimder ) )/( ( gprimdernew - gprimder )**2 )
+        else 
+            gamman = 0d0
+        end if 
+        dtold = dtnew
+        dtnew = dtnew - gamman*gprimdernew
 
-          ! If nan, leave loop
-          if ( isnan( dtnew ) ) then 
-             dtnew = 0d0 
-             exit
-          end if 
-
-          ! Bound dtnew to values smaller than one or leave if ready
-          if ( ( gprim .lt. 1 ) .and. ( dtnew/dt .gt. 1 ) ) then
-
-              dtnew = dtold
-
-              ! Done
-              return
-        
-          else if ( dtnew/dt .gt. 1 ) then 
-
-              dtnew = 0.99*dt
-
-          end if 
-
-          ! Bound dtnew values higher than zero
-          ! If convergence parameter already smaller than one
-          ! set to dtold and leave.
-          if ( ( gprim .lt. 1 ) .and. ( dtnew .lt. 0 ) .and. ( dtold .gt. 0 )  )  then
-
-              dtnew = dtold
-
-              ! Done
-              return
-
-          else if ( dtnew .lt. 0 ) then
-              ! If smaller than zero but no convergence 
-              ! yet, count how many times this happens 
-              ! and leave after twice. Probably a very small value
-              ! close to zero  
-
-              dtnew = 1e-8*dt 
-              zcount = zcount + 1 
-
-              if ( zcount .gt. 1 ) then 
-              
-                  dtnew = 0d0
-                  
-                  ! Leave loop
-                  exit
-
-              end if 
-
-          end if
-
-
-          call pr_NewtonRaphsonVariablesExponential( this, dtnew, v, v1, v2, &
-                                                   dx, dInterface, divD, dB, & 
-                                           nrf0, nrfprim, nrf2prim, nrf3prim )
-          gprimnew = pr_GetConvergenceFunction( this, nrf0, nrfprim, nrf2prim )
-
-
-          ! If values appropiate for convergence,
-          ! leave after two consecutive occurrences
-          if ( ( gprimnew .lt. 1 ) .and. ( dtnew .gt. 0 ) .and. ( dtnew/dt .lt. 1 ) ) then 
-
-              rcount = rcount + 1
-              if ( rcount .gt. 1 ) then 
-                  ! Done
-                  return
-              end if
-          else 
-              rcount = 0
-          end if 
-
-
-          ! If convergence function is already
-          ! less than one and the method provides
-          ! a higher value for the new 
-          ! convergence function, leave
-          if ( ( gprim .lt. 1 ) .and. ( gprimnew .gt. gprim ) ) then
-
-              dtnew = dtold
-              
-              ! Done
-              return
-
-          end if 
-
-
-          ! If max iterations, exit do loop
-          if ( counter .gt. maxter ) then 
-              ! Leave loop  
-              exit
-          end if 
-
-
-          ! If changes in initial guess
-          ! are small, at least twice consecutive,
-          ! then leave
-          if ( ( abs( (dtold - dtnew)/dtold ) < gdtol ) .and. ( gprim .lt. 1 )  ) then
-
-              ccount = ccount + 1
-              if ( ccount .gt. 1 ) then 
-                  ! Done 
-                  return 
-              end if 
-          else 
-              ccount = 0
-          end if
-
-          
-          ! If relative changes in estimate are small and 
-          ! convergence function not good, leave and try 
-          ! higher orders
-          if ( ( abs( (dtold - dtnew)/dtold ) < gdtol ) .and. ( gprim .gt. 1 )  ) then
-
-              bcount = bcount + 1
-
-              if ( bcount .gt. 1 ) then
-                  ! Leave loop  
-                  exit
-              end if 
-     
-          else 
-              bcount = 0
-          end if
-
-
-      end do
-
-
-      ! Needed ?
-      if ( gprim .lt. 1 ) then 
-          ! Done
-          return 
-      end if 
-
-
-      ! Continue and try with higher order fractions
-      gprim     = 1e10
-      gprimmin  = 1e10
-      mindtfrac = 0d0
-
-      ! Run over higher order fractions 
-      gcount = 1
-      do while ( ( gprim .gt. 1 ) .and. ( gcount .lt. 9 ) )
-
-        gcount     = gcount + 1
-        dtfraction = 0.1*gcount
-        dt0        = dt*dtfraction
-
-        call pr_NewtonRaphsonVariablesExponential( this, dt0, v, v1, v2, &
-                                               dx, dInterface, divD, dB, & 
-                                       nrf0, nrfprim, nrf2prim, nrf3prim )
-        gprim = pr_GetConvergenceFunction( this, nrf0, nrfprim, nrf2prim )
-  
-        if ( gprim .lt. gprimmin ) then  
-            gprimmin  = gprim
-            mindtfrac = dtfraction
+        ! If nan, leave loop
+        if ( isnan( dtnew ) ) then 
+           dtnew = 0d0 
+           exit
         end if 
 
-      end do
+        ! Bound dtnew to values smaller than one or leave if ready
+        if ( ( gprim .lt. 1 ) .and. ( dtnew/dt .gt. 1 ) ) then
 
-      ! If any was smaller than one,
-      ! set those values and leave
-      if ( gprimmin .lt. 1 ) then 
-          dtnew = dt*mindtfrac
+            dtnew = dtold
+
+            ! Done
+            return
+      
+        else if ( dtnew/dt .gt. 1 ) then 
+
+            dtnew = 0.99*dt
+
+        end if 
+
+        ! Bound dtnew values higher than zero
+        ! If convergence parameter already smaller than one
+        ! set to dtold and leave.
+        if ( ( gprim .lt. 1 ) .and. ( dtnew .lt. 0 ) .and. ( dtold .gt. 0 )  )  then
+
+            dtnew = dtold
+
+            ! Done
+            return
+
+        else if ( dtnew .lt. 0 ) then
+            ! If smaller than zero but no convergence 
+            ! yet, count how many times this happens 
+            ! and leave after twice. Probably a very small value
+            ! close to zero  
+
+            dtnew = 1e-8*dt 
+            zcount = zcount + 1 
+
+            if ( zcount .gt. 1 ) then 
+            
+                dtnew = 0d0
+                
+                ! Leave loop
+                exit
+
+            end if 
+
+        end if
+
+
+        call pr_NewtonRaphsonVariablesExponential( this, dtnew, v, v1, v2, &
+                                                 dx, dInterface, divD, dB, & 
+                                         nrf0, nrfprim, nrf2prim, nrf3prim )
+        gprimnew = pr_GetConvergenceFunction( this, nrf0, nrfprim, nrf2prim )
+
+
+        ! If values appropiate for convergence,
+        ! leave after two consecutive occurrences
+        if ( ( gprimnew .lt. 1 ) .and. ( dtnew .gt. 0 ) .and. ( dtnew/dt .lt. 1 ) ) then 
+
+            rcount = rcount + 1
+            if ( rcount .gt. 1 ) then 
+                ! Done
+                return
+            end if
+        else 
+            rcount = 0
+        end if 
+
+
+        ! If convergence function is already
+        ! less than one and the method provides
+        ! a higher value for the new 
+        ! convergence function, leave
+        if ( ( gprim .lt. 1 ) .and. ( gprimnew .gt. gprim ) ) then
+
+            dtnew = dtold
+            
+            ! Done
+            return
+
+        end if 
+
+
+        ! If max iterations, exit do loop
+        if ( counter .gt. maxter ) then 
+            ! Leave loop  
+            exit
+        end if 
+
+
+        ! If changes in initial guess
+        ! are small, at least twice consecutive,
+        ! then leave
+        if ( ( abs( (dtold - dtnew)/dtold ) < gdtol ) .and. ( gprim .lt. 1 )  ) then
+
+            ccount = ccount + 1
+            if ( ccount .gt. 1 ) then 
+                ! Done 
+                return 
+            end if 
+        else 
+            ccount = 0
+        end if
+
+        
+        ! If relative changes in estimate are small and 
+        ! convergence function not good, leave and try 
+        ! higher orders
+        if ( ( abs( (dtold - dtnew)/dtold ) < gdtol ) .and. ( gprim .gt. 1 )  ) then
+
+            bcount = bcount + 1
+
+            if ( bcount .gt. 1 ) then
+                ! Leave loop  
+                exit
+            end if 
+    
+        else 
+            bcount = 0
+        end if
+
+
+    end do
+
+
+    ! Needed ?
+    if ( gprim .lt. 1 ) then 
+        ! Done
+        return 
+    end if 
+
+
+    ! Continue and try with higher order fractions
+    gprim     = 1e10
+    gprimmin  = 1e10
+    mindtfrac = 0d0
+
+    ! Run over higher order fractions 
+    gcount = 1
+    do while ( ( gprim .gt. 1 ) .and. ( gcount .lt. 9 ) )
+
+      gcount     = gcount + 1
+      dtfraction = 0.1*gcount
+      dt0        = dt*dtfraction
+
+      call pr_NewtonRaphsonVariablesExponential( this, dt0, v, v1, v2, &
+                                             dx, dInterface, divD, dB, & 
+                                     nrf0, nrfprim, nrf2prim, nrf3prim )
+      gprim = pr_GetConvergenceFunction( this, nrf0, nrfprim, nrf2prim )
+  
+      if ( gprim .lt. gprimmin ) then  
+          gprimmin  = gprim
+          mindtfrac = dtfraction
       end if 
 
-      ! Set advection condition if zero and v, otherwise zero 
-      if ( ( dtnew .le. 0d0 ) .and. ( abs( v ) .gt. 0d0 ) ) then 
-          dtnew = abs( dInterface/v )
-      end if 
+    end do
+
+    ! If any was smaller than one,
+    ! set those values and leave
+    if ( gprimmin .lt. 1 ) then 
+        dtnew = dt*mindtfrac
+    end if 
+
+    ! Set advection condition if zero and v, otherwise zero 
+    if ( ( dtnew .le. 0d0 ) .and. ( abs( v ) .gt. 0d0 ) ) then 
+        dtnew = abs( dInterface/v )
+    end if 
 
 
-      ! Done
-      return
+    ! Done
+    return
         
 
   end function pr_SetInitialGuess
@@ -2552,12 +2527,10 @@ contains
       doubleprecision :: dvdx, dAdv
       doubleprecision :: dt0
       doubleprecision :: nrf0, nrfprim, nrerror
-      doubleprecision :: nrf2prim, gprim
       doubleprecision :: dvtol = 1.0d-10
       doubleprecision :: nrtol = 1e-6
       integer :: countIter
       integer :: maxIter = 50
-      integer :: gcount
       ! Note
       ! Compute 
       !    abs(f*ftwoprim) .lt. abs(fprim**2)
@@ -3442,9 +3415,6 @@ contains
       doubleprecision, dimension(4) :: v101
       doubleprecision, dimension(4) :: v011
       doubleprecision, dimension(4) :: v111
-
-      doubleprecision :: sqrtTwoAlphaLVDmR
-      doubleprecision :: sqrtTwoAlphaTVDmR
       !----------------------------------------------------------------
 
       ! Initialize
@@ -3495,40 +3465,22 @@ contains
       B31 = 0d0
       B32 = 0d0
       if ( vBnorm .gt. 0d0 ) then
-
-          ! FASTER
-          B11 =       vBx*sqrt( 2*( alphaL*vBnorm + dMEff )/RFactor )/vBnorm
-          B21 =       vBy*sqrt( 2*( alphaL*vBnorm + dMEff )/RFactor )/vBnorm
-          B31 =       vBz*sqrt( 2*( alphaL*vBnorm + dMEff )/RFactor )/vBnorm
-          B32 =  vBnormxy*sqrt( 2*( alphaT*vBnorm + dMEff )/RFactor )/vBnorm
-          if ( vBnormxy .gt. 0d0 ) then
-            B12 =  -vBx*vBz*sqrt( 2*( alphaT*vBnorm + dMEff )/RFactor )/vBnorm/vBnormxy
-            B13 =      -vBy*sqrt( 2*( alphaT*vBnorm + dMEff )/RFactor )/vBnormxy
-            B22 =  -vBy*vBz*sqrt( 2*( alphaT*vBnorm + dMEff )/RFactor )/vBnorm/vBnormxy
-            B23 =       vBx*sqrt( 2*( alphaT*vBnorm + dMEff )/RFactor )/vBnormxy
-          end if
-
-          !sqrtTwoAlphaLVDmR = sqrt( 2*( alphaL*vBnorm + dMEff )/RFactor )
-          !sqrtTwoAlphaTVDmR = sqrt( 2*( alphaT*vBnorm + dMEff )/RFactor )
-          !B11 =       vBx*sqrtTwoAlphaLVDmR/vBnorm
-          !B21 =       vBy*sqrtTwoAlphaLVDmR/vBnorm
-          !B31 =       vBz*sqrtTwoAlphaLVDmR/vBnorm
-          !B32 =  vBnormxy*sqrtTwoAlphaTVDmR/vBnorm
-          !if ( vBnormxy .gt. 0d0 ) then
-          !  B12 =  -vBx*vBz*sqrtTwoAlphaTVDmR/vBnorm/vBnormxy
-          !  B13 =      -vBy*sqrtTwoAlphaTVDmR/vBnormxy
-          !  B22 =  -vBy*vBz*sqrtTwoAlphaTVDmR/vBnorm/vBnormxy
-          !  B23 =       vBx*sqrtTwoAlphaTVDmR/vBnormxy
-          !end if
-
-
+        B11 =       vBx*sqrt( 2*( alphaL*vBnorm + dMEff )/RFactor )/vBnorm
+        B21 =       vBy*sqrt( 2*( alphaL*vBnorm + dMEff )/RFactor )/vBnorm
+        B31 =       vBz*sqrt( 2*( alphaL*vBnorm + dMEff )/RFactor )/vBnorm
+        B32 =  vBnormxy*sqrt( 2*( alphaT*vBnorm + dMEff )/RFactor )/vBnorm
+        if ( vBnormxy .gt. 0d0 ) then
+          B12 =  -vBx*vBz*sqrt( 2*( alphaT*vBnorm + dMEff )/RFactor )/vBnorm/vBnormxy
+          B13 =      -vBy*sqrt( 2*( alphaT*vBnorm + dMEff )/RFactor )/vBnormxy
+          B22 =  -vBy*vBz*sqrt( 2*( alphaT*vBnorm + dMEff )/RFactor )/vBnorm/vBnormxy
+          B23 =       vBx*sqrt( 2*( alphaT*vBnorm + dMEff )/RFactor )/vBnormxy
+        end if
       end if 
 
       ! Compute random numbers
       call this%GenerateStandardNormalRandom( rdmx ) 
       call this%GenerateStandardNormalRandom( rdmy ) 
       call this%GenerateStandardNormalRandom( rdmz ) 
-
 
       ! Compute displacement times random
       dBx = B11*rdmx + B12*rdmy + B13*rdmz 
@@ -3581,28 +3533,25 @@ contains
   doubleprecision, dimension(3,18) :: neighborSubCellFaceAreas ! nbcell, faceDirection
   doubleprecision, dimension(18)   :: neighborSubCellVolume   
   doubleprecision, dimension(18)   :: neighborSubCellPorosity 
-  doubleprecision, dimension(6)    :: centerSubCellFaceFlows
-  integer :: n, m
   !----------------------------------------------------------------
-
   
-      ! Get sub cell indexes for current sub cell location
-      neighborSubCellIndexes = currentCellData%GetNeighborSubCellIndexes( &
-                             this%SubCellData%Row, this%SubCellData%Column )
+    ! Get sub cell indexes for current sub cell location
+    neighborSubCellIndexes = currentCellData%GetNeighborSubCellIndexes( &
+                           this%SubCellData%Row, this%SubCellData%Column )
 
-      ! Fill neighbor cells faceFlows
-      call pr_FillNeighborSubCellVariables( this, currentCellData, neighborCellData, &
-         neighborSubCellIndexes, neighborSubCellFaceFlows, neighborSubCellFaceAreas, &
-                                      neighborSubCellVolume, neighborSubCellPorosity )
-      ! Compute discharge
-      call pr_ComputeCornerDischarge( this, currentCellData, & 
-          neighborSubCellFaceFlows, neighborSubCellFaceAreas )
+    ! Fill neighbor cells faceFlows
+    call pr_FillNeighborSubCellVariables( this, currentCellData, neighborCellData, &
+       neighborSubCellIndexes, neighborSubCellFaceFlows, neighborSubCellFaceAreas, &
+                                    neighborSubCellVolume, neighborSubCellPorosity )
+    ! Compute discharge
+    call pr_ComputeCornerDischarge( this, currentCellData, & 
+        neighborSubCellFaceFlows, neighborSubCellFaceAreas )
 
-      ! Compute porosities
-      call pr_ComputeCornerPorosity( this, neighborSubCellVolume, neighborSubCellPorosity )
+    ! Compute porosities
+    call pr_ComputeCornerPorosity( this, neighborSubCellVolume, neighborSubCellPorosity )
 
-      ! Done
-      return
+    ! Done
+    return
 
 
   end subroutine pr_ComputeCornerVariables
@@ -3629,7 +3578,7 @@ contains
       doubleprecision, dimension(18)  , intent(out) :: neighborSubCellPorosity  ! porosities
       logical :: skipSubCells = .false.
       integer :: subConnectionIndex, neighborSubRow, neighborSubColumn
-      integer :: n, m
+      integer :: n
       !-----------------------------------------------------------
 
 
@@ -3784,7 +3733,7 @@ contains
   doubleprecision, dimension(3,18), intent(in) :: neighborSubCellFaceAreas ! nbcell, faceDirection
   ! local
   doubleprecision, dimension(6) :: centerSubCellFaceFlows
-  integer :: n, m
+  integer :: n
   !----------------------------------------------------------------
 
 
@@ -3996,8 +3945,6 @@ contains
       ! input
       doubleprecision, dimension(18), intent(in) :: neighborSubCellVolume   
       doubleprecision, dimension(18), intent(in) :: neighborSubCellPorosity
-      ! local 
-      integer :: n, m
       !-----------------------------------------------------------------
 
       ! If spatially variable porosity, something to identify ?

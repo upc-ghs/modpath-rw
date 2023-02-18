@@ -49,7 +49,7 @@ module ModflowGridModule
     implicit none
     class(ModflowGridType) :: this
     integer, intent(in) :: cellNumber
-    integer :: layer, count, n, n1, n2
+    integer :: layer, n, n1, n2
   
     do n = 1, this%LayerCount
         n1 = this%LayerOffsets(n)
