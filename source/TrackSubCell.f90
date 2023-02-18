@@ -2686,7 +2686,6 @@ contains
   end subroutine NewtonRaphsonTimeStepExponentialAdvection
 
 
-
   ! RWPT
   subroutine pr_DispersionDivergenceDischarge( this, x, y, z, alphaL, alphaT, dMEff, divDx, divDy, divDz )
       !----------------------------------------------------------------
@@ -2709,310 +2708,357 @@ contains
       ! output
       doubleprecision, intent(out) :: divDx, divDy, divDz
       ! local
-      doubleprecision, dimension(4) :: v000
-      doubleprecision, dimension(4) :: v100
-      doubleprecision, dimension(4) :: v010
-      doubleprecision, dimension(4) :: v110
-      doubleprecision, dimension(4) :: v001
-      doubleprecision, dimension(4) :: v101
-      doubleprecision, dimension(4) :: v011
-      doubleprecision, dimension(4) :: v111
-
-      doubleprecision :: p000
-      doubleprecision :: p100
-      doubleprecision :: p010
-      doubleprecision :: p110
-      doubleprecision :: p001
-      doubleprecision :: p101
-      doubleprecision :: p011
-      doubleprecision :: p111
-
-
-      doubleprecision :: D000
-      doubleprecision :: D100
-      doubleprecision :: D010
-      doubleprecision :: D110
-      doubleprecision :: D001
-      doubleprecision :: D101
-      doubleprecision :: D011
-      doubleprecision :: D111
-
+      doubleprecision, dimension(4) :: q000
+      doubleprecision, dimension(4) :: q100
+      doubleprecision, dimension(4) :: q010
+      doubleprecision, dimension(4) :: q110
+      doubleprecision, dimension(4) :: q001
+      doubleprecision, dimension(4) :: q101
+      doubleprecision, dimension(4) :: q011
+      doubleprecision, dimension(4) :: q111
 
       doubleprecision :: dDxxdx, dDxydy, dDxzdz, &
                          dDxydx, dDyydy, dDyzdz, &
                          dDxzdx, dDyzdy, dDzzdz
+
+      doubleprecision :: aLMinusaT
+
+      doubleprecision :: pDmeff000
+      doubleprecision :: pDmeff100
+      doubleprecision :: pDmeff010
+      doubleprecision :: pDmeff110
+      doubleprecision :: pDmeff001
+      doubleprecision :: pDmeff101
+      doubleprecision :: pDmeff011
+      doubleprecision :: pDmeff111
+
+      doubleprecision :: Dxxx000, Dyyy000, Dzzz000 
+      doubleprecision :: Dxxx100, Dyyy100, Dzzz100
+      doubleprecision :: Dxxx010, Dyyy010, Dzzz010
+      doubleprecision :: Dxxx110, Dyyy110, Dzzz110
+      doubleprecision :: Dxxx001, Dyyy001, Dzzz001
+      doubleprecision :: Dxxx101, Dyyy101, Dzzz101
+      doubleprecision :: Dxxx011, Dyyy011, Dzzz011
+      doubleprecision :: Dxxx111, Dyyy111, Dzzz111
+
+      doubleprecision :: Dxyx000, Dxzx000, Dxyy000 
+      doubleprecision :: Dxyx100, Dxzx100, Dxyy100
+      doubleprecision :: Dxyx010, Dxzx010, Dxyy010
+      doubleprecision :: Dxyx110, Dxzx110, Dxyy110
+      doubleprecision :: Dxyx001, Dxzx001, Dxyy001
+      doubleprecision :: Dxyx101, Dxzx101, Dxyy101
+      doubleprecision :: Dxyx011, Dxzx011, Dxyy011
+      doubleprecision :: Dxyx111, Dxzx111, Dxyy111
+
+      doubleprecision :: Dyzy000, Dxzz000, Dyzz000 
+      doubleprecision :: Dyzy100, Dxzz100, Dyzz100
+      doubleprecision :: Dyzy010, Dxzz010, Dyzz010
+      doubleprecision :: Dyzy110, Dxzz110, Dyzz110
+      doubleprecision :: Dyzy001, Dxzz001, Dyzz001
+      doubleprecision :: Dyzy101, Dxzz101, Dyzz101
+      doubleprecision :: Dyzy011, Dxzz011, Dyzz011
+      doubleprecision :: Dyzy111, Dxzz111, Dyzz111
       !---------------------------------------------------------------- 
 
-      ! Initialize
-      divDx = 0d0
+      ! Initialize output !
+      divDx = 0d0 
       divDy = 0d0
       divDz = 0d0
-
-      ! Local copies of SPECIFIC DISCHARGE
+        
       ! qx, qy, qz, norm(q)
-      v000 = this%qCorner000 
-      v100 = this%qCorner100
-      v010 = this%qCorner010
-      v110 = this%qCorner110
-      v001 = this%qCorner001
-      v101 = this%qCorner101
-      v011 = this%qCorner011
-      v111 = this%qCorner111
-  
-      ! Porosities
-      p000 = this%porosity000 
-      p100 = this%porosity100
-      p010 = this%porosity010
-      p110 = this%porosity110
-      p001 = this%porosity001
-      p101 = this%porosity101
-      p011 = this%porosity011
-      p111 = this%porosity111
+      q000 = this%qCorner000 
+      q100 = this%qCorner100
+      q010 = this%qCorner010
+      q110 = this%qCorner110
+      q001 = this%qCorner001
+      q101 = this%qCorner101
+      q011 = this%qCorner011
+      q111 = this%qCorner111
+ 
+      ! alphaL - alphaT
+      aLMinusaT = alphaL - alphaT
 
-      ! Is there a more elegant way ? 
+      ! Product between porosities and effecfive molecular diffusion 
+      pDMeff000 = this%porosity000*dMEff 
+      pDMeff100 = this%porosity100*dMEff
+      pDMeff010 = this%porosity010*dMEff
+      pDMeff110 = this%porosity110*dMEff
+      pDMeff001 = this%porosity001*dMEff
+      pDMeff101 = this%porosity101*dMEff
+      pDMeff011 = this%porosity011*dMEff
+      pDMeff111 = this%porosity111*dMEff
 
-      ! For X displacement
-      D000 = p000*dMEff
-      D100 = p100*dMEff
-      D010 = p010*dMEff
-      D110 = p110*dMEff
-      D001 = p001*dMEff
-      D101 = p101*dMEff
-      D011 = p011*dMEff
-      D111 = p111*dMEff
-      if( v000(4) .gt. 0d0 ) D000 = ( alphaT*v000(4) + p000*dMEff ) + ( alphaL - alphaT )*v000(1)**2/v000(4)
-      if( v100(4) .gt. 0d0 ) D100 = ( alphaT*v100(4) + p100*dMEff ) + ( alphaL - alphaT )*v100(1)**2/v100(4)
-      if( v010(4) .gt. 0d0 ) D010 = ( alphaT*v010(4) + p010*dMEff ) + ( alphaL - alphaT )*v010(1)**2/v010(4)
-      if( v110(4) .gt. 0d0 ) D110 = ( alphaT*v110(4) + p110*dMEff ) + ( alphaL - alphaT )*v110(1)**2/v110(4)
-      if( v001(4) .gt. 0d0 ) D001 = ( alphaT*v001(4) + p001*dMEff ) + ( alphaL - alphaT )*v001(1)**2/v001(4)
-      if( v101(4) .gt. 0d0 ) D101 = ( alphaT*v101(4) + p101*dMEff ) + ( alphaL - alphaT )*v101(1)**2/v101(4)
-      if( v011(4) .gt. 0d0 ) D011 = ( alphaT*v011(4) + p011*dMEff ) + ( alphaL - alphaT )*v011(1)**2/v011(4)
-      if( v111(4) .gt. 0d0 ) D111 = ( alphaT*v111(4) + p111*dMEff ) + ( alphaL - alphaT )*v111(1)**2/v111(4)
+      ! Initialize !
+      ! dDxxdx
+      Dxxx000 = pDMeff000
+      Dxxx100 = pDMeff100
+      Dxxx010 = pDMeff010
+      Dxxx110 = pDMeff110
+      Dxxx001 = pDMeff001
+      Dxxx101 = pDMeff101
+      Dxxx011 = pDMeff011
+      Dxxx111 = pDMeff111
+      ! dDyydy 
+      Dyyy000 = pDMeff000
+      Dyyy100 = pDMeff100
+      Dyyy010 = pDMeff010
+      Dyyy110 = pDMeff110
+      Dyyy001 = pDMeff001
+      Dyyy101 = pDMeff101
+      Dyyy011 = pDMeff011
+      Dyyy111 = pDMeff111
+      ! dDzzdz
+      Dzzz000 = pDMeff000
+      Dzzz100 = pDMeff100
+      Dzzz010 = pDMeff010
+      Dzzz110 = pDMeff110
+      Dzzz001 = pDMeff001
+      Dzzz101 = pDMeff101
+      Dzzz011 = pDMeff011
+      Dzzz111 = pDMeff111
+      ! dDxydx
+      Dxyx000 = 0d0
+      Dxyx100 = 0d0
+      Dxyx010 = 0d0
+      Dxyx110 = 0d0
+      Dxyx001 = 0d0
+      Dxyx101 = 0d0
+      Dxyx011 = 0d0
+      Dxyx111 = 0d0
+      ! dDxzdx
+      Dxzx000 = 0d0
+      Dxzx100 = 0d0
+      Dxzx010 = 0d0
+      Dxzx110 = 0d0
+      Dxzx001 = 0d0
+      Dxzx101 = 0d0
+      Dxzx011 = 0d0
+      Dxzx111 = 0d0
+      ! dDxydy
+      Dxyy000 = 0d0
+      Dxyy100 = 0d0
+      Dxyy010 = 0d0
+      Dxyy110 = 0d0
+      Dxyy001 = 0d0
+      Dxyy101 = 0d0
+      Dxyy011 = 0d0
+      Dxyy111 = 0d0
+      ! dDyzdy
+      Dyzy000 = 0d0
+      Dyzy100 = 0d0
+      Dyzy010 = 0d0
+      Dyzy110 = 0d0
+      Dyzy001 = 0d0
+      Dyzy101 = 0d0
+      Dyzy011 = 0d0
+      Dyzy111 = 0d0
+      ! dDxzdz
+      Dxzz000 = 0d0
+      Dxzz100 = 0d0
+      Dxzz010 = 0d0
+      Dxzz110 = 0d0
+      Dxzz001 = 0d0
+      Dxzz101 = 0d0
+      Dxzz011 = 0d0
+      Dxzz111 = 0d0
+      ! dDyzdz
+      Dyzz000 = 0d0
+      Dyzz100 = 0d0
+      Dyzz010 = 0d0
+      Dyzz110 = 0d0
+      Dyzz001 = 0d0
+      Dyzz101 = 0d0
+      Dyzz011 = 0d0
+      Dyzz111 = 0d0
+
+
+      if( q000(4) .gt. 0d0 ) then
+       Dxxx000 = ( alphaT*q000(4) + pDMeff000 ) + ( aLMinusaT )*q000(1)**2/q000(4)
+       Dyyy000 = ( alphaT*q000(4) + pDMeff000 ) + ( aLMinusaT )*q000(2)**2/q000(4)
+       Dzzz000 = ( alphaT*q000(4) + pDMeff000 ) + ( aLMinusaT )*q000(3)**2/q000(4)
+       Dxyx000 = ( aLMinusaT )*q000(1)*q000(2)/q000(4)
+       Dxzx000 = ( aLMinusaT )*q000(1)*q000(3)/q000(4)
+       Dxyy000 = ( aLMinusaT )*q000(1)*q000(2)/q000(4)
+       Dyzy000 = ( aLMinusaT )*q000(2)*q000(3)/q000(4)
+       Dxzz000 = ( aLMinusaT )*q000(1)*q000(3)/q000(4)
+       Dyzz000 = ( aLMinusaT )*q000(2)*q000(3)/q000(4)
+      end if
+
+      if( q100(4) .gt. 0d0 ) then
+       Dxxx100 = ( alphaT*q100(4) + pDMeff100 ) + ( aLMinusaT )*q100(1)**2/q100(4)
+       Dyyy100 = ( alphaT*q100(4) + pDMeff100 ) + ( aLMinusaT )*q100(2)**2/q100(4)
+       Dzzz100 = ( alphaT*q100(4) + pDMeff100 ) + ( aLMinusaT )*q100(3)**2/q100(4)
+       Dxyx100 = ( aLMinusaT )*q100(1)*q100(2)/q100(4)
+       Dxzx100 = ( aLMinusaT )*q100(1)*q100(3)/q100(4)
+       Dxyy100 = ( aLMinusaT )*q100(1)*q100(2)/q100(4)
+       Dyzy100 = ( aLMinusaT )*q100(2)*q100(3)/q100(4)
+       Dxzz100 = ( aLMinusaT )*q100(1)*q100(3)/q100(4)
+       Dyzz100 = ( aLMinusaT )*q100(2)*q100(3)/q100(4)
+      end if
+
+      if( q010(4) .gt. 0d0 ) then
+       Dxxx010 = ( alphaT*q010(4) + pDMeff010 ) + ( aLMinusaT )*q010(1)**2/q010(4)
+       Dyyy010 = ( alphaT*q010(4) + pDMeff010 ) + ( aLMinusaT )*q010(2)**2/q010(4)
+       Dzzz010 = ( alphaT*q010(4) + pDMeff010 ) + ( aLMinusaT )*q010(3)**2/q010(4)
+       Dxyx010 = ( aLMinusaT )*q010(1)*q010(2)/q010(4)
+       Dxzx010 = ( aLMinusaT )*q010(1)*q010(3)/q010(4)
+       Dxyy010 = ( aLMinusaT )*q010(1)*q010(2)/q010(4)
+       Dyzy010 = ( aLMinusaT )*q010(2)*q010(3)/q010(4)
+       Dxzz010 = ( aLMinusaT )*q010(1)*q010(3)/q010(4)
+       Dyzz010 = ( aLMinusaT )*q010(2)*q010(3)/q010(4)
+      end if
+
+      if( q110(4) .gt. 0d0 ) then
+       Dxxx110 = ( alphaT*q110(4) + pDMeff110 ) + ( aLMinusaT )*q110(1)**2/q110(4)
+       Dyyy110 = ( alphaT*q110(4) + pDMeff110 ) + ( aLMinusaT )*q110(2)**2/q110(4)
+       Dzzz110 = ( alphaT*q110(4) + pDMeff110 ) + ( aLMinusaT )*q110(3)**2/q110(4)
+       Dxyx110 = ( aLMinusaT )*q110(1)*q110(2)/q110(4)
+       Dxzx110 = ( aLMinusaT )*q110(1)*q110(3)/q110(4)
+       Dxyy110 = ( aLMinusaT )*q110(1)*q110(2)/q110(4)
+       Dyzy110 = ( aLMinusaT )*q110(2)*q110(3)/q110(4)
+       Dxzz110 = ( aLMinusaT )*q110(1)*q110(3)/q110(4)
+       Dyzz110 = ( aLMinusaT )*q110(2)*q110(3)/q110(4)
+      end if
+
+      if( q001(4) .gt. 0d0 ) then
+       Dxxx001 = ( alphaT*q001(4) + pDMeff001 ) + ( aLMinusaT )*q001(1)**2/q001(4)
+       Dyyy001 = ( alphaT*q001(4) + pDMeff001 ) + ( aLMinusaT )*q001(2)**2/q001(4)
+       Dzzz001 = ( alphaT*q001(4) + pDMeff001 ) + ( aLMinusaT )*q001(3)**2/q001(4)
+       Dxyx001 = ( aLMinusaT )*q001(1)*q001(2)/q001(4)
+       Dxzx001 = ( aLMinusaT )*q001(1)*q001(3)/q001(4)
+       Dxyy001 = ( aLMinusaT )*q001(1)*q001(2)/q001(4)
+       Dyzy001 = ( aLMinusaT )*q001(2)*q001(3)/q001(4)
+       Dxzz001 = ( aLMinusaT )*q001(1)*q001(3)/q001(4)
+       Dyzz001 = ( aLMinusaT )*q001(2)*q001(3)/q001(4)
+      end if
+
+      if( q101(4) .gt. 0d0 ) then
+       Dxxx101 = ( alphaT*q101(4) + pDMeff101 ) + ( aLMinusaT )*q101(1)**2/q101(4)
+       Dyyy101 = ( alphaT*q101(4) + pDMeff101 ) + ( aLMinusaT )*q101(2)**2/q101(4)
+       Dzzz101 = ( alphaT*q101(4) + pDMeff101 ) + ( aLMinusaT )*q101(3)**2/q101(4)
+       Dxyx101 = ( aLMinusaT )*q101(1)*q101(2)/q101(4)
+       Dxzx101 = ( aLMinusaT )*q101(1)*q101(3)/q101(4)
+       Dxyy101 = ( aLMinusaT )*q101(1)*q101(2)/q101(4)
+       Dyzy101 = ( aLMinusaT )*q101(2)*q101(3)/q101(4)
+       Dxzz101 = ( aLMinusaT )*q101(1)*q101(3)/q101(4)
+       Dyzz101 = ( aLMinusaT )*q101(2)*q101(3)/q101(4)
+      end if
+
+      if( q011(4) .gt. 0d0 ) then
+       Dxxx011 = ( alphaT*q011(4) + pDMeff011 ) + ( aLMinusaT )*q011(1)**2/q011(4)
+       Dyyy011 = ( alphaT*q011(4) + pDMeff011 ) + ( aLMinusaT )*q011(2)**2/q011(4)
+       Dzzz011 = ( alphaT*q011(4) + pDMeff011 ) + ( aLMinusaT )*q011(3)**2/q011(4)
+       Dxyx011 = ( aLMinusaT )*q011(1)*q011(2)/q011(4)
+       Dxzx011 = ( aLMinusaT )*q011(1)*q011(3)/q011(4)
+       Dxyy011 = ( aLMinusaT )*q011(1)*q011(2)/q011(4)
+       Dyzy011 = ( aLMinusaT )*q011(2)*q011(3)/q011(4)
+       Dxzz011 = ( aLMinusaT )*q011(1)*q011(3)/q011(4)
+       Dyzz011 = ( aLMinusaT )*q011(2)*q011(3)/q011(4)
+      end if
+
+      if( q111(4) .gt. 0d0 ) then
+       Dxxx111 = ( alphaT*q111(4) + pDMeff111 ) + ( aLMinusaT )*q111(1)**2/q111(4)
+       Dyyy111 = ( alphaT*q111(4) + pDMeff111 ) + ( aLMinusaT )*q111(2)**2/q111(4)
+       Dzzz111 = ( alphaT*q111(4) + pDMeff111 ) + ( aLMinusaT )*q111(3)**2/q111(4)
+       Dxyx111 = ( aLMinusaT )*q111(1)*q111(2)/q111(4)
+       Dxzx111 = ( aLMinusaT )*q111(1)*q111(3)/q111(4)
+       Dxyy111 = ( aLMinusaT )*q111(1)*q111(2)/q111(4)
+       Dyzy111 = ( aLMinusaT )*q111(2)*q111(3)/q111(4)
+       Dxzz111 = ( aLMinusaT )*q111(1)*q111(3)/q111(4)
+       Dyzz111 = ( aLMinusaT )*q111(2)*q111(3)/q111(4)
+      end if
+
+
+      ! Interpolated derivates !
       call this%TrilinearDerivative( 1, x, y, z, &
-                D000, & 
-                D100, &
-                D010, &
-                D110, &
-                D001, &
-                D101, &
-                D011, &
-                D111, &
+                Dxxx000, & 
+                Dxxx100, &
+                Dxxx010, &
+                Dxxx110, &
+                Dxxx001, &
+                Dxxx101, &
+                Dxxx011, &
+                Dxxx111, &
                 dDxxdx )
-      ! For Y displacement
-      D000 = p000*dMEff
-      D100 = p100*dMEff
-      D010 = p010*dMEff
-      D110 = p110*dMEff
-      D001 = p001*dMEff
-      D101 = p101*dMEff
-      D011 = p011*dMEff
-      D111 = p111*dMEff
-      if( v000(4) .gt. 0d0 ) D000 = ( alphaT*v000(4) + p000*dMEff ) + ( alphaL - alphaT )*v000(2)**2/v000(4)
-      if( v100(4) .gt. 0d0 ) D100 = ( alphaT*v100(4) + p100*dMEff ) + ( alphaL - alphaT )*v100(2)**2/v100(4)
-      if( v010(4) .gt. 0d0 ) D010 = ( alphaT*v010(4) + p010*dMEff ) + ( alphaL - alphaT )*v010(2)**2/v010(4)
-      if( v110(4) .gt. 0d0 ) D110 = ( alphaT*v110(4) + p110*dMEff ) + ( alphaL - alphaT )*v110(2)**2/v110(4)
-      if( v001(4) .gt. 0d0 ) D001 = ( alphaT*v001(4) + p001*dMEff ) + ( alphaL - alphaT )*v001(2)**2/v001(4)
-      if( v101(4) .gt. 0d0 ) D101 = ( alphaT*v101(4) + p101*dMEff ) + ( alphaL - alphaT )*v101(2)**2/v101(4)
-      if( v011(4) .gt. 0d0 ) D011 = ( alphaT*v011(4) + p011*dMEff ) + ( alphaL - alphaT )*v011(2)**2/v011(4)
-      if( v111(4) .gt. 0d0 ) D111 = ( alphaT*v111(4) + p111*dMEff ) + ( alphaL - alphaT )*v111(2)**2/v111(4)
       call this%TrilinearDerivative( 2, x, y, z, &
-                D000, &
-                D100, &
-                D010, &
-                D110, &
-                D001, &
-                D101, &
-                D011, &
-                D111, &
+                Dyyy000, &
+                Dyyy100, &
+                Dyyy010, &
+                Dyyy110, &
+                Dyyy001, &
+                Dyyy101, &
+                Dyyy011, &
+                Dyyy111, &
                 dDyydy )
-      ! For Z displacement
-      D000 = p000*dMEff
-      D100 = p100*dMEff
-      D010 = p010*dMEff
-      D110 = p110*dMEff
-      D001 = p001*dMEff
-      D101 = p101*dMEff
-      D011 = p011*dMEff
-      D111 = p111*dMEff
-      if( v000(4) .gt. 0d0 ) D000 = ( alphaT*v000(4) + p000*dMEff ) + ( alphaL - alphaT )*v000(3)**2/v000(4)
-      if( v100(4) .gt. 0d0 ) D100 = ( alphaT*v100(4) + p100*dMEff ) + ( alphaL - alphaT )*v100(3)**2/v100(4)
-      if( v010(4) .gt. 0d0 ) D010 = ( alphaT*v010(4) + p010*dMEff ) + ( alphaL - alphaT )*v010(3)**2/v010(4)
-      if( v110(4) .gt. 0d0 ) D110 = ( alphaT*v110(4) + p110*dMEff ) + ( alphaL - alphaT )*v110(3)**2/v110(4)
-      if( v001(4) .gt. 0d0 ) D001 = ( alphaT*v001(4) + p001*dMEff ) + ( alphaL - alphaT )*v001(3)**2/v001(4)
-      if( v101(4) .gt. 0d0 ) D101 = ( alphaT*v101(4) + p101*dMEff ) + ( alphaL - alphaT )*v101(3)**2/v101(4)
-      if( v011(4) .gt. 0d0 ) D011 = ( alphaT*v011(4) + p011*dMEff ) + ( alphaL - alphaT )*v011(3)**2/v011(4)
-      if( v111(4) .gt. 0d0 ) D111 = ( alphaT*v111(4) + p111*dMEff ) + ( alphaL - alphaT )*v111(3)**2/v111(4)
       call this%TrilinearDerivative( 3, x, y, z, &
-                D000, &
-                D100, &
-                D010, &
-                D110, &
-                D001, &
-                D101, &
-                D011, &
-                D111, &
+                Dzzz000, &
+                Dzzz100, &
+                Dzzz010, &
+                Dzzz110, &
+                Dzzz001, &
+                Dzzz101, &
+                Dzzz011, &
+                Dzzz111, &
                 dDzzdz )
-      ! For Y displacement
-      D000 = 0d0
-      D100 = 0d0
-      D010 = 0d0
-      D110 = 0d0
-      D001 = 0d0
-      D101 = 0d0
-      D011 = 0d0
-      D111 = 0d0
-      if( v000(4) .gt. 0d0 ) D000 = ( alphaL - alphaT )*v000(1)*v000(2)/v000(4)
-      if( v100(4) .gt. 0d0 ) D100 = ( alphaL - alphaT )*v100(1)*v100(2)/v100(4)
-      if( v010(4) .gt. 0d0 ) D010 = ( alphaL - alphaT )*v010(1)*v010(2)/v010(4)
-      if( v110(4) .gt. 0d0 ) D110 = ( alphaL - alphaT )*v110(1)*v110(2)/v110(4)
-      if( v001(4) .gt. 0d0 ) D001 = ( alphaL - alphaT )*v001(1)*v001(2)/v001(4)
-      if( v101(4) .gt. 0d0 ) D101 = ( alphaL - alphaT )*v101(1)*v101(2)/v101(4)
-      if( v011(4) .gt. 0d0 ) D011 = ( alphaL - alphaT )*v011(1)*v011(2)/v011(4)
-      if( v111(4) .gt. 0d0 ) D111 = ( alphaL - alphaT )*v111(1)*v111(2)/v111(4)
       call this%TrilinearDerivative( 1, x, y, z, & 
-                D000, & 
-                D100, &
-                D010, &
-                D110, &
-                D001, &
-                D101, &
-                D011, &
-                D111, &
+                Dxyx000, & 
+                Dxyx100, &
+                Dxyx010, &
+                Dxyx110, &
+                Dxyx001, &
+                Dxyx101, &
+                Dxyx011, &
+                Dxyx111, &
                 dDxydx )
-      ! For Z displacement
-      D000 = 0d0
-      D100 = 0d0
-      D010 = 0d0
-      D110 = 0d0
-      D001 = 0d0
-      D101 = 0d0
-      D011 = 0d0
-      D111 = 0d0
-      if( v000(4) .gt. 0d0 ) D000 = ( alphaL - alphaT )*v000(1)*v000(3)/v000(4)
-      if( v100(4) .gt. 0d0 ) D100 = ( alphaL - alphaT )*v100(1)*v100(3)/v100(4)
-      if( v010(4) .gt. 0d0 ) D010 = ( alphaL - alphaT )*v010(1)*v010(3)/v010(4)
-      if( v110(4) .gt. 0d0 ) D110 = ( alphaL - alphaT )*v110(1)*v110(3)/v110(4)
-      if( v001(4) .gt. 0d0 ) D001 = ( alphaL - alphaT )*v001(1)*v001(3)/v001(4)
-      if( v101(4) .gt. 0d0 ) D101 = ( alphaL - alphaT )*v101(1)*v101(3)/v101(4)
-      if( v011(4) .gt. 0d0 ) D011 = ( alphaL - alphaT )*v011(1)*v011(3)/v011(4)
-      if( v111(4) .gt. 0d0 ) D111 = ( alphaL - alphaT )*v111(1)*v111(3)/v111(4)
       call this%TrilinearDerivative( 1, x, y, z, &
-                D000, &
-                D100, &
-                D010, &
-                D110, &
-                D001, &
-                D101, &
-                D011, &
-                D111, &
+                Dxzx000, &
+                Dxzx100, &
+                Dxzx010, &
+                Dxzx110, &
+                Dxzx001, &
+                Dxzx101, &
+                Dxzx011, &
+                Dxzx111, &
                 dDxzdx )
-      ! For X displacement
-      D000 = 0d0
-      D100 = 0d0
-      D010 = 0d0
-      D110 = 0d0
-      D001 = 0d0
-      D101 = 0d0
-      D011 = 0d0
-      D111 = 0d0
-      if( v000(4) .gt. 0d0 ) D000 = ( alphaL - alphaT )*v000(1)*v000(2)/v000(4)
-      if( v100(4) .gt. 0d0 ) D100 = ( alphaL - alphaT )*v100(1)*v100(2)/v100(4)
-      if( v010(4) .gt. 0d0 ) D010 = ( alphaL - alphaT )*v010(1)*v010(2)/v010(4)
-      if( v110(4) .gt. 0d0 ) D110 = ( alphaL - alphaT )*v110(1)*v110(2)/v110(4)
-      if( v001(4) .gt. 0d0 ) D001 = ( alphaL - alphaT )*v001(1)*v001(2)/v001(4)
-      if( v101(4) .gt. 0d0 ) D101 = ( alphaL - alphaT )*v101(1)*v101(2)/v101(4)
-      if( v011(4) .gt. 0d0 ) D011 = ( alphaL - alphaT )*v011(1)*v011(2)/v011(4)
-      if( v111(4) .gt. 0d0 ) D111 = ( alphaL - alphaT )*v111(1)*v111(2)/v111(4)
       call this%TrilinearDerivative( 2, x, y, z, &
-                D000, &
-                D100, &
-                D010, &
-                D110, &
-                D001, &
-                D101, &
-                D011, &
-                D111, &
+                Dxyy000, &
+                Dxyy100, &
+                Dxyy010, &
+                Dxyy110, &
+                Dxyy001, &
+                Dxyy101, &
+                Dxyy011, &
+                Dxyy111, &
                 dDxydy )
-      ! For Z displacement
-      D000 = 0d0
-      D100 = 0d0
-      D010 = 0d0
-      D110 = 0d0
-      D001 = 0d0
-      D101 = 0d0
-      D011 = 0d0
-      D111 = 0d0
-      if( v000(4) .gt. 0d0 ) D000 = ( alphaL - alphaT )*v000(2)*v000(3)/v000(4)
-      if( v100(4) .gt. 0d0 ) D100 = ( alphaL - alphaT )*v100(2)*v100(3)/v100(4)
-      if( v010(4) .gt. 0d0 ) D010 = ( alphaL - alphaT )*v010(2)*v010(3)/v010(4)
-      if( v110(4) .gt. 0d0 ) D110 = ( alphaL - alphaT )*v110(2)*v110(3)/v110(4)
-      if( v001(4) .gt. 0d0 ) D001 = ( alphaL - alphaT )*v001(2)*v001(3)/v001(4)
-      if( v101(4) .gt. 0d0 ) D101 = ( alphaL - alphaT )*v101(2)*v101(3)/v101(4)
-      if( v011(4) .gt. 0d0 ) D011 = ( alphaL - alphaT )*v011(2)*v011(3)/v011(4)
-      if( v111(4) .gt. 0d0 ) D111 = ( alphaL - alphaT )*v111(2)*v111(3)/v111(4)
       call this%TrilinearDerivative( 2, x, y, z, &
-                D000, &
-                D100, &
-                D010, &
-                D110, &
-                D001, &
-                D101, &
-                D011, &
-                D111, &
+                Dyzy000, &
+                Dyzy100, &
+                Dyzy010, &
+                Dyzy110, &
+                Dyzy001, &
+                Dyzy101, &
+                Dyzy011, &
+                Dyzy111, &
                 dDyzdy )
-      ! For X displacement
-      D000 = 0d0
-      D100 = 0d0
-      D010 = 0d0
-      D110 = 0d0
-      D001 = 0d0
-      D101 = 0d0
-      D011 = 0d0
-      D111 = 0d0
-      if( v000(4) .gt. 0d0 ) D000 = ( alphaL - alphaT )*v000(1)*v000(3)/v000(4)
-      if( v100(4) .gt. 0d0 ) D100 = ( alphaL - alphaT )*v100(1)*v100(3)/v100(4)
-      if( v010(4) .gt. 0d0 ) D010 = ( alphaL - alphaT )*v010(1)*v010(3)/v010(4)
-      if( v110(4) .gt. 0d0 ) D110 = ( alphaL - alphaT )*v110(1)*v110(3)/v110(4)
-      if( v001(4) .gt. 0d0 ) D001 = ( alphaL - alphaT )*v001(1)*v001(3)/v001(4)
-      if( v101(4) .gt. 0d0 ) D101 = ( alphaL - alphaT )*v101(1)*v101(3)/v101(4)
-      if( v011(4) .gt. 0d0 ) D011 = ( alphaL - alphaT )*v011(1)*v011(3)/v011(4)
-      if( v111(4) .gt. 0d0 ) D111 = ( alphaL - alphaT )*v111(1)*v111(3)/v111(4)
       call this%TrilinearDerivative( 3, x, y, z, &
-                D000, &
-                D100, &
-                D010, &
-                D110, &
-                D001, &
-                D101, &
-                D011, &
-                D111, &
+                Dxzz000, &
+                Dxzz100, &
+                Dxzz010, &
+                Dxzz110, &
+                Dxzz001, &
+                Dxzz101, &
+                Dxzz011, &
+                Dxzz111, &
                 dDxzdz )
-      ! For Y displacement
-      D000 = 0d0
-      D100 = 0d0
-      D010 = 0d0
-      D110 = 0d0
-      D001 = 0d0
-      D101 = 0d0
-      D011 = 0d0
-      D111 = 0d0
-      if( v000(4) .gt. 0d0 ) D000 = ( alphaL - alphaT )*v000(2)*v000(3)/v000(4)
-      if( v100(4) .gt. 0d0 ) D100 = ( alphaL - alphaT )*v100(2)*v100(3)/v100(4)
-      if( v010(4) .gt. 0d0 ) D010 = ( alphaL - alphaT )*v010(2)*v010(3)/v010(4)
-      if( v110(4) .gt. 0d0 ) D110 = ( alphaL - alphaT )*v110(2)*v110(3)/v110(4)
-      if( v001(4) .gt. 0d0 ) D001 = ( alphaL - alphaT )*v001(2)*v001(3)/v001(4)
-      if( v101(4) .gt. 0d0 ) D101 = ( alphaL - alphaT )*v101(2)*v101(3)/v101(4)
-      if( v011(4) .gt. 0d0 ) D011 = ( alphaL - alphaT )*v011(2)*v011(3)/v011(4)
-      if( v111(4) .gt. 0d0 ) D111 = ( alphaL - alphaT )*v111(2)*v111(3)/v111(4)
       call this%TrilinearDerivative( 3, x, y, z, &
-                D000, &
-                D100, &
-                D010, &
-                D110, &
-                D001, &
-                D101, &
-                D011, &
-                D111, &
+                Dyzz000, &
+                Dyzz100, &
+                Dyzz010, &
+                Dyzz110, &
+                Dyzz001, &
+                Dyzz101, &
+                Dyzz011, &
+                Dyzz111, &
                 dDyzdz )
 
       ! Notice correction by porosity and retardation 
@@ -3022,6 +3068,343 @@ contains
 
 
   end subroutine pr_DispersionDivergenceDischarge
+
+
+  !! RWPT
+  !subroutine pr_DispersionDivergenceDischarge( this, x, y, z, alphaL, alphaT, dMEff, divDx, divDy, divDz )
+  !    !----------------------------------------------------------------
+  !    ! Compute dispersion divergence terms 
+  !    ! 
+  !    ! Params:
+  !    !     - x, y, z             : local cell coordinates
+  !    !     - alphaL              : longidutinal dispersivity
+  !    !     - alphaT              : transverse dispersivity
+  !    !     - dMEff               : effective molecular diffusion (corrected by tortuosity)
+  !    !     - divDx, divDy, divDz : dispersion divergence, output 
+  !    !----------------------------------------------------------------
+  !    ! Specifications
+  !    !----------------------------------------------------------------
+  !    implicit none
+  !    class (TrackSubCellType)    :: this
+  !    ! input
+  !    doubleprecision, intent(in) :: x, y, z
+  !    doubleprecision, intent(in) :: alphaL, alphaT, dMEff
+  !    ! output
+  !    doubleprecision, intent(out) :: divDx, divDy, divDz
+  !    ! local
+  !    doubleprecision, dimension(4) :: v000
+  !    doubleprecision, dimension(4) :: v100
+  !    doubleprecision, dimension(4) :: v010
+  !    doubleprecision, dimension(4) :: v110
+  !    doubleprecision, dimension(4) :: v001
+  !    doubleprecision, dimension(4) :: v101
+  !    doubleprecision, dimension(4) :: v011
+  !    doubleprecision, dimension(4) :: v111
+
+  !    doubleprecision :: p000
+  !    doubleprecision :: p100
+  !    doubleprecision :: p010
+  !    doubleprecision :: p110
+  !    doubleprecision :: p001
+  !    doubleprecision :: p101
+  !    doubleprecision :: p011
+  !    doubleprecision :: p111
+
+
+  !    doubleprecision :: D000
+  !    doubleprecision :: D100
+  !    doubleprecision :: D010
+  !    doubleprecision :: D110
+  !    doubleprecision :: D001
+  !    doubleprecision :: D101
+  !    doubleprecision :: D011
+  !    doubleprecision :: D111
+
+
+  !    doubleprecision :: dDxxdx, dDxydy, dDxzdz, &
+  !                       dDxydx, dDyydy, dDyzdz, &
+  !                       dDxzdx, dDyzdy, dDzzdz
+  !    !---------------------------------------------------------------- 
+
+  !    ! Initialize
+  !    divDx = 0d0
+  !    divDy = 0d0
+  !    divDz = 0d0
+
+  !    ! Local copies of SPECIFIC DISCHARGE
+  !    ! qx, qy, qz, norm(q)
+  !    v000 = this%qCorner000 
+  !    v100 = this%qCorner100
+  !    v010 = this%qCorner010
+  !    v110 = this%qCorner110
+  !    v001 = this%qCorner001
+  !    v101 = this%qCorner101
+  !    v011 = this%qCorner011
+  !    v111 = this%qCorner111
+  !
+  !    ! Porosities
+  !    p000 = this%porosity000 
+  !    p100 = this%porosity100
+  !    p010 = this%porosity010
+  !    p110 = this%porosity110
+  !    p001 = this%porosity001
+  !    p101 = this%porosity101
+  !    p011 = this%porosity011
+  !    p111 = this%porosity111
+
+  !    ! Is there a more elegant way ? 
+
+  !    ! For X displacement
+  !    D000 = p000*dMEff
+  !    D100 = p100*dMEff
+  !    D010 = p010*dMEff
+  !    D110 = p110*dMEff
+  !    D001 = p001*dMEff
+  !    D101 = p101*dMEff
+  !    D011 = p011*dMEff
+  !    D111 = p111*dMEff
+  !    if( v000(4) .gt. 0d0 ) D000 = ( alphaT*v000(4) + p000*dMEff ) + ( alphaL - alphaT )*v000(1)**2/v000(4)
+  !    if( v100(4) .gt. 0d0 ) D100 = ( alphaT*v100(4) + p100*dMEff ) + ( alphaL - alphaT )*v100(1)**2/v100(4)
+  !    if( v010(4) .gt. 0d0 ) D010 = ( alphaT*v010(4) + p010*dMEff ) + ( alphaL - alphaT )*v010(1)**2/v010(4)
+  !    if( v110(4) .gt. 0d0 ) D110 = ( alphaT*v110(4) + p110*dMEff ) + ( alphaL - alphaT )*v110(1)**2/v110(4)
+  !    if( v001(4) .gt. 0d0 ) D001 = ( alphaT*v001(4) + p001*dMEff ) + ( alphaL - alphaT )*v001(1)**2/v001(4)
+  !    if( v101(4) .gt. 0d0 ) D101 = ( alphaT*v101(4) + p101*dMEff ) + ( alphaL - alphaT )*v101(1)**2/v101(4)
+  !    if( v011(4) .gt. 0d0 ) D011 = ( alphaT*v011(4) + p011*dMEff ) + ( alphaL - alphaT )*v011(1)**2/v011(4)
+  !    if( v111(4) .gt. 0d0 ) D111 = ( alphaT*v111(4) + p111*dMEff ) + ( alphaL - alphaT )*v111(1)**2/v111(4)
+  !    call this%TrilinearDerivative( 1, x, y, z, &
+  !              D000, & 
+  !              D100, &
+  !              D010, &
+  !              D110, &
+  !              D001, &
+  !              D101, &
+  !              D011, &
+  !              D111, &
+  !              dDxxdx )
+  !    ! For Y displacement
+  !    D000 = p000*dMEff
+  !    D100 = p100*dMEff
+  !    D010 = p010*dMEff
+  !    D110 = p110*dMEff
+  !    D001 = p001*dMEff
+  !    D101 = p101*dMEff
+  !    D011 = p011*dMEff
+  !    D111 = p111*dMEff
+  !    if( v000(4) .gt. 0d0 ) D000 = ( alphaT*v000(4) + p000*dMEff ) + ( alphaL - alphaT )*v000(2)**2/v000(4)
+  !    if( v100(4) .gt. 0d0 ) D100 = ( alphaT*v100(4) + p100*dMEff ) + ( alphaL - alphaT )*v100(2)**2/v100(4)
+  !    if( v010(4) .gt. 0d0 ) D010 = ( alphaT*v010(4) + p010*dMEff ) + ( alphaL - alphaT )*v010(2)**2/v010(4)
+  !    if( v110(4) .gt. 0d0 ) D110 = ( alphaT*v110(4) + p110*dMEff ) + ( alphaL - alphaT )*v110(2)**2/v110(4)
+  !    if( v001(4) .gt. 0d0 ) D001 = ( alphaT*v001(4) + p001*dMEff ) + ( alphaL - alphaT )*v001(2)**2/v001(4)
+  !    if( v101(4) .gt. 0d0 ) D101 = ( alphaT*v101(4) + p101*dMEff ) + ( alphaL - alphaT )*v101(2)**2/v101(4)
+  !    if( v011(4) .gt. 0d0 ) D011 = ( alphaT*v011(4) + p011*dMEff ) + ( alphaL - alphaT )*v011(2)**2/v011(4)
+  !    if( v111(4) .gt. 0d0 ) D111 = ( alphaT*v111(4) + p111*dMEff ) + ( alphaL - alphaT )*v111(2)**2/v111(4)
+  !    call this%TrilinearDerivative( 2, x, y, z, &
+  !              D000, &
+  !              D100, &
+  !              D010, &
+  !              D110, &
+  !              D001, &
+  !              D101, &
+  !              D011, &
+  !              D111, &
+  !              dDyydy )
+  !    ! For Z displacement
+  !    D000 = p000*dMEff
+  !    D100 = p100*dMEff
+  !    D010 = p010*dMEff
+  !    D110 = p110*dMEff
+  !    D001 = p001*dMEff
+  !    D101 = p101*dMEff
+  !    D011 = p011*dMEff
+  !    D111 = p111*dMEff
+  !    if( v000(4) .gt. 0d0 ) D000 = ( alphaT*v000(4) + p000*dMEff ) + ( alphaL - alphaT )*v000(3)**2/v000(4)
+  !    if( v100(4) .gt. 0d0 ) D100 = ( alphaT*v100(4) + p100*dMEff ) + ( alphaL - alphaT )*v100(3)**2/v100(4)
+  !    if( v010(4) .gt. 0d0 ) D010 = ( alphaT*v010(4) + p010*dMEff ) + ( alphaL - alphaT )*v010(3)**2/v010(4)
+  !    if( v110(4) .gt. 0d0 ) D110 = ( alphaT*v110(4) + p110*dMEff ) + ( alphaL - alphaT )*v110(3)**2/v110(4)
+  !    if( v001(4) .gt. 0d0 ) D001 = ( alphaT*v001(4) + p001*dMEff ) + ( alphaL - alphaT )*v001(3)**2/v001(4)
+  !    if( v101(4) .gt. 0d0 ) D101 = ( alphaT*v101(4) + p101*dMEff ) + ( alphaL - alphaT )*v101(3)**2/v101(4)
+  !    if( v011(4) .gt. 0d0 ) D011 = ( alphaT*v011(4) + p011*dMEff ) + ( alphaL - alphaT )*v011(3)**2/v011(4)
+  !    if( v111(4) .gt. 0d0 ) D111 = ( alphaT*v111(4) + p111*dMEff ) + ( alphaL - alphaT )*v111(3)**2/v111(4)
+  !    call this%TrilinearDerivative( 3, x, y, z, &
+  !              D000, &
+  !              D100, &
+  !              D010, &
+  !              D110, &
+  !              D001, &
+  !              D101, &
+  !              D011, &
+  !              D111, &
+  !              dDzzdz )
+  !    ! For Y displacement
+  !    D000 = 0d0
+  !    D100 = 0d0
+  !    D010 = 0d0
+  !    D110 = 0d0
+  !    D001 = 0d0
+  !    D101 = 0d0
+  !    D011 = 0d0
+  !    D111 = 0d0
+  !    if( v000(4) .gt. 0d0 ) D000 = ( alphaL - alphaT )*v000(1)*v000(2)/v000(4)
+  !    if( v100(4) .gt. 0d0 ) D100 = ( alphaL - alphaT )*v100(1)*v100(2)/v100(4)
+  !    if( v010(4) .gt. 0d0 ) D010 = ( alphaL - alphaT )*v010(1)*v010(2)/v010(4)
+  !    if( v110(4) .gt. 0d0 ) D110 = ( alphaL - alphaT )*v110(1)*v110(2)/v110(4)
+  !    if( v001(4) .gt. 0d0 ) D001 = ( alphaL - alphaT )*v001(1)*v001(2)/v001(4)
+  !    if( v101(4) .gt. 0d0 ) D101 = ( alphaL - alphaT )*v101(1)*v101(2)/v101(4)
+  !    if( v011(4) .gt. 0d0 ) D011 = ( alphaL - alphaT )*v011(1)*v011(2)/v011(4)
+  !    if( v111(4) .gt. 0d0 ) D111 = ( alphaL - alphaT )*v111(1)*v111(2)/v111(4)
+  !    call this%TrilinearDerivative( 1, x, y, z, & 
+  !              D000, & 
+  !              D100, &
+  !              D010, &
+  !              D110, &
+  !              D001, &
+  !              D101, &
+  !              D011, &
+  !              D111, &
+  !              dDxydx )
+  !    ! For Z displacement
+  !    D000 = 0d0
+  !    D100 = 0d0
+  !    D010 = 0d0
+  !    D110 = 0d0
+  !    D001 = 0d0
+  !    D101 = 0d0
+  !    D011 = 0d0
+  !    D111 = 0d0
+  !    if( v000(4) .gt. 0d0 ) D000 = ( alphaL - alphaT )*v000(1)*v000(3)/v000(4)
+  !    if( v100(4) .gt. 0d0 ) D100 = ( alphaL - alphaT )*v100(1)*v100(3)/v100(4)
+  !    if( v010(4) .gt. 0d0 ) D010 = ( alphaL - alphaT )*v010(1)*v010(3)/v010(4)
+  !    if( v110(4) .gt. 0d0 ) D110 = ( alphaL - alphaT )*v110(1)*v110(3)/v110(4)
+  !    if( v001(4) .gt. 0d0 ) D001 = ( alphaL - alphaT )*v001(1)*v001(3)/v001(4)
+  !    if( v101(4) .gt. 0d0 ) D101 = ( alphaL - alphaT )*v101(1)*v101(3)/v101(4)
+  !    if( v011(4) .gt. 0d0 ) D011 = ( alphaL - alphaT )*v011(1)*v011(3)/v011(4)
+  !    if( v111(4) .gt. 0d0 ) D111 = ( alphaL - alphaT )*v111(1)*v111(3)/v111(4)
+  !    call this%TrilinearDerivative( 1, x, y, z, &
+  !              D000, &
+  !              D100, &
+  !              D010, &
+  !              D110, &
+  !              D001, &
+  !              D101, &
+  !              D011, &
+  !              D111, &
+  !              dDxzdx )
+  !    ! For X displacement
+  !    D000 = 0d0
+  !    D100 = 0d0
+  !    D010 = 0d0
+  !    D110 = 0d0
+  !    D001 = 0d0
+  !    D101 = 0d0
+  !    D011 = 0d0
+  !    D111 = 0d0
+  !    if( v000(4) .gt. 0d0 ) D000 = ( alphaL - alphaT )*v000(1)*v000(2)/v000(4)
+  !    if( v100(4) .gt. 0d0 ) D100 = ( alphaL - alphaT )*v100(1)*v100(2)/v100(4)
+  !    if( v010(4) .gt. 0d0 ) D010 = ( alphaL - alphaT )*v010(1)*v010(2)/v010(4)
+  !    if( v110(4) .gt. 0d0 ) D110 = ( alphaL - alphaT )*v110(1)*v110(2)/v110(4)
+  !    if( v001(4) .gt. 0d0 ) D001 = ( alphaL - alphaT )*v001(1)*v001(2)/v001(4)
+  !    if( v101(4) .gt. 0d0 ) D101 = ( alphaL - alphaT )*v101(1)*v101(2)/v101(4)
+  !    if( v011(4) .gt. 0d0 ) D011 = ( alphaL - alphaT )*v011(1)*v011(2)/v011(4)
+  !    if( v111(4) .gt. 0d0 ) D111 = ( alphaL - alphaT )*v111(1)*v111(2)/v111(4)
+  !    call this%TrilinearDerivative( 2, x, y, z, &
+  !              D000, &
+  !              D100, &
+  !              D010, &
+  !              D110, &
+  !              D001, &
+  !              D101, &
+  !              D011, &
+  !              D111, &
+  !              dDxydy )
+  !    ! For Z displacement
+  !    D000 = 0d0
+  !    D100 = 0d0
+  !    D010 = 0d0
+  !    D110 = 0d0
+  !    D001 = 0d0
+  !    D101 = 0d0
+  !    D011 = 0d0
+  !    D111 = 0d0
+  !    if( v000(4) .gt. 0d0 ) D000 = ( alphaL - alphaT )*v000(2)*v000(3)/v000(4)
+  !    if( v100(4) .gt. 0d0 ) D100 = ( alphaL - alphaT )*v100(2)*v100(3)/v100(4)
+  !    if( v010(4) .gt. 0d0 ) D010 = ( alphaL - alphaT )*v010(2)*v010(3)/v010(4)
+  !    if( v110(4) .gt. 0d0 ) D110 = ( alphaL - alphaT )*v110(2)*v110(3)/v110(4)
+  !    if( v001(4) .gt. 0d0 ) D001 = ( alphaL - alphaT )*v001(2)*v001(3)/v001(4)
+  !    if( v101(4) .gt. 0d0 ) D101 = ( alphaL - alphaT )*v101(2)*v101(3)/v101(4)
+  !    if( v011(4) .gt. 0d0 ) D011 = ( alphaL - alphaT )*v011(2)*v011(3)/v011(4)
+  !    if( v111(4) .gt. 0d0 ) D111 = ( alphaL - alphaT )*v111(2)*v111(3)/v111(4)
+  !    call this%TrilinearDerivative( 2, x, y, z, &
+  !              D000, &
+  !              D100, &
+  !              D010, &
+  !              D110, &
+  !              D001, &
+  !              D101, &
+  !              D011, &
+  !              D111, &
+  !              dDyzdy )
+  !    ! For X displacement
+  !    D000 = 0d0
+  !    D100 = 0d0
+  !    D010 = 0d0
+  !    D110 = 0d0
+  !    D001 = 0d0
+  !    D101 = 0d0
+  !    D011 = 0d0
+  !    D111 = 0d0
+  !    if( v000(4) .gt. 0d0 ) D000 = ( alphaL - alphaT )*v000(1)*v000(3)/v000(4)
+  !    if( v100(4) .gt. 0d0 ) D100 = ( alphaL - alphaT )*v100(1)*v100(3)/v100(4)
+  !    if( v010(4) .gt. 0d0 ) D010 = ( alphaL - alphaT )*v010(1)*v010(3)/v010(4)
+  !    if( v110(4) .gt. 0d0 ) D110 = ( alphaL - alphaT )*v110(1)*v110(3)/v110(4)
+  !    if( v001(4) .gt. 0d0 ) D001 = ( alphaL - alphaT )*v001(1)*v001(3)/v001(4)
+  !    if( v101(4) .gt. 0d0 ) D101 = ( alphaL - alphaT )*v101(1)*v101(3)/v101(4)
+  !    if( v011(4) .gt. 0d0 ) D011 = ( alphaL - alphaT )*v011(1)*v011(3)/v011(4)
+  !    if( v111(4) .gt. 0d0 ) D111 = ( alphaL - alphaT )*v111(1)*v111(3)/v111(4)
+  !    call this%TrilinearDerivative( 3, x, y, z, &
+  !              D000, &
+  !              D100, &
+  !              D010, &
+  !              D110, &
+  !              D001, &
+  !              D101, &
+  !              D011, &
+  !              D111, &
+  !              dDxzdz )
+  !    ! For Y displacement
+  !    D000 = 0d0
+  !    D100 = 0d0
+  !    D010 = 0d0
+  !    D110 = 0d0
+  !    D001 = 0d0
+  !    D101 = 0d0
+  !    D011 = 0d0
+  !    D111 = 0d0
+  !    if( v000(4) .gt. 0d0 ) D000 = ( alphaL - alphaT )*v000(2)*v000(3)/v000(4)
+  !    if( v100(4) .gt. 0d0 ) D100 = ( alphaL - alphaT )*v100(2)*v100(3)/v100(4)
+  !    if( v010(4) .gt. 0d0 ) D010 = ( alphaL - alphaT )*v010(2)*v010(3)/v010(4)
+  !    if( v110(4) .gt. 0d0 ) D110 = ( alphaL - alphaT )*v110(2)*v110(3)/v110(4)
+  !    if( v001(4) .gt. 0d0 ) D001 = ( alphaL - alphaT )*v001(2)*v001(3)/v001(4)
+  !    if( v101(4) .gt. 0d0 ) D101 = ( alphaL - alphaT )*v101(2)*v101(3)/v101(4)
+  !    if( v011(4) .gt. 0d0 ) D011 = ( alphaL - alphaT )*v011(2)*v011(3)/v011(4)
+  !    if( v111(4) .gt. 0d0 ) D111 = ( alphaL - alphaT )*v111(2)*v111(3)/v111(4)
+  !    call this%TrilinearDerivative( 3, x, y, z, &
+  !              D000, &
+  !              D100, &
+  !              D010, &
+  !              D110, &
+  !              D001, &
+  !              D101, &
+  !              D011, &
+  !              D111, &
+  !              dDyzdz )
+
+  !    ! Notice correction by porosity and retardation 
+  !    divDx = ( dDxxdx + dDxydy + dDxzdz )/this%SubCellData%Porosity/this%SubCellData%Retardation
+  !    divDy = ( dDxydx + dDyydy + dDyzdz )/this%SubCellData%Porosity/this%SubCellData%Retardation
+  !    divDz = ( dDxzdx + dDyzdy + dDzzdz )/this%SubCellData%Porosity/this%SubCellData%Retardation
+
+
+  !end subroutine pr_DispersionDivergenceDischarge
 
 
 
