@@ -3,7 +3,7 @@ C  of the values are extensions to ANSI Fortran 90 and 95.  One of the
 C  specifiers is not included in ANSI FORTRAN 77. The included
 C  specifiers are ACCESS, FORM and ACTION.
 C
-      CHARACTER*20 ACCESS,FORM,ACTION(2)
+      CHARACTER(LEN=20) ACCESS,FORM,ACTION(2)
 C
 C
 C  Specifiers for OPEN statements for unformatted files, which are
