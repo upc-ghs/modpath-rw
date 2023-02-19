@@ -26,7 +26,6 @@ module ParticleTrackingOptionsModule
     integer                            :: nDim = 3
     integer                            :: idDim1, idDim2
     integer, dimension(:), allocatable :: dimensions
-    logical                            :: twoDimensions = .false. ! DEPRECATE
 
     ! GPKDE
     logical                       :: GPKDEReconstruction = .false.

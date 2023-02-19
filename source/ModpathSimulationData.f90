@@ -1355,29 +1355,27 @@ contains
     select case(trackingOptions%nDim)
       ! 1D
       case(1)
-        trackingOptions%twoDimensions = .true. ! TEMP
-        write(outUnit,'(A)') 'RW displacements for 1 dimension.'
+        write(outUnit,'(A)') 'Random displacements for 1 dimension.'
         ! Relate x,y,z dimensions to 1 dimensions
         do nd = 1,3
           if ( trackingOptions%dimensionMask( nd ) .eq. 0 ) cycle
           select case(nd) 
             case (1)
               trackingOptions%idDim1 = nd
-              write(outUnit,'(A)') 'RW displacements for X dimension.'
+              write(outUnit,'(A)') 'Random displacements for X dimension.'
             case (2)
               trackingOptions%idDim1 = nd
-              write(outUnit,'(A)') 'RW displacements for Y dimension.'
+              write(outUnit,'(A)') 'Random displacements for Y dimension.'
             case (3)
               trackingOptions%idDim1 = nd
-              write(outUnit,'(A)') 'RW displacements for Z dimension.'
+              write(outUnit,'(A)') 'Random displacements for Z dimension.'
           end select   
           ! Use the first found
           exit
         end do
       ! 2D
       case(2)
-        trackingOptions%twoDimensions = .true. ! TEMP
-        write(outUnit,'(A)') 'RW displacements for 2 dimensions.'
+        write(outUnit,'(A)') 'Random displacements for 2 dimensions.'
         ! Relate x,y,z dimensions to 1,2 dimensions
         do nd = 1,3
           if ( trackingOptions%dimensionMask( nd ) .eq. 0 ) cycle
@@ -1385,23 +1383,22 @@ contains
           select case(nd) 
             case (1)
               trackingOptions%idDim1 = n
-              write(outUnit,'(A)') 'RW displacements for X dimension.'
+              write(outUnit,'(A)') 'Random displacements for X dimension.'
             case (2)
               if ( currentDim .eq. 1 ) then 
                 trackingOptions%idDim1 = nd
               else if ( currentDim .eq. 2 ) then
                 trackingOptions%idDim2 = nd
               end if
-              write(outUnit,'(A)') 'RW displacements for Y dimension.'
+              write(outUnit,'(A)') 'Random displacements for Y dimension.'
             case (3)
               trackingOptions%idDim2 = nd
-              write(outUnit,'(A)') 'RW displacements for Z dimension.'
+              write(outUnit,'(A)') 'Random displacements for Z dimension.'
           end select   
         end do
       ! 3D
       case(3)
-        trackingOptions%twoDimensions = .false.! TEMP
-        write(outUnit,'(A)') 'RW displacements for 3 dimensions.'
+        write(outUnit,'(A)') 'Random displacements for 3 dimensions.'
     end select
 
 
