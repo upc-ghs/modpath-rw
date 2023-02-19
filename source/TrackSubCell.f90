@@ -49,15 +49,13 @@ module TrackSubCellModule
     procedure(Advection), pass, pointer :: AdvectionDisplacement=>null()
     procedure(ExitFaceAndTimeStep), pass, pointer :: ExitFaceAndUpdateTimeStep=>null()
     procedure(DispersionModel), pass, pointer :: ComputeRWPTDisplacements=>null()
+    procedure(RandomDisplacement), pass, pointer :: DisplacementRandomDischarge=>null()
 
     ! Needed for OBS (?)
     type(TrackSubCellResultType) :: TrackSubCellResult
 
     ! Flags to indicate whether or not 
-    ! to move particles on a given dimension
-    ! Probably temporary as a more elegant 
-    ! way to compute displacements for 
-    ! a given dimensionality is designed
+    ! to consider random motion ( to be deprecated ) 
     logical :: moveX = .true.
     logical :: moveY = .true.
     logical :: moveZ = .true.
@@ -87,7 +85,9 @@ module TrackSubCellModule
     procedure :: TrilinearDerivative=>pr_TrilinearDerivative
     procedure :: SetDispersionDisplacement=>pr_SetDispersionDisplacement
     procedure :: DispersionDivergenceDischarge=>pr_DispersionDivergenceDischarge
-    procedure :: DisplacementRandomDischarge=>pr_DisplacementRandomDischarge
+    !procedure :: DisplacementRandomDischarge=>pr_DisplacementRandomDischarge1D
+    !procedure :: DisplacementRandomDischarge=>pr_DisplacementRandomDischarge2D
+    !procedure :: DisplacementRandomDischarge=>pr_DisplacementRandomDischarge
     procedure :: GenerateStandardNormalRandom=>pr_GenerateStandardNormalRandom
     procedure :: AdvectionDisplacementExponential=>pr_AdvectionDisplacementExponential
     procedure :: AdvectionDisplacementEulerian=>pr_AdvectionDisplacementEulerian
@@ -133,7 +133,6 @@ module TrackSubCellModule
           doubleprecision, dimension(3), intent(inout) :: dtxyz
       end subroutine ExitFaceAndTimeStep
 
-      
       ! Dispersion model 
       ! Interfaces between linear and nonlinear dispersion
       subroutine DispersionModel( this, x, y, z, vx, vy, vz, &
@@ -154,6 +153,19 @@ module TrackSubCellModule
           doubleprecision, intent(inout) :: dBx, dBy, dBz 
           doubleprecision, intent(inout) :: divDx, divDy, divDz  
       end subroutine DispersionModel 
+
+      ! Random displacement function
+      ! Determined by dimensions 
+      subroutine RandomDisplacement( this, x, y, z, alphaL, alphaT, &
+                                               dMEff, dBx, dBy, dBz )
+          import TrackSubCellType
+          class (TrackSubCellType) :: this
+          ! input
+          doubleprecision, intent(in)    :: x, y, z
+          doubleprecision, intent(in)    :: alphaL, alphaT, dMEff
+          ! output
+          doubleprecision, intent(out) :: dBx, dBy, dBz
+      end subroutine RandomDisplacement
 
 
   end interface
@@ -471,17 +483,28 @@ contains
       ! Dispersion displacement function is set in particletrackingengine
       !call this%SetDispersionDisplacement( trackingOptions%dispersionModel )
 
-      ! Initialize displacement flags
-      ! Temporary (?)
+      ! Initialize random displacement flags ( to be deprecated )
       if ( trackingOptions%dimensionMask(1) .eq. 0 ) this%moveX = .false.
       if ( trackingOptions%dimensionMask(2) .eq. 0 ) this%moveY = .false.
       if ( trackingOptions%dimensionMask(3) .eq. 0 ) this%moveZ = .false.
 
       this%dimensions => trackingOptions%dimensions
       this%nDim => trackingOptions%nDim
+      
+      ! Assign random displacement function
+      select case(this%nDim) 
+        case(1)
+          this%DisplacementRandomDischarge => pr_DisplacementRandomDischarge1D
+        case(2)
+          this%DisplacementRandomDischarge => pr_DisplacementRandomDischarge2D
+        case(3)
+          this%DisplacementRandomDischarge => pr_DisplacementRandomDischarge
+      end select
+
 
       ! Done
       return
+
 
   end subroutine pr_InitializeRandomWalk
 
@@ -548,15 +571,10 @@ contains
       call this%DisplacementRandomDischarge( x, y, z, alphaL, alphaT, dMEff, dBx, dBy, dBz )
       call this%AdvectionDisplacement( x, y, z, dt, vx, vy, vz, dAdvx, dAdvy, dAdvz )
 
-      ! Only the random displacements are affected by dimension mask
-      if ( .not. this%moveX ) dBx = 0d0
-      if ( .not. this%moveY ) dBy = 0d0
-      if ( .not. this%moveZ ) dBz = 0d0
-
       return
 
-  end subroutine pr_RWPTDisplacementsLinear
 
+  end subroutine pr_RWPTDisplacementsLinear
 
 
   subroutine pr_RWPTDisplacementsNonlinear(this, x, y, z, vx, vy, vz, &
@@ -3230,6 +3248,194 @@ contains
 
 
   end subroutine pr_DisplacementRandomDischarge
+
+
+  subroutine pr_DisplacementRandomDischarge2D( this, x, y, z, alphaL, alphaT, dMEff, dBx, dBy, dBz )
+      !----------------------------------------------------------------
+      ! Computes the product between displacement matrix and random 
+      ! vector
+      !
+      ! Params:
+      !     - x, y, z       : local cell coordinates
+      !     - alphaL        : longidutinal dispersivity ( assumed for idDim1 )
+      !     - alphaT        : transverse dispersivity   ( assumed for idDim2 )
+      !     - dMEff         : effective molecular diffusion (corrected by tortuosity )
+      !     - dBx, dBy, dBz : random dispersion displacement, output
+      !----------------------------------------------------------------
+      ! Specifications
+      !----------------------------------------------------------------
+      implicit none
+      class (TrackSubCellType) :: this
+      ! input
+      doubleprecision, intent(in)    :: x, y, z
+      doubleprecision, intent(in)    :: alphaL, alphaT, dMEff
+      ! output
+      doubleprecision, intent(out) :: dBx, dBy, dBz
+      ! local
+      doubleprecision :: vB1, vB2, vBnorm
+      doubleprecision :: B11, B12, B21, B22
+      doubleprecision :: rdm1, rdm2
+      doubleprecision :: RFactor
+      doubleprecision, dimension(4) :: v000
+      doubleprecision, dimension(4) :: v100
+      doubleprecision, dimension(4) :: v010
+      doubleprecision, dimension(4) :: v110
+      doubleprecision, dimension(4) :: v001
+      doubleprecision, dimension(4) :: v101
+      doubleprecision, dimension(4) :: v011
+      doubleprecision, dimension(4) :: v111
+      doubleprecision, dimension(3) :: dB
+      integer :: idDim1, idDim2
+      !----------------------------------------------------------------
+
+      ! Initialize
+      dBx    = 0d0
+      dBy    = 0d0
+      dBz    = 0d0
+      dB(:)  = 0d0
+      idDim1 = this%dimensions(1)
+      idDim2 = this%dimensions(2)
+
+      ! Local copies of corner velocities
+      v000 = this%qCorner000 / this%porosity000 
+      v100 = this%qCorner100 / this%porosity100 
+      v010 = this%qCorner010 / this%porosity010 
+      v110 = this%qCorner110 / this%porosity110 
+      v001 = this%qCorner001 / this%porosity001 
+      v101 = this%qCorner101 / this%porosity101 
+      v011 = this%qCorner011 / this%porosity011 
+      v111 = this%qCorner111 / this%porosity111
+
+      ! Extract R
+      RFactor = this%SubCellData%Retardation
+
+      ! Trilinear interpolation of velocities and norm
+      call this%Trilinear( x, y, z, &
+                           v000(idDim1), v100(idDim1), v010(idDim1), v110(idDim1), &
+                           v001(idDim1), v101(idDim1), v011(idDim1), v111(idDim1), &
+                           vB1 )
+      call this%Trilinear( x, y, z, &
+                           v000(idDim2), v100(idDim2), v010(idDim2), v110(idDim2), &
+                           v001(idDim2), v101(idDim2), v011(idDim2), v111(idDim2), &
+                           vB2 )
+      vBnorm   = sqrt( vB1**2 + vB2**2 )
+
+      ! Displacement matrix terms
+      ! Refs: Fernàndez-Garcia et al. 2005; Salamon et al. 2006
+      ! Handles the case of zero vBnorm
+      B11 = 0d0 
+      B12 = 0d0
+      B21 = 0d0
+      B22 = 0d0
+      if ( vBnorm .gt. 0d0 ) then
+        B11 =  vB1*sqrt( 2*( alphaL*vBnorm + dMEff )/RFactor )/vBnorm
+        B21 =  vB2*sqrt( 2*( alphaL*vBnorm + dMEff )/RFactor )/vBnorm
+        B12 = -vB2*sqrt( 2*( alphaT*vBnorm + dMEff )/RFactor )/vBnorm
+        B22 =  vB1*sqrt( 2*( alphaT*vBnorm + dMEff )/RFactor )/vBnorm
+      end if 
+
+      ! Compute random numbers
+      call this%GenerateStandardNormalRandom( rdm1 ) 
+      call this%GenerateStandardNormalRandom( rdm2 )
+
+      ! Compute displacement times random
+      dB(idDim1) = B11*rdm1 + B12*rdm2
+      dB(idDim2) = B21*rdm1 + B22*rdm2
+
+      dBx = dB(1)
+      dBy = dB(2)
+      dBz = dB(3)
+
+
+  end subroutine pr_DisplacementRandomDischarge2D
+
+
+  subroutine pr_DisplacementRandomDischarge1D( this, x, y, z, alphaL, alphaT, dMEff, dBx, dBy, dBz )
+      !----------------------------------------------------------------
+      ! Computes the product between displacement matrix and random 
+      ! vector
+      !
+      ! Params:
+      !     - x, y, z       : local cell coordinates
+      !     - alphaL        : longidutinal dispersivity ( assumed for idDim1 )
+      !     - alphaT        : transverse dispersivity   ( not used )
+      !     - dMEff         : effective molecular diffusion (corrected by tortuosity )
+      !     - dBx, dBy, dBz : random dispersion displacement, output
+      !----------------------------------------------------------------
+      ! Specifications
+      !----------------------------------------------------------------
+      implicit none
+      class (TrackSubCellType) :: this
+      ! input
+      doubleprecision, intent(in)    :: x, y, z
+      doubleprecision, intent(in)    :: alphaL, alphaT, dMEff
+      ! output
+      doubleprecision, intent(out) :: dBx, dBy, dBz
+      ! local
+      doubleprecision :: vB1, vBnorm
+      doubleprecision :: B11
+      doubleprecision :: rdm1
+      doubleprecision :: RFactor
+      doubleprecision, dimension(4) :: v000
+      doubleprecision, dimension(4) :: v100
+      doubleprecision, dimension(4) :: v010
+      doubleprecision, dimension(4) :: v110
+      doubleprecision, dimension(4) :: v001
+      doubleprecision, dimension(4) :: v101
+      doubleprecision, dimension(4) :: v011
+      doubleprecision, dimension(4) :: v111
+      doubleprecision, dimension(3) :: dB
+      integer :: idDim1
+      !----------------------------------------------------------------
+
+      ! Initialize
+      dBx    = 0d0
+      dBy    = 0d0
+      dBz    = 0d0
+      dB(:)  = 0d0
+      idDim1 = this%dimensions(1)
+
+      ! Local copies of corner velocities
+      v000 = this%qCorner000 / this%porosity000 
+      v100 = this%qCorner100 / this%porosity100 
+      v010 = this%qCorner010 / this%porosity010 
+      v110 = this%qCorner110 / this%porosity110 
+      v001 = this%qCorner001 / this%porosity001 
+      v101 = this%qCorner101 / this%porosity101 
+      v011 = this%qCorner011 / this%porosity011 
+      v111 = this%qCorner111 / this%porosity111
+
+      ! Extract R
+      RFactor = this%SubCellData%Retardation
+
+      ! Trilinear interpolation of velocities and norm
+      call this%Trilinear( x, y, z, &
+                           v000(idDim1), v100(idDim1), v010(idDim1), v110(idDim1), &
+                           v001(idDim1), v101(idDim1), v011(idDim1), v111(idDim1), &
+                           vB1 )
+      vBnorm = sqrt(vB1**2)
+
+      ! Displacement matrix terms
+      ! Refs: Fernàndez-Garcia et al. 2005; Salamon et al. 2006
+      ! Handles the case of zero vBnorm
+      B11 = 0d0 
+      if ( vBnorm .gt. 0d0 ) B11 = sqrt( 2*( alphaL*vBnorm + dMEff )/RFactor )
+
+      ! Compute random numbers
+      call this%GenerateStandardNormalRandom( rdm1 ) 
+
+      ! Compute displacement times random
+      dB(idDim1) = B11*rdm1
+
+      dBx = dB(1)
+      dBy = dB(2)
+      dBz = dB(3)
+
+
+  end subroutine pr_DisplacementRandomDischarge1D
+
+
+
 
 
   ! RWPT
