@@ -775,15 +775,15 @@ contains
       dtold = dt
 
       ! Something wrong, leave
-      if ( dt .le. 0 ) then 
-          trackingResult%ExitFace = exitFace
-          trackingResult%Status = trackingResult%Status_Undefined()
-          trackingResult%FinalLocation%CellNumber = cellNumber
-          trackingResult%FinalLocation%LocalX = x
-          trackingResult%FinalLocation%LocalY = y
-          trackingResult%FinalLocation%LocalZ = z
-          trackingResult%FinalLocation%TrackingTime = t
-          return
+      if ( dt .le. 0d0 ) then 
+        trackingResult%ExitFace = exitFace
+        trackingResult%Status = trackingResult%Status_Undefined()
+        trackingResult%FinalLocation%CellNumber = cellNumber
+        trackingResult%FinalLocation%LocalX = x
+        trackingResult%FinalLocation%LocalY = y
+        trackingResult%FinalLocation%LocalZ = z
+        trackingResult%FinalLocation%TrackingTime = t
+        return
       end if
 
       ! Sanity counters
@@ -800,7 +800,6 @@ contains
 
           ! Time loop counter
           dtLoopCounter = dtLoopCounter + 1
-
           ! Update current time
           t = t + dt
 
@@ -828,18 +827,6 @@ contains
           ny   = y + dyrw/dy
           dzrw = dAdvz + divDz*dt + dBz*sqrt( dt )
           nz   = z + dzrw/dz
-          !if ( moveX ) then 
-          !  dxrw = dAdvx + divDx*dt + dBx*sqrt( dt )
-          !  nx   = x + dxrw/dx
-          !end if
-          !if ( moveY ) then 
-          !  dyrw = dAdvy + divDy*dt + dBy*sqrt( dt )
-          !  ny   = y + dyrw/dy
-          !end if
-          !if ( moveZ ) then 
-          !  dzrw = dAdvz + divDz*dt + dBz*sqrt( dt )
-          !  nz   = z + dzrw/dz
-          !end if
 
           ! particleLeavingCell:
           ! Detect if particle leaving the cell
@@ -907,6 +894,7 @@ contains
                   nx   = 1.0d0
                   if ( exitFace .eq. 1 ) nx=0d0
 
+                  ! NEEDS TO BE HOMOGENEOUS
                   dyrw = dAdvy + divDy*dt + dBy*sqrt( dt )
                   ny   = y + dyrw/dy
                   dzrw = dAdvz + divDz*dt + dBz*sqrt( dt )
@@ -974,65 +962,6 @@ contains
                   exit
 
               end select
-
-              !! OLD
-              !if ( ( exitFace .eq. 1 ) .or. ( exitFace .eq. 2 ) ) then
-              !  nx   = 1.0d0
-              !  if ( exitFace .eq. 1 ) nx=0d0
-
-              !  dyrw = dAdvy + divDy*dt + dBy*sqrt( dt )
-              !  ny   = y + dyrw/dy
-              !  if ( .not. twoDimensions ) then 
-              !    dzrw = dAdvz + divDz*dt + dBz*sqrt( dt )
-              !    nz   = z + dzrw/dz
-              !  end if
-              !else if ( ( exitFace .eq. 3 ) .or. ( exitFace .eq. 4 ) ) then 
-              !    dxrw = dAdvx + divDx*dt + dBx*sqrt( dt )
-              !    nx   = x + dxrw/dx
-              !    dyrw = dAdvy + divDy*dt + dBy*sqrt( dt )
-              !    ny   = 1.0d0
-              !    if ( exitFace .eq. 3 ) ny=0d0
-              !    if ( .not. twoDimensions ) then 
-              !        dzrw = dAdvz + divDz*dt + dBz*sqrt( dt )
-              !        nz   = z + dzrw/dz
-              !    end if
-              !else if ( ( exitFace .eq. 5 ) .or. ( exitFace .eq. 6 ) ) then
-              !    dxrw = dAdvx + divDx*dt + dBx*sqrt( dt )
-              !    nx   = x + dxrw/dx
-              !    dyrw = dAdvy + divDy*dt + dBy*sqrt( dt )
-              !    ny   = y + dyrw/dy
-              !    dzrw = dAdvz + divDz*dt + dBz*sqrt( dt )
-              !    nz   = 1.0d0
-              !    if ( exitFace .eq. 5 ) nz=0d0
-              !else
-              !    ! Fallback
-              !    ! If exitFace .eq. 0
-              !    ! Restart new coordinates 
-              !    nx = initialLocation%LocalX
-              !    ny = initialLocation%LocalY
-              !    nz = initialLocation%LocalZ
-              !    ! Restart time 
-              !    t  = t - dt
-              !    dt = dtold
-              !    posRestartCounter = posRestartCounter + 1
-
-              !    if ( posRestartCounter .gt. 5 ) then 
-              !      ! Something wrong, leave
-              !      trackingResult%ExitFace = 0
-              !      trackingResult%Status = trackingResult%Status_Undefined()
-              !      trackingResult%FinalLocation%CellNumber = cellNumber
-              !      trackingResult%FinalLocation%LocalX = x
-              !      trackingResult%FinalLocation%LocalY = y
-              !      trackingResult%FinalLocation%LocalZ = z
-              !      trackingResult%FinalLocation%TrackingTime = t
-              !      return
-              !    end if
-              !    
-              !    ! Exit interface loop and try again,
-              !    ! new random displacements
-              !    exit
-              !end if
-             
 
               ! Think how to integrate these conditions into single 
               ! interface loop.  
@@ -1981,7 +1910,6 @@ contains
       exitFaceX  = 0
       exitFaceY  = 0
       exitFaceZ  = 0
-      dInterface = 0d0
 
       ! Local copies of cell size 
       dx = this%SubCellData%DX
@@ -1992,6 +1920,7 @@ contains
       t = t - dt
 
       ! Leaving through x face
+      dInterface = 0d0
       if ( ( nx .gt. 1.0d0 ) .or. ( nx .lt. 0d0 )  ) then
 
           ! Compute dInterface
@@ -2004,9 +1933,9 @@ contains
           end if
 
           ! Exactly at interface, force new cell
-          if ( dInterface .eq. 0.0 ) then
+          if ( dInterface .eq. 0d0 ) then
               exitFace = exitFaceX
-              dt = .0
+              dt = 0d0
               return
           end if
 
@@ -2026,6 +1955,7 @@ contains
 
 
       ! Leaving through y face
+      dInterface = 0d0
       if ( ( ny .gt. 1.0d0 ) .or. ( ny .lt. 0d0 )  ) then
 
           ! Compute dInterface
@@ -2038,9 +1968,9 @@ contains
           end if
 
           ! Exactly at interface, force new cell
-          if ( dInterface .eq. 0.0 ) then
+          if ( dInterface .eq. 0d0 ) then
               exitFace = exitFaceY
-              dt = 0.0
+              dt = 0d0
               return
           end if
 
@@ -2060,6 +1990,7 @@ contains
 
 
       ! Leaving through z face
+      dInterface = 0d0
       if ( ( nz .gt. 1.0d0 ) .or. ( nz .lt. 0d0 )  ) then
 
           ! Compute dInterface
@@ -2072,9 +2003,9 @@ contains
           end if
 
           ! Exactly at interface, force new cell
-          if ( dInterface .eq. 0.0 ) then
+          if ( dInterface .eq. 0d0 ) then
               exitFace = exitFaceZ
-              dt = 0.0
+              dt = 0d0
               return
           end if
 
@@ -2103,7 +2034,7 @@ contains
 
       ! Find minimum dt and 
       ! assign values accordingly
-      imindt = minloc( dtxyz, dim=1, mask=(dtxyz > 0) )
+      imindt = minloc( dtxyz, dim=1, mask=(dtxyz > 0d0) )
       dt     = dtxyz(imindt)
       if ( imindt .eq. 1 ) then
           exitFace = exitFaceX
@@ -2137,6 +2068,7 @@ contains
   doubleprecision :: dvtol = 1.0d-10 ! a parameter declaration at module level ? 
   !-----------------------------------------------------------------------------
 
+      if ( dt.eq.0d0 ) return
 
       ! Initialize
       nrf0      = 0d0
@@ -2233,6 +2165,10 @@ contains
   integer         :: gcount
   !----------------------------------------------------------------
 
+    ! Check 
+    dtnew = 0d0
+    if ( dt.eq.0d0 ) return
+
     ! Initialize
     gprimmin  = 1e10
     gprim     = 1e10
@@ -2241,32 +2177,28 @@ contains
     ! Run over very small fractions
     gcount = 0
     do while ( ( gprim .gt. 1 ) .and. ( gcount .lt. 7 ) )
-
       gcount     = gcount + 1
       dtfraction = 10d0**( -8 + gcount )
       dt0        = dt*dtfraction
-
       call pr_NewtonRaphsonVariablesExponential( this, dt0, v, v1, v2, &
                                              dx, dInterface, divD, dB, & 
                                      nrf0, nrfprim, nrf2prim, nrf3prim )
       gprim = pr_GetConvergenceFunction( this, nrf0, nrfprim, nrf2prim )
-     
       if ( gprim .lt. gprimmin ) then 
-          gprimmin  = gprim
-          mindtfrac = dtfraction
+        gprimmin  = gprim
+        mindtfrac = dtfraction
       end if 
-
     end do
 
 
     ! Set smaller fraction for gradient descent 
     if ( ( gprim .lt. 1 ) .and. ( gcount .eq. 1 ) ) then  
-        dtoldfraction = 1d-8 
+      dtoldfraction = 1d-8 
     else if ( gprim .lt. 1 ) then 
-        dtoldfraction =  10d0**( -8 + gcount - 1 )
+      dtoldfraction =  10d0**( -8 + gcount - 1 )
     else
-        dtfraction    = mindtfrac
-        dtoldfraction = 0.5*dtfraction/10d0      
+      dtfraction    = mindtfrac
+      dtoldfraction = 0.5*dtfraction/10d0      
     end if 
    
     ! Set initial dt, dtold
@@ -2496,7 +2428,6 @@ contains
   end function pr_SetInitialGuess
 
 
-
   subroutine NewtonRaphsonTimeStepExponentialAdvection( this, dt, v, v1, v2, &
                                               dx, dInterface, divD, dB, dtnr )
       !----------------------------------------------------------------
@@ -2548,38 +2479,38 @@ contains
 
       ! If no proper initial guess, leave
       if ( dt0 .eq. 0d0 ) then 
-          dtnr = 0d0 
-          return
+        dtnr = 0d0 
+        return
       end if 
 
       ! Iteration until convergence or maxIterations
       countIter = 0
       do while( ( abs(nrerror/dt0) .gt. nrtol ) .and. ( countIter .lt. maxIter ) )
 
-          countIter = countIter + 1
+        countIter = countIter + 1
 
-          ! Compute displacement, although initially this 
-          ! should be known
-          if ( ( abs(dvdx) .gt. dvtol ) ) then
-              dAdv = v*( exp(dvdx*dt0) - 1.0d0 )/dvdx
-          else
-              dAdv = v*dt0
-          end if
+        ! Compute displacement, although initially this 
+        ! should be known
+        if ( ( abs(dvdx) .gt. dvtol ) ) then
+          dAdv = v*( exp(dvdx*dt0) - 1.0d0 )/dvdx
+        else
+          dAdv = v*dt0
+        end if
 
-          ! RWPT displacement with initial guess
-          nrf0  = dAdv + divD*dt0 + dB*sqrt( dt0 ) - dInterface
+        ! RWPT displacement with initial guess
+        nrf0  = dAdv + divD*dt0 + dB*sqrt( dt0 ) - dInterface
 
-          ! Analytical derivative of RWPT displacement
-          nrfprim  = v*exp(dvdx*dt0) + divD + 0.5*dB/sqrt(dt0) 
+        ! Analytical derivative of RWPT displacement
+        nrfprim  = v*exp(dvdx*dt0) + divD + 0.5*dB/sqrt(dt0) 
 
-          ! NR error and new time step
-          nrerror = -nrf0/nrfprim
-          dt0     = dt0 + nrerror 
+        ! NR error and new time step
+        nrerror = -nrf0/nrfprim
+        dt0     = dt0 + nrerror 
 
-          ! It can't be smaller than zero
-          if ( dt0 .lt. 0d0 ) then
-              dt0 = -0.9*dt0   
-          end if 
+        ! It can't be smaller than zero
+        if ( dt0 .lt. 0d0 ) then
+          dt0 = -0.9*dt0   
+        end if 
 
       end do
 
@@ -2588,70 +2519,16 @@ contains
 
       ! If new value higher than the previous, return zero 
       if ( dt0 .gt. dt ) then
-
-          !nrf2prim = dvdx*v*exp(dvdx*dt0) - 0.25*dB*dt0**(-1.5)
-          !gprim    = abs( nrf2prim*nrf0 )/abs( nrfprim**2 )
-
-          !print *, '--------------------------------------------------------------------------------------------'
-          !print *, '- TrackSubCell: Inconsistency: new dt higher than previous'
-          !print *, '    - dt           ', dt
-          !print *, '    - dtnr         ', dt0
-          !print *, '    - gprim        ', gprim
-          !print *, '    - d/dx         ', abs(dInterface/dx) 
-          !print *, '    - dInterface/v ', abs(dInterface/v)
-          !print *, '    - countIter    ', countIter
-          !print *, '    - nrerror/dt0  ', abs( nrerror/dt0 )
-          !print *, '--------------------------------------------------------------------------------------------'
-          !print *, '  - Input    '
-          !print *, '      - v          : ', v 
-          !print *, '      - v1         : ', v1
-          !print *, '      - v2         : ', v2
-          !print *, '      - dx         : ', dx
-          !print *, '      - dInterface : ', dInterface
-          !print *, '      - divD       : ', divD
-          !print *, '      - dB         : ', dB
-          !print *, '--------------------------------------------------------------------------------------------'
-
-
-          dtnr = dt
-
-          ! Done
-          return 
-
+        dtnr = dt
+        ! Done
+        return 
       end if 
-
 
       ! If no convergence, return zero
       if ( ( countIter .eq. maxIter ) .and. ( abs(nrerror/dt0) .gt. nrtol ) ) then
-
-          !nrf2prim = dvdx*v*exp(dvdx*dt0) - 0.25*dB*dt0**(-1.5)
-          !gprim    = abs( nrf2prim*nrf0 )/abs( nrfprim**2 )
-
-          !print *, '--------------------------------------------------------------------------------------------'
-          !print *, '- TrackSubCell: NO CONVERGENCE '
-          !print *, '    - dt           ', dt
-          !print *, '    - dtnr         ', dt0
-          !print *, '    - gprim        ', gprim
-          !print *, '    - d/dx         ', abs(dInterface/dx) 
-          !print *, '    - dInterface/v ', abs(dInterface/v)
-          !print *, '    - dInterface/v/dt ', abs(dInterface/v)/dt
-          !print *, '    - countIter    ', countIter
-          !print *, '    - nrerror/dt0  ', abs( nrerror/dt0 )
-          !print *, '--------------------------------------------------------------------------------------------'
-          !print *, '  - Input    '
-          !print *, '      - v          : ', v 
-          !print *, '      - v1         : ', v1
-          !print *, '      - v2         : ', v2
-          !print *, '      - dx         : ', dx
-          !print *, '      - dInterface : ', dInterface
-          !print *, '      - divD       : ', divD
-          !print *, '      - dB         : ', dB
-
-          ! Done
-          dtnr = 0d0 
-
-          return 
-
+        ! Done
+        dtnr = 0d0 
+        return 
       end if
 
 
