@@ -112,7 +112,7 @@ program MPath7
   doubleprecision, dimension(:), allocatable :: gpkdeWeightsCarrier
 
   ! Observations
-  integer :: nlines, io, irow, nobs, nit, cellNumber 
+  integer :: io, irow, nobs, nit, cellNumber 
   integer :: timeIndex, solCount
   integer :: soluteID
   doubleprecision :: dTObsSeries
@@ -125,6 +125,7 @@ program MPath7
   doubleprecision, allocatable, dimension(:,:) :: obsWaterVolumeInTime      ! (ntimes,ncells)
   doubleprecision, allocatable, dimension(:)   :: obsAccumWaterVolumeInTime ! (ntimes)
   doubleprecision, allocatable, dimension(:)   :: waterVolBuffer
+  integer, allocatable, dimension(:)           :: obsRecordCounter
   character(len=200) :: colFormat
   !integer            :: idColFormat ! TO BE DEPRECATED
   !character(len=200) :: qSinkFormat
@@ -789,7 +790,12 @@ program MPath7
           WriteSinkObs=> WriteSinkObsRecordBinary
         end select
       end if
-    end do 
+    end do
+    ! Allocate obs records counter
+    if ( allocated( obsRecordCounter ) ) deallocate( obsRecordCounter ) 
+    allocate( obsRecordCounter( &
+           simulationData%TrackingOptions%nObservations ) )
+    obsRecordCounter(:) = 0
   end if 
 
 
@@ -1087,6 +1093,7 @@ program MPath7
         !$omp firstprivate( WriteTimeseries )            &
         !$omp firstprivate( WriteResidentObs )           &
         !$omp firstprivate( WriteSinkObs )               &
+        !$omp reduction( +:obsRecordCounter )            &
         !$omp reduction( +:pendingCount )                &
         !$omp reduction( +:activeCount )                 &
         !$omp reduction( +:pathlineRecordCount ) 
@@ -1193,12 +1200,18 @@ program MPath7
                       ! Assign the obs pointer
                       obs => simulationData%TrackingOptions%Observations(&
                           simulationData%TrackingOptions%idObservation(p%CellNumber) )
-                      if ( obs%style .ne. 2 ) cycle
-                      ! If a particle is removed due to strong sink
-                      !$omp critical (sinkobservation)
-                      call WriteSinkObs(ktime, nt, p,& 
-                        flowModelData%SinkFlows(p%CellNumber), obs%recOutputUnit)
-                      !$omp end critical (sinkobservation)
+                      if ( obs%style .eq. 2 ) then
+                        ! If a particle is removed due to strong sink
+                        !$omp critical (sinkobservation)
+                        call WriteSinkObs(ktime, nt, p,& 
+                          flowModelData%SinkFlows(p%CellNumber), obs%recOutputUnit)
+                        !$omp end critical (sinkobservation)
+                        ! Count record
+                        obsRecordCounter(&
+                          simulationData%TrackingOptions%idObservation(p%CellNumber)) = & 
+                        obsRecordCounter(&
+                          simulationData%TrackingOptions%idObservation(p%CellNumber)) + 1
+                      end if
                     end if 
                   end if
               else if(status .eq. trackPathResult%Status_StopAtWeakSource()) then
@@ -1257,8 +1270,8 @@ program MPath7
                       obs => simulationData%TrackingOptions%Observations(&
                           simulationData%TrackingOptions%idObservation(pCoordTP%CellNumber) )
                       if ( obs%style .eq. 1 ) then  
-                        do nobs=1,obs%nCells
-                          if( obs%cells(nobs) .ne. pCoordTP%CellNumber ) cycle
+                        !do nobs=1,obs%nCells
+                        !  if( obs%cells(nobs) .ne. pCoordTP%CellNumber ) cycle
                           ! If it is part of the cells in the obs,
                           ! get water volume and write record
                           waterVolume = trackingEngine%TrackCell%CellData%GetWaterVolume()
@@ -1267,7 +1280,12 @@ program MPath7
                                 simulationData%Retardation(pCoordTP%CellNumber), &
                                 waterVolume, obs%recOutputUnit)
                           !$omp end critical(resobservation)
-                        end do 
+                          ! Count record
+                          obsRecordCounter(&
+                           simulationData%TrackingOptions%idObservation(pCoordTP%CellNumber)) = & 
+                          obsRecordCounter(&
+                           simulationData%TrackingOptions%idObservation(pCoordTP%CellNumber)) + 1
+                        !end do 
                       end if
                     end if
                   end if
@@ -1309,8 +1327,8 @@ program MPath7
                       obs => simulationData%TrackingOptions%Observations(&
                           simulationData%TrackingOptions%idObservation(pCoord%CellNumber) )
                       if ( obs%style .eq. 1 ) then  
-                        do nobs=1,obs%nCells
-                          if( obs%cells(nobs) .ne. pCoord%CellNumber ) cycle
+                        !do nobs=1,obs%nCells
+                        !  if( obs%cells(nobs) .ne. pCoord%CellNumber ) cycle
                           ! If it is part of the cells in the obs,
                           ! get water volume and write record
                           waterVolume = trackingEngine%TrackCell%CellData%GetWaterVolume()
@@ -1319,7 +1337,12 @@ program MPath7
                                 simulationData%Retardation(pCoord%CellNumber), &
                                 waterVolume, obs%recOutputUnit)
                           !$omp end critical(resobservation)
-                        end do 
+                          ! Count record
+                          obsRecordCounter(&
+                           simulationData%TrackingOptions%idObservation(pCoord%CellNumber)) = & 
+                          obsRecordCounter(&
+                           simulationData%TrackingOptions%idObservation(pCoord%CellNumber)) + 1
+                        !end do 
                       end if
                     end if
                   end if
@@ -1563,38 +1586,18 @@ program MPath7
         ! Works for timeseries with uniform time steps
         dTObsSeries = simulationData%TimePoints(2)-simulationData%TimePoints(1)  ! binSize
 
-        ! It needs some obs record count or something
-        rewind( obs%recOutputUnit )
-        nlines = 0
-        if (obs%outputOption.ne.2) then
-          do
-            read(obs%recOutputUnit,*,iostat=io)
-            if (io/=0) exit 
-            nlines = nlines + 1
-          end do
-        else
-          do
-            read(obs%recOutputUnit,iostat=io) & 
-              timePointIndex, timeStep, initialTime, particleID, particleMass, & 
-                      groupIndex, soluteID, cellNumber, pCoord%Layer, rFactor, & 
-                                  waterVolume, modelX, modelY, pCoord%GlobalZ
-            if (io/=0) exit 
-            nlines = nlines + 1
-          end do
-        end if
-
         ! If no records, don't even try
-        if ( nlines .eq. 0 ) then 
+        if ( obsRecordCounter(nobs) .eq. 0 ) then 
           write(mplistUnit, '(A)') 'No records for this observation, continue to the next'
           cycle ! nobs
         end if
 
         ! Allocate active particles coordinates (temporary)
         if ( allocated( activeParticleCoordinates ) ) deallocate( activeParticleCoordinates )
-        allocate( activeParticleCoordinates(nlines,2) )
+        allocate( activeParticleCoordinates(obsRecordCounter(nobs),2) )
         activeParticleCoordinates = 0d0
         if ( allocated( activeParticleMasses ) ) deallocate( activeParticleMasses )
-        allocate( activeParticleMasses(nlines) )
+        allocate( activeParticleMasses(obsRecordCounter(nobs)) )
         activeParticleMasses = 0d0
 
         ! It seems that the most reasonable 
@@ -1605,7 +1608,7 @@ program MPath7
         rewind( obs%recOutputUnit )
         if (obs%outputOption.ne.2) then
           ! Read as formatted file
-          do n = 1, nlines
+          do n = 1, obsRecordCounter(nobs)
             ! Read from obs file
             ! Based on TS record, it could be reduced 
             read( obs%recOutputUnit,'(2I8,es18.9e3,i10,es18.9e3,2i5,2i10,5es18.9e3)')&
@@ -1628,7 +1631,7 @@ program MPath7
           end do 
         else
           ! Read as binary ile
-          do n = 1, nlines
+          do n = 1, obsRecordCounter(nobs)
             read( obs%recOutputUnit ) &
               timePointIndex, timeStep, initialTime, particleID, particleMass, & 
                       groupIndex, soluteID, cellNumber, pCoord%Layer, rFactor, & 
@@ -1703,7 +1706,7 @@ program MPath7
           ! solute. Is either this or write the solute id 
           ! to the observation record.
           irow = 0
-          do n=1,nlines
+          do n=1,obsRecordCounter(nobs)
             anyFromThisSolute = .false.
             do npg=1,solute%nParticleGroups
               if (activeParticleCoordinates(n,2).eq.solute%pGroups(npg)) then 
@@ -1819,31 +1822,9 @@ program MPath7
 
         ! This would work only for timeseries simulations
         dTObsSeries = simulationData%TimePoints(2)-simulationData%TimePoints(1)  ! binSize
-
-        ! Read the records file to extract arrival times
-        ! and pass it to gpkde for reconstruction
     
-        ! It needs some obs record count or something
-        rewind( obs%recOutputUnit )
-        nlines = 0
-        if (obs%outputOption.ne.2) then
-          do
-            read(obs%recOutputUnit,*,iostat=io)
-            if (io/=0) exit 
-            nlines = nlines + 1
-          end do
-        else
-          do
-            read(obs%recOutputUnit,iostat=io) & 
-              timePointIndex, timeStep, initialTime, particleID, particleMass, & 
-              groupIndex, soluteID, cellNumber, pCoord%Layer, qSink
-            if (io/=0) exit 
-            nlines = nlines + 1
-          end do
-        end if
-
         ! If no records, don't even try
-        if ( nlines .eq. 0 ) then 
+        if ( obsRecordCounter(nobs) .eq. 0 ) then 
           write(mplistUnit, '(A)') 'No records for this observation, continue to the next'
           cycle ! nobs
         end if
@@ -1855,20 +1836,19 @@ program MPath7
           cycle ! nobs
         end if
 
-
         ! Allocate data carrier (active particles coordinates, temporary)
         if ( allocated( activeParticleCoordinates ) ) deallocate( activeParticleCoordinates )
-        allocate( activeParticleCoordinates(nlines,2) )
+        allocate( activeParticleCoordinates(obsRecordCounter(nobs),2) )
         activeParticleCoordinates = 0d0
         if ( allocated( activeParticleMasses ) ) deallocate( activeParticleMasses )
-        allocate( activeParticleMasses(nlines) )
+        allocate( activeParticleMasses(obsRecordCounter(nobs)) )
         activeParticleMasses = 0d0
 
         ! Load file records into array
         rewind( obs%recOutputUnit )
         if (obs%outputOption.ne.2) then
           ! Read as formatted file
-          do n = 1, nlines
+          do n = 1, obsRecordCounter(nobs)
             ! Read from obs file
             ! Based on TS record, it could be reduced 
             read(obs%recOutputUnit, '(2I8,es18.9e3,i10,es18.9e3,2i5,2i10,es18.9e3)') &
@@ -1890,7 +1870,7 @@ program MPath7
           end do 
         else
           ! Read as binary ile
-          do n = 1, nlines
+          do n = 1, obsRecordCounter(nobs)
             read(obs%recOutputUnit,iostat=io) & 
               timePointIndex, timeStep, initialTime, particleID, particleMass, & 
               groupIndex, soluteID, cellNumber, pCoord%Layer, qSink
@@ -1964,7 +1944,7 @@ program MPath7
           ! solute. Is either this or write the solute id 
           ! to the observation record.
           irow = 0
-          do n=1,nlines
+          do n=1,obsRecordCounter(nobs)
             anyFromThisSolute = .false.
             do npg=1,solute%nParticleGroups
               if (activeParticleCoordinates(n,2).eq.solute%pGroups(npg)) then 
