@@ -2857,11 +2857,7 @@ contains
   ! RWPT-USG
   function pr_GetNeighborSubCellIndexes( this, subRow, subColumn ) result( neighborSubCellIndexes )
       !-----------------------------------------------------------
-      ! Indexation of subcells follow the same convention
-      ! employed for track cells.
-      ! Index 0 refers to self track cell
-
-      ! Reference cell locations in neighbor cell buffer array
+      ! Reference cell locations in 3D neighbor cell buffer array
       ! 1 : dc1
       ! 2 : ic13
       ! 3 : ic14
@@ -2880,12 +2876,14 @@ contains
       ! 16: dc6
       ! 17: ic61
       ! 18: ic62
+      ! 
+      ! In neighborSubCellIndexes: bufferIndex, subRow, subColumn
+      ! 
       !---------------------------------------------------------
       implicit none
       class( ModpathCellDataType ) :: this
       integer, intent(in) :: subRow, subColumn
       integer, dimension(3,18) :: neighborSubCellIndexes
-      !integer, dimension(18,3) :: neighborSubCellIndexes
       !---------------------------------------------------------
 
       ! If current cell is not refined
