@@ -1650,7 +1650,7 @@ program MPath7
 
         ! Initialize gpkde for timeseries reconstruction
         call gpkde%Initialize(& 
-            (/maxval(simulationData%TimePoints(:)),0d0,0d0/),                  &
+            (/simulationData%TimePoints(obs%nAuxRecords),0d0,0d0/),            &
             (/dtObsSeries,0d0,0d0/),                                           &
             domainOrigin=(/0d0,0d0,0d0/),                                      &
             nOptimizationLoops=simulationData%TrackingOptions%gpkdeNOptLoops,  &
@@ -1663,11 +1663,11 @@ program MPath7
         ! 0: only histogram
         ! 1: histogram + gpkde
         if (allocated(BTCHistPerSolute)) deallocate(BTCHistPerSolute)
-        allocate(BTCHistPerSolute(simulationData%TimePointCount, transportModelData%nSolutes))
+        allocate(BTCHistPerSolute(obs%nAuxRecords, transportModelData%nSolutes))
         BTCHistPerSolute = 0d0
         if ( obs%postprocessOption .eq. 1 ) then 
           if (allocated(BTCGpkdePerSolute)) deallocate(BTCGpkdePerSolute)
-          allocate(BTCGpkdePerSolute(simulationData%TimePointCount, transportModelData%nSolutes))
+          allocate(BTCGpkdePerSolute(obs%nAuxRecords, transportModelData%nSolutes))
           BTCGpkdePerSolute = 0d0
         end if 
 
