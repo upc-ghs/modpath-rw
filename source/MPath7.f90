@@ -1270,22 +1270,18 @@ program MPath7
                       obs => simulationData%TrackingOptions%Observations(&
                           simulationData%TrackingOptions%idObservation(pCoordTP%CellNumber) )
                       if ( obs%style .eq. 1 ) then  
-                        !do nobs=1,obs%nCells
-                        !  if( obs%cells(nobs) .ne. pCoordTP%CellNumber ) cycle
-                          ! If it is part of the cells in the obs,
-                          ! get water volume and write record
-                          waterVolume = trackingEngine%TrackCell%CellData%GetWaterVolume()
-                          !$omp critical(resobservation)
-                          call WriteResidentObs(ktime, nt, p, pCoordTP, &
-                                simulationData%Retardation(pCoordTP%CellNumber), &
-                                waterVolume, obs%recOutputUnit)
-                          !$omp end critical(resobservation)
-                          ! Count record
-                          obsRecordCounter(&
-                           simulationData%TrackingOptions%idObservation(pCoordTP%CellNumber)) = & 
-                          obsRecordCounter(&
-                           simulationData%TrackingOptions%idObservation(pCoordTP%CellNumber)) + 1
-                        !end do 
+                        ! Get water volume and write record
+                        waterVolume = trackingEngine%TrackCell%CellData%GetWaterVolume()
+                        !$omp critical(resobservation)
+                        call WriteResidentObs(ktime, nt, p, pCoordTP, &
+                              simulationData%Retardation(pCoordTP%CellNumber), &
+                              waterVolume, obs%recOutputUnit)
+                        !$omp end critical(resobservation)
+                        ! Count record
+                        obsRecordCounter(&
+                         simulationData%TrackingOptions%idObservation(pCoordTP%CellNumber)) = & 
+                        obsRecordCounter(&
+                         simulationData%TrackingOptions%idObservation(pCoordTP%CellNumber)) + 1
                       end if
                     end if
                   end if
@@ -1327,22 +1323,18 @@ program MPath7
                       obs => simulationData%TrackingOptions%Observations(&
                           simulationData%TrackingOptions%idObservation(pCoord%CellNumber) )
                       if ( obs%style .eq. 1 ) then  
-                        !do nobs=1,obs%nCells
-                        !  if( obs%cells(nobs) .ne. pCoord%CellNumber ) cycle
-                          ! If it is part of the cells in the obs,
-                          ! get water volume and write record
-                          waterVolume = trackingEngine%TrackCell%CellData%GetWaterVolume()
-                          !$omp critical(resobservation)
-                          call WriteResidentObs(ktime, nt, p, pCoord, &
-                                simulationData%Retardation(pCoord%CellNumber), &
-                                waterVolume, obs%recOutputUnit)
-                          !$omp end critical(resobservation)
-                          ! Count record
-                          obsRecordCounter(&
-                           simulationData%TrackingOptions%idObservation(pCoord%CellNumber)) = & 
-                          obsRecordCounter(&
-                           simulationData%TrackingOptions%idObservation(pCoord%CellNumber)) + 1
-                        !end do 
+                        ! Get water volume and write record
+                        waterVolume = trackingEngine%TrackCell%CellData%GetWaterVolume()
+                        !$omp critical(resobservation)
+                        call WriteResidentObs(ktime, nt, p, pCoord, &
+                              simulationData%Retardation(pCoord%CellNumber), &
+                              waterVolume, obs%recOutputUnit)
+                        !$omp end critical(resobservation)
+                        ! Count record
+                        obsRecordCounter(&
+                         simulationData%TrackingOptions%idObservation(pCoord%CellNumber)) = & 
+                        obsRecordCounter(&
+                         simulationData%TrackingOptions%idObservation(pCoord%CellNumber)) + 1
                       end if
                     end if
                   end if
