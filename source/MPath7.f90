@@ -1043,7 +1043,6 @@ program MPath7
       end if
     end if
   end if
-  
 
   ! Track particles
   pendingCount = 0
@@ -1401,7 +1400,6 @@ program MPath7
             end if
           end do
         end do
-
         ! GPKDE
         ! Compute density for the particles linked to a given 
         ! solute. These may have different mass
@@ -1717,6 +1715,7 @@ program MPath7
             ! Only histogram
             call gpkde%ComputeDensity(      &
               gpkdeDataCarrier,             &
+              exactPoint        = .true.,   & ! for res obs, time is exactly the bin boundary
               onlyHistogram     = .true.,   &
               weightedHistogram = .true.,   &
               weights = gpkdeWeightsCarrier )
@@ -1725,6 +1724,7 @@ program MPath7
             ! Timeseries reconstruction    
             call gpkde%ComputeDensity(      &
               gpkdeDataCarrier,             &
+              exactPoint        = .true.,   &
               unitVolume        = .true.,   &
               weightedHistogram = .true.,   &
               weights = gpkdeWeightsCarrier )
@@ -1851,7 +1851,6 @@ program MPath7
             ! means another solute ( column? )
             activeParticleCoordinates(n,1) = initialTime 
             activeParticleCoordinates(n,2) = groupIndex
-
             ! A similar access could be used for getting soluteId from 
             ! the particle directly, avoiding the identification stage 
             ! coming further down
