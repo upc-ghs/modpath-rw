@@ -101,10 +101,9 @@ program MPath7
   character(len=132) message
   character(len=20) version
   character(len=100) terminationMessage
-  character(len=80) compilerVersionText
+  character(len=90) compilerVersionText
   logical :: isTimeSeriesPoint, timeseriesRecordWritten
       
-
   ! GPKDE
   doubleprecision, dimension(:,:), allocatable :: activeParticleCoordinates
   doubleprecision, dimension(:), allocatable   :: activeParticleMasses
@@ -126,8 +125,8 @@ program MPath7
   doubleprecision, allocatable, dimension(:,:) :: obsWaterVolumeInTime      ! (ntimes,ncells)
   doubleprecision, allocatable, dimension(:)   :: obsAccumWaterVolumeInTime ! (ntimes)
   doubleprecision, allocatable, dimension(:)   :: waterVolBuffer
-  !integer            :: idColFormat ! TO BE DEPRECATED
   character(len=200) :: colFormat
+  !integer            :: idColFormat ! TO BE DEPRECATED
   !character(len=200) :: qSinkFormat
   !character(len=200) :: waterVolFormat ! TO BE DEPRECATED
   doubleprecision    :: dX, dY, dZ, dZC, porosity
@@ -149,73 +148,74 @@ program MPath7
   logical :: parallel = .false.
   integer :: tsOutputType = 0
 
-  ! Interface for timeseries output protocol
+  ! Test init
+  logical :: testinit = .false.
+
+  ! Interfaces 
   procedure(TimeseriesWriter), pointer :: WriteTimeseries=>null()
   procedure(ResidentObsWriter), pointer :: WriteResidentObs=>null()
   procedure(SinkObsWriter), pointer :: WriteSinkObs=>null()
-!-------------------------------------------------------------------------------
-  
+  !-----------------------------------------------------------------------------
+  ! Assign dedicated file unit numbers
+  disUnit         = 101
+  endpointUnit    = 102
+  pathlineUnit    = 103
+  timeseriesUnit  = 104
+  mplistUnit      = 105
+  traceUnit       = 106
+  budchkUnit      = 107
+  aobsUnit        = 108
+  logUnit         = 109
+  mpsimUnit       = 110
+  tdisUnit        = 111
+  mpbasUnit       = 112
+  headUnit        = 113
+  budgetUnit      = 114
+  traceModeUnit   = 115
+  binPathlineUnit = 116
+  gridMetaUnit    = 117
+  gpkdeUnit       = 118 ! RWPT
+  obsUnit         = 119 ! RWPT
+  dspUnit         = 120 ! RWPT
+  rwoptsUnit      = 121 ! RWPT
+  spcUnit         = 122 ! RWPT
+  icUnit          = 123 ! RWPT
+  srcUnit         = 124 ! RWPT
+  impUnit         = 125 ! RWPT
+  baseTimeseriesUnit = 660 ! OpenMP
+  !-----------------------------------------------------------------------------
   ! Set version
   version = '0.0.1'
-  
-  call get_compiler(compilerVersionText)
-  write(*,'(a,a)') 'MODPATH-RW Version ', version
-  write(*,'(a)') compilerVersionText
-  write(*,*)
-  
   ! Set the default termination message
   terminationMessage = "Normal termination."
-  
-  ! Assign dedicated file unit numbers
-  disUnit = 101
-  endpointUnit = 102
-  pathlineUnit = 103
-  timeseriesUnit = 104
-  mplistUnit = 105
-  traceUnit = 106
-  budchkUnit = 107
-  aobsUnit = 108
-  logUnit = 109
-  mpsimUnit = 110
-  tdisUnit = 111
-  mpbasUnit = 112
-  headUnit = 113
-  budgetUnit = 114
-  traceModeUnit = 115
-  binPathlineUnit = 116
-  gridMetaUnit = 117
-  gpkdeUnit    = 118 ! RWPT
-  obsUnit      = 119 ! RWPT
-  dspUnit      = 120 ! RWPT
-  rwoptsUnit   = 121 ! RWPT
-  spcUnit      = 122 ! RWPT
-  icUnit       = 123 ! RWPT
-  srcUnit      = 124 ! RWPT
-  impUnit      = 125 ! RWPT
-  baseTimeseriesUnit = 660 ! OpenMP
-  !-----------------------------------------------------------------------
-
+  ! Compiler 
+  call get_compiler(compilerVersionText)
+  write(*,'(a,a)') 'MODPATH-RW version ', version
+  write(*,'(a)') compilerVersionText
+  write(*,*)
   ! Parse the command line for simulation file name, log file name, and options
-  call ParseCommandLine(mpsimFile, mplogFile, logType, parallel, tsOutputType)
+  call ParseCommandLine(mpsimFile, mplogFile, logType, & 
+                      parallel, tsOutputType, testinit )
+  ! If simulation file name not on command line, prompt user for name
+  if (mpsimFile == "") then
+    call ulog('Prompt for the name of the MODPATH-RW simulation file.', logUnit)
+    call PromptSimulationFile(mpsimFile)
+  end if
   ! Open the log file (unless -nolog option)
   if (logType /= 0) then
-      open(unit=logUnit, file=mplogFile, status='replace', form='formatted', access='sequential')
+    open(unit=logUnit, file=mplogFile, status='replace', form='formatted', access='sequential')
   else
-      logUnit = -logUnit
+    logUnit = -logUnit
   end if
   ! Get the number of threads for the parallel region
   if ( parallel ) then
-      ompNumThreads = omp_get_max_threads()
+    ompNumThreads = omp_get_max_threads()
   else
-      ompNumThreads = 1
+    ompNumThreads = 1
   end if
   call ulog('Command line parsed.', logUnit)
+  !-----------------------------------------------------------------------------
 
-  ! If simulation file name not on command line, prompt user for name
-  if (mpsimFile == "") then
-      call ulog('Prompt for the name of the MODPATH-RW simulation file.', logUnit)
-      call PromptSimulationFile(mpsimFile)
-  end if
   
   ! Read the first two records of the simulation file to get the names of the 
   ! name file (mpnamFile) and the listing file (mplistFile)
@@ -246,7 +246,6 @@ program MPath7
   write(mplistUnit, '(a)') 'and distribution information.'    
   write(mplistUnit, *)
   
-
   ! Read the MODPATH name file
   call ReadNameFile(mpnamFile, mplistUnit, gridFileType)
   
@@ -260,135 +259,125 @@ program MPath7
   write(mplistUnit, '(a)')    '---------'
     
   select case (gridFileType)
-      case (1) 
-          ! MODFLOW-2005 discretization file (DIS)
-          ! Read spatial and time discretization. 
-          write(mplistUnit, '(a,1x)') 'Grid file type: MODFLOW-2005 discretization file (DIS)'
-          call ulog('Allocate disGrid.', logUnit)
-          allocate(disGrid)
-          call ulog('Read grid file.', logUnit)
-          call disGrid%ReadData(disUnit, gridMetaUnit, mplistUnit, stressPeriodCount)
-          modelGrid => disGrid
-          call tdisData%ReadData(disUnit, mplistUnit, stressPeriodCount)
-          
-          ! Close discretization files
-          close(disUnit)
-          
-          ! RWPT
-          ! isUnstructured remains as false
-
-          ! Notice that this grid could have different (distributed)
-          ! delr, delc. Meaning that although is structured,
-          ! is not regular.
-
-      case (2)
-          ! MODPATH spatial(MPUGRID) and time (TDIS) discretization files 
-          ! Read spatial discretization
-          write(mplistUnit, '(a,1x)') 'Grid file type: MODFLOW-USG unstructured grid file (DISU).'
-          call ulog('Allocate disuMfusgGrid.', logUnit)
-          allocate(disuMfusgGrid)
-          call ulog('Read grid file.', logUnit)
-          call disuMfusgGrid%ReadData(disUnit, gridMetaUnit, mplistUnit, stressPeriodCount)
-          modelGrid => disuMfusgGrid
-          call tdisData%ReadData(disUnit, mplistUnit, stressPeriodCount)
-          ! Close discretization file
-          close(disUnit)
+    case (1) 
+      ! MODFLOW-2005 discretization file (DIS)
+      ! Read spatial and time discretization. 
+      write(mplistUnit, '(a,1x)') 'Grid file type: MODFLOW-2005 discretization file (DIS)'
+      call ulog('Allocate disGrid.', logUnit)
+      allocate(disGrid)
+      call ulog('Read grid file.', logUnit)
+      call disGrid%ReadData(disUnit, gridMetaUnit, mplistUnit, stressPeriodCount)
+      modelGrid => disGrid
+      call tdisData%ReadData(disUnit, mplistUnit, stressPeriodCount)
       
-          ! RWPT: Is there a way to check if is really Unstructured ? 
-          ! In the meantime, assume it is at RectangularGridDisuMfusgInit1 
-
-      case (3)
-          ! MODFLOW-6 DIS binary grid file
-          ! Read spatial discretization
-          write(mplistUnit, '(a,1x)') 'Grid file type: MODFLOW-6 DIS binary grid file.'
-          call ulog('Allocate disMf6Grid.', logUnit)
-          allocate(disMf6Grid)
-          call ulog('Read DIS binary grid file.', logUnit)
-          call disMf6Grid%ReadData(disUnit, gridMetaUnit, mplistUnit)
-          modelGrid => disMf6Grid
-          
-          ! Read time discretization file
-          if(len_trim(tdisFile) .gt. 0) then
-              write(mplistUnit, '(a,1x)') 'Time discretization file type: MODFLOW-6 time discretization file.'
-              call ulog('Read time discretization data component ...', logUnit)
-              call tdisData%ReadData(tdisUnit, mplistUnit)
-          else
-              call ulog('The time discretization file was not specified.', logUnit)
-              call ustop('The time discretization file was not specified.')
-          end if
-          
-          ! Close discretization files
-          close(disUnit)
-          close(tdisUnit)
-         
-          ! RWPT
-          ! isUnstructured remains as false
-
-          ! Notice that this grid could have different (distributed)
-          ! delr, delc. Meaning that although is structured,
-          ! is not regular.
-
-      case (4)
-          ! MODFLOW-6 DISV binary grid file
-          ! Read spatial discretization
-          write(mplistUnit, '(a,1x)') 'Grid file type: MODFLOW-6 DISV binary grid file.'
-          call ulog('Allocate disvMf6Grid.', logUnit)
-          allocate(disvMf6Grid)
-          call ulog('Read DISV binary grid file.', logUnit)
-          call disvMf6Grid%ReadData(disUnit, gridMetaUnit, mplistUnit)
-          modelGrid => disvMf6Grid
-         
-          ! Read time discretization file
-          if(len_trim(tdisFile) .gt. 0) then
-              write(mplistUnit, '(a,1x)') 'Time discretization file type: MODFLOW-6 time discretization file.'
-              call ulog('Read time discretization data component ...', logUnit)
-              call tdisData%ReadData(tdisUnit, mplistUnit)
-          else
-              call ulog('The time discretization file was not specified.', logUnit)
-              call ustop('The time discretization file was not specified.')
-          end if
-          
-          ! Close discretization files
-          close(disUnit)
-          close(tdisUnit)
-          
-          ! RWPT: In RectangularGridDisvMf6Module it is checked whether it is unstructured or not,
-          ! while counting midPoints, CheckRectangular, checking if isSmoothed 
-
-      case (5)
-          ! MODFLOW-6 DISU binary grid file
-          write(mplistUnit, '(1x,a)') 'MODFLOW-6 DISU binary grid files are not yet supported. Stop.' 
-          stop
-          
-      case default
-          write(mplistUnit, '(1x,a)') 'Unknown grid file type. Stop.'
-          stop
-          
-      end select
+      ! Close discretization files
+      close(disUnit)
+      
+      ! RWPT
+      ! isUnstructured remains as false
+      ! Notice that this grid could have different (distributed)
+      ! delr, delc. Meaning that although is structured,
+      ! is not regular.
+    case (2)
+      ! MODPATH spatial(MPUGRID) and time (TDIS) discretization files 
+      ! Read spatial discretization
+      write(mplistUnit, '(a,1x)') 'Grid file type: MODFLOW-USG unstructured grid file (DISU).'
+      call ulog('Allocate disuMfusgGrid.', logUnit)
+      allocate(disuMfusgGrid)
+      call ulog('Read grid file.', logUnit)
+      call disuMfusgGrid%ReadData(disUnit, gridMetaUnit, mplistUnit, stressPeriodCount)
+      modelGrid => disuMfusgGrid
+      call tdisData%ReadData(disUnit, mplistUnit, stressPeriodCount)
+      ! Close discretization file
+      close(disUnit)
+    
+      ! RWPT: Is there a way to check if is really Unstructured ? 
+      ! In the meantime, assume it is at RectangularGridDisuMfusgInit1 
+    case (3)
+      ! MODFLOW-6 DIS binary grid file
+      ! Read spatial discretization
+      write(mplistUnit, '(a,1x)') 'Grid file type: MODFLOW-6 DIS binary grid file.'
+      call ulog('Allocate disMf6Grid.', logUnit)
+      allocate(disMf6Grid)
+      call ulog('Read DIS binary grid file.', logUnit)
+      call disMf6Grid%ReadData(disUnit, gridMetaUnit, mplistUnit)
+      modelGrid => disMf6Grid
+      
+      ! Read time discretization file
+      if(len_trim(tdisFile) .gt. 0) then
+        write(mplistUnit, '(a,1x)') 'Time discretization file type: MODFLOW-6 time discretization file.'
+        call ulog('Read time discretization data component ...', logUnit)
+        call tdisData%ReadData(tdisUnit, mplistUnit)
+      else
+        call ulog('The time discretization file was not specified.', logUnit)
+        call ustop('The time discretization file was not specified.')
+      end if
+      
+      ! Close discretization files
+      close(disUnit)
+      close(tdisUnit)
+      
+      ! RWPT
+      ! isUnstructured remains as false
+      ! Notice that this grid could have different (distributed)
+      ! delr, delc. Meaning that although is structured,
+      ! is not regular.
+    case (4)
+      ! MODFLOW-6 DISV binary grid file
+      ! Read spatial discretization
+      write(mplistUnit, '(a,1x)') 'Grid file type: MODFLOW-6 DISV binary grid file.'
+      call ulog('Allocate disvMf6Grid.', logUnit)
+      allocate(disvMf6Grid)
+      call ulog('Read DISV binary grid file.', logUnit)
+      call disvMf6Grid%ReadData(disUnit, gridMetaUnit, mplistUnit)
+      modelGrid => disvMf6Grid
+      
+      ! Read time discretization file
+      if(len_trim(tdisFile) .gt. 0) then
+        write(mplistUnit, '(a,1x)') 'Time discretization file type: MODFLOW-6 time discretization file.'
+        call ulog('Read time discretization data component ...', logUnit)
+        call tdisData%ReadData(tdisUnit, mplistUnit)
+      else
+        call ulog('The time discretization file was not specified.', logUnit)
+        call ustop('The time discretization file was not specified.')
+      end if
+      ! Close discretization files
+      close(disUnit)
+      close(tdisUnit)
+      ! RWPT: In RectangularGridDisvMf6Module it is checked whether it is unstructured or not,
+      ! while counting midPoints, CheckRectangular, checking if isSmoothed 
+    case (5)
+      ! MODFLOW-6 DISU binary grid file
+      write(mplistUnit, '(1x,a)') 'MODFLOW-6 DISU binary grid files are not yet supported. Stop.' 
+      stop
+    case default
+      write(mplistUnit, '(1x,a)') 'Unknown grid file type. Stop.'
+      stop
+  end select
   
 
   ! Write connection data
   if (logType == 2) then
-      call ulog('Skip output of cell connection data.', logUnit)
+    call ulog('Skip output of cell connection data.', logUnit)
   else if (logType == 1) then
-      write(logUnit, *)
-      write(logUnit, '(1x,a)') '----------------------------------------------------------'
-      write(logUnit, '(1x,a)') 'Cell connection data:'
-      write(logUnit, '(1x,a)') '----------------------------------------------------------'
-      write(logUnit, '(1x,a)') 'Format has two lines for each cell, listed by cell number.'
-      write(logUnit, '(1x,a)') 'Line 1: Cell connections'
-      write(logUnit, '(1x,a)') 'Line 1: Face assignment codes'
-      write(logUnit, '(1x,a)') '----------------------------------------------------------'
-      bufferSize = 25
-      allocate(buffer(bufferSize))
-      do n = 1, modelGrid%CellCount
-          call modelGrid%GetJaCellConnections(n, buffer, bufferSize, cellConnectionCount)
-          if (cellConnectionCount == 0) cycle
-          write(logUnit, '(1x,25i8)') (buffer(m), m = 1, cellConnectionCount)
-          call modelGrid%GetCellConnectionFaces(n, buffer, bufferSize, cellConnectionCount)
-          write(logUnit, '(1x,25i8)') (buffer(m), m = 1, cellConnectionCount)
-          write(logUnit, *)        
-      end do
+    write(logUnit, *)
+    write(logUnit, '(1x,a)') '----------------------------------------------------------'
+    write(logUnit, '(1x,a)') 'Cell connection data:'
+    write(logUnit, '(1x,a)') '----------------------------------------------------------'
+    write(logUnit, '(1x,a)') 'Format has two lines for each cell, listed by cell number.'
+    write(logUnit, '(1x,a)') 'Line 1: Cell connections'
+    write(logUnit, '(1x,a)') 'Line 1: Face assignment codes'
+    write(logUnit, '(1x,a)') '----------------------------------------------------------'
+    bufferSize = 25
+    allocate(buffer(bufferSize))
+    do n = 1, modelGrid%CellCount
+      call modelGrid%GetJaCellConnections(n, buffer, bufferSize, cellConnectionCount)
+      if (cellConnectionCount == 0) cycle
+      write(logUnit, '(1x,25i8)') (buffer(m), m = 1, cellConnectionCount)
+      call modelGrid%GetCellConnectionFaces(n, buffer, bufferSize, cellConnectionCount)
+      write(logUnit, '(1x,25i8)') (buffer(m), m = 1, cellConnectionCount)
+      write(logUnit, *)        
+    end do
   end if
   
 
@@ -585,28 +574,31 @@ program MPath7
   end if
 
 
+  ! Test init
+  if ( testinit ) then
+    call ustop( 'Simulation successfully initialized. Stop due to --init option.')
+  end if 
+
   write(*,*)
   write(*,'(A)') 'Run particle tracking simulation ...'    
   write(mplistUnit, *)
   write(mplistUnit, *)
   write(mplistUnit,'(1X,A)') 'Run particle tracking simulation ...'
 
-
   ! Allocate tPoint array
   tPointCount = 0
   if(simulationData%SimulationType .eq. 2) then
-      tPointCount = simulationData%TimePointCount
-      if(tPointCount .gt. 0) tPointCount = 1
+    tPointCount = simulationData%TimePointCount
+    if(tPointCount .gt. 0) tPointCount = 1
   ! RWPT
   else if( (simulationData%SimulationType .ge. 3) .and. &
            (simulationData%SimulationType .lt. 7) ) then
-      tPointCount = 1
+    tPointCount = 1
   end if
   if(allocated(tPoint)) deallocate(tPoint)
   allocate(tPoint(tPointCount))
   
-
-  ! Open output files
+  ! Open output files !
 
   ! Endpoint
   open(unit=endpointUnit, file=simulationData%EndpointFile, status='replace', &
@@ -642,10 +634,10 @@ program MPath7
       ! If not parallel 
       if ( .not. parallel ) then 
         ! Default output 
-        open(unit=timeseriesUnit, file=simulationData%TimeseriesFile,           &
+        open(unit=timeseriesUnit, file=simulationData%TimeseriesFile,     &
           status='replace', form='formatted', access='sequential')
-        call WriteTimeseriesHeader(timeseriesUnit,                              &
-          simulationData%TrackingDirection, simulationData%ReferenceTime,       &
+        call WriteTimeseriesHeader(timeseriesUnit,                        &
+          simulationData%TrackingDirection, simulationData%ReferenceTime, &
           modelGrid%OriginX, modelGrid%OriginY, modelGrid%RotationAngle)
         ! Assign writing interface
         WriteTimeseries => WriteTimeseriesRecordSerial
@@ -654,10 +646,10 @@ program MPath7
         select case( tsOutputType ) 
           case (1)
             ! Default critical output 
-            open(unit=timeseriesUnit, file=simulationData%TimeseriesFile,           &
+            open(unit=timeseriesUnit, file=simulationData%TimeseriesFile,     &
               status='replace', form='formatted', access='sequential')
-            call WriteTimeseriesHeader(timeseriesUnit,                              &
-              simulationData%TrackingDirection, simulationData%ReferenceTime,       &
+            call WriteTimeseriesHeader(timeseriesUnit,                        &
+              simulationData%TrackingDirection, simulationData%ReferenceTime, &
               modelGrid%OriginX, modelGrid%OriginY, modelGrid%RotationAngle)
             ! Assign writing interface
             WriteTimeseries => WriteTimeseriesRecordCritical 
@@ -710,14 +702,13 @@ program MPath7
 
   ! Trace
   if(simulationData%TraceMode .gt. 0) then
-    open(unit=traceModeUnit, file=simulationData%TraceFile,                 &
+    open(unit=traceModeUnit, file=simulationData%TraceFile,    &
       status='replace', form='formatted', access='sequential')
-    write(traceModeUnit, '(1X,A,I10)')                                      &
+    write(traceModeUnit, '(1X,A,I10)')                         &
       'Particle group: ',simulationData%TraceGroup
-    write(traceModeUnit, '(1X,A,I10)')                                      &
+    write(traceModeUnit, '(1X,A,I10)')                         &
       'Particle ID: ',simulationData%TraceID
   end if
-
 
   ! Observations
   if ( simulationData%TrackingOptions%anyObservation ) then
@@ -802,20 +793,12 @@ program MPath7
   end if 
 
 
-  ! Begin time step loop
+  ! Begin time step loop !
   pathlineRecordCount = 0
   time = 0.0d0
   nt = 0
   if(allocated(cellData)) deallocate(cellData)
   allocate(cellData)
-  
-  ! DEV PCONC
-  !nFluxCells = 1
-  !if ( allocated( fluxCellNumbers ) ) deallocate( fluxCellNumbers ) 
-  !allocate( fluxCellNumbers(nFluxCells) )
-  !fluxCellNumbers(1) = 49 ! The injection cell
-  ! DEV PCONC
-
 
   call ulog('Begin TIME_STEP_LOOP', logUnit)
   ! Call system_clock to get the start of the time step loop
@@ -830,7 +813,7 @@ program MPath7
 
   ! Load mass transport data for current time step
   if ( simulationData%TrackingOptions%RandomWalkParticleTracking ) then 
-      call transportModelData%LoadTimeStep(period, step)
+    call transportModelData%LoadTimeStep(period, step)
   end if 
   
   if(flowModelData%SteadyState) then
@@ -2155,7 +2138,8 @@ program MPath7
 
 
 
-  subroutine ParseCommandLine(mpsimFile, mplogFile, logType, parallel, tsOutputType)
+  subroutine ParseCommandLine(mpsimFile, mplogFile, logType, &
+                             parallel, tsOutputType, testinit)
   !---------------------------------------------------------------------------------
   ! 
   !---------------------------------------------------------------------------------
@@ -2167,6 +2151,7 @@ program MPath7
   integer,intent(inout) :: logType
   logical,intent(inout) :: parallel
   integer,intent(inout) :: tsOutputType
+  logical,intent(inout) :: testinit
   integer :: defaultTsOutputType
   character(len=200) :: progname
   character(len=200) :: comlin
@@ -2186,6 +2171,7 @@ program MPath7
     mpsimFile    = ""
     mplogFile    = ""
     logType      = 1
+    testinit     = .false.
     parallel     = .false.
     nprocs       = 0
     tsOutputType = 0
@@ -2195,78 +2181,84 @@ program MPath7
     na = 1
     do while (na <= narg)
       call get_command_argument(na, comlin, length, status)
-      if ((na == 1) .and. (comlin(1:1) /= "-")) then
-          na = na + 1
-          mpsimFile = comlin(1:length)
-          ! Check for existence of the file, adding .mpsim extension if necessary
-          call CheckSimulationFile(mpsimFile)
+      if ((na == narg) .and. (comlin(1:1) /= "-")) then
+        na = na + 1
+        mpsimFile = comlin(1:length)
+        ! Check for existence of the file, adding .mpsim extension if necessary
+        call CheckSimulationFile(mpsimFile)
       else
+        na = na + 1
+        select case (comlin(1:length))
+        case ("-shortlog","-s","--shortlog")
+          ! -shortlog option
+          if (logType.ne.1) then
+            call ustop('Conflicting or redundant log options on the command line. Stop.')
+          else
+            logType = 2
+          end if
+        case ("-nolog","-nl","--nolog")
+          ! -nolog option
+          if (logType.ne.1) then
+            call ustop('Conflicting or redundant log options on the command line. Stop.')
+          else
+            logType = 0
+          end if
+        case ("-logname","-l","--logname")
+          ! -logname option
+          if (mplogFile == "") then
+            call get_command_argument(na, comlin, length, status)
+            na = na + 1
+            if ((status /= 0) .or. (comlin(1:1) == "-")) then
+              call ustop('Invalid or missing log file name on the command line. Stop.')
+            else
+              mplogFile = comlin(1:length)
+            end if
+          else
+            call ustop('Conflicting log file names on the command line. Stop.')
+          end if
+        case ("-parallel","-p","--parallel")
+          ! -parallel option
+          parallel = .true.
+        case ("-np","--np","--nprocs")
+          ! -np option
+          call get_command_argument(na, comlin, length, status)
           na = na + 1
-          select case (comlin(1:length))
-          case ("-shortlog")
-              ! -shortlog option
-              if (logType.ne.1) then
-                  call ustop('Conflicting or redundant log options on the command line. Stop.')
-              else
-                  logType = 2
-              end if
-          case ("-nolog")
-              ! -nolog option
-              if (logType.ne.1) then
-                  call ustop('Conflicting or redundant log options on the command line. Stop.')
-              else
-                  logType = 0
-              end if
-          case ("-logname")
-              ! -logname option
-              if (mplogFile == "") then
-                  call get_command_argument(na, comlin, length, status)
-                  na = na + 1
-                  if ((status /= 0) .or. (comlin(1:1) == "-")) then
-                      call ustop('Invalid or missing log file name on the command line. Stop.')
-                  else
-                      mplogFile = comlin(1:length)
-                  end if
-              else
-                  call ustop('Conflicting log file names on the command line. Stop.')
-              end if
-          case ("-parallel")
-              ! -parallel option
-              parallel = .true.
-          case ("-np")
-              ! -np option
-              call get_command_argument(na, comlin, length, status)
-              na = na + 1
-              if ((status /= 0) .or. (comlin(1:1) == "-")) then
-                  call ustop('Invalid or missing number of processes from command line. Stop.')
-              else
-                  nprocschar = comlin(1:length)
-                  read(nprocschar,*) nprocs
-                  if( nprocs .gt. 1 ) parallel = .true.
-              end if
-          case ("-tsoutput")
-              ! -tsoutput option
-              call get_command_argument(na, comlin, length, status)
-              na = na + 1
-              if ((status /= 0) .or. (comlin(1:1) == "-")) then
-                  call ustop('Invalid or missing output for timeseries on commmand line. Stop.')
-              else
-                  tsoutchar = comlin(1:length)
-                  read(tsoutchar,*) tsOutputType
-              end if
-          case ('-h', "--help")
-              ! --help
-              call DisplayHelpMessage(progname)
-          case default
-              if (comlin(1:1).eq."-") then
-                  call ustop('Unrecognized option on the command line. Stop.')
-              else
-                  call ustop('An error occurred processing the command line. Stop.')
-              end if
-          end select
+          if ((status /= 0) .or. (comlin(1:1) == "-")) then
+            call ustop('Invalid or missing number of processes from command line. Stop.')
+          else
+            nprocschar = comlin(1:length)
+            read(nprocschar,*) nprocs
+            if( nprocs .gt. 1 ) parallel = .true.
+          end if
+        case ("-tsoutput","-ts","--tsoutput")
+          ! -tsoutput option
+          call get_command_argument(na, comlin, length, status)
+          na = na + 1
+          if ((status /= 0) .or. (comlin(1:1) == "-")) then
+            call ustop('Invalid or missing output for timeseries on commmand line. Stop.')
+          else
+            tsoutchar = comlin(1:length)
+            read(tsoutchar,*) tsOutputType
+          end if
+        case ('-h', "--help")
+          ! --help
+          call DisplayHelpMessage(progname)
+        case ('-i', "--init")
+          ! --init
+          testinit = .true.
+        case ('-v', "--version")
+          ! --version
+          call ustop('')
+        case default
+          if (comlin(1:1).eq."-") then
+            call ustop('Unrecognized option on the command line. Stop.')
+          else
+            call ustop('An error occurred processing the command line. Stop.')
+          end if
+        end select
       end if
     end do
-    if ((mplogFile /= "") .and. (logType.eq.0))                                   &
+    if ((mplogFile /= "") .and. (logType.eq.0)) &
         call ustop('Options -logname and -nolog both on the command line. Stop.')
     
     ! If log file name not specified, set to default
@@ -2274,28 +2266,29 @@ program MPath7
 
     ! Set parallel processes
     if ( parallel .and. (nprocs .eq. 0) ) then 
-        ! If parallel and no np specified, set number of processors 
-        call omp_set_num_threads( omp_get_num_procs() )
-        ! Set default outputType to parallel consolidated
-        if ( tsOutputType .eq. 0 ) tsOutputType = defaultTsOutputType
+      ! If parallel and no np specified, set number of processors 
+      call omp_set_num_threads( omp_get_num_procs() )
+      ! Set default outputType to parallel consolidated
+      if ( tsOutputType .eq. 0 ) tsOutputType = defaultTsOutputType
     else if ( parallel .and. (nprocs .gt. 1 ) ) then 
-        ! If parallel and np specified, set np processes
-        call omp_set_num_threads( nprocs )
-        if ( tsOutputType .eq. 0 ) tsOutputType = defaultTsOutputType
+      ! If parallel and np specified, set np processes
+      call omp_set_num_threads( nprocs )
+      if ( tsOutputType .eq. 0 ) tsOutputType = defaultTsOutputType
     else if ( nprocs .eq. 1 ) then
-        ! If nprocs equal one, then serial
-        parallel = .false.
-        call omp_set_num_threads( nprocs )
+      ! If nprocs equal one, then serial
+      parallel = .false.
+      call omp_set_num_threads( nprocs )
     else if ( omp_get_max_threads() .gt. 1 ) then 
-        ! If max threads defined through OMP_NUM_THREADS, use it
-        parallel = .true.
-        nprocs = omp_get_max_threads()
-        call omp_set_num_threads( nprocs )
-        if ( tsOutputType .eq. 0 ) tsOutputType = defaultTsOutputType
+      ! If max threads defined through OMP_NUM_THREADS, use it
+      parallel = .true.
+      nprocs = omp_get_max_threads()
+      call omp_set_num_threads( nprocs )
+      if ( tsOutputType .eq. 0 ) tsOutputType = defaultTsOutputType
     end if 
 
 
     return
+
 
   end subroutine ParseCommandLine
 
@@ -2357,36 +2350,39 @@ program MPath7
  
 
   subroutine DisplayHelpMessage(progname)
-  !---------------------------------------------------------------------------------
+  !----------------------------------------------------------------------------------------
   ! 
-  !---------------------------------------------------------------------------------
+  !----------------------------------------------------------------------------------------
   ! Specifications
-  !---------------------------------------------------------------------------------
+  !----------------------------------------------------------------------------------------
   use, intrinsic :: iso_fortran_env, only: output_unit 
   implicit none
   character(len=*), intent(in) :: progname
   character(len=*), parameter  :: helpmessage = &
    "(/,&
    &'options:',/,&
-   &'                                                                         ',/,&
-   &'  -h         --help                Show this message                     ',/,&
-   &'  -i         --init                Initialize simulation without running ',/,&
-   &'  -l  <str>  --logname    <str>    Write program logs to <str>           ',/,&
-   &'  -nl        --nolog               Do not write log file                 ',/,&
-   &'  -np <int>  --nprocs     <int>    Run with <int> processes              ',/,&
-   &'  -p         --parallel            Run in parallel                       ',/,&
-   &'  -ts <int>  --tsoutput   <int>    Selects timeseries output <int>       ',/,&
-   &'  -s         --shortlog            Simplified logs                       ',/,&
-   &'  -v         --version             Show program version                  ',/,&
-   &'                                                                         ',/,&
-   &'For bug reports and updates, follow:                                     ',/,&
-   &'  https://github.com/upc-ghs/modpath-rw                                  ',/,&
+   &'                                                                                 ',/,&
+   &'  -h         --help                Show this message                             ',/,&
+   &'  -i         --init                Initialize simulation without running         ',/,&
+   &'  -l  <str>  --logname    <str>    Write program logs to <str>                   ',/,&
+   &'  -nl        --nolog               Do not write log file                         ',/,&
+   &'  -np <int>  --nprocs     <int>    Run with <int> processes                      ',/,&
+   &'  -p         --parallel            Run in parallel                               ',/,&
+   &'  -ts <int>  --tsoutput   <int>    Selects timeseries output <int>               ',/,&
+   &'  -s         --shortlog            Simplified logs                               ',/,&
+   &'  -v         --version             Show program version                          ',/,&
+   &'                                                                                 ',/,&
+   &'For bug reports and updates, follow:                                             ',/,&
+   &'  https://github.com/upc-ghs/modpath-rw                                          ',/,&
    &/)"
-  !---------------------------------------------------------------------------------
+  !----------------------------------------------------------------------------------------
 
+    write(output_unit,'(a)') &
+     'A Random Walk Particle Tracking code for solute transport in heterogeneous aquifers'
+    write(output_unit, *) 
     write(output_unit, '(a)') 'usage:'
     write(output_unit, *) 
-    write(output_unit, '(2x,a,1x,a)') trim(adjustl(progname)), 'simfile [options]'
+    write(output_unit, '(2x,a,1x,a)') trim(adjustl(progname)), '[options] simfile'
     write(output_unit, trim(helpmessage), advance='yes')
 
     call ustop('')

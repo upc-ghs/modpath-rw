@@ -22,9 +22,6 @@ ${SOURCEDIR3}
 
 # Define the Fortran compile flags
 FC = gfortran
-# FROM MODPATH-OMP
-#FFLAGS = -O2 -fbacktrace -fopenmp
-# FROM MF6
 FFLAGS = -O2 -fopenmp -fbacktrace -ffpe-summary=overflow -ffpe-trap=overflow,zero,invalid -fall-intrinsics -Wtabs -Wline-truncation -Wunused-label -Wunused-variable -pedantic -std=f2008 -Wcharacter-truncation -cpp
 # DEBUG
 #FFLAGS = -g -O0 -fopenmp -fbacktrace -ffpe-summary=overflow -ffpe-trap=overflow,zero,invalid -fall-intrinsics -Wtabs -Wline-truncation -Wunused-label -Wunused-variable -pedantic -std=f2008 -Wcharacter-truncation -cpp

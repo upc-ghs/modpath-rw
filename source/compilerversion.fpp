@@ -3,7 +3,7 @@
         private
         ! -- compiler version
         character(len=10) :: ccompiler
-        character(len=10) :: cversion
+        character(len=20) :: cversion
         character(len=20) :: cdate
         integer :: icompiler = 0
         integer :: iversion = 0
@@ -14,7 +14,7 @@
         contains
   
         subroutine get_compiler(txt)
-          character(len=80), intent(inout) :: txt
+          character(len=90), intent(inout) :: txt
         
         ! -- set variables
 #ifdef __GFORTRAN__ 
