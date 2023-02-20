@@ -4,7 +4,7 @@ module TrackSubCellModule
   use ModpathSubCellDataModule,only : ModpathSubCellDataType
   use ParticleTrackingOptionsModule,only : ParticleTrackingOptionsType
   use ModpathCellDataModule,only : ModpathCellDataType
-  use rng_par_zig, only : rng_uni
+  use rng_par_zig, only : rng_uni, rng_init ! RGN parallel ifort
   use omp_lib
   implicit none
   
@@ -49,6 +49,7 @@ module TrackSubCellModule
     procedure(ExitFaceAndTimeStep), pass, pointer :: ExitFaceAndUpdateTimeStep=>null()
     procedure(DispersionModel), pass, pointer :: ComputeRWPTDisplacements=>null()
     procedure(RandomDisplacement), pass, pointer :: DisplacementRandomDischarge=>null()
+    procedure(RandomGenerator), pass, pointer :: GenerateStandardNormalRandom=>null()
 
     ! Needed for OBS (?)
     type(TrackSubCellResultType) :: TrackSubCellResult
@@ -84,11 +85,6 @@ module TrackSubCellModule
     procedure :: TrilinearDerivative=>pr_TrilinearDerivative
     procedure :: SetDispersionDisplacement=>pr_SetDispersionDisplacement
     procedure :: DispersionDivergenceDischarge=>pr_DispersionDivergenceDischarge
-    !procedure :: DisplacementRandomDischarge=>pr_DisplacementRandomDischarge1D
-    !procedure :: DisplacementRandomDischarge=>pr_DisplacementRandomDischarge2D
-    !procedure :: DisplacementRandomDischarge=>pr_DisplacementRandomDischarge
-    !procedure :: GenerateStandardNormalRandom=>pr_GenerateStandardNormalRandom
-    procedure :: GenerateStandardNormalRandom=>pr_GenerateStandardNormalRandomZig
     procedure :: AdvectionDisplacementExponential=>pr_AdvectionDisplacementExponential
     procedure :: AdvectionDisplacementEulerian=>pr_AdvectionDisplacementEulerian
     procedure :: NewtonRaphsonTimeStep=>NewtonRaphsonTimeStepExponentialAdvection
@@ -166,6 +162,14 @@ module TrackSubCellModule
           ! output
           doubleprecision, intent(out) :: dBx, dBy, dBz
       end subroutine RandomDisplacement
+
+      ! Random generator function
+      subroutine RandomGenerator( this, random_value )
+          import TrackSubCellType
+          class (TrackSubCellType) :: this
+          ! input/output
+          doubleprecision, intent(out) :: random_value
+      end subroutine RandomGenerator
 
 
   end interface
@@ -455,6 +459,7 @@ contains
 ! RWPT
 !-------------------------------------------------------------------
   subroutine pr_InitializeRandomWalk(this, trackingOptions)
+    use iso_fortran_env, only: int64
     !------------------------------------------------------------
     ! Called in trackingEngine%Initialize
     !------------------------------------------------------------
@@ -463,6 +468,11 @@ contains
     implicit none
     class(TrackSubCellType) :: this
     type(ParticleTrackingOptionsType),intent(in), target :: trackingOptions
+    ! RNG parallel ifort
+    integer(int64), dimension(2) :: seedzigrng
+    integer(int64), parameter :: baseseed(2) = [int(Z'1DADBEEFBAADD0D0', int64), &
+                                                int(Z'5BADD0D0DEADBEEF', int64)]
+    integer :: ompNumThreads
     !------------------------------------------------------------
 
     ! Assign displacement pointers
@@ -482,6 +492,20 @@ contains
 
     ! Dispersion displacement function is set in particletrackingengine
     !call this%SetDispersionDisplacement( trackingOptions%dispersionModel )
+
+    ! Assign random generator
+    select case(trackingOptions%randomGenFunction)
+    case(1)
+      this%GenerateStandardNormalRandom => pr_GenerateStandardNormalRandom
+    case(2)
+      ompNumThreads = omp_get_max_threads()
+      seedzigrng    = baseseed
+      call rng_init(ompNumThreads, seedzigrng) 
+      this%GenerateStandardNormalRandom => pr_GenerateStandardNormalRandomZig
+    case default
+      write(*,*)'Selected random generator function not implemented. Stop.'
+      stop
+    end select
 
     ! Initialize random displacement flags ( to be deprecated )
     if ( trackingOptions%dimensionMask(1) .eq. 0 ) this%moveX = .false.
@@ -3486,7 +3510,7 @@ contains
       r = r + p
     end do
     random_value = r - 6.d0
-    
+   
     return
 
   end subroutine  pr_GenerateStandardNormalRandomZig

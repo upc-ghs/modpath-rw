@@ -35,6 +35,7 @@ SYSLIBS =
 
 # Start with objects from GPKDE, 
 # then the library for linear interpolation, 
+# then the library for random number generator, 
 # and then modpath files
 OBJECTS = \
 $(OBJDIR)/Histogram.o \

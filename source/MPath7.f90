@@ -52,26 +52,22 @@ program MPath7
   use ParticleManagerModule
   use BudgetRecordHeaderModule,only : BudgetRecordHeaderType
   use GeoReferenceModule,only : GeoReferenceType
-  use CompilerVersion,only : get_compiler
+  use CompilerVersion,only : get_compiler_txt
   use SoluteModule, only : SoluteType ! RWPT
   use ObservationModule, only : ObservationType ! OBS
   use GridProjectedKDEModule, only : GridProjectedKDEType ! GPKDE
   use omp_lib ! OpenMP
-  use rng_par_zig, only : rng_init ! RGN parallel ifort
-  use iso_fortran_env, only: int64
   !--------------------------------------------------------------------------
   implicit none
   
   ! Variables declarations
   type(HeadReaderType),allocatable :: headReader
   type(BudgetReaderType), allocatable :: budgetReader
-  
   class(ModflowRectangularGridType), pointer :: modelGrid
   class(RectangularGridDisType), allocatable, target :: disGrid
   class(RectangularGridDisMf6Type), allocatable, target :: disMf6Grid
   class(RectangularGridDisvMf6Type), allocatable, target :: disvMf6Grid
   class(RectangularGridDisuMfusgType), allocatable, target :: disuMfusgGrid
-
   type(TimeDiscretizationDataType), allocatable :: tdisData
   type(ParticleTrackingEngineType) :: trackingEngine
   type(FlowModelDataType), allocatable :: flowModelData
@@ -95,7 +91,7 @@ program MPath7
   integer :: groupIndex, particleIndex, pendingCount,  &
     activeCount, tPointCount, pathlineRecordCount
   integer :: stressPeriodCount
-  integer :: n, m, ktime, kfirst, klast, kincr, period, step, nt, count,      &
+  integer :: n, m, ktime, kfirst, klast, kincr, period, step, nt, count,&
     plCount, tsCount, status, itend, particleID, topActiveCellNumber
   integer :: bufferSize, cellConnectionCount
   integer,dimension(:),allocatable :: buffer
@@ -105,16 +101,13 @@ program MPath7
   character(len=100) terminationMessage
   character(len=90) compilerVersionText
   logical :: isTimeSeriesPoint, timeseriesRecordWritten
-      
-  ! GPKDE
-  doubleprecision, dimension(:,:), allocatable :: activeParticleCoordinates
+  doubleprecision, dimension(:,:), allocatable :: activeParticleCoordinates ! RWPT
   doubleprecision, dimension(:), allocatable   :: activeParticleMasses
-  integer :: activeCounter, itcount, ns, npg
   doubleprecision, dimension(:,:), allocatable :: gpkdeDataCarrier
   doubleprecision, dimension(:), allocatable :: gpkdeWeightsCarrier
-
+  integer :: activeCounter, itcount, ns, npg
   ! Observations
-  integer :: io, irow, nobs, nit, cellNumber 
+  integer :: io, irow, nobs, nit, cellNumber
   integer :: timeIndex, solCount
   integer :: soluteID
   doubleprecision :: dTObsSeries
@@ -138,7 +131,6 @@ program MPath7
   doubleprecision, allocatable, dimension(:,:) :: BTCHistPerSolute
   doubleprecision, allocatable, dimension(:,:) :: BTCGpkdePerSolute
   logical :: anyFromThisSolute = .false.
-
   ! Parallel variables
   integer :: ompNumThreads
   integer :: baseTimeseriesUnit
@@ -149,17 +141,12 @@ program MPath7
   character(len=200) :: tempChar
   logical :: parallel = .false.
   integer :: tsOutputType = 0
-
   ! Test init
   logical :: testinit = .false.
-
   ! Interfaces 
   procedure(TimeseriesWriter), pointer :: WriteTimeseries=>null()
   procedure(ResidentObsWriter), pointer :: WriteResidentObs=>null()
   procedure(SinkObsWriter), pointer :: WriteSinkObs=>null()
-
-  ! RNG parallel ifort
-  integer(int64), dimension(2) :: seedzigrng
   !-----------------------------------------------------------------------------
   ! Assign dedicated file unit numbers
   disUnit         = 101
@@ -194,7 +181,7 @@ program MPath7
   ! Set the default termination message
   terminationMessage = "Normal termination."
   ! Compiler 
-  call get_compiler(compilerVersionText)
+  call get_compiler_txt(compilerVersionText)
   write(*,'(a,a)') 'MODPATH-RW version ', version
   write(*,'(a)') compilerVersionText
   write(*,*)
@@ -388,7 +375,7 @@ program MPath7
 
   ! Initialize the georeference data
   call geoRef%SetData(modelGrid%OriginX, modelGrid%OriginY, modelGrid%RotationAngle)
-  
+ 
 
   ! Initialize the budgetReader component
   call ulog('Allocate budget reader component.', logUnit)
@@ -397,9 +384,9 @@ program MPath7
   write(mplistUnit, *)
   call budgetReader%OpenBudgetFile(budgetFile, budgetUnit, mplistUnit)
   if(budgetReader%GetFileOpenStatus()) then
-      write(mplistUnit, '(1x,a)') 'The budget file was opened successfully.'
+    write(mplistUnit, '(1x,a)') 'The budget file was opened successfully.'
   else
-      call ustop('An error occurred processing the budget file. Stopping.')
+    call ustop('An error occurred processing the budget file. Stopping.')
   end if
   
 
@@ -482,7 +469,6 @@ program MPath7
 
 
   if ( simulationData%TrackingOptions%RandomWalkParticleTracking ) then 
-    
     ! Transfer flag from basicData to indicate 
     ! uniformity of porosities
     call ulog('Inform simulationData if porosity is spatially uniform.', logUnit)
@@ -502,7 +488,6 @@ program MPath7
 
     call ulog('Read specific SRC simulation data.', logUnit)
     call simulationData%ReadSRCData( srcFile, srcUnit, mpListUnit, modelGrid, flowModelData )
-
   end if
 
 
@@ -542,8 +527,6 @@ program MPath7
     ! Initialize trackingEngine
     call ulog('Initialize particle tracking engine component.', logUnit)
     call trackingEngine%Initialize(modelGrid, simulationData%TrackingOptions, flowModelData, transportModelData)
-
-    call rng_init(ompNumThreads, seedzigrng,8) 
 
   else 
 
@@ -1556,7 +1539,6 @@ program MPath7
             pathlineRecordCount, simulationData%TotalParticleCount) 
       end if
   end if
-
 
 
   ! RWPT

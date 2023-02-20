@@ -67,7 +67,7 @@ contains
   function rng_int64_to_real64(i) result(res)
     real(real64) :: res
     integer(int64), value :: i
-    integer(int32) :: tmp
+    !integer(int32) :: tmp
     
     i  = ior(int(Z'3FF0000000000000',int64), shiftr(i, 12))
     res = transfer(i, 1.0_real64) - 1;
@@ -86,11 +86,11 @@ module rng_par_zig
 
   public  :: rng_init, rng_uni, rng_norm, rng_exp, rng_jump
   
-  integer,  parameter  ::  sp = real32, dp = real64
+  integer,  parameter  :: sp = real32, dp = real64
   
   real(dp), parameter  :: m1=2147483648.0_dp,   m2=2147483648.0_dp,       &
                           half=0.5_dp
-  real(dp)             ::  dn0=3.442619855899_dp, tn0=3.442619855899_dp,  &
+  real(dp)             :: dn0=3.442619855899_dp, tn0=3.442619855899_dp,   &
                           vn=0.00991256303526217_dp,                      &
                           q,                    de0=7.697117470131487_dp, &
                           te0=7.697117470131487_dp,                       &
@@ -140,12 +140,12 @@ module rng_par_zig
   ! Define if signed integer addition must not overflow.
   ! Unsigned integer addition can only be done in C.
 !#ifdef STRICT_INTEGER_OVERFLOW    
-!  interface
-!    function sum_and_overflow(a, b) result(res) bind(C, name="sum_and_overflow")
-!      use, intrinsic :: iso_c_binding
-!      integer(c_int32_t) :: res
-!      integer(c_int32_t), value :: a, b
-!    end function
+!  interface 
+!  function sum_and_overflow(a, b) result(res) bind(C, name="sum_and_overflow")
+!    use, intrinsic :: iso_c_binding
+!    integer(c_int32_t) :: res
+!    integer(c_int32_t), value :: a, b
+!  end function
 !  end interface
 !#endif    
 

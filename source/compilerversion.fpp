@@ -11,9 +11,10 @@
         integer :: iminor = 0
         integer :: imicro = 0
         public :: get_compiler
+        public :: get_compiler_txt
         contains
   
-        subroutine get_compiler(txt)
+        subroutine get_compiler_txt(txt)
           character(len=90), intent(inout) :: txt
         
         ! -- set variables
@@ -50,5 +51,36 @@
   
           ! return
           return
+        end subroutine get_compiler_txt
+
+
+        subroutine get_compiler(compiler)
+          character(len=10), intent(inout) :: compiler
+        
+        ! -- set variables
+#ifdef __GFORTRAN__ 
+          icompiler = 1
+          cversion = __VERSION__
+          cdate = __DATE__ // ' ' // __TIME__
+#endif
+#ifdef __INTEL_COMPILER
+          icompiler = 2
+          iversion = __INTEL_COMPILER
+          cdate = __DATE__ // ' ' // __TIME__
+          imicro = __INTEL_COMPILER_UPDATE
+#endif
+
+          if (icompiler < 1) then
+            compiler = 'UNKNOWN'
+          else if (icompiler == 1) then
+            compiler = 'GFORTRAN'
+          else if (icompiler == 2) then
+            compiler = 'IFORT'
+          end if
+          
+          ! return
+          return
         end subroutine get_compiler
+
+
       end module CompilerVersion

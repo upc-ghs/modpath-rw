@@ -1203,6 +1203,7 @@ contains
   ! Read specific RWOPTS data
   subroutine pr_ReadRWOPTSData( this, rwoptsFile, rwoptsUnit, outUnit )
     use UTL8MODULE,only : urword,ustop,u3dintmpusg, u3dintmp
+    use CompilerVersion,only : get_compiler
     !--------------------------------------------------------------
     ! Specifications
     !--------------------------------------------------------------
@@ -1220,6 +1221,8 @@ contains
     character(len=200) :: line
     character(len=24),dimension(1) :: aname
     data aname(1) /'       ICBOUND'/
+    character(len=10) :: compiler
+    integer :: io
     !--------------------------------------------------------------
 
     write(outUnit, *)
@@ -1400,6 +1403,47 @@ contains
       case(3)
         write(outUnit,'(A)') 'Random displacements for 3 dimensions.'
     end select
+
+
+    ! Read the random number generator function
+    read(rwoptsUnit, '(a)', iostat=io) line
+    if ( io.lt.0 ) then 
+      ! assume not given, choose by compiler
+      call get_compiler(compiler) 
+      select case( compiler ) 
+      case('GFORTRAN')
+        trackingOptions%randomGenFunction = 1 
+      case('IFORT')
+        trackingOptions%randomGenFunction = 2 
+      case default
+        trackingOptions%randomGenFunction = 2 
+      end select
+    else
+      icol = 1
+      call urword(line,icol,istart,istop,2,n,r,0,0)
+      select case(n)
+      case(0)
+        ! assume not given, choose by compiler
+        call get_compiler(compiler) 
+        select case( compiler ) 
+        case('GFORTRAN')
+          trackingOptions%randomGenFunction = 1 
+        case('IFORT')
+          trackingOptions%randomGenFunction = 2 
+        case default
+          trackingOptions%randomGenFunction = 2 
+        end select
+      case(1)
+        ! random_number
+        trackingOptions%randomGenFunction = 1 
+      case(2)
+        ! rgn_par_zig
+        trackingOptions%randomGenFunction = 2
+      case default
+        write(outUnit,'(A)') 'Selected random generator function not implemented. Stop.'
+        call ustop('Selected random generator function not implemented. Stop.')
+      end select 
+    end if 
 
 
     ! Close rwopts data file

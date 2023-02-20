@@ -6,7 +6,7 @@
 # the executable, and the executable name and path.
 OBJDIR = ./obj_temp
 BINDIR = .
-PROGRAM = mpathrwif
+PROGRAM = mpathrw
 
 SOURCEDIR1=../source
 SOURCEDIR2=../lib/gpkde/src
@@ -23,11 +23,7 @@ ${SOURCEDIR4}
 
 # Define the Fortran compile flags
 FC = ifort
-# FROM MODPATH-OMP
-FFLAGS = -Ofast -traceback -qopenmp -ipo
-# DEBUG
-#FFLAGS = -O0 -g -debug extended -traceback -qopenmp
-
+FFLAGS = -Ofast -traceback -qopenmp -ipo -no-heap-arrays -fpe0 -fpp
 
 # Define the C compile flags
 CC = gcc
@@ -38,6 +34,7 @@ SYSLIBS =
 
 # Start with objects from GPKDE, 
 # then the library for linear interpolation, 
+# then the library for random number generator, 
 # and then modpath files
 OBJECTS = \
 $(OBJDIR)/Histogram.o \

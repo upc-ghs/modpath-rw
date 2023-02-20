@@ -26,6 +26,7 @@ module ParticleTrackingOptionsModule
     integer                            :: nDim = 3
     integer                            :: idDim1, idDim2
     integer, dimension(:), allocatable :: dimensions
+    integer                            :: randomGenFunction
 
     ! GPKDE
     logical                       :: GPKDEReconstruction = .false.
