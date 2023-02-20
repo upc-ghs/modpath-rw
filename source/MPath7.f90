@@ -57,6 +57,8 @@ program MPath7
   use ObservationModule, only : ObservationType ! OBS
   use GridProjectedKDEModule, only : GridProjectedKDEType ! GPKDE
   use omp_lib ! OpenMP
+  use rng_par_zig, only : rng_init ! RGN parallel ifort
+  use iso_fortran_env, only: int64
   !--------------------------------------------------------------------------
   implicit none
   
@@ -156,6 +158,9 @@ program MPath7
   procedure(TimeseriesWriter), pointer :: WriteTimeseries=>null()
   procedure(ResidentObsWriter), pointer :: WriteResidentObs=>null()
   procedure(SinkObsWriter), pointer :: WriteSinkObs=>null()
+
+  ! RNG parallel ifort
+  integer(int64), dimension(2) :: seedzigrng
   !-----------------------------------------------------------------------------
   ! Assign dedicated file unit numbers
   disUnit         = 101
@@ -538,6 +543,8 @@ program MPath7
     ! Initialize trackingEngine
     call ulog('Initialize particle tracking engine component.', logUnit)
     call trackingEngine%Initialize(modelGrid, simulationData%TrackingOptions, flowModelData, transportModelData)
+
+    call rng_init(ompNumThreads, seedzigrng,8) 
 
   else 
 
@@ -1023,7 +1030,7 @@ program MPath7
   itcount = 0
   call ulog('Begin TRACKING_INTERVAL_LOOP', logUnit)
   TRACKING_INTERVAL_LOOP: do while (itend .eq. 0)
-  itcount = itcount + 1 
+  itcount = itcount + 1
 
   itend = 1
   maxTime = tsMax

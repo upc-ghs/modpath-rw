@@ -408,9 +408,8 @@ contains
 
       ! RWPT
       if ( .not. present( transportModelData ) ) then
-        ! REQUIRES Proper error handling
-        write(*,*)'Error: ParticleTrackingEngine:Initialize: RWPT requires transportModelData, not given.'
-        stop
+       write(*,*)'Error: ParticleTrackingEngine:Initialize: RWPT requires transportModelData, not given.'
+       stop
       end if 
 
       ! Define transport data pointer 
@@ -418,23 +417,22 @@ contains
 
       ! Assign interfaces for FillCellBuffer and FillNeighborCellData
       select case( this%Grid%GridType ) 
-          case (1)
-              ! Set for structured grid
-              ! NEEDS MASS BOUNDARIES!
-              this%FillCellBuffer=>pr_FillTransportCellBufferStructured
-              this%FillNeighborCellData=> pr_FillNeighborCellDataStructured
-          case (2)
-              ! Set for MODFLOW-USG unstructured grid
-              this%FillCellBuffer=>pr_FillTransportCellBufferUnstructured
-              this%FillNeighborCellData=> pr_FillNeighborCellDataUnstructured
-          case (3)
-              ! Set for MODFLOW-6 structured grid (DIS)
-              this%FillCellBuffer=>pr_FillTransportCellBufferUnstructured
-              this%FillNeighborCellData=> pr_FillNeighborCellDataStructured
-          case (4)
-              ! Set for MODFLOW-6 unstructured grid (DISV)
-              this%FillCellBuffer=>pr_FillTransportCellBufferUnstructured
-              this%FillNeighborCellData=> pr_FillNeighborCellDataUnstructured
+        case (1)
+          ! Set for structured grid
+          this%FillCellBuffer=>pr_FillTransportCellBufferStructured
+          this%FillNeighborCellData=> pr_FillNeighborCellDataStructured
+        case (2)
+          ! Set for MODFLOW-USG unstructured grid
+          this%FillCellBuffer=>pr_FillTransportCellBufferUnstructured
+          this%FillNeighborCellData=> pr_FillNeighborCellDataUnstructured
+        case (3)
+          ! Set for MODFLOW-6 structured grid (DIS)
+          this%FillCellBuffer=>pr_FillTransportCellBufferUnstructured
+          this%FillNeighborCellData=> pr_FillNeighborCellDataStructured
+        case (4)
+          ! Set for MODFLOW-6 unstructured grid (DISV)
+          this%FillCellBuffer=>pr_FillTransportCellBufferUnstructured
+          this%FillNeighborCellData=> pr_FillNeighborCellDataUnstructured
       end select
 
       ! Assign tracking function with RWPT
@@ -456,18 +454,18 @@ contains
 
       ! Assign interface for FillCellBuffer
       select case( this%Grid%GridType ) 
-          case (1)
-              ! Set for structured grid
-              this%FillCellBuffer=>pr_FillCellBufferStructured
-          case (2)
-              ! Set for MODFLOW-USG unstructured grid
-              this%FillCellBuffer=>pr_FillCellBufferUnstructured
-          case (3)
-              ! Set for MODFLOW-6 structured grid (DIS)
-              this%FillCellBuffer=>pr_FillCellBufferUnstructured
-          case (4)
-              ! Set for MODFLOW-6 unstructured grid (DISV)
-              this%FillCellBuffer=>pr_FillCellBufferUnstructured
+        case (1)
+          ! Set for structured grid
+          this%FillCellBuffer=>pr_FillCellBufferStructured
+        case (2)
+          ! Set for MODFLOW-USG unstructured grid
+          this%FillCellBuffer=>pr_FillCellBufferUnstructured
+        case (3)
+          ! Set for MODFLOW-6 structured grid (DIS)
+          this%FillCellBuffer=>pr_FillCellBufferUnstructured
+        case (4)
+          ! Set for MODFLOW-6 unstructured grid (DISV)
+          this%FillCellBuffer=>pr_FillCellBufferUnstructured
       end select
     
       ! Assign tracking function  with classical modpath
@@ -475,10 +473,8 @@ contains
     
     end if
 
-
     ! Properties 
     this%Initialized = .true.
-    
 
   end subroutine pr_Initialize
 

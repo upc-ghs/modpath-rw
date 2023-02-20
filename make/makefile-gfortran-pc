@@ -11,11 +11,13 @@ PROGRAM = mpathrw
 SOURCEDIR1=../source
 SOURCEDIR2=../lib/gpkde/src
 SOURCEDIR3=../lib/finterp/src
+SOURCEDIR4=../lib/rngzig/
 
 VPATH = \
 ${SOURCEDIR1} \
 ${SOURCEDIR2} \
-${SOURCEDIR3} 
+${SOURCEDIR3} \
+${SOURCEDIR4} 
 
 
 .SUFFIXES: .c .cpp .f .f90 .F90 .fpp .o
@@ -40,6 +42,7 @@ $(OBJDIR)/KernelMultiGaussian.o \
 $(OBJDIR)/GridCell.o \
 $(OBJDIR)/GridProjectedKDE.o \
 $(OBJDIR)/linear_interpolation_module.o \
+$(OBJDIR)/rng_par_zig.o \
 $(OBJDIR)/Coordinate.o \
 $(OBJDIR)/TrackCellOptions.o \
 $(OBJDIR)/BudgetListItem.o \

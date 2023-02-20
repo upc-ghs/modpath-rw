@@ -2,11 +2,10 @@ module TrackSubCellModule
   use ParticleLocationModule,only : ParticleLocationType
   use TrackSubCellResultModule,only : TrackSubCellResultType
   use ModpathSubCellDataModule,only : ModpathSubCellDataType
-
-  ! RWPT 
   use ParticleTrackingOptionsModule,only : ParticleTrackingOptionsType
   use ModpathCellDataModule,only : ModpathCellDataType
-  use omp_lib ! mainly debugging
+  use rng_par_zig, only : rng_uni
+  use omp_lib
   implicit none
   
 ! Set default access status to private
@@ -88,7 +87,8 @@ module TrackSubCellModule
     !procedure :: DisplacementRandomDischarge=>pr_DisplacementRandomDischarge1D
     !procedure :: DisplacementRandomDischarge=>pr_DisplacementRandomDischarge2D
     !procedure :: DisplacementRandomDischarge=>pr_DisplacementRandomDischarge
-    procedure :: GenerateStandardNormalRandom=>pr_GenerateStandardNormalRandom
+    !procedure :: GenerateStandardNormalRandom=>pr_GenerateStandardNormalRandom
+    procedure :: GenerateStandardNormalRandom=>pr_GenerateStandardNormalRandomZig
     procedure :: AdvectionDisplacementExponential=>pr_AdvectionDisplacementExponential
     procedure :: AdvectionDisplacementEulerian=>pr_AdvectionDisplacementEulerian
     procedure :: NewtonRaphsonTimeStep=>NewtonRaphsonTimeStepExponentialAdvection
@@ -455,56 +455,55 @@ contains
 ! RWPT
 !-------------------------------------------------------------------
   subroutine pr_InitializeRandomWalk(this, trackingOptions)
-      !------------------------------------------------------------
-      ! Called in trackingEngine%Initialize
-      !------------------------------------------------------------
-      ! Specifications
-      !------------------------------------------------------------
-      implicit none
-      class(TrackSubCellType) :: this
-      type(ParticleTrackingOptionsType),intent(in), target :: trackingOptions
-      !------------------------------------------------------------
+    !------------------------------------------------------------
+    ! Called in trackingEngine%Initialize
+    !------------------------------------------------------------
+    ! Specifications
+    !------------------------------------------------------------
+    implicit none
+    class(TrackSubCellType) :: this
+    type(ParticleTrackingOptionsType),intent(in), target :: trackingOptions
+    !------------------------------------------------------------
 
-      ! Assign displacement pointers
-      if ( trackingOptions%advectionKind .eq. 1 ) then 
-          this%AdvectionDisplacement=>pr_AdvectionDisplacementExponential
-          this%ExitFaceAndUpdateTimeStep=>pr_DetectExitFaceAndUpdateTimeStepNewton
-      else if ( trackingOptions%advectionKind .eq. 2 ) then 
-          this%AdvectionDisplacement=>pr_AdvectionDisplacementEulerian
-          this%ExitFaceAndUpdateTimeStep=>pr_DetectExitFaceAndUpdateTimeStepQuadratic
-      end if
+    ! Assign displacement pointers
+    if ( trackingOptions%advectionKind .eq. 1 ) then 
+      this%AdvectionDisplacement=>pr_AdvectionDisplacementExponential
+      this%ExitFaceAndUpdateTimeStep=>pr_DetectExitFaceAndUpdateTimeStepNewton
+    else if ( trackingOptions%advectionKind .eq. 2 ) then 
+      this%AdvectionDisplacement=>pr_AdvectionDisplacementEulerian
+      this%ExitFaceAndUpdateTimeStep=>pr_DetectExitFaceAndUpdateTimeStepQuadratic
+    end if
 
-      ! Set indexes for corner x,y,z components
-      call this%SetCornerComponentsIndexes() 
+    ! Set indexes for corner x,y,z components
+    call this%SetCornerComponentsIndexes() 
 
-      ! Set indexes for corner porosities
-      call this%SetCornerPorosityIndexes()
+    ! Set indexes for corner porosities
+    call this%SetCornerPorosityIndexes()
 
-      ! Dispersion displacement function is set in particletrackingengine
-      !call this%SetDispersionDisplacement( trackingOptions%dispersionModel )
+    ! Dispersion displacement function is set in particletrackingengine
+    !call this%SetDispersionDisplacement( trackingOptions%dispersionModel )
 
-      ! Initialize random displacement flags ( to be deprecated )
-      if ( trackingOptions%dimensionMask(1) .eq. 0 ) this%moveX = .false.
-      if ( trackingOptions%dimensionMask(2) .eq. 0 ) this%moveY = .false.
-      if ( trackingOptions%dimensionMask(3) .eq. 0 ) this%moveZ = .false.
+    ! Initialize random displacement flags ( to be deprecated )
+    if ( trackingOptions%dimensionMask(1) .eq. 0 ) this%moveX = .false.
+    if ( trackingOptions%dimensionMask(2) .eq. 0 ) this%moveY = .false.
+    if ( trackingOptions%dimensionMask(3) .eq. 0 ) this%moveZ = .false.
 
-      this%dimensions => trackingOptions%dimensions
-      this%nDim => trackingOptions%nDim
-      
-      ! Assign random displacement function
-      select case(this%nDim) 
-        case(1)
-          this%DisplacementRandomDischarge => pr_DisplacementRandomDischarge1D
-        case(2)
-          this%DisplacementRandomDischarge => pr_DisplacementRandomDischarge2D
-        case(3)
-          this%DisplacementRandomDischarge => pr_DisplacementRandomDischarge
-      end select
+    this%dimensions => trackingOptions%dimensions
+    this%nDim => trackingOptions%nDim
+    
+    ! Assign random displacement function
+    select case(this%nDim) 
+      case(1)
+        this%DisplacementRandomDischarge => pr_DisplacementRandomDischarge1D
+      case(2)
+        this%DisplacementRandomDischarge => pr_DisplacementRandomDischarge2D
+      case(3)
+        this%DisplacementRandomDischarge => pr_DisplacementRandomDischarge
+    end select
 
 
-      ! Done
-      return
-
+    ! Done
+    return
 
   end subroutine pr_InitializeRandomWalk
 
@@ -3440,26 +3439,58 @@ contains
 
   ! RWPT
   subroutine pr_GenerateStandardNormalRandom( this, random_value )
-      !----------------------------------------------------------------
-      ! Generate a random number from an standard normal distribution
-      ! Inherited from RW3D:library_gslib:random_normal
-      !----------------------------------------------------------------
-      ! Specifications
-      !----------------------------------------------------------------
-      implicit none
-      class(TrackSubCellType) :: this 
-      ! input/output
-      doubleprecision, intent(out) :: random_value
-      ! local
-      doubleprecision :: harvest(12)
-      !----------------------------------------------------------------
+    !----------------------------------------------------------------
+    ! Generate a random number from an standard normal distribution
+    ! Inherited from RW3D:library_gslib:random_normal
+    !----------------------------------------------------------------
+    ! Specifications
+    !----------------------------------------------------------------
+    implicit none
+    class(TrackSubCellType) :: this 
+    ! input/output
+    doubleprecision, intent(out) :: random_value
+    ! local
+    doubleprecision :: harvest(12)
+    !----------------------------------------------------------------
 
-      call random_number (harvest)
-      random_value = sum(harvest)-6.d0
+    call random_number (harvest)
+    random_value = sum(harvest)-6.d0
 
-      return
+    return
 
   end subroutine  pr_GenerateStandardNormalRandom
+
+
+  subroutine pr_GenerateStandardNormalRandomZig( this, random_value )
+    !----------------------------------------------------------------
+    ! Generate a random number from an standard normal distribution
+    ! It uses rng_par_zig library  
+    !----------------------------------------------------------------
+    ! Specifications
+    !----------------------------------------------------------------
+    implicit none
+    class(TrackSubCellType) :: this 
+    ! input/output
+    doubleprecision, intent(out) :: random_value
+    ! local
+    integer, parameter :: nvals = 12
+    integer :: m, threadId
+    doubleprecision :: r,p 
+    !----------------------------------------------------------------
+
+    threadId = omp_get_thread_num()
+    
+    r = 0d0
+    do m=1,nvals
+      call rng_uni(p,threadId)
+      r = r + p
+    end do
+    random_value = r - 6.d0
+    
+    return
+
+  end subroutine  pr_GenerateStandardNormalRandomZig
+
 
 
   ! RWPT
