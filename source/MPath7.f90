@@ -141,7 +141,6 @@ program MPath7
 
   ! Parallel variables
   integer :: ompNumThreads
-  integer :: ompThreadId
   integer :: baseTimeseriesUnit
   integer :: reclen, lastRecord
   integer, allocatable, dimension(:) :: timeseriesTempUnits
@@ -442,24 +441,24 @@ program MPath7
   !
   kfirst = tdisData%FindContainingTimeStep(simulationData%ReferenceTime)
   if(simulationData%TrackingDirection .eq. 1) then
-      klast = tdisData%CumulativeTimeStepCount
-      kincr = 1
+    klast = tdisData%CumulativeTimeStepCount
+    kincr = 1
   else
-      klast = 1
-      kincr = -1
+    klast = 1
+    kincr = -1
   end if
 
   ! Set the appropriate value of stoptime. Start by setting stoptime to correspond to the start or the
   ! end of the simulation (depending on the tracking direction)
   if(simulationData%TrackingDirection .eq. 1) then
-      stoptime = tdisData%TotalTimes(tdisData%CumulativeTimeStepCount) -      &
-        simulationData%ReferenceTime
-      call tdisData%GetPeriodAndStep(tdisData%CumulativeTimeStepCount, period, step)
-      call flowModelData%LoadTimeStep(period, step)
+    stoptime = tdisData%TotalTimes(tdisData%CumulativeTimeStepCount) -      &
+      simulationData%ReferenceTime
+    call tdisData%GetPeriodAndStep(tdisData%CumulativeTimeStepCount, period, step)
+    call flowModelData%LoadTimeStep(period, step)
   else
-      stoptime = simulationData%ReferenceTime
-      call tdisData%GetPeriodAndStep(tdisData%CumulativeTimeStepCount, period, step)
-      call flowModelData%LoadTimeStep(1, 1)
+    stoptime = simulationData%ReferenceTime
+    call tdisData%GetPeriodAndStep(tdisData%CumulativeTimeStepCount, period, step)
+    call flowModelData%LoadTimeStep(1, 1)
   end if
   !
   if(simulationData%StoppingTimeOption .eq. 2) then
@@ -580,7 +579,6 @@ program MPath7
        status='replace', form='formatted', access='sequential')
     
   end if
-
 
   ! Test init
   if ( testinit ) then
@@ -802,6 +800,12 @@ program MPath7
     if ( allocated( obsRecordCounter ) ) deallocate( obsRecordCounter ) 
     allocate( obsRecordCounter( &
            simulationData%TrackingOptions%nObservations ) )
+    obsRecordCounter(:) = 0
+  else
+    ! If no observations, allocate with a placeholder length of 
+    ! 1 and a value of zero. Avoids inconsistencies in parallel loop
+    if ( allocated( obsRecordCounter ) ) deallocate( obsRecordCounter ) 
+    allocate( obsRecordCounter(1) )
     obsRecordCounter(:) = 0
   end if 
 
@@ -1091,7 +1095,6 @@ program MPath7
         !$omp private( pCoordTP, pCoord )                &
         !$omp private( trackPathResult, status )         &
         !$omp private( timeseriesRecordWritten )         &
-        !$omp private( ompThreadId )                     &
         !$omp private( cellDataBuffer )                  &
         !$omp private( obs, nobs )                       &
         !$omp private( waterVolume )                     &
