@@ -23,8 +23,16 @@ In order to run the program, it is first necessary to execute the MODFLOW-6 simu
 mpathrw p09sim.mprw
 ```
 
-Explore the program command line interface options for help and instructions to run in parallel (``mpathrw -h``).
+The example considers observation cells at injection and extraction wells. Three different files are provided as alternative to illustrate the different cell specification methods. The user would need to modify the ``OBS`` file name in order to load a configuration. The alternatives are:
 
+- ``p09sim.obs``: resident observation cells are specified as list of cells.
+
+- ``p09sim.obs2``: resident observation cells are specified as an internal array.
+
+- ``p09sim.obs3``: resident observation cells are specified from an external file (``obs1cellarea.csv``)
+
+
+Explore the program command line interface options for help and some basic instructions (``mpathrw -h``).
 
 ## References
 Zheng, C. & Wang, P., 1999, MT3DMS: a modular three-dimensional multispecies transport model for simulation of advection, dispersion, and chemical reactions of contaminants in groundwater systems; documentation and user’s guide

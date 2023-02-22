@@ -1,0 +1,13 @@
+2
+OBS1
+RES
+obscells1.obs
+2 1
+2
+OPEN/CLOSE  obs1cellsarea.csv  1  (14I10)  -1 # obscells layer 1
+OBS2
+SINK
+obscells2.obs
+1 1
+1 1 0
+1 11 7
