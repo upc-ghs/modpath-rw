@@ -1,0 +1,17 @@
+BEGIN options
+END options
+
+BEGIN timing
+  TDIS6  gwf-p09-mf6.tdis
+END timing
+
+BEGIN models
+  gwf6  gwf-p09-mf6.nam  gwf-p09-mf6
+END models
+
+BEGIN exchanges
+END exchanges
+
+BEGIN solutiongroup  1
+  ims6  gwf-p09-mf6.ims  gwf-p09-mf6
+END solutiongroup  1
