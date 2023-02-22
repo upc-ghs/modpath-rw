@@ -1635,7 +1635,7 @@ program MPath7
         end if
 
         ! Allocate gpkde
-        if( allocated( gpkde ) )
+        if( allocated( gpkde ) ) then
          call gpkde%Reset()
         else
          allocate(gpkde)
@@ -1880,7 +1880,7 @@ program MPath7
         end if
 
         ! Allocate gpkde
-        if( allocated( gpkde ) )
+        if( allocated( gpkde ) ) then
          call gpkde%Reset()
         else
          allocate(gpkde)
