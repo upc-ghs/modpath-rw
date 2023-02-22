@@ -1635,8 +1635,11 @@ program MPath7
         end if
 
         ! Allocate gpkde
-        if( allocated( gpkde ) ) deallocate(gpkde)
-        allocate( gpkde )
+        if( allocated( gpkde ) )
+         call gpkde%Reset()
+        else
+         allocate(gpkde)
+        end if
 
         ! Initialize gpkde for timeseries reconstruction
         call gpkde%Initialize(& 
@@ -1877,8 +1880,11 @@ program MPath7
         end if
 
         ! Allocate gpkde
-        if( allocated( gpkde ) ) deallocate(gpkde)
-        allocate( gpkde )
+        if( allocated( gpkde ) )
+         call gpkde%Reset()
+        else
+         allocate(gpkde)
+        end if
 
         ! Initialize gpkde for timeseries reconstruction
         call gpkde%Initialize(& 
