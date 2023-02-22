@@ -1892,7 +1892,7 @@ contains
     doubleprecision, allocatable, dimension(:)       :: releaseTimes
     doubleprecision, allocatable, dimension(:)       :: cummMassSeries
     doubleprecision :: initialTime, finalTime, minT
-    doubleprecision :: effectiveMass, cummEffectiveMass, lastCummMass
+    doubleprecision :: effectiveMass, cummEffectiveMass, lastCummMass, totCummEffectiveMass
     doubleprecision :: npAuxDbl
     integer :: npThisRelease, npNextRelease
     logical :: lastRelease = .false.
@@ -2173,7 +2173,6 @@ contains
             srcCellIFaces(:) = 0
           end if 
 
-
           ! For this source budget, it should create 
           ! particlegroups for what specifically ? 
 
@@ -2294,6 +2293,7 @@ contains
 
             ! Given the number of releases, interpolate release times
             ! for each cell, using as source the cummulative mass function
+            totCummEffectiveMass = 0d0
             do nc=1, nCells
 
               if ( nReleases(nc) .lt. 1 ) cycle ! At least one release
@@ -2395,7 +2395,7 @@ contains
                   if( nt .eq. 1 ) nti = 1 ! just in case, but it shouldn't
                   firstnonzero = nt
                   lastCummMass = cummMassSeries(nt)
-                  cycle
+                  if( nt .ne. (totMassLoc(nc)+1) ) cycle 
                 end if
 
                 ! If the current mass is higher than the last found, 
@@ -2417,7 +2417,6 @@ contains
                 ! If it is equal to the last, and the first 
                 ! index is defined, then we are on a flat zone
                 if ( (cummMassSeries(nt) .eq. lastCummMass) .and. (nti.gt.0) ) then
-
                   ! This is the last index for interpolation 
                   nte = nt-1 
                   ! If it is the last loop, set at the last index in array
@@ -2500,6 +2499,8 @@ contains
                      particleGroups(naux)%Particles(offset+m)%LocalX = particleGroups(naux)%Particles(m)%LocalX
                      particleGroups(naux)%Particles(offset+m)%LocalY = particleGroups(naux)%Particles(m)%LocalY
                      particleGroups(naux)%Particles(offset+m)%LocalZ = particleGroups(naux)%Particles(m)%LocalZ
+                     ! Mass ( potentially different effectiveMass for different cells )
+                     particleGroups(naux)%Particles(offset+m)%Mass   = effectiveMass
                     end do
 
                     ! Increase offset
@@ -2530,6 +2531,9 @@ contains
               ! corresponding to the next cell
               currentParticleCount = offset
 
+              ! Accumulate over all cells for report 
+              totCummEffectiveMass = totCummEffectiveMass + cummEffectiveMass
+
             end do ! nc=1, nCells
 
 
@@ -2537,13 +2541,12 @@ contains
             if ( particleGroups(naux)%TotalParticleCount .gt. 0 ) then 
               nValidPGroup = nValidPGroup + 1
               particleCount =  particleCount + particleGroups(naux)%TotalParticleCount 
-
-              write(outUnit,'(A,es18.9e3)') 'Original particle mass for this solute  = ', auxMasses(naux)
-              write(outUnit,'(A,es18.9e3)') 'Effective particle mass for this solute = ', effectiveMass
-              write(outUnit,'(A,es18.9e3)') 'Total released mass  = ', cummEffectiveMass
-              write(outUnit,'(A,I10)') 'Total number of particles = ', particleGroups(naux)%TotalParticleCount 
-
+              !write(outUnit,'(A,es18.9e3)') 'Original particle mass for this solute  = ', auxMasses(naux)
+              !write(outUnit,'(A,es18.9e3)') 'Effective particle mass for this solute = ', effectiveMass
+              write(outUnit,'(A,es18.9e3)') 'Total released mass related to aux var  = ', totCummEffectiveMass
+              write(outUnit,'(A,I10)') 'Total number of particles related to aux var = ', particleGroups(naux)%TotalParticleCount 
             end if
+
 
           end do ! naux = 1, nAuxNames
        
@@ -3358,6 +3361,7 @@ contains
 
             ! Given the number of releases, interpolate release times
             ! for each cell, using as source the cummulative mass function
+            totCummEffectiveMass = 0d0
             do nc=1, nCells
 
               if ( nReleases(nc) .lt. 1 ) cycle ! At least one release
@@ -3459,7 +3463,7 @@ contains
                   if( nt .eq. 1 ) nti = 1 ! just in case, but it shouldn't
                   firstnonzero = nt
                   lastCummMass = cummMassSeries(nt)
-                  cycle
+                  if( nt .ne. (totMassLoc(nc)+1) ) cycle 
                 end if
 
                 ! If the current mass is higher than the last found, 
@@ -3564,6 +3568,8 @@ contains
                      particleGroups(naux)%Particles(offset+m)%LocalX = particleGroups(naux)%Particles(m)%LocalX
                      particleGroups(naux)%Particles(offset+m)%LocalY = particleGroups(naux)%Particles(m)%LocalY
                      particleGroups(naux)%Particles(offset+m)%LocalZ = particleGroups(naux)%Particles(m)%LocalZ
+                     ! Mass ( potentially different effectiveMass for different cells )
+                     particleGroups(naux)%Particles(offset+m)%Mass   = effectiveMass
                     end do
 
                     ! Increase offset
@@ -3594,18 +3600,19 @@ contains
               ! corresponding to the next cell
               currentParticleCount = offset
 
+              ! Accumulate over all cells for report 
+              totCummEffectiveMass = totCummEffectiveMass + cummEffectiveMass
+
             end do ! nc=1, nCells
 
             ! Increase counters
             if ( particleGroups(naux)%TotalParticleCount .gt. 0 ) then 
               nValidPGroup = nValidPGroup + 1
               particleCount =  particleCount + particleGroups(naux)%TotalParticleCount 
-
-              write(outUnit,'(A,es18.9e3)') 'Original particle mass for this solute  = ', auxMasses(naux)
-              write(outUnit,'(A,es18.9e3)') 'Effective particle mass for this solute = ', effectiveMass
-              write(outUnit,'(A,es18.9e3)') 'Total released mass                     = ', cummEffectiveMass
-              write(outUnit,'(A,I10)') 'Total number of particles               = ', particleGroups(naux)%TotalParticleCount 
-
+              !write(outUnit,'(A,es18.9e3)') 'Original particle mass for this solute  = ', auxMasses(naux)
+              !write(outUnit,'(A,es18.9e3)') 'Effective particle mass for this solute = ', effectiveMass
+              write(outUnit,'(A,es18.9e3)') 'Total released mass related to aux var  = ', totCummEffectiveMass
+              write(outUnit,'(A,I10)') 'Total number of particles related to aux var = ', particleGroups(naux)%TotalParticleCount 
             end if
 
 
