@@ -1827,7 +1827,7 @@ contains
       else
         this%ParticleGroupCount = newParticleGroupCount
         this%TotalParticleCount = particleCount
-        allocate(this%ParticleGroups(this%ParticleGroupCount))
+        !allocate(this%ParticleGroups(this%ParticleGroupCount))
         call move_alloc( newParticleGroups, this%ParticleGroups )
       end if
     end if
@@ -2575,7 +2575,7 @@ contains
             else
               this%ParticleGroupCount = newParticleGroupCount
               this%TotalParticleCount = particleCount
-              allocate(this%ParticleGroups(this%ParticleGroupCount))
+              !allocate(this%ParticleGroups(this%ParticleGroupCount))
               call move_alloc( newParticleGroups, this%ParticleGroups )
             end if
           end if
@@ -3643,7 +3643,7 @@ contains
             else
               this%ParticleGroupCount = newParticleGroupCount
               this%TotalParticleCount = particleCount
-              allocate(this%ParticleGroups(this%ParticleGroupCount))
+              !allocate(this%ParticleGroups(this%ParticleGroupCount))
               call move_alloc( newParticleGroups, this%ParticleGroups )
             end if
           end if
