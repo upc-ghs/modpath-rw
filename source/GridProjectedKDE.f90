@@ -36,8 +36,6 @@ module GridProjectedKDEModule
     ! Optimization
     doubleprecision :: defaultInitialSmoothingFactor = 2d0
     doubleprecision :: defaultDensityScale           = 1d0
-    !doubleprecision :: defaultMinLimitRoughness      = 1d-4
-    !doubleprecision :: defaultMaxLimitRoughness      = 1d4
     doubleprecision :: defaultMinLimitRoughness      = 1d-40
     doubleprecision :: defaultMaxLimitRoughness      = 1d40
     doubleprecision :: defaultMaxSmoothingGrowth     = 10d0
@@ -592,18 +590,60 @@ module GridProjectedKDEModule
       !------------------------------------------------------------------------------
 
       call this%histogram%Reset()
-      !call this%kernel%Reset()
+
+      ! Default configuration module level params
+      defaultInitialSmoothingFactor = 2d0
+      defaultDensityScale           = 1d0
+      defaultMinLimitRoughness      = 1d-40
+      defaultMaxLimitRoughness      = 1d40
+      defaultMaxSmoothingGrowth     = 10d0
+      defaultMaxKernelShape         = 10d0
+      defaultMinKernelShape         = 5d-1
+      dimensionMask                 = (/1,1,1/)
+
+      if ( allocated(  nEstimateGrid           )) deallocate(  nEstimateGrid           )
+      if ( allocated(  kernelSmoothing         )) deallocate(  kernelSmoothing         )
+      if ( allocated(  kernelSmoothingScale    )) deallocate(  kernelSmoothingScale    )
+      if ( allocated(  kernelSmoothingShape    )) deallocate(  kernelSmoothingShape    )
+      if ( allocated(  kernelSigmaSupport      )) deallocate(  kernelSigmaSupport      )
+      if ( allocated(  kernelSigmaSupportScale )) deallocate(  kernelSigmaSupportScale )
+      if ( allocated(  curvatureBandwidth      )) deallocate(  curvatureBandwidth      )
+      if ( allocated(  relativeSmoothingChange )) deallocate(  relativeSmoothingChange )
+      if ( allocated(  relativeDensityChange   )) deallocate(  relativeDensityChange   )
+      if ( allocated(  densityEstimateArray    )) deallocate(  densityEstimateArray    )
+      if ( allocated(  nEstimateArray          )) deallocate(  nEstimateArray          )
+      if ( allocated(  roughnessXXArray        )) deallocate(  roughnessXXArray        )
+      if ( allocated(  roughnessYYArray        )) deallocate(  roughnessYYArray        )
+      if ( allocated(  roughnessZZArray        )) deallocate(  roughnessZZArray        )
+      if ( allocated(  netRoughnessArray       )) deallocate(  netRoughnessArray       )
+      if ( allocated( activeGridCellsMod       )) deallocate( activeGridCellsMod       )
+
+      if ( allocated( this%kernelDatabase     ) )deallocate( this%kernelDatabase     )
+      if ( allocated( this%kernelDatabaseFlat ) )deallocate( this%kernelDatabaseFlat )
+      if ( allocated( this%kernelSDXDatabase  ) )deallocate( this%kernelSDXDatabase  ) 
+      if ( allocated( this%kernelSDYDatabase  ) )deallocate( this%kernelSDYDatabase  )
+      if ( allocated( this%kernelSDZDatabase  ) )deallocate( this%kernelSDZDatabase  ) 
 
 
-      ! MAYBE HERE
-      !deallocate( kernelSmoothing )
-      !deallocate( kernelSigmaSupport )
+      this%kernelSDDatabase1 => null()
+      this%kernelSDDatabase2 => null()
+      if( allocated( this%densityEstimate        ) )deallocate( this%densityEstimate        )
+      if( allocated( this%densityEstimateGrid    ) )deallocate( this%densityEstimateGrid    )
+      if( allocated( this%rawDensityEstimateGrid ) )deallocate( this%rawDensityEstimateGrid )
+      if( allocated( this%kernelSmoothing        ) )deallocate( this%kernelSmoothing        )
+      if( allocated( this%kernelSigmaSupport     ) )deallocate( this%kernelSigmaSupport     ) 
+      if( allocated( this%curvatureBandwidth     ) )deallocate( this%curvatureBandwidth     ) 
+      if( allocated(this%outputBinIds) ) deallocate( this%outputBinIds )
 
-      !deallocate( densityEstimateActiveBins )
-      !deallocate( nEstimateActiveBins )
+      this%ComputeKernelDatabaseIndexes      => null()
+      this%ComputeKernelDatabaseFlatIndexes  => null()
+      this%ComputeNetRoughnessEstimate       => null()
+      this%SetKernel => null()
+      this%SetKernelSigma => null()
+      this%SetKernelSD    => null()
+      this%SetKernelSD2D  => null()
+      this%SetKernelSD3D  => null()
 
-      !deallocate( densityGridEstimate )
-      !deallocate( nGridEstimate )
 
     end subroutine prReset
 

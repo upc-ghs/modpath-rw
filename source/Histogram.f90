@@ -151,6 +151,7 @@ contains
         if( allocated(this%activeBinIds) ) deallocate( this%activeBinIds ) 
         if( allocated(this%boundingBoxBinIds) ) deallocate( this%boundingBoxBinIds ) 
         
+        if( allocated( this%dimensions) ) deallocate( this%dimensions) 
 
     end subroutine prReset
 
