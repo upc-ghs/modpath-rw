@@ -2225,7 +2225,7 @@ program MPath7
         call ustop('Options -logname and -nolog both on the command line. Stop.')
     
     ! If log file name not specified, set to default
-    if (mplogFile == "") mplogFile = "mpath7.log"
+    if (mplogFile == "") mplogFile = "mpathRW.log"
 
     ! Set parallel processes
     if ( parallel .and. (nprocs .eq. 0) ) then 
