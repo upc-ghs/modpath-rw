@@ -2362,6 +2362,8 @@ contains
               ! still have an invalid release time and it will be corrected 
               ! downstream
               offset = currentParticleCount - auxNPCell(naux,nc)
+              ! Same with idmax, all particles are reprocessed downstream
+              idmax  = 0
 
               ! Note: 
               ! Interpolator requires strictly increasing x and 
@@ -3430,6 +3432,8 @@ contains
               ! still have an invalid release time and it will be corrected 
               ! downstream
               offset = currentParticleCount - auxNPCell(naux,nc)
+              ! Same with idmax, all particles are reprocessed downstream
+              idmax  = 0
 
               ! Note: 
               ! Interpolator requires strictly increasing x and 
