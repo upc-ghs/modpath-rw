@@ -1782,7 +1782,7 @@ program MPath7
 
 
         ! Deallocate 
-        deallocate( gpkde )
+        if ( allocated( gpkde ) ) deallocate( gpkde )
 
         ! continue to next
         cycle
@@ -2021,7 +2021,7 @@ program MPath7
         !call gpkde%Reset()
 
         ! Deallocate 
-        deallocate( gpkde )
+        if ( allocated( gpkde ) ) deallocate( gpkde )
 
         ! continue to next
         cycle
