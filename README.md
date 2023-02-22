@@ -2,62 +2,71 @@
 A Random Walk Particle Tracking Code for Solute Transport in Heterogeneous Aquifers
 
 ## Overview
-MODPATH-RW is an extension of MODPATH-v7 implementing particles displacement based on the Random Walk Particle Tracking (RWPT) method. Code is built on top of MODPATH-OMP, so it can displace particles in parallel with the OpenMP library. 
+MODPATH-RW is an extension of MODPATH-v7 implementing particles displacement based on the Random Walk Particle Tracking (RWPT) method. Code is built on top of MODPATH-OMP, so it can process particles in parallel using the OpenMP library. 
 
-## Get the code 
-MODPATH-RW requires the module for smoothed reconstruction of concentrations [GPKDE](https://github.com/upc-ghs/gpkde). While cloning, do it recursively with the command
+## Get the code
+There are some external dependencies in the program. This means that while cloning, do it recursively to bring the latest version of these dependencies. 
 
 ```
 git clone --recursive https://github.com/upc-ghs/modpath-rw.git
 ```
 
-Previous instruction should clone both the modified files of MODPATH-RW plus the ``gpkde`` submodule. The latter is required for compilation of the program. For users cloning via ``ssh`` it is convenient to configure ``git`` with the following
+The external dependencies are stored in the ``lib`` folder: 
 
-```
-git config --global url."ssh://git@".insteadOf https://
-```
+- [``gpkde``](https://github.com/upc-ghs/gpkde): module for smoothed reconstruction of concentrations.
 
-If you decide to clone not-recursively, then be sure to clone the [GPKDE](https://github.com/upc-ghs/gpkde) repository into the root folder of MODPATH-RW as makefiles assume this submodule exists.
+- [``finterp``](https://github.com/jacobwilliams/finterp.git): module for linear interpolation.
 
+- [``rng_par_zig``](https://bitbucket.org/LadaF/elmm/src/master/src/rng_par_zig.f90): module for random number generation in parallel with the ziggurat method. This file is included in the repo.
+
+
+If you decide not to clone recursively, then be sure to bring the external dependencies and place them inside the ``lib`` folder. 
 
 ## Compilation
-Download source code and access the `make` folder. Here execute one of the makefiles with
+Makefiles are available at the `make` folder. Compilation has been verified with ``gfortran@>=9.2.1`` and with ``ifort`` from Intel ``oneAPI@2021.3.0``. For example, to compile with ``gfortran``
 
 ```
 make -f makefile-gfortran-pc
 ```
 
-This will compile source files and will output a binary, by default with name `mpathrwpt`. Compilation has been verified with ``gfortran@>=9.2.1`` and with ``ifort`` from Intel ``oneAPI@2021.3.0``.
+By default, the compiled program is called ``mpathrw``. Compilation process will create an objects folder (``obj_temp``) where the compiled modules reside. When integrating program updates and recompiling, it is advised to remove this folder to avoid any inconsistencies. 
 
-
-## Running parallel simulations
-``modpath`` interface has been extended to simplify execution of parallel runs via the command line. 
-Some alternatives are:
-
-- Use the ``-np`` argument to specify the number of processes:
-```
-mpath7omp example.mpsim -np 4 
-```
-
-- Use the ``-parallel`` argument to run in parallel employing the maximum number of available processors:
+## Command line interface 
+A command line interface with some simple instructions for running the program and parameters has been included. Asking for help (``mpathrw -h``) will display the following message
 
 ```
-mpath7omp example.mpsim -parallel 
-```
+MODPATH-RW version *.*.*               
+Program compiled MMM DD YYYY HH:MM:SS with ******** compiler (ver. *******)       
 
-- Specify the ``OMP_NUM_THREADS`` environment variable:
+A Random Walk Particle Tracking code for solute transport in heterogeneous aquifers
+
+usage:
+
+  mpathrw [options] simfile
+
+options:
+                                                                                 
+  -h         --help                Show this message                             
+  -i         --init                Initialize simulation without running         
+  -l  <str>  --logname    <str>    Write program logs to <str>                   
+  -nl        --nolog               Do not write log file                         
+  -np <int>  --nprocs     <int>    Run with <int> processes                      
+  -p         --parallel            Run in parallel                               
+  -ts <int>  --tsoutput   <int>    Selects timeseries output <int>               
+  -s         --shortlog            Simplified logs                               
+  -v         --version             Show program version                          
+                                                                                 
+For bug reports and updates, follow:                                             
+  https://github.com/upc-ghs/modpath-rw  
 ```
-OMP_NUM_THREADS=4 mpath7omp example.mpsim
-```
-In this last case, if the variable is defined at a system level, it will be employed when submitting a normal run instruction ``mpath7omp example.mpsim``
 
 
 ## Parallel output for timeseries
 Three different output protocols for timeseries running in parallel have been implemented. The protocol can be selected via the command line argument ``-tsoutput``:
 
-- ``-tsoutput 1``: is the default format, output is performed into a single output unit with OpenMP thread exclusive clause (critical). Only difference versus a serial run is that the output file contains non-sorted particle indexes.
-- ``-tsoutput 2``: timeseries records are written into thread specific binary units and then consolidated into a single file after each timeseries output time. Timeseries file generated with this format does not contains a file header.
-- ``-tsoutput 3``: timeseries records are written into thread specific output units. Timeseries file header is only written to output unit related to the first thread ``1_example.timeseries``. Initial particle positions are also written to the file of the first thread.
+- ``--tsoutput 1``: is the default format, output is performed into a single output unit with OpenMP thread exclusive clause (critical). Only difference versus a serial run is that the output file contains non-sorted particle indexes.
+- ``--tsoutput 2``: timeseries records are written into thread specific binary units and then consolidated into a single file after each timeseries output time. Timeseries file generated with this format does not contains a file header.
+- ``--tsoutput 3``: timeseries records are written into thread specific output units. Timeseries file header is only written to output unit related to the first thread ``1_example.timeseries``. Initial particle positions are also written to the file of the first thread.
 
 
 ## Input files
