@@ -878,6 +878,8 @@ contains
       if (n.eq.0) then 
         write(outUnit,'(A)') 'GPKDE output is expressed as smoothed total mass density.'
         this%TrackingOptions%gpkdeAsConcentration = .false.
+        this%TrackingOptions%gpkdeScalingFactor =&
+          1d0/(this%TrackingOptions%gpkdeBinVolume)
       else
         ! If requested as resident concentration, 
         ! verifies whether porosities and retardation 
@@ -890,9 +892,11 @@ contains
             1d0/(this%uniformPorosity*this%uniformRetardation*this%TrackingOptions%gpkdeBinVolume)
         else
           write(outUnit,'(A)') 'Porosity and retardation are NOT spatially uniform, GPKDE output is total mass density.'
+          this%TrackingOptions%gpkdeAsConcentration = .false.
           this%TrackingOptions%gpkdeScalingFactor =&
             1d0/(this%TrackingOptions%gpkdeBinVolume)
         end if
+
       end if
 
     else
