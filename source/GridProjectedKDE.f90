@@ -34,7 +34,7 @@ module GridProjectedKDEModule
     logical, parameter ::  defaultAnisotropicSigmaSupport = .false.
 
     ! Optimization
-    doubleprecision :: defaultInitialSmoothingFactor = 10d0
+    doubleprecision :: defaultInitialSmoothingFactor = 1d0
     doubleprecision :: defaultDensityScale           = 1d0
     doubleprecision :: defaultMinLimitRoughness      = 1d-40
     doubleprecision :: defaultMaxLimitRoughness      = 1d40
@@ -2304,7 +2304,7 @@ module GridProjectedKDEModule
         ! Initialize optional arguments
         persistKDB = .true.
         locExportOptimizationVariables =.false.
-        locSkipErrorConvergence =.true.
+        locSkipErrorConvergence =.false.
         locUnitVolume =.false.
         locScalingFactor = 1d0
         locScaleHistogram = .false.
@@ -2374,6 +2374,10 @@ module GridProjectedKDEModule
 
         ! If only histogram, leave
         if ( locOnlyHistogram ) then 
+          if( locWeightedHistogram ) then
+            ! Restore histogram to mass
+            this%histogram%counts = this%histogram%counts*this%histogram%avgmbin
+          end if
           if ( locComputeRawDensity ) then 
             this%histogram%counts = this%histogram%counts/this%histogram%binVolume
           end if 

@@ -278,7 +278,7 @@ contains
           this%avgmbin = this%counts/this%ncounts
         end where
         where (this%avgmbin.ne.0)  
-        this%counts = this%counts/this%avgmbin
+          this%counts = this%counts/this%avgmbin
         end where
 
     end subroutine prComputeCountsWeighted
