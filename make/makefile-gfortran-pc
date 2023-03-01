@@ -9,15 +9,15 @@ BINDIR = .
 PROGRAM = mpathrw
 
 SOURCEDIR1=../source
-SOURCEDIR2=../lib/gpkde/src
-SOURCEDIR3=../lib/finterp/src
-SOURCEDIR4=../lib/rngzig/
+#SOURCEDIR2=../lib/gpkde/src
+#SOURCEDIR3=../lib/finterp/src
+#SOURCEDIR4=../lib/rngzig/
 
 VPATH = \
-${SOURCEDIR1} \
-${SOURCEDIR2} \
-${SOURCEDIR3} \
-${SOURCEDIR4} 
+${SOURCEDIR1} 
+#${SOURCEDIR2} \
+#${SOURCEDIR3} \
+#${SOURCEDIR4} 
 
 
 .SUFFIXES: .c .cpp .f .f90 .F90 .fpp .o
@@ -25,6 +25,8 @@ ${SOURCEDIR4}
 # Define the Fortran compile flags
 FC = gfortran
 FFLAGS = -O2 -fopenmp -fbacktrace -ffpe-summary=overflow -ffpe-trap=overflow,zero,invalid -fall-intrinsics -Wtabs -Wline-truncation -Wunused-label -Wunused-variable -pedantic -std=f2008 -Wcharacter-truncation -cpp
+##DEBUG
+#FFLAGS = -g -Og -Wall -fcheck=all -fopenmp -fbacktrace -ffpe-summary=overflow -ffpe-trap=overflow,zero,invalid -fall-intrinsics -Wtabs -Wline-truncation -Wunused-label -Wunused-variable -pedantic -std=f2008 -Wcharacter-truncation -cpp
 
 # Define the C compile flags
 CC = gcc

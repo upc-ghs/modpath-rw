@@ -34,7 +34,7 @@ module GridProjectedKDEModule
     logical, parameter ::  defaultAnisotropicSigmaSupport = .false.
 
     ! Optimization
-    doubleprecision :: defaultInitialSmoothingFactor = 2d0
+    doubleprecision :: defaultInitialSmoothingFactor = 10d0
     doubleprecision :: defaultDensityScale           = 1d0
     doubleprecision :: defaultMinLimitRoughness      = 1d-40
     doubleprecision :: defaultMaxLimitRoughness      = 1d40
@@ -361,7 +361,8 @@ module GridProjectedKDEModule
 
       ! Initialize reconstruction grid 
       where( binSize .ne. 0d0 ) 
-        this%nBins = ceiling( domainSize/binSize )
+        !this%nBins = ceiling( domainSize/binSize )
+        this%nBins = int( domainSize/binSize + 0.5 )
       elsewhere
         this%nBins = 1
       end where
@@ -592,7 +593,7 @@ module GridProjectedKDEModule
       call this%histogram%Reset()
 
       ! Default configuration module level params
-      defaultInitialSmoothingFactor = 2d0
+      defaultInitialSmoothingFactor = 10d0
       defaultDensityScale           = 1d0
       defaultMinLimitRoughness      = 1d-40
       defaultMaxLimitRoughness      = 1d40
@@ -2303,7 +2304,7 @@ module GridProjectedKDEModule
         ! Initialize optional arguments
         persistKDB = .true.
         locExportOptimizationVariables =.false.
-        locSkipErrorConvergence =.false.
+        locSkipErrorConvergence =.true.
         locUnitVolume =.false.
         locScalingFactor = 1d0
         locScaleHistogram = .false.
@@ -3301,7 +3302,13 @@ module GridProjectedKDEModule
                 roughnessYYArray, roughnessZZArray, netRoughnessArray, &
                          relativeDensityChange, relativeRoughnessChange )
 
+          end if
+
+          if ( this%reportToOutUnit ) then 
+          write( this%outFileUnit, "(I3,3es18.9e3)" ) m, & 
+            sum(kernelSmoothingScale)/this%nComputeBins/this%histogram%binDistance,errorALMISEProxy, errorRMSE
           end if 
+
 
       end do
       ! End optimization loop ! 
@@ -3314,6 +3321,64 @@ module GridProjectedKDEModule
       if ( exportLoopError ) then
         close( errorOutputUnit )
       end if 
+
+
+      ! Fix histogram
+      this%histogram%counts = this%histogram%counts*this%histogram%avgmbin
+
+      ! Update density
+      densityEstimateGrid = 0d0
+      !$omp parallel do schedule( dynamic, 1 )  &
+      !$omp default( none )                     &
+      !$omp shared( this )                      &
+      !$omp shared( activeGridCells )           & 
+      !$omp shared( kernelSmoothing )           & 
+      !$omp reduction( +: densityEstimateGrid ) & 
+      !$omp firstprivate( kernel )              & 
+      !$omp private( gc )                        
+      do n = 1, this%nComputeBins
+
+        ! Any smoothing < 0 or NaN, skip
+        if ( ( any( kernelSmoothing( :, n ) .lt. 0d0 ) ) .or.             &
+            ( any( kernelSmoothing( :, n ) /= kernelSmoothing( :, n ) ) ) ) then
+          cycle
+        end if
+
+        ! Assign pointer 
+        gc => activeGridCells(n)
+
+        ! Set kernel
+        call this%SetKernel( gc, kernel, kernelSmoothing(:,n) ) 
+
+        ! Compute estimate
+        densityEstimateGrid(                         &
+              gc%kernelXGSpan(1):gc%kernelXGSpan(2), &
+              gc%kernelYGSpan(1):gc%kernelYGSpan(2), & 
+              gc%kernelZGSpan(1):gc%kernelZGSpan(2)  & 
+          ) = densityEstimateGrid(                   &
+              gc%kernelXGSpan(1):gc%kernelXGSpan(2), &
+              gc%kernelYGSpan(1):gc%kernelYGSpan(2), & 
+              gc%kernelZGSpan(1):gc%kernelZGSpan(2)  & 
+          ) + this%histogram%counts(                 &
+              gc%id(1), gc%id(2), gc%id(3) )*gc%kernelMatrix(&
+                   gc%kernelXMSpan(1):gc%kernelXMSpan(2), &
+                   gc%kernelYMSpan(1):gc%kernelYMSpan(2), & 
+                   gc%kernelZMSpan(1):gc%kernelZMSpan(2)  &
+          )
+
+        !! Cannot be done here ! Reduction !
+        ! Assign into array   
+        !densityEstimateArray( n ) = densityEstimateGrid( gc%id(1), gc%id(2), gc%id(3) )
+      end do
+      !$omp end parallel do
+      densityEstimateGrid = densityEstimateGrid/this%histogram%binVolume 
+
+
+
+
+
+
+
 
       ! Clean
       call kernel%Reset()
@@ -3332,6 +3397,8 @@ module GridProjectedKDEModule
           call activeGridCellsMod(n)%Reset()
       end do
       !$omp end parallel do
+
+
 
       ! Probably more to be deallocated !
       

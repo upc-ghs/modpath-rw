@@ -1027,7 +1027,8 @@ program MPath7
     ! For timeseries and pathline runs, find out if maxTime should be set to the value of the
     ! next time point or the time at the end of the time step
     if (nt+1 .le. simulationData%TimePointCount) then
-      if (simulationData%TimePoints(nt+1) .le. tsMax) then
+      if (abs(simulationData%TimePoints(nt+1) - tsMax).lt.1d-12) then ! needs a better delta
+      !if (simulationData%TimePoints(nt+1) .le. tsMax) then
         nt = nt + 1
         maxTime = simulationData%TimePoints(nt)
         tPoint(1) = maxTime
@@ -1553,7 +1554,6 @@ program MPath7
     ! Loop over observations
     do nobs=1, simulationData%TrackingOptions%nObservations
       obs => simulationData%TrackingOptions%Observations(nobs)
-
       ! If no postprocess for this obs, go the next
       if ( .not. obs%doPostprocess ) cycle
 
@@ -1650,7 +1650,6 @@ program MPath7
             databaseOptimization=.false.,                                      &
             outFileName=mplistFile &
         )
-
 
         ! Allocate according to postprocess option 
         ! 0: only histogram
@@ -1799,7 +1798,6 @@ program MPath7
 
       ! Observation cell for strong sinks
       if ( obs%style .eq. 2 ) then 
-
         write(mplistUnit, *) 
         write(mplistUnit, '(A,I3,A,I3)') 'Flux concentration OBS, nobs ', nobs ,', obs id ', obs%id
         call ulog('OBS of flux concentration', logUnit)
@@ -1901,11 +1899,11 @@ program MPath7
         ! 1: histogram + gpkde
         if (allocated(BTCHistPerSolute)) deallocate(BTCHistPerSolute)
         allocate(BTCHistPerSolute(obs%nAuxRecords, transportModelData%nSolutes))
-        BTCHistPerSolute = 0d0
+        BTCHistPerSolute(:,:) = 0d0
         if ( obs%postprocessOption .eq. 1 ) then 
           if (allocated(BTCGpkdePerSolute)) deallocate(BTCGpkdePerSolute)
           allocate(BTCGpkdePerSolute(obs%nAuxRecords, transportModelData%nSolutes))
-          BTCGpkdePerSolute = 0d0
+          BTCGpkdePerSolute(:,:) = 0d0
         end if 
 
 
@@ -1926,10 +1924,10 @@ program MPath7
           end do
           if ( allocated(gpkdeDataCarrier) ) deallocate(gpkdeDataCarrier) 
           allocate( gpkdeDataCarrier(solCount,3) )
-          gpkdeDataCarrier = 0d0
+          gpkdeDataCarrier(:,:) = 0d0
           if ( allocated(gpkdeWeightsCarrier) ) deallocate(gpkdeWeightsCarrier) 
           allocate( gpkdeWeightsCarrier(solCount) )
-          gpkdeWeightsCarrier = 0d0
+          gpkdeWeightsCarrier(:) = 0d0
 
           ! Not necessarily the most efficient,
           ! think about cases with lots of pgroups per
@@ -1969,10 +1967,8 @@ program MPath7
               weights = gpkdeWeightsCarrier )
             BTCHistPerSolute(:,ns)  = gpkde%histogram%counts(:,1,1)
             BTCGpkdePerSolute(:,ns) = gpkde%densityEstimateGrid(:,1,1)
-
           end select
-
-        end do 
+        end do ! ns=1, transportModelData%nSolutes 
   
 
         ! Flow rates were written to obs file

@@ -13,7 +13,8 @@ module HistogramModule
 
         ! Properties
         doubleprecision, dimension(:,:,:), allocatable :: counts 
-        !integer, dimension(:,:,:), allocatable     :: counts 
+        integer, dimension(:,:,:), allocatable     :: ncounts 
+        doubleprecision, dimension(:,:,:), allocatable     :: avgmbin
         integer, dimension(3)                      :: nBins
         doubleprecision, dimension(3)              :: binSize
         doubleprecision                            :: binVolume
@@ -125,6 +126,8 @@ contains
 
         ! Allocate and initialize histogram counts
         allocate( this%counts( nBins(1), nBins(2), nBins(3) ) )
+        allocate( this%ncounts( nBins(1), nBins(2), nBins(3) ) )
+        allocate( this%avgmbin( nBins(1), nBins(2), nBins(3) ) )
         this%counts = 0
 
 
@@ -148,9 +151,10 @@ contains
         this%binVolume   = 0d0
 
         if( allocated(this%counts) ) deallocate( this%counts )
+        if( allocated(this%ncounts) ) deallocate( this%ncounts )
+        if( allocated(this%avgmbin) ) deallocate( this%avgmbin )
         if( allocated(this%activeBinIds) ) deallocate( this%activeBinIds ) 
         if( allocated(this%boundingBoxBinIds) ) deallocate( this%boundingBoxBinIds ) 
-        
         if( allocated( this%dimensions) ) deallocate( this%dimensions) 
 
     end subroutine prReset
@@ -238,6 +242,8 @@ contains
 
         ! Reset counts
         this%counts  = 0
+        this%ncounts  = 0
+        this%avgmbin  = 0
         nPointsShape = shape(dataPoints)
 
         ! This could be done with OpenMP (?) 
@@ -263,9 +269,17 @@ contains
             ! Increase counter
             this%counts( gridIndexes(1), gridIndexes(2), gridIndexes(3) ) = &
                 this%counts( gridIndexes(1), gridIndexes(2), gridIndexes(3) ) + weights(np)
+            this%ncounts( gridIndexes(1), gridIndexes(2), gridIndexes(3) ) = &
+                this%ncounts( gridIndexes(1), gridIndexes(2), gridIndexes(3) ) + 1
 
         end do 
-       
+      
+        where (this%ncounts.ne.0)  
+          this%avgmbin = this%counts/this%ncounts
+        end where
+        where (this%avgmbin.ne.0)  
+        this%counts = this%counts/this%avgmbin
+        end where
 
     end subroutine prComputeCountsWeighted
 
