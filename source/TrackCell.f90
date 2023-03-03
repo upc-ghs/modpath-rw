@@ -491,9 +491,9 @@ contains
       end if
       
       ! Initialize the sub-cell buffer and convert the initial location to the equivalent local sub-cell coordinates.
-      call this%CellData%FillMassSubCellDataBuffer(this%TrackSubCell%SubCellData,       &
+      call this%CellData%FillMassSubCellDataBuffer(this%TrackSubCell%SubCellData, &
         subRow,subColumn,this%TrackingOptions%BackwardTracking)
-      subLoc =                                                                      &
+      subLoc = &
         this%TrackSubCell%SubCellData%ConvertFromLocalParentCoordinate(initialLocation)
 
       ! RWPT
@@ -533,8 +533,8 @@ contains
                     subLoc%LocalZ = subCellResult%FinalLocation%LocalZ
                     subLoc%TrackingTime = subCellResult%FinalLocation%TrackingTime
                     subColumn = 1
-                    call this%CellData%FillMassSubCellDataBuffer(                       &
-                      this%TrackSubCell%SubCellData,subRow,subColumn,               &
+                    call this%CellData%FillMassSubCellDataBuffer(    &
+                      this%TrackSubCell%SubCellData,subRow,subColumn,&
                       this%TrackingOptions%BackwardTracking)
                     ! RWPT
                     call this%TrackSubCell%ComputeCornerVariables( this%CellData, neighborCellData )  
@@ -550,8 +550,8 @@ contains
                     subLoc%LocalZ = subCellResult%FinalLocation%LocalZ
                     subLoc%TrackingTime = subCellResult%FinalLocation%TrackingTime
                     subColumn = 2
-                    call this%CellData%FillMassSubCellDataBuffer(                       &
-                      this%TrackSubCell%SubCellData,subRow,subColumn,               &
+                    call this%CellData%FillMassSubCellDataBuffer(    &
+                      this%TrackSubCell%SubCellData,subRow,subColumn,&
                       this%TrackingOptions%BackwardTracking)
                     ! RWPT
                     call this%TrackSubCell%ComputeCornerVariables( this%CellData, neighborCellData )  
@@ -567,8 +567,8 @@ contains
                     subLoc%LocalZ = subCellResult%FinalLocation%LocalZ
                     subLoc%TrackingTime = subCellResult%FinalLocation%TrackingTime
                     subRow = 2
-                    call this%CellData%FillMassSubCellDataBuffer(                       &
-                      this%TrackSubCell%SubCellData, subRow, subColumn,             &
+                    call this%CellData%FillMassSubCellDataBuffer(      &
+                      this%TrackSubCell%SubCellData, subRow, subColumn,&
                       this%TrackingOptions%BackwardTracking)
                     ! RWPT
                     call this%TrackSubCell%ComputeCornerVariables( this%CellData, neighborCellData )  
@@ -584,8 +584,8 @@ contains
                     subLoc%LocalZ = subCellResult%FinalLocation%LocalZ
                     subLoc%TrackingTime = subCellResult%FinalLocation%TrackingTime
                     subRow = 1
-                    call this%CellData%FillMassSubCellDataBuffer(                       &
-                      this%TrackSubCell%SubCellData, subRow, subColumn,             &
+                    call this%CellData%FillMassSubCellDataBuffer(      &
+                      this%TrackSubCell%SubCellData, subRow, subColumn,&
                       this%TrackingOptions%BackwardTracking)
                     ! RWPT
                     call this%TrackSubCell%ComputeCornerVariables( this%CellData, neighborCellData )  
