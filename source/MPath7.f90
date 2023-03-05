@@ -224,6 +224,15 @@ program MPath7
   write(mplistUnit,'(1x/a,a)') 'MODPATH-RW Version ', version
   write(mplistUnit,'(a)') compilerVersionText
   write(mplistUnit, *)
+  write(mplistUnit, '(a)') 'This program has been developed and published by the Hydrogeology'
+  write(mplistUnit, '(a)') 'Group (GHS), Universitat Politècnica de Catalunya (UPC). It is free'
+  write(mplistUnit, '(a)') 'to use and modify under the condition that neither the GHS nor UPC'
+  write(mplistUnit, '(a)') 'shall be considered legally responsible for any wrongdoing or damages'
+  write(mplistUnit, '(a)') 'derived from its use. The code is an extension of software originally'
+  write(mplistUnit, '(a)') 'released by the U.S. Geological Survey (USGS), without endorsement'
+  write(mplistUnit, '(a)') 'from this institution, explicit or implied. Their release conditions'
+  write(mplistUnit, '(a)') 'also apply (see disclaimer below).'
+  write(mplistUnit, *)
   write(mplistUnit, '(a)') 'This software has been approved for release by the U.S. Geological'
   write(mplistUnit, '(a)') 'Survey (USGS). Although the software has been subjected to rigorous'    
   write(mplistUnit, '(a)') 'review, the USGS reserves the right to update the software as needed'    
