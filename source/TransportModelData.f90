@@ -26,10 +26,9 @@ module TransportModelDataModule
       ! ICBound
       integer,allocatable, dimension(:) :: ICBound
       integer, pointer, dimension(:)    :: ICBoundTS => null()
-      !integer,allocatable, dimension(:) :: ICBoundTS
-      integer                           :: defaultICBound ! applied to model bounadaries
-      logical                           :: followIBoundTS
-      logical                           :: followIBound
+      integer                           :: defaultICBound ! applied to model boundaries
+      logical                           :: followIBoundTS = .false.
+      logical                           :: followIBound   = .false.
 
       ! Simulation data
       class( ModpathSimulationDataType ), pointer :: simulationData
@@ -142,7 +141,6 @@ contains
       this%AlphaTran => null()
       this%DMEff => null()
 
-      !if(allocated(this%ICBoundTS)) deallocate( this%ICBoundTS )
       if(allocated(this%ICBound)) deallocate( this%ICBound )
       this%ICBoundTS => null()
 
@@ -184,6 +182,10 @@ contains
     do n = 1, grid%LayerCount
       cellsPerLayer(n) = grid%GetLayerCellCount(n)
     end do
+
+    ! Initialize 
+    this%followIBound = .false.
+    this%followIBoundTS = .false.
 
     ! Allocate ICBound array, is needed downstream
     if(allocated(this%ICBound)) deallocate(this%ICBound)
@@ -234,20 +236,25 @@ contains
     end select
     impFormat = n
 
-    this%followIBound = .false.
-    this%followIBoundTS = .false.
     select case(impFormat)
     case(0)
-     ! Copy IBound into ICBound and assign pointer, does not 
+     ! From IBound assign into ICBound and assign pointer, does not 
      ! change in time
      this%followIBound = .true.
-     this%ICBound(:) = this%flowModelData%IBound(:)
+     ! Initialize with zeroes
+     this%ICBound(:) = 0
+     ! If flow-model inactive, transport rebound
+     do n=1,grid%CellCount
+       if ( this%flowModelData%IBound(n) .lt. 1 ) this%ICBound(n) = 1
+     end do 
      this%ICBoundTS => this%ICBound
-     write(outUnit,'(A)') 'Impermeable cells follow flowModelData%IBound.'
+     write(outUnit,'(A)') 'Impermeable cells follow inactive cells at flowModelData%IBound.'
     case(1)
      ! Activate flag, ICBoundTS is updated every time step
      this%followIBoundTS = .true.
-     write(outUnit,'(A)') 'Impermeable cells follow flowModelData%IBoundTS, includes dry cells.'
+     ! Initialize with zeroes
+     this%ICBound(:) = 0
+     write(outUnit,'(A)') 'Impermeable cells follow inactive cells at flowModelData%IBoundTS, includes dry cells.'
     case(2)
      write(outUnit,'(A)') 'Impermeable cells read from IMPCELLS.'
      ! Read IMPCELLS
@@ -1020,14 +1027,22 @@ contains
   !-----------------------------------------------------------------------------------
   implicit none
   ! input
-  class(TransportModelDataType) :: this
+  class(TransportModelDataType), target :: this
   integer,intent(in) :: stressPeriod, timeStep
+  integer :: n 
   !-----------------------------------------------------------------------------------
 
-
+    ! If following iboundts, update icbound
+    ! for inactive flow-model cells 
     if ( this%followIBoundTS ) then
+      ! Restart values to open
+      this%ICBound(:) = 0
+      ! Assign to rebound if flow-model inactive
+      do n=1,this%Grid%CellCount
+        if ( this%flowModelData%IBoundTS(n) .lt. 1 ) this%ICBound(n) = 1
+      end do 
       this%ICBoundTS => null()
-      this%ICBoundTS => this%flowModelData%IBoundTS
+      this%ICBoundTS => this%ICBound
     end if
 
     this%CurrentStressPeriod = stressPeriod

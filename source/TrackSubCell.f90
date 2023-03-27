@@ -991,8 +991,8 @@ contains
 
                       ! If not connected to rebound boundary cell, leave
                       if ( this%SubCellData%MassBoundary(exitFace) .ne. 1 ) then 
-                          exit
-                      end if 
+                        exit
+                      end if
 
                       ! reboundCounter and a catch for unexpected cases
                       reboundCounter = reboundCounter + 1
