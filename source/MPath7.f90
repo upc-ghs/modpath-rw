@@ -476,7 +476,6 @@ program MPath7
   write(mplistUnit, '(1x/a,e15.7)')                       &
     'The simulation will be run with stoptime = ', stoptime
 
-
   if ( simulationData%TrackingOptions%RandomWalkParticleTracking ) then 
     ! Transfer flag from basicData to indicate 
     ! uniformity of porosities
@@ -499,7 +498,6 @@ program MPath7
     call simulationData%ReadSRCData( srcFile, srcUnit, mpListUnit, modelGrid, flowModelData )
   end if
 
-
   ! Prepare to stop if there are no particles to track
   if(simulationData%TotalParticleCount .eq. 0) then
     terminationMessage = 'The simulation was terminated because there are no particles to track. Stop.'
@@ -512,7 +510,6 @@ program MPath7
   call WriteBudgetFileInfo(mplistUnit, budgetReader) 
   if(simulationData%BudgetOutputOption .eq. 2) call WriteBudgetRecordHeaders(mplistUnit, budgetReader)
 
-      
   ! Initialize transportModelData
   if ( simulationData%TrackingOptions%RandomWalkParticleTracking ) then
 
@@ -544,7 +541,6 @@ program MPath7
     call trackingEngine%Initialize(modelGrid, simulationData%TrackingOptions, flowModelData)
 
   end if 
-
 
   ! Initialize GPKDE reconstruction 
   if ( simulationData%TrackingOptions%GPKDEReconstruction ) then
@@ -914,7 +910,7 @@ program MPath7
           pCoord%LocalX = p%LocalX
           pCoord%LocalY = p%LocalY
           pCoord%LocalZ = p%LocalZ
-          pCoord%TrackingTime = 0.0d0 
+          pCoord%TrackingTime = 0.0d0
           call modelGrid%ConvertToModelXYZ(pCoord%CellNumber, &
             pCoord%LocalX, pCoord%LocalY, pCoord%LocalZ,      &
             pCoord%GlobalX, pCoord%GlobalY, pCoord%GlobalZ)
@@ -1015,7 +1011,6 @@ program MPath7
 
   end if
 
-
   ! TRACKING_INTERVAL_LOOP: 
   ! Loop through all the required time points that fall within the
   ! current MODFLOW time step. For runs that do not have any specified 
@@ -1027,7 +1022,7 @@ program MPath7
   call ulog('Begin TRACKING_INTERVAL_LOOP', logUnit)
   TRACKING_INTERVAL_LOOP: do while (itend .eq. 0)
   itcount = itcount + 1
-
+  print *, '--------------', itcount
   itend = 1
   maxTime = tsMax
   isTimeSeriesPoint = .false.
@@ -1036,7 +1031,8 @@ program MPath7
     ! For timeseries and pathline runs, find out if maxTime should be set to the value of the
     ! next time point or the time at the end of the time step
     if (nt+1 .le. simulationData%TimePointCount) then
-      if (abs(simulationData%TimePoints(nt+1) - tsMax).lt.1d-12) then ! needs a better delta
+      if ( simulationData%TimePoints(nt+1) - tsMax.lt.1d-12) then ! needs a better delta
+      !if (abs(simulationData%TimePoints(nt+1) - tsMax).lt.1d-12) then ! needs a better delta ! WRONG
       !if (simulationData%TimePoints(nt+1) .le. tsMax) then
         nt = nt + 1
         maxTime = simulationData%TimePoints(nt)
@@ -1064,12 +1060,11 @@ program MPath7
             call trackingEngine%UpdateDispersionFunction( &
               transportModelData%Solutes(&
               simulationData%ParticleGroups(groupIndex)%Solute )%Dispersion%modelKind )
-        end if 
+        end if
         ! -- Particles loop -- !
         !$omp parallel do schedule( dynamic,1 )          &
         !$omp default( none )                            &
         !$omp shared( simulationData, modelGrid )        &
-        !$omp shared( flowModelData )                    &
         !$omp shared( geoRef )                           &
         !$omp shared( pathlineUnit, binPathlineUnit )    &
         !$omp shared( timeseriesUnit, traceModeUnit )    &
@@ -1206,7 +1201,7 @@ program MPath7
                         ! If a particle is removed due to strong sink
                         !$omp critical (sinkobservation)
                         call WriteSinkObs(ktime, nt, p,& 
-                          flowModelData%SinkFlows(p%CellNumber), obs%recOutputUnit)
+                          trackingEngine%flowModelData%SinkFlows(p%CellNumber), obs%recOutputUnit)
                         !$omp end critical (sinkobservation)
                         ! Count record
                         obsRecordCounter(&
