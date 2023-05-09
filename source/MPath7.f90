@@ -250,6 +250,8 @@ program MPath7
   write(mplistUnit, '(a)') 'Resources Software User Rights Notice for complete use, copyright,'    
   write(mplistUnit, '(a)') 'and distribution information.'    
   write(mplistUnit, *)
+  write(mplistUnit, '(a)') '----------------------------------------------------------------------'
+  write(mplistUnit, *)
   
   ! Read the MODPATH name file
   call ReadNameFile(mpnamFile, mplistUnit, gridFileType)
@@ -1026,7 +1028,7 @@ program MPath7
   call ulog('Begin TRACKING_INTERVAL_LOOP', logUnit)
   TRACKING_INTERVAL_LOOP: do while (itend .eq. 0)
   itcount = itcount + 1
-  print *, '--------------', itcount
+  !print *, '--------------', itcount
   itend = 1
   maxTime = tsMax
   isTimeSeriesPoint = .false.
@@ -1035,9 +1037,9 @@ program MPath7
     ! For timeseries and pathline runs, find out if maxTime should be set to the value of the
     ! next time point or the time at the end of the time step
     if (nt+1 .le. simulationData%TimePointCount) then
-      if ( simulationData%TimePoints(nt+1) - tsMax.lt.1d-12) then ! needs a better delta
+      !if ( simulationData%TimePoints(nt+1) - tsMax.lt.1d-12) then ! needs a better delta
       !if (abs(simulationData%TimePoints(nt+1) - tsMax).lt.1d-12) then ! needs a better delta ! WRONG
-      !if (simulationData%TimePoints(nt+1) .le. tsMax) then
+      if (simulationData%TimePoints(nt+1) .le. tsMax) then
         nt = nt + 1
         maxTime = simulationData%TimePoints(nt)
         tPoint(1) = maxTime
