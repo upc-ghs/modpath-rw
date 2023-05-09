@@ -233,6 +233,10 @@ program MPath7
   write(mplistUnit, '(a)') 'from this institution, explicit or implied. Their release conditions'
   write(mplistUnit, '(a)') 'also apply (see disclaimer below).'
   write(mplistUnit, *)
+  write(mplistUnit, '(a)') 'For bug reports and updates, follow:                                  '
+  write(mplistUnit, '(a)') '  https://github.com/upc-ghs/modpath-rw                               '
+  write(mplistUnit, '(a)') '----------------------------------------------------------------------'
+  write(mplistUnit, *)
   write(mplistUnit, '(a)') 'This software has been approved for release by the U.S. Geological'
   write(mplistUnit, '(a)') 'Survey (USGS). Although the software has been subjected to rigorous'    
   write(mplistUnit, '(a)') 'review, the USGS reserves the right to update the software as needed'    
