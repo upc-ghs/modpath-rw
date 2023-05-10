@@ -1,6 +1,8 @@
 # modpath-rw
 A Random Walk Particle Tracking Code for Solute Transport in Heterogeneous Aquifers
 
+![](img/banner.png)
+
 ## Overview
 MODPATH-RW is an extension of MODPATH-v7 implementing particles displacement based on the Random Walk Particle Tracking (RWPT) method. Code is built on top of MODPATH-OMP, so it can process particles in parallel using the OpenMP library. 
 
