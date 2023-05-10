@@ -24,37 +24,35 @@ module SoluteModule
     procedure :: Reset => pr_Reset
   end type
 
-
 contains
 
+  subroutine pr_Initialize( this, cellCount ) 
+    !-------------------------------------------------------------------------
+    ! Specifications
+    !-------------------------------------------------------------------------
+    implicit none
+    class(SoluteType) :: this
+    integer :: cellCount
+    !-------------------------------------------------------------------------
 
-    subroutine pr_Initialize( this, cellCount ) 
-      !-------------------------------------------------------------------------
-      ! Specifications
-      !-------------------------------------------------------------------------
-      implicit none
-      class(SoluteType) :: this
-      integer :: cellCount
-      !-------------------------------------------------------------------------
+    this%initialized = .true.
 
-      this%initialized = .true.
-
-    end subroutine
+  end subroutine
 
 
-    subroutine pr_Reset( this )
-      !-------------------------------------------------------------------------
-      ! Specifications
-      !-------------------------------------------------------------------------
-      implicit none
-      class(SoluteType) :: this
-      !-------------------------------------------------------------------------
+  subroutine pr_Reset( this )
+    !-------------------------------------------------------------------------
+    ! Specifications
+    !-------------------------------------------------------------------------
+    implicit none
+    class(SoluteType) :: this
+    !-------------------------------------------------------------------------
 
-      this%id       = 0
-      this%stringid = '' 
-      this%initialized = .false.
+    this%id       = 0
+    this%stringid = '' 
+    this%initialized = .false.
 
-    end subroutine pr_Reset
+  end subroutine pr_Reset
 
 
 end module SoluteModule

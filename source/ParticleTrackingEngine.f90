@@ -11,6 +11,7 @@ module ParticleTrackingEngineModule
   use ParticleTrackingOptionsModule,only : ParticleTrackingOptionsType
   use FlowModelDataModule,only : FlowModelDataType
   use TransportModelDataModule,only : TransportModelDataType
+  use DispersionDataModule, only : DispersionDataType
   !--------------------------------------------------------------------
 
   implicit none
@@ -41,6 +42,7 @@ module ParticleTrackingEngineModule
     procedure(FillNeighborCells), pass, pointer :: FillNeighborCellData=>null()
     procedure(FillCellData)     , pass, pointer :: FillCellBuffer=>null()
     procedure(ParticleTracker)  , pass, pointer :: TrackPath=>null()
+    procedure(DispersionParams) , pass, pointer :: FillDispersionParameters=>null()
 
   contains
 
@@ -61,102 +63,107 @@ module ParticleTrackingEngineModule
   ! Interfaces
   abstract interface
   
-      ! FillNeighborCells
-      subroutine FillNeighborCells( this, neighborCellData )
-          import ParticleTrackingEngineType
-          import ModpathCellDataType
-          !----------------------------------------
-          class(ParticleTrackingEngineType) :: this
-          type(ModpathCellDataType), dimension(2,18), intent(inout) :: neighborCellData
-      end subroutine FillNeighborCells
+    ! FillNeighborCells
+    subroutine FillNeighborCells( this, neighborCellData )
+      import ParticleTrackingEngineType
+      import ModpathCellDataType
+      !----------------------------------------
+      class(ParticleTrackingEngineType) :: this
+      type(ModpathCellDataType), dimension(2,18), intent(inout) :: neighborCellData
+    end subroutine FillNeighborCells
 
-      ! FillCellData 
-      subroutine FillCellData( this, cellNumber, cellBuffer )
-          import ParticleTrackingEngineType
-          import ModpathCellDataType
-          !----------------------------------------
-          class(ParticleTrackingEngineType) :: this
-          integer,intent(in) :: cellNumber
-          type(ModpathCellDataType),intent(inout) :: cellBuffer
-      end subroutine FillCellData
+    ! FillCellData 
+    subroutine FillCellData( this, cellNumber, cellBuffer )
+      import ParticleTrackingEngineType
+      import ModpathCellDataType
+      !----------------------------------------
+      class(ParticleTrackingEngineType) :: this
+      integer,intent(in) :: cellNumber
+      type(ModpathCellDataType),intent(inout) :: cellBuffer
+    end subroutine FillCellData
 
-      ! ParticleTracker
-      subroutine ParticleTracker(this, trackPathResult, traceModeOn, traceModeUnit,   &
-        group, particleID, seqNumber, location, maximumTrackingTime, timeseriesPoints,&
-        timeseriesPointCount)
-          import ParticleTrackingEngineType
-          import TrackPathResultType
-          import ParticleLocationType
-          !----------------------------------------
-          class(ParticleTrackingEngineType), target :: this
-          type(TrackPathResultType),target,intent(out) :: trackPathResult
-          type(ParticleLocationType),intent(in) :: location
-          integer,intent(in) :: group, particleID, seqNumber, timeseriesPointCount, &
-            traceModeUnit
-          logical,intent(in) :: traceModeOn
-          doubleprecision,intent(in) :: maximumTrackingTime
-          doubleprecision,dimension(timeseriesPointCount),intent(in) :: timeseriesPoints
-      end subroutine ParticleTracker
+    ! ParticleTracker
+    subroutine ParticleTracker(this, trackPathResult, traceModeOn, traceModeUnit,   &
+      group, particleID, seqNumber, location, maximumTrackingTime, timeseriesPoints,&
+      timeseriesPointCount)
+      import ParticleTrackingEngineType
+      import TrackPathResultType
+      import ParticleLocationType
+      !----------------------------------------
+      class(ParticleTrackingEngineType), target :: this
+      type(TrackPathResultType),target,intent(out) :: trackPathResult
+      type(ParticleLocationType),intent(in) :: location
+      integer,intent(in) :: group, particleID, seqNumber, timeseriesPointCount, &
+        traceModeUnit
+      logical,intent(in) :: traceModeOn
+      doubleprecision,intent(in) :: maximumTrackingTime
+      doubleprecision,dimension(timeseriesPointCount),intent(in) :: timeseriesPoints
+    end subroutine ParticleTracker
+
+    ! DispersionParams
+    subroutine DispersionParams(this, cellBuffer, cellNumber)
+      import ParticleTrackingEngineType
+      import ModpathCellDataType
+      !-----------------------------------------------
+      class(ParticleTrackingEngineType) :: this
+      type(ModpathCellDataType),intent(inout) :: cellBuffer
+      integer,intent(in) :: cellNumber
+    end subroutine DispersionParams 
 
   end interface
-
 
 contains
 
 
   function pr_GetTopMostActiveCell(this, cellNumber) result(n)
-  !***************************************************************************************************************
-  ! Description goes here
-  !***************************************************************************************************************
+  !------------------------------------------------------------------------------
+  !
+  !------------------------------------------------------------------------------
   ! Specifications
-  !---------------------------------------------------------------------------------------------------------------
+  !------------------------------------------------------------------------------
   implicit none
   class(ParticleTrackingEngineType) :: this
   integer,intent(in) :: cellNumber
   integer :: n
-  !---------------------------------------------------------------------------------------------------------------
-  
+  !------------------------------------------------------------------------------
 
-      n = cellNumber
-      do while(.true.)
-          if(n .eq. 0) return
-          if(this%FlowModelData%IBoundTS(n) .ne. 0) return
-          n = this%Grid%GetFaceConnection(n, 5, 1)
-      end do
-  
+    n = cellNumber
+    do while(.true.)
+      if(n .eq. 0) return
+      if(this%FlowModelData%IBoundTS(n) .ne. 0) return
+      n = this%Grid%GetFaceConnection(n, 5, 1)
+    end do
 
   end function pr_GetTopMostActiveCell
 
 
   subroutine pr_WriteCellBuffer(this, unit, cellData, backwardTracking)
-  !***************************************************************************************************************
-  ! Description goes here
-  !***************************************************************************************************************
+  !------------------------------------------------------------------------------
+  !
+  !------------------------------------------------------------------------------
   ! Specifications
-  !---------------------------------------------------------------------------------------------------------------
+  !------------------------------------------------------------------------------
   implicit none
   class(ParticleTrackingEngineType) :: this
   integer,intent(in) :: unit
   logical,intent(in) :: backwardTracking
   type(ModpathCellDataType),intent(in) :: cellData
-  !---------------------------------------------------------------------------------------------------------------
+  !------------------------------------------------------------------------------
    
-
-      write(unit, '(1X,A)')     '-------------------------------------'
-      write(unit, '(1X,A,I10)') '      Cell', cellData%CellNumber
-      write(unit, '(1X,A)')     '-------------------------------------'
-      call WriteCellData(unit, cellData, backwardTracking)
-  
+    write(unit, '(1X,A)')     '-------------------------------------'
+    write(unit, '(1X,A,I10)') '      Cell', cellData%CellNumber
+    write(unit, '(1X,A)')     '-------------------------------------'
+    call WriteCellData(unit, cellData, backwardTracking)
 
   end subroutine pr_WriteCellBuffer
   
 
   subroutine WriteCellData(unit, cellData, backwardTracking)
-  !***************************************************************************************************************
-  ! Description goes here
-  !***************************************************************************************************************
+  !------------------------------------------------------------------------------
+  !
+  !------------------------------------------------------------------------------
   ! Specifications
-  !---------------------------------------------------------------------------------------------------------------
+  !------------------------------------------------------------------------------
   implicit none
   integer,intent(in) :: unit
   logical,intent(in) :: backwardTracking
@@ -166,87 +173,87 @@ contains
   doubleprecision :: balance, totalFaceInflow, totalFaceOutflow, sourceInflow,  &
     sinkOutflow, storageInflow, storageOutflow
   doubleprecision :: totalInflow, totalOutflow, netInflow
-  !---------------------------------------------------------------------------------------------------------------
+  !------------------------------------------------------------------------------
 
-      write(unit, '(1X,A,5I10)')   'Layer, Ibound, IboundTS, Zone, LayerType: ',    &
-        cellData%Layer, cellData%Ibound, cellData%IboundTS, cellData%Zone,          &
-        cellData%LayerType
-      write(unit, '(1X,A,4E15.7)') 'DX, DY, MinX, MinY:    ', cellData%DX,          &
-        cellData%DY, cellData%MinX, cellData%MinY
-      write(unit, '(1X,A,3E15.7)') 'Bottom, Top, Head:     ', cellData%Bottom,      &
-        cellData%Top, cellData%Head
-      write(unit, '(1x,A,2E15.7)') 'Porosity, Retardation: ', cellData%Porosity,    &
-        cellData%Retardation
-      
-      write(unit, *)
-      write(unit, '(1X,A)') 'Volumetric Face Flows (L**3/T):'
-      write(unit, '(17X,4(15X,A))') 'sub-face 1', 'sub-face 2', 'sub-face 3', 'sub-face 4'
-      write(unit, '(1X,A,4E25.15)') 'Left   (face 1):',(cellData%GetFaceFlow(1,n), n = 1, cellData%GetSubFaceCount(1))
-      write(unit, '(1X,A,4E25.15)') 'Right  (face 2):',(cellData%GetFaceFlow(2,n), n = 1, cellData%GetSubFaceCount(2))
-      write(unit, '(1X,A,4E25.15)') 'Front  (face 3):',(cellData%GetFaceFlow(3,n), n = 1, cellData%GetSubFaceCount(3))
-      write(unit, '(1X,A,4E25.15)') 'Back   (face 4):',(cellData%GetFaceFlow(4,n), n = 1, cellData%GetSubFaceCount(4))
-      write(unit, '(1X,A,4E25.15)') 'Bottom (face 5):',(cellData%GetFaceFlow(5,n), n = 1, cellData%GetSubFaceCount(5))
-      write(unit, '(1X,A,4E25.15)') 'Top    (face 6):',(cellData%GetFaceFlow(6,n), n = 1, cellData%GetSubFaceCount(6))
-      
-      call cellData%GetVolumetricBalanceComponents(totalFaceInflow,                 &
-        totalFaceOutflow, sourceInflow, sinkOutflow, storageInflow, storageOutflow, balance)
-      totalInflow = totalFaceInflow + sourceInflow + storageInflow
-      totalOutflow = totalFaceOutflow + sinkOutflow + storageOutflow
-      netInflow = totalInflow - totalOutflow
-      write(unit, *)
-      write(unit, '(1X,A)') 'Water balance components:'
-      write(unit, '(1X,A)') 'Inflow (L**3/T)'
-      write(unit, '(1X,A,E25.15)')    '     Total face inflow =', totalFaceInflow
-      write(unit, '(1X,A,E25.15)')    '         Source inflow =', sourceInflow
-      write(unit, '(1X,A,E25.15)')    '        Storage inflow =', storageInflow
-      write(unit, '(27X,A)')          '-----------------------'
-      write(unit, '(1X,A,E25.15)')    '               Inflow  =', totalInflow
-      write(unit, *)
-      write(unit, '(1X,A)') 'Outflow (L**3/T)'
-      write(unit, '(1X,A,E25.15)')    '    Total face outflow =', totalFaceOutflow
-      write(unit, '(1X,A,E25.15)')    '          Sink outflow =', sinkOutflow
-      write(unit, '(1X,A,E25.15)')    '       Storage outflow =', storageOutflow
-      write(unit, '(27X,A)')          '-----------------------'
-      write(unit, '(1X,A,E25.15)')    '                Ouflow =', totalOutflow
-      write(unit, *)
-      write(unit, '(1X,A,E25.15)')    '      Inflow - Outflow =', netInflow
-      write(unit, *)
-      write(unit, '(1X,A,E25.15)')    '   Percent discrepancy =', balance
-      
-      write(unit, *)
-      if(backwardTracking) then
-          write(unit, '(1X,A)')                                                     &
-            'Face velocities (Backward tracking. Velocity components has been reversed to represent backward tracking.)'
-      else
-          write(unit, '(1X,A)') 'Face velocities (Forward tracking)'
-      end if
-      subRowCount = cellData%GetSubCellRowCount()
-      subColumnCount = cellData%GetSubCellColumnCount()
-      do row = 1, subRowCount
-          do column = 1, subColumnCount
-              call cellData%FillSubCellDataBuffer(subCellData, row, column, backwardTracking)
-              write(unit, '(1X,A,I2,A,I2,A)') 'SubCell (', row, ', ', column, ')'
-              write(unit, '(1X,A,3E15.7)')    'DX, DY, DZ: ', subCellData%DX, subCellData%DY, subCellData%DZ
-              write(unit, '(23X,A,5X,A)') 'Face Velocity (L/T)', 'Connection'  
-              write(unit, '(1X,A,E25.15,I15)') 'Left   (face 1):', subCellData%VX1, subCellData%Connection(1)
-              write(unit, '(1X,A,E25.15,I15)') 'Right  (face 2):', subCellData%VX2, subCellData%Connection(2)
-              write(unit, '(1X,A,E25.15,I15)') 'Front  (face 3):', subCellData%VY1, subCellData%Connection(3)
-              write(unit, '(1X,A,E25.15,I15)') 'Back   (face 4):', subCellData%VY2, subCellData%Connection(4)
-              write(unit, '(1X,A,E25.15,I15)') 'Bottom (face 5):', subCellData%VZ1, subCellData%Connection(5)
-              write(unit, '(1X,A,E25.15,I15)') 'Top    (face 6):', subCellData%VZ2, subCellData%Connection(6)
-              write(unit, *)
-          end do
+    write(unit, '(1X,A,5I10)')   'Layer, Ibound, IboundTS, Zone, LayerType: ',    &
+      cellData%Layer, cellData%Ibound, cellData%IboundTS, cellData%Zone,          &
+      cellData%LayerType
+    write(unit, '(1X,A,4E15.7)') 'DX, DY, MinX, MinY:    ', cellData%DX,          &
+      cellData%DY, cellData%MinX, cellData%MinY
+    write(unit, '(1X,A,3E15.7)') 'Bottom, Top, Head:     ', cellData%Bottom,      &
+      cellData%Top, cellData%Head
+    write(unit, '(1x,A,2E15.7)') 'Porosity, Retardation: ', cellData%Porosity,    &
+      cellData%Retardation
+    
+    write(unit, *)
+    write(unit, '(1X,A)') 'Volumetric Face Flows (L**3/T):'
+    write(unit, '(17X,4(15X,A))') 'sub-face 1', 'sub-face 2', 'sub-face 3', 'sub-face 4'
+    write(unit, '(1X,A,4E25.15)') 'Left   (face 1):',(cellData%GetFaceFlow(1,n), n = 1, cellData%GetSubFaceCount(1))
+    write(unit, '(1X,A,4E25.15)') 'Right  (face 2):',(cellData%GetFaceFlow(2,n), n = 1, cellData%GetSubFaceCount(2))
+    write(unit, '(1X,A,4E25.15)') 'Front  (face 3):',(cellData%GetFaceFlow(3,n), n = 1, cellData%GetSubFaceCount(3))
+    write(unit, '(1X,A,4E25.15)') 'Back   (face 4):',(cellData%GetFaceFlow(4,n), n = 1, cellData%GetSubFaceCount(4))
+    write(unit, '(1X,A,4E25.15)') 'Bottom (face 5):',(cellData%GetFaceFlow(5,n), n = 1, cellData%GetSubFaceCount(5))
+    write(unit, '(1X,A,4E25.15)') 'Top    (face 6):',(cellData%GetFaceFlow(6,n), n = 1, cellData%GetSubFaceCount(6))
+    
+    call cellData%GetVolumetricBalanceComponents(totalFaceInflow,                 &
+      totalFaceOutflow, sourceInflow, sinkOutflow, storageInflow, storageOutflow, balance)
+    totalInflow = totalFaceInflow + sourceInflow + storageInflow
+    totalOutflow = totalFaceOutflow + sinkOutflow + storageOutflow
+    netInflow = totalInflow - totalOutflow
+    write(unit, *)
+    write(unit, '(1X,A)') 'Water balance components:'
+    write(unit, '(1X,A)') 'Inflow (L**3/T)'
+    write(unit, '(1X,A,E25.15)')    '     Total face inflow =', totalFaceInflow
+    write(unit, '(1X,A,E25.15)')    '         Source inflow =', sourceInflow
+    write(unit, '(1X,A,E25.15)')    '        Storage inflow =', storageInflow
+    write(unit, '(27X,A)')          '-----------------------'
+    write(unit, '(1X,A,E25.15)')    '               Inflow  =', totalInflow
+    write(unit, *)
+    write(unit, '(1X,A)') 'Outflow (L**3/T)'
+    write(unit, '(1X,A,E25.15)')    '    Total face outflow =', totalFaceOutflow
+    write(unit, '(1X,A,E25.15)')    '          Sink outflow =', sinkOutflow
+    write(unit, '(1X,A,E25.15)')    '       Storage outflow =', storageOutflow
+    write(unit, '(27X,A)')          '-----------------------'
+    write(unit, '(1X,A,E25.15)')    '                Ouflow =', totalOutflow
+    write(unit, *)
+    write(unit, '(1X,A,E25.15)')    '      Inflow - Outflow =', netInflow
+    write(unit, *)
+    write(unit, '(1X,A,E25.15)')    '   Percent discrepancy =', balance
+    
+    write(unit, *)
+    if(backwardTracking) then
+      write(unit, '(1X,A)')                                                     &
+        'Face velocities (Backward tracking. Velocity components has been reversed to represent backward tracking.)'
+    else
+      write(unit, '(1X,A)') 'Face velocities (Forward tracking)'
+    end if
+    subRowCount = cellData%GetSubCellRowCount()
+    subColumnCount = cellData%GetSubCellColumnCount()
+    do row = 1, subRowCount
+      do column = 1, subColumnCount
+        call cellData%FillSubCellDataBuffer(subCellData, row, column, backwardTracking)
+        write(unit, '(1X,A,I2,A,I2,A)') 'SubCell (', row, ', ', column, ')'
+        write(unit, '(1X,A,3E15.7)')    'DX, DY, DZ: ', subCellData%DX, subCellData%DY, subCellData%DZ
+        write(unit, '(23X,A,5X,A)') 'Face Velocity (L/T)', 'Connection'  
+        write(unit, '(1X,A,E25.15,I15)') 'Left   (face 1):', subCellData%VX1, subCellData%Connection(1)
+        write(unit, '(1X,A,E25.15,I15)') 'Right  (face 2):', subCellData%VX2, subCellData%Connection(2)
+        write(unit, '(1X,A,E25.15,I15)') 'Front  (face 3):', subCellData%VY1, subCellData%Connection(3)
+        write(unit, '(1X,A,E25.15,I15)') 'Back   (face 4):', subCellData%VY2, subCellData%Connection(4)
+        write(unit, '(1X,A,E25.15,I15)') 'Bottom (face 5):', subCellData%VZ1, subCellData%Connection(5)
+        write(unit, '(1X,A,E25.15,I15)') 'Top    (face 6):', subCellData%VZ2, subCellData%Connection(6)
+        write(unit, *)
       end do
+    end do
   
   end subroutine WriteCellData
   
 
   subroutine WriteTraceData(unit, trackCell, tcResult, stressPeriod, timeStep)
-  !***************************************************************************************************************
-  ! Description goes here
-  !***************************************************************************************************************
+  !------------------------------------------------------------------------------
+  !
+  !------------------------------------------------------------------------------
   ! Specifications
-  !---------------------------------------------------------------------------------------------------------------
+  !------------------------------------------------------------------------------
   implicit none
   type(TrackCellType),intent(in),target :: trackCell
   type(TrackCellResultType),intent(in),target :: tcResult
@@ -254,63 +261,61 @@ contains
   integer,intent(in) :: unit, stressPeriod, timeStep
   integer :: n, count
   character(len=28) :: statusText
-  !---------------------------------------------------------------------------------------------------------------
+  !------------------------------------------------------------------------------
 
-
-      cellData => trackCell%CellData
-      count = tcResult%TrackingPoints%GetItemCount()          
-      write(unit, *)
-      write(unit, '(1X,A,I10,A,I6,A,I6)') '----- Call TrackCell: Cell',             &
-        cellData%CellNumber, ',  Stress period',stressPeriod,                       &
-        ',  Time step', timeStep
-      
-      select case (tcResult%Status)
-          case (1)
-              statusText = '  (Reached stopping time)'
-          case (2)
-              statusText = '  (Exit at cell face)'
-          case (3)
-              statusText = '  (Stop at weak sink)'
-          case (4)
-              statusText = '  (Stop at weak source)'
-          case (5)
-              statusText = '  (No exit possible)'
-          case (6)
-              statusText = '  (Stop zone cell)'
-          case (7)
-              statusText = '  (Inactive cell)'
-          case (8)
-              statusText = '  (Inactive cell)'
-          case default
-              statusText = '  (Undefined)'
-      end select
-          
-      write(unit, '(1X,A,I3,A)') 'Exit status =', tcResult%Status, statusText
-      write(unit, '(1X,A)')         'Particle locations: Local X, Local Y, Local Z, Tracking time'
-      do n = 1, count
-          write(unit, '(1X,I10,4E25.15,I10)')                                       &
-            tcResult%TrackingPoints%Items(n)%CellNumber,                            &
-            tcResult%TrackingPoints%Items(n)%LocalX,                                &
-            tcResult%TrackingPoints%Items(n)%LocalY,                                &
-            tcResult%TrackingPoints%Items(n)%LocalZ,                                &
-            tcResult%TrackingPoints%Items(n)%TrackingTime,                          &
-            tcResult%TrackingPoints%Items(n)%Layer              
-      end do
-      write(unit, *)
-      
-      call WriteCellData(unit, cellData, trackCell%TrackingOptions%BackwardTracking)
-  
+    cellData => trackCell%CellData
+    count = tcResult%TrackingPoints%GetItemCount()          
+    write(unit, *)
+    write(unit, '(1X,A,I10,A,I6,A,I6)') '----- Call TrackCell: Cell',             &
+      cellData%CellNumber, ',  Stress period',stressPeriod,                       &
+      ',  Time step', timeStep
+    
+    select case (tcResult%Status)
+      case (1)
+        statusText = '  (Reached stopping time)'
+      case (2)
+        statusText = '  (Exit at cell face)'
+      case (3)
+        statusText = '  (Stop at weak sink)'
+      case (4)
+        statusText = '  (Stop at weak source)'
+      case (5)
+        statusText = '  (No exit possible)'
+      case (6)
+        statusText = '  (Stop zone cell)'
+      case (7)
+        statusText = '  (Inactive cell)'
+      case (8)
+        statusText = '  (Inactive cell)'
+      case default
+        statusText = '  (Undefined)'
+    end select
+        
+    write(unit, '(1X,A,I3,A)') 'Exit status =', tcResult%Status, statusText
+    write(unit, '(1X,A)')         'Particle locations: Local X, Local Y, Local Z, Tracking time'
+    do n = 1, count
+      write(unit, '(1X,I10,4E25.15,I10)')                                       &
+        tcResult%TrackingPoints%Items(n)%CellNumber,                            &
+        tcResult%TrackingPoints%Items(n)%LocalX,                                &
+        tcResult%TrackingPoints%Items(n)%LocalY,                                &
+        tcResult%TrackingPoints%Items(n)%LocalZ,                                &
+        tcResult%TrackingPoints%Items(n)%TrackingTime,                          &
+        tcResult%TrackingPoints%Items(n)%Layer              
+    end do
+    write(unit, *)
+    
+    call WriteCellData(unit, cellData, trackCell%TrackingOptions%BackwardTracking)
 
   end subroutine WriteTraceData
   
 
   subroutine pr_GetVolumetricBalanceSummary(this, intervalCount, intervalBreaks,  &
     balanceCounts, maxError, maxErrorCell)
-  !***************************************************************************************************************
-  ! Description goes here
-  !***************************************************************************************************************
+  !------------------------------------------------------------------------------
+  !
+  !------------------------------------------------------------------------------
   ! Specifications
-  !---------------------------------------------------------------------------------------------------------------
+  !------------------------------------------------------------------------------
   implicit none
   class(ParticleTrackingEngineType) :: this
   integer, intent(in) :: intervalCount
@@ -321,48 +326,45 @@ contains
   type(ModpathCellDataType) :: cellBuffer
   integer :: cellCount, n, m
   doubleprecision :: balance, absBalance
-  !---------------------------------------------------------------------------------------------------------------
+  !------------------------------------------------------------------------------
     
+    cellCount = this%Grid%CellCount
     
-      cellCount = this%Grid%CellCount
-      
-      maxErrorCell = 0
-      maxError = 0.0d0
-      do m = 1, intervalCount + 1
-          balanceCounts(m) = 0
-      end do
-      
-      do n = 1, cellCount
-          call this%FillCellBuffer(n, cellBuffer)
-          if(cellBuffer%IboundTS .gt. 0) then
-              balance = cellBuffer%GetVolumetricBalance()
-              absBalance = dabs(balance)
-              if((maxErrorCell .eq. 0) .or. (absBalance .gt. maxError) ) then
-                  maxError = absBalance
-                  maxErrorCell = n
-              end if
-              do m = 1, intervalCount
-                  if(absBalance .le. intervalBreaks(m)) then
-                      balanceCounts(m) = balanceCounts(m) + 1
-                      exit
-                  end if
-                  if(m .eq. intervalCount) balanceCounts(intervalCount + 1) = &
-                    balanceCounts(intervalCount + 1) + 1
-              end do
+    maxErrorCell = 0
+    maxError = 0.0d0
+    do m = 1, intervalCount + 1
+      balanceCounts(m) = 0
+    end do
+    
+    do n = 1, cellCount
+      call this%FillCellBuffer(n, cellBuffer)
+      if(cellBuffer%IboundTS .gt. 0) then
+        balance = cellBuffer%GetVolumetricBalance()
+        absBalance = dabs(balance)
+        if((maxErrorCell .eq. 0) .or. (absBalance .gt. maxError) ) then
+          maxError = absBalance
+          maxErrorCell = n
+        end if
+        do m = 1, intervalCount
+          if(absBalance .le. intervalBreaks(m)) then
+            balanceCounts(m) = balanceCounts(m) + 1
+            exit
           end if
-      end do
-  
+          if(m .eq. intervalCount) balanceCounts(intervalCount + 1) = &
+            balanceCounts(intervalCount + 1) + 1
+        end do
+      end if
+    end do
 
   end subroutine pr_GetVolumetricBalanceSummary
   
   
   function pr_FindTimeIndex(timeSeriesPoints, currentTime, maximumTime, timePointsCount) result(index)
-  !***************************************************************************************************************
+  !---------------------------------------------------------------------------------------------------------------
   ! Find the index in the timeSeriesPoints array of the next stopping time after the currentTime value. 
   ! Return -1 if none is found or if maximumTime is less than the stopping time found in the timeSeriesPoints 
   ! array.
-  !***************************************************************************************************************
-  !
+  !---------------------------------------------------------------------------------------------------------------
   ! Specifications
   !---------------------------------------------------------------------------------------------------------------
     implicit none
@@ -391,8 +393,8 @@ contains
   implicit none
   class(ParticleTrackingEngineType) :: this
   class(ModflowRectangularGridType), intent(inout), pointer :: grid
-  type(ParticleTrackingOptionsType), intent(in) :: trackingOptions
-  type(FlowModelDataType), intent(in), target :: flowModelData
+  type(ParticleTrackingOptionsType), intent(in)  :: trackingOptions
+  type(FlowModelDataType), intent(in), target    :: flowModelData
   type(TransportModelDataType), optional, target :: transportModelData
   !------------------------------------------------------------------------------------------
   
@@ -442,7 +444,7 @@ contains
       ! to currentDispersionModelKind
       if (this%TransportModelData%simulationData%SolutesOption .eq. 0 ) then 
         call this%UpdateDispersionFunction(&
-          this%TransportModelData%currentDispersionModelKind )
+          this%TransportModelData%DispersionData(1) )
       end if
 
       ! Assign additional params for RWPT in trackSubCell
@@ -479,32 +481,78 @@ contains
   end subroutine pr_Initialize
 
   
-  subroutine pr_UpdateDispersionFunction( this, dispersionModel ) 
-  !***************************************************************************************************************
+  subroutine pr_UpdateDispersionFunction( this, dispersion ) 
+  !---------------------------------------------------------------
   !
-  !***************************************************************************************************************
+  !---------------------------------------------------------------
   ! Specifications
-  !---------------------------------------------------------------------------------------------------------------
+  !---------------------------------------------------------------
   implicit none
   class(ParticleTrackingEngineType) :: this
-  integer, intent(in) :: dispersionModel 
-  !---------------------------------------------------------------------------------------------------------------
+  type(DispersionDataType), intent(in) :: dispersion
+  !---------------------------------------------------------------
 
     ! Keep the variable consistent
-    this%TransportModelData%currentDispersionModelKind = dispersionModel
+    this%TransportModelData%currentDispersionModelKind = dispersion%modelKind
 
     ! Assign methods for RWPT tracking in tracksubcell
-    call this%TrackCell%TrackSubCell%SetDispersionDisplacement( dispersionModel )
+    call this%TrackCell%TrackSubCell%SetDispersionDisplacement( dispersion%modelKind )
+
+    ! Set the corresponding interface for 
+    ! filling the dispersion parameters for cells
+    if ( dispersion%uniformParameters ) then 
+      this%FillDispersionParameters => pr_FillDispersionParametersUniform
+    else
+      this%FillDispersionParameters => pr_FillDispersionParametersDistributed
+    end if 
 
   end subroutine pr_UpdateDispersionFunction 
-  
+ 
+
+  subroutine pr_FillDispersionParametersDistributed( this, cellBuffer, cellNumber ) 
+  !---------------------------------------------------------------
+  !
+  !---------------------------------------------------------------
+  ! Specifications
+  !---------------------------------------------------------------
+  implicit none
+  class(ParticleTrackingEngineType) :: this
+  type(ModpathCellDataType),intent(inout) :: cellBuffer
+  integer, intent(in) :: cellNumber
+  !---------------------------------------------------------------
+
+    cellBuffer%alphaL = this%TransportModelData%AlphaL(cellNumber)
+    cellBuffer%alphaT = this%TransportModelData%AlphaT(cellNumber)
+    cellBuffer%dMEff  = this%TransportModelData%DMEff(cellNumber)
+
+  end subroutine pr_FillDispersionParametersDistributed
+
+
+  subroutine pr_FillDispersionParametersUniform( this, cellBuffer, cellNumber ) 
+  !---------------------------------------------------------------
+  !
+  !---------------------------------------------------------------
+  ! Specifications
+  !---------------------------------------------------------------
+  implicit none
+  class(ParticleTrackingEngineType) :: this
+  type(ModpathCellDataType),intent(inout) :: cellBuffer
+  integer, intent(in) :: cellNumber
+  !---------------------------------------------------------------
+
+    cellBuffer%alphaL = this%TransportModelData%AlphaL(1)
+    cellBuffer%alphaT = this%TransportModelData%AlphaT(1)
+    cellBuffer%dMEff  = this%TransportModelData%DMEff(1)
+
+  end subroutine pr_FillDispersionParametersUniform
+
 
   subroutine  pr_FillFaceFlowsBuffer(this,buffer,bufferSize,count)
-  !***************************************************************************************************************
+  !------------------------------------------------------------------------------
   !
-  !***************************************************************************************************************
+  !------------------------------------------------------------------------------
   ! Specifications
-  !---------------------------------------------------------------------------------------------------------------
+  !------------------------------------------------------------------------------
   implicit none
   class(ParticleTrackingEngineType) :: this
   integer,intent(in) :: bufferSize
@@ -513,16 +561,15 @@ contains
   integer :: n
   !---------------------------------------------------------------------------------------------------------------
     
-      do n = 1, bufferSize
-          buffer(n) = 0.0d0
-      end do
-      
-      count = size(this%FlowModelData%FlowsJA)
-      do n = 1, count
-          buffer(n) = this%FlowModelData%FlowsJA(n)
-      end do
+    do n = 1, bufferSize
+      buffer(n) = 0.0d0
+    end do
+    
+    count = size(this%FlowModelData%FlowsJA)
+    do n = 1, count
+      buffer(n) = this%FlowModelData%FlowsJA(n)
+    end do
   
-
   end subroutine pr_FillFaceFlowsBuffer
  
 
@@ -540,20 +587,20 @@ contains
   integer :: n,offset
   !---------------------------------------------------------------------------------------------------------------
     
-      do n = 1, bufferSize
-          buffer(n) = 0.0d0
-      end do
-      
-      !offset = this%Grid%GetOffsetJa(cellNumber)
-      !count = this%Grid%GetOffsetJa(cellNumber + 1) - offset
-      offset = this%Grid%JaOffsets(cellNumber)
-      count = this%Grid%JaOffsets(cellNumber + 1) - offset
-      do n = 1, count
-          buffer(n) = this%FlowModelData%FlowsJA(offset + n)
-      end do
+    do n = 1, bufferSize
+      buffer(n) = 0.0d0
+    end do
     
+    !offset = this%Grid%GetOffsetJa(cellNumber)
+    !count = this%Grid%GetOffsetJa(cellNumber + 1) - offset
+    offset = this%Grid%JaOffsets(cellNumber)
+    count = this%Grid%JaOffsets(cellNumber + 1) - offset
+    do n = 1, count
+      buffer(n) = this%FlowModelData%FlowsJA(offset + n)
+    end do
+   
+
   end subroutine pr_FillCellFlowsBuffer
- 
  
 
   subroutine pr_FillCellBufferUnstructured(this, cellNumber, cellBuffer)
@@ -570,37 +617,36 @@ contains
   integer :: n, boundaryFlowsOffset, cellType
   !---------------------------------------------------------------------------------------------------------------
   
-      boundaryFlowsOffset = 6 * (cellNumber - 1)
-      do n = 1, 6
-          boundaryFlows(n) = this%FlowModelData%BoundaryFlows(boundaryFlowsOffset + n)
-      end do
-      
-      cellType = this%Grid%CellType(cellNumber)
+    boundaryFlowsOffset = 6 * (cellNumber - 1)
+    do n = 1, 6
+        boundaryFlows(n) = this%FlowModelData%BoundaryFlows(boundaryFlowsOffset + n)
+    end do
+    
+    cellType = this%Grid%CellType(cellNumber)
 
-      ! Set cell buffer data for a MODFLOW-USG unstructured grid
-      ! Set cell buffer data for a MODFLOW-6 structured grid (DIS)
-      ! Set cell buffer data for a MODFLOW-6 unstructured grid (DISV)
-      call cellBuffer%SetDataUnstructured(cellNumber,this%Grid%CellCount,                       &
-        this%Grid%JaCount,this%Grid,                                                            &
-        this%FlowModelData%IBound,this%FlowModelData%IBoundTS,                                  &
-        this%FlowModelData%Porosity(cellNumber),this%FlowModelData%Retardation(cellNumber),     &
-        this%FlowModelData%StorageFlows(cellNumber),this%FlowModelData%SourceFlows(cellNumber), &
-        this%FlowModelData%SinkFlows(cellNumber), this%FlowModelData%FlowsJA, boundaryFlows,    &
-        this%FlowModelData%Heads(cellNumber), cellType,                                         &
-        this%FlowModelData%Zones(cellNumber))
+    ! Set cell buffer data for a MODFLOW-USG unstructured grid
+    ! Set cell buffer data for a MODFLOW-6 structured grid (DIS)
+    ! Set cell buffer data for a MODFLOW-6 unstructured grid (DISV)
+    call cellBuffer%SetDataUnstructured(cellNumber,this%Grid%CellCount,                       &
+      this%Grid%JaCount,this%Grid,                                                            &
+      this%FlowModelData%IBound,this%FlowModelData%IBoundTS,                                  &
+      this%FlowModelData%Porosity(cellNumber),this%FlowModelData%Retardation(cellNumber),     &
+      this%FlowModelData%StorageFlows(cellNumber),this%FlowModelData%SourceFlows(cellNumber), &
+      this%FlowModelData%SinkFlows(cellNumber), this%FlowModelData%FlowsJA, boundaryFlows,    &
+      this%FlowModelData%Heads(cellNumber), cellType,                                         &
+      this%FlowModelData%Zones(cellNumber))
 
 
-      return
+    return
 
 
   end subroutine pr_FillCellBufferUnstructured
 
 
-
   subroutine pr_FillTransportCellBufferUnstructured(this, cellNumber, cellBuffer)
-  !***************************************************************************************************************
+  !---------------------------------------------------------------------------------------------------------------
   !
-  !***************************************************************************************************************
+  !---------------------------------------------------------------------------------------------------------------
   ! Specifications
   !---------------------------------------------------------------------------------------------------------------
   implicit none
@@ -611,37 +657,35 @@ contains
   integer :: n, boundaryFlowsOffset, cellType
   !---------------------------------------------------------------------------------------------------------------
   
+    !call pr_FillCellBufferUnstructured(this, cellNumber, cellBuffer)
+    boundaryFlowsOffset = 6 * (cellNumber - 1)
+    do n = 1, 6
+      boundaryFlows(n) = this%FlowModelData%BoundaryFlows(boundaryFlowsOffset + n)
+    end do
+    
+    cellType = this%Grid%CellType(cellNumber)
 
-      !call pr_FillCellBufferUnstructured(this, cellNumber, cellBuffer)
-      boundaryFlowsOffset = 6 * (cellNumber - 1)
-      do n = 1, 6
-          boundaryFlows(n) = this%FlowModelData%BoundaryFlows(boundaryFlowsOffset + n)
-      end do
-      
-      cellType = this%Grid%CellType(cellNumber)
+    ! Set cell buffer data for a MODFLOW-USG unstructured grid
+    ! Set cell buffer data for a MODFLOW-6 structured grid (DIS)
+    ! Set cell buffer data for a MODFLOW-6 unstructured grid (DISV)
+    call cellBuffer%SetMassTransportDataUnstructured(cellNumber,this%Grid%CellCount,          &
+      this%Grid%JaCount,this%Grid,                                                            &
+      this%FlowModelData%IBound,this%FlowModelData%IBoundTS,                                  &
+      this%FlowModelData%Porosity(cellNumber),this%FlowModelData%Retardation(cellNumber),     &
+      this%FlowModelData%StorageFlows(cellNumber),this%FlowModelData%SourceFlows(cellNumber), &
+      this%FlowModelData%SinkFlows(cellNumber), this%FlowModelData%FlowsJA, boundaryFlows,    &
+      this%FlowModelData%Heads(cellNumber), cellType, this%FlowModelData%Zones(cellNumber),   &
+                  this%TransportModelData%ICBoundTS, this%TransportModelData%defaultICBound   ) 
 
-      ! Set cell buffer data for a MODFLOW-USG unstructured grid
-      ! Set cell buffer data for a MODFLOW-6 structured grid (DIS)
-      ! Set cell buffer data for a MODFLOW-6 unstructured grid (DISV)
-      call cellBuffer%SetMassTransportDataUnstructured(cellNumber,this%Grid%CellCount,          &
-        this%Grid%JaCount,this%Grid,                                                            &
-        this%FlowModelData%IBound,this%FlowModelData%IBoundTS,                                  &
-        this%FlowModelData%Porosity(cellNumber),this%FlowModelData%Retardation(cellNumber),     &
-        this%FlowModelData%StorageFlows(cellNumber),this%FlowModelData%SourceFlows(cellNumber), &
-        this%FlowModelData%SinkFlows(cellNumber), this%FlowModelData%FlowsJA, boundaryFlows,    &
-        this%FlowModelData%Heads(cellNumber), cellType, this%FlowModelData%Zones(cellNumber),   &
-                    this%TransportModelData%ICBoundTS, this%TransportModelData%defaultICBound   ) 
+    call this%FillDispersionParameters(cellBuffer, cellNumber)
 
+    !! If AlphaL and/or AlphaT are constants, then 
+    !! it should handle said scenario to avoid unnecessary memory usage
+    !cellBuffer%alphaL = this%TransportModelData%AlphaL(cellNumber)
+    !cellBuffer%alphaT = this%TransportModelData%AlphaT(cellNumber)
+    !cellBuffer%dMEff  = this%TransportModelData%DMEff(cellNumber)
 
-      ! If AlphaLong or AlphaTran are constants, then 
-      ! it should handle said scenario to avoid unnecessary memory usage
-      cellBuffer%alphaL = this%TransportModelData%AlphaLong(cellNumber)
-      cellBuffer%alphaT = this%TransportModelData%AlphaTran(cellNumber)
-      cellBuffer%dMEff  = this%TransportModelData%DMEff(cellNumber)
-      
-
-      return
-
+    return
 
   end subroutine pr_FillTransportCellBufferUnstructured
 
@@ -716,11 +760,13 @@ contains
                   this%TransportModelData%ICBoundTS, this%TransportModelData%defaultICBound   ) 
 
 
-    ! If AlphaLong or AlphaTran are constants, then 
-    ! it should handle said scenario to avoid unnecessary memory usage
-    cellBuffer%alphaL = this%TransportModelData%AlphaLong(cellNumber)
-    cellBuffer%alphaT = this%TransportModelData%AlphaTran(cellNumber)
-    cellBuffer%dMEff  = this%TransportModelData%DMEff(cellNumber)
+    call this%FillDispersionParameters(cellBuffer, cellNumber)
+
+    !! If AlphaL or AlphaT are constants, then 
+    !! it should handle said scenario to avoid unnecessary memory usage
+    !cellBuffer%alphaL = this%TransportModelData%AlphaL(cellNumber)
+    !cellBuffer%alphaT = this%TransportModelData%AlphaT(cellNumber)
+    !cellBuffer%dMEff  = this%TransportModelData%DMEff(cellNumber)
 
     return
 

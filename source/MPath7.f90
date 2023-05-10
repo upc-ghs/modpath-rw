@@ -1048,299 +1048,299 @@ program MPath7
   if(simulationData%ParticleGroupCount .gt. 0) then
     ! -- Particles groups loop -- !
     do groupIndex = 1, simulationData%ParticleGroupCount
-        if ( simulationData%shouldUpdateDispersion ) then 
-            ! Assign pointers to dispersivities 
-            ! in transportModelData
-            call transportModelData%SetSoluteDispersion( &
-              simulationData%ParticleGroups(groupIndex)%Solute )
-            ! Update dispersion function interface
-            ! depending on dispersion model
-            call trackingEngine%UpdateDispersionFunction( &
-              transportModelData%Solutes(&
-              simulationData%ParticleGroups(groupIndex)%Solute )%Dispersion%modelKind )
+      if ( simulationData%shouldUpdateDispersion ) then 
+        ! Assign pointers to dispersivities 
+        ! in transportModelData
+        call transportModelData%SetSoluteDispersion( &
+          simulationData%ParticleGroups(groupIndex)%Solute )
+        ! Update dispersion function interface
+        ! depending on dispersion model
+        call trackingEngine%UpdateDispersionFunction( &
+          transportModelData%Solutes(&
+          simulationData%ParticleGroups(groupIndex)%Solute )%Dispersion )
+      end if
+      ! -- Particles loop -- !
+      !$omp parallel do schedule( dynamic,1 )          &
+      !$omp default( none )                            &
+      !$omp shared( simulationData, modelGrid )        &
+      !$omp shared( geoRef )                           &
+      !$omp shared( pathlineUnit, binPathlineUnit )    &
+      !$omp shared( timeseriesUnit, traceModeUnit )    &
+      !$omp shared( timeseriesTempUnits )              &
+      !$omp shared( timeseriesRecordCounts )           &
+      !$omp shared( timeseriesTempFiles )              &
+      !$omp shared( period, step, ktime, nt )          &
+      !$omp shared( time, maxTime, isTimeSeriesPoint ) &
+      !$omp shared( tPoint, tPointCount )              &
+      !$omp shared( groupIndex )                       &
+      !$omp private( particleIndex )                   &
+      !$omp private( p, traceModeOn )                  &
+      !$omp private( topActiveCellNumber )             &
+      !$omp private( pLoc, plCount, tsCount )          &
+      !$omp private( pCoordLast, pCoordFirst )         &
+      !$omp private( pCoordTP, pCoord )                &
+      !$omp private( trackPathResult, status )         &
+      !$omp private( timeseriesRecordWritten )         &
+      !$omp private( cellDataBuffer )                  &
+      !$omp private( obs, nobs )                       &
+      !$omp private( waterVolume )                     &
+      !$omp firstprivate( trackingEngine )             &
+      !$omp firstprivate( WriteTimeseries )            &
+      !$omp firstprivate( WriteResidentObs )           &
+      !$omp firstprivate( WriteSinkObs )               &
+      !$omp reduction( +:obsRecordCounter )            &
+      !$omp reduction( +:pendingCount )                &
+      !$omp reduction( +:activeCount )                 &
+      !$omp reduction( +:pathlineRecordCount ) 
+      do particleIndex = 1, simulationData%ParticleGroups(groupIndex)%TotalParticleCount
+        timeseriesRecordWritten = .false.
+        p => simulationData%ParticleGroups(groupIndex)%Particles(particleIndex)
+        
+        ! Check to see if trace mode should be turned on for this particle
+        traceModeOn = .false.
+        if(simulationData%TraceMode .gt. 0) then 
+          if((p%Group .eq. simulationData%TraceGroup) .and.  &
+             (p%ID .eq. simulationData%TraceID)) traceModeOn = .true.
         end if
-        ! -- Particles loop -- !
-        !$omp parallel do schedule( dynamic,1 )          &
-        !$omp default( none )                            &
-        !$omp shared( simulationData, modelGrid )        &
-        !$omp shared( geoRef )                           &
-        !$omp shared( pathlineUnit, binPathlineUnit )    &
-        !$omp shared( timeseriesUnit, traceModeUnit )    &
-        !$omp shared( timeseriesTempUnits )              &
-        !$omp shared( timeseriesRecordCounts )           &
-        !$omp shared( timeseriesTempFiles )              &
-        !$omp shared( period, step, ktime, nt )          &
-        !$omp shared( time, maxTime, isTimeSeriesPoint ) &
-        !$omp shared( tPoint, tPointCount )              &
-        !$omp shared( groupIndex )                       &
-        !$omp private( particleIndex )                   &
-        !$omp private( p, traceModeOn )                  &
-        !$omp private( topActiveCellNumber )             &
-        !$omp private( pLoc, plCount, tsCount )          &
-        !$omp private( pCoordLast, pCoordFirst )         &
-        !$omp private( pCoordTP, pCoord )                &
-        !$omp private( trackPathResult, status )         &
-        !$omp private( timeseriesRecordWritten )         &
-        !$omp private( cellDataBuffer )                  &
-        !$omp private( obs, nobs )                       &
-        !$omp private( waterVolume )                     &
-        !$omp firstprivate( trackingEngine )             &
-        !$omp firstprivate( WriteTimeseries )            &
-        !$omp firstprivate( WriteResidentObs )           &
-        !$omp firstprivate( WriteSinkObs )               &
-        !$omp reduction( +:obsRecordCounter )            &
-        !$omp reduction( +:pendingCount )                &
-        !$omp reduction( +:activeCount )                 &
-        !$omp reduction( +:pathlineRecordCount ) 
-        do particleIndex = 1, simulationData%ParticleGroups(groupIndex)%TotalParticleCount
-            timeseriesRecordWritten = .false.
-            p => simulationData%ParticleGroups(groupIndex)%Particles(particleIndex)
-            
-            ! Check to see if trace mode should be turned on for this particle
-            traceModeOn = .false.
-            if(simulationData%TraceMode .gt. 0) then 
-              if((p%Group .eq. simulationData%TraceGroup) .and.  &
-                 (p%ID .eq. simulationData%TraceID)) traceModeOn = .true.
-            end if
-            
-            ! If a particle is pending release (STATUS = 0), check to see if it should
-            ! be set to active and released on this pass. If the particle is pending
-            ! release and its release time is earlier than the starting time of this
-            ! pass, then mark the particle status as permanently unreleased 
-            ! (STATUS = 8).
-            if(p%Status .eq. 0) then
-              if(p%InitialTrackingTime .lt. time) then
-                p%Status = 8
-              else if(p%InitialTrackingTime .le. maxTime) then
-                p%Status = 1
-                if(p%Drape .eq. 0) then
-                  ! Drape option is not in effect.
-                  if(trackingEngine%FlowModelData%IBoundTS(p%CellNumber) .eq. 0) then
-                    p%Status = 7
-                  end if
-                else
-                  ! Drape option is in effect. Find the top-most active cell starting with the initial cell number. 
-                  ! If no active cell is found, leave the cell number set to its original value and set the Status = 7
-                  ! to indicate it is stranded in an inactive cell.
-                  topActiveCellNumber = trackingEngine%GetTopMostActiveCell(p%CellNumber)
-                  if(topActiveCellNumber .gt. 0) then
-                    p%CellNumber = topActiveCellNumber
-                  else
-                    p%Status = 7
-                  end if
-                end if
-                call modelGrid%ConvertToModelZ(p%InitialCellNumber, &
-                  p%InitialLocalZ, p%InitialGlobalZ, .true.)
-                p%GlobalZ = p%InitialGlobalZ
+        
+        ! If a particle is pending release (STATUS = 0), check to see if it should
+        ! be set to active and released on this pass. If the particle is pending
+        ! release and its release time is earlier than the starting time of this
+        ! pass, then mark the particle status as permanently unreleased 
+        ! (STATUS = 8).
+        if(p%Status .eq. 0) then
+          if(p%InitialTrackingTime .lt. time) then
+            p%Status = 8
+          else if(p%InitialTrackingTime .le. maxTime) then
+            p%Status = 1
+            if(p%Drape .eq. 0) then
+              ! Drape option is not in effect.
+              if(trackingEngine%FlowModelData%IBoundTS(p%CellNumber) .eq. 0) then
+                p%Status = 7
               end if
-            end if
-    
-            ! RWPT
-            ! Verify cell not dry anymore
-            if (p%Status .eq. 7 ) then 
-              ! Initialize cellBuffer cellNumber
-              call trackingEngine%FillCellBuffer( p%CellNumber, cellDataBuffer )
-
-              ! Verify dry/partially dried cells
-              call cellDataBuffer%VerifyDryCell()
-
-              ! If partially dried restore active/track status, otherwise keep Status = 7
-              if ( cellDataBuffer%partiallyDry ) p%Status = 1 ! Track particle
-            end if 
-
-            ! Count the number of particles that are currently active or pending
-            ! release at the beginning of this pass.         
-            if(p%Status .EQ. 0) pendingCount = pendingCount + 1
-            if(p%Status .EQ. 1) activeCount = activeCount + 1
-            
-            ! Track the particle if it is active
-            if(p%Status .eq. 1) then
-              ! Set particle location buffer
-              pLoc%CellNumber = p%CellNumber
-              pLoc%Layer = p%Layer
-              pLoc%LocalX = p%LocalX
-              pLoc%LocalY = p%LocalY
-              pLoc%LocalZ = p%LocalZ
-              pLoc%TrackingTime = p%TrackingTime
-              
-              ! Call TrackPath
-              call trackingEngine%TrackPath(trackPathResult, traceModeOn, &
-                traceModeUnit, p%Group, p%ID, p%SequenceNumber, pLoc,     &
-                maxTime, tPoint, tPointCount)
-              
-              ! Update endpoint data. The Face property will only be updated when the endpoint file is written
-              plCount = trackPathResult%ParticlePath%Pathline%GetItemCount()
-              tsCount = trackPathResult%ParticlePath%Timeseries%GetItemCount()
-              pCoordLast => trackPathResult%ParticlePath%Pathline%Items(plCount)
-              pCoordFirst => trackPathResult%ParticlePath%Pathline%Items(1)
-              p%CellNumber =  pCoordLast%CellNumber
-              p%Layer = pCoordLast%Layer
-              p%LocalX = pCoordLast%LocalX
-              p%LocalY = pCoordLast%LocalY
-              p%LocalZ = pCoordLast%LocalZ
-              p%GlobalZ = pCoordLast%GlobalZ
-              p%TrackingTime = pCoordLast%TrackingTime
-              
-              ! Update particle status
-              status = trackPathResult%Status
-              if(  status .eq. trackPathResult%Status_ReachedBoundaryFace()) then
-                  p%Status = 2
-              else if(status .eq. trackPathResult%Status_StopAtWeakSink()) then
-                  p%Status = 3
-                  ! If any observation cells
-                  if ( simulationData%TrackingOptions%anySinkObservation ) then
-                    ! Is this an observation cell ?
-                    if ( &
-                      simulationData%TrackingOptions%isObservation(p%CellNumber) ) then
-                      ! Assign the obs pointer
-                      obs => simulationData%TrackingOptions%Observations(&
-                          simulationData%TrackingOptions%idObservation(p%CellNumber) )
-                      if ( obs%style .eq. 2 ) then
-                        ! If a particle is removed due to strong sink
-                        !$omp critical (sinkobservation)
-                        call WriteSinkObs(ktime, nt, p,                         &
-                          simulationData%ParticleGroups(groupIndex)%Solute,     &
-                          trackingEngine%flowModelData%SinkFlows(p%CellNumber), &
-                          obs%recOutputUnit)
-                        !$omp end critical (sinkobservation)
-                        ! Count record
-                        obsRecordCounter(&
-                          simulationData%TrackingOptions%idObservation(p%CellNumber)) = & 
-                        obsRecordCounter(&
-                          simulationData%TrackingOptions%idObservation(p%CellNumber)) + 1
-                      end if
-                    end if 
-                  end if
-              else if(status .eq. trackPathResult%Status_StopAtWeakSource()) then
-                  p%Status = 4
-              else if(status .eq. trackPathResult%Status_NoExitPossible()) then
-                  p%Status = 5
-              else if(status .eq. trackPathResult%Status_StopZoneCell()) then
-                  p%Status = 6
-              else if(status .eq. trackPathResult%Status_InactiveCell()) then
-                  p%Status = 7
-              else if(status .eq. trackPathResult%Status_Undefined()) then
-                  p%Status = 9
+            else
+              ! Drape option is in effect. Find the top-most active cell starting with the initial cell number. 
+              ! If no active cell is found, leave the cell number set to its original value and set the Status = 7
+              ! to indicate it is stranded in an inactive cell.
+              topActiveCellNumber = trackingEngine%GetTopMostActiveCell(p%CellNumber)
+              if(topActiveCellNumber .gt. 0) then
+                p%CellNumber = topActiveCellNumber
               else
-                  ! Leave status set to active (status = 1)
+                p%Status = 7
               end if
-              
-              ! Write particle output
-              if((simulationData%SimulationType .eq. 2)  .or.              &
-                 (simulationData%SimulationType .eq. 4)  .or.              & 
-                 (simulationData%SimulationType .eq. 6)) then
-                  ! Write pathline to pathline file
-                  if(plCount .gt. 1) then
-                      pathlineRecordCount = pathlineRecordCount + 1
-                      !$omp critical (pathline)
-                      select case (simulationData%PathlineFormatOption)
-                      case (1)
-                        call WriteBinaryPathlineRecord(             &
-                          trackPathResult, binPathlineUnit, period, &
-                          step, geoRef)
-                      case (2)
-                        call WritePathlineRecord(trackPathResult,   &
-                          pathlineUnit, period, step, geoRef)
-                      end select
-                      !$omp end critical (pathline)
-                  end if
-              end if
-              if(simulationData%SimulationType .ge. 3) then
-                if(tsCount .gt. 0) then
-                  ! Write timeseries record to the timeseries file
-                  pCoordTP => trackPathResult%ParticlePath%Timeseries%Items(1)
-                  p%GlobalX = pCoordTP%GlobalX ! GPKDE
-                  p%GlobalY = pCoordTP%GlobalY ! GPKDE
-                  if ( .not. &
-                    simulationData%TrackingOptions%skipTimeseriesWriter ) then 
-                      ! With interface
-                      call WriteTimeseries(p%SequenceNumber, p%ID, groupIndex, & 
-                                  ktime, nt, pCoordTP, geoRef, timeseriesUnit, & 
-                                  timeseriesRecordCounts, timeseriesTempUnits  )
-                  end if 
-                  timeseriesRecordWritten = .true. ! ?
-                  
-                  if ( simulationData%TrackingOptions%anyResObservation ) then  
-                    ! Write record for resident observations
-                    if ( &
-                      simulationData%TrackingOptions%isObservation(pCoordTP%CellNumber) ) then 
-                      obs => simulationData%TrackingOptions%Observations(&
-                          simulationData%TrackingOptions%idObservation(pCoordTP%CellNumber) )
-                      if ( obs%style .eq. 1 ) then  
-                        ! Get water volume and write record
-                        waterVolume = trackingEngine%TrackCell%CellData%GetWaterVolume()
-                        !$omp critical(resobservation)
-                        call WriteResidentObs(ktime, nt, p, pCoordTP,           &
-                              simulationData%ParticleGroups(groupIndex)%Solute, &
-                              simulationData%Retardation(pCoordTP%CellNumber),  &
-                              waterVolume, obs%recOutputUnit)
-                        !$omp end critical(resobservation)
-                        ! Count record
-                        obsRecordCounter(&
-                         simulationData%TrackingOptions%idObservation(pCoordTP%CellNumber)) = & 
-                        obsRecordCounter(&
-                         simulationData%TrackingOptions%idObservation(pCoordTP%CellNumber)) + 1
-                      end if
-                    end if
-                  end if
+            end if
+            call modelGrid%ConvertToModelZ(p%InitialCellNumber, &
+              p%InitialLocalZ, p%InitialGlobalZ, .true.)
+            p%GlobalZ = p%InitialGlobalZ
+          end if
+        end if
+    
+        ! RWPT
+        ! Verify cell not dry anymore
+        if (p%Status .eq. 7 ) then 
+          ! Initialize cellBuffer cellNumber
+          call trackingEngine%FillCellBuffer( p%CellNumber, cellDataBuffer )
 
+          ! Verify dry/partially dried cells
+          call cellDataBuffer%VerifyDryCell()
+
+          ! If partially dried restore active/track status, otherwise keep Status = 7
+          if ( cellDataBuffer%partiallyDry ) p%Status = 1 ! Track particle
+        end if 
+
+        ! Count the number of particles that are currently active or pending
+        ! release at the beginning of this pass.         
+        if(p%Status .EQ. 0) pendingCount = pendingCount + 1
+        if(p%Status .EQ. 1) activeCount = activeCount + 1
+        
+        ! Track the particle if it is active
+        if(p%Status .eq. 1) then
+          ! Set particle location buffer
+          pLoc%CellNumber = p%CellNumber
+          pLoc%Layer = p%Layer
+          pLoc%LocalX = p%LocalX
+          pLoc%LocalY = p%LocalY
+          pLoc%LocalZ = p%LocalZ
+          pLoc%TrackingTime = p%TrackingTime
+          
+          ! Call TrackPath
+          call trackingEngine%TrackPath(trackPathResult, traceModeOn, &
+            traceModeUnit, p%Group, p%ID, p%SequenceNumber, pLoc,     &
+            maxTime, tPoint, tPointCount)
+          
+          ! Update endpoint data. The Face property will only be updated when the endpoint file is written
+          plCount = trackPathResult%ParticlePath%Pathline%GetItemCount()
+          tsCount = trackPathResult%ParticlePath%Timeseries%GetItemCount()
+          pCoordLast => trackPathResult%ParticlePath%Pathline%Items(plCount)
+          pCoordFirst => trackPathResult%ParticlePath%Pathline%Items(1)
+          p%CellNumber =  pCoordLast%CellNumber
+          p%Layer = pCoordLast%Layer
+          p%LocalX = pCoordLast%LocalX
+          p%LocalY = pCoordLast%LocalY
+          p%LocalZ = pCoordLast%LocalZ
+          p%GlobalZ = pCoordLast%GlobalZ
+          p%TrackingTime = pCoordLast%TrackingTime
+          
+          ! Update particle status
+          status = trackPathResult%Status
+          if(  status .eq. trackPathResult%Status_ReachedBoundaryFace()) then
+            p%Status = 2
+          else if(status .eq. trackPathResult%Status_StopAtWeakSink()) then
+            p%Status = 3
+            ! If any observation cells
+            if ( simulationData%TrackingOptions%anySinkObservation ) then
+              ! Is this an observation cell ?
+              if ( &
+                simulationData%TrackingOptions%isObservation(p%CellNumber) ) then
+                ! Assign the obs pointer
+                obs => simulationData%TrackingOptions%Observations(&
+                    simulationData%TrackingOptions%idObservation(p%CellNumber) )
+                if ( obs%style .eq. 2 ) then
+                  ! If a particle is removed due to strong sink
+                  !$omp critical (sinkobservation)
+                  call WriteSinkObs(ktime, nt, p,                         &
+                    simulationData%ParticleGroups(groupIndex)%Solute,     &
+                    trackingEngine%flowModelData%SinkFlows(p%CellNumber), &
+                    obs%recOutputUnit)
+                  !$omp end critical (sinkobservation)
+                  ! Count record
+                  obsRecordCounter(&
+                    simulationData%TrackingOptions%idObservation(p%CellNumber)) = & 
+                  obsRecordCounter(&
+                    simulationData%TrackingOptions%idObservation(p%CellNumber)) + 1
+                end if
+              end if 
+            end if
+          else if(status .eq. trackPathResult%Status_StopAtWeakSource()) then
+            p%Status = 4
+          else if(status .eq. trackPathResult%Status_NoExitPossible()) then
+            p%Status = 5
+          else if(status .eq. trackPathResult%Status_StopZoneCell()) then
+            p%Status = 6
+          else if(status .eq. trackPathResult%Status_InactiveCell()) then
+            p%Status = 7
+          else if(status .eq. trackPathResult%Status_Undefined()) then
+            p%Status = 9
+          else
+            ! Leave status set to active (status = 1)
+          end if
+          
+          ! Write particle output
+          if((simulationData%SimulationType .eq. 2)  .or.              &
+             (simulationData%SimulationType .eq. 4)  .or.              & 
+             (simulationData%SimulationType .eq. 6)) then
+            ! Write pathline to pathline file
+            if(plCount .gt. 1) then
+              pathlineRecordCount = pathlineRecordCount + 1
+              !$omp critical (pathline)
+              select case (simulationData%PathlineFormatOption)
+              case (1)
+                call WriteBinaryPathlineRecord(             &
+                  trackPathResult, binPathlineUnit, period, &
+                  step, geoRef)
+              case (2)
+                call WritePathlineRecord(trackPathResult,   &
+                  pathlineUnit, period, step, geoRef)
+              end select
+              !$omp end critical (pathline)
+            end if
+          end if
+          if(simulationData%SimulationType .ge. 3) then
+            if(tsCount .gt. 0) then
+              ! Write timeseries record to the timeseries file
+              pCoordTP => trackPathResult%ParticlePath%Timeseries%Items(1)
+              p%GlobalX = pCoordTP%GlobalX ! GPKDE
+              p%GlobalY = pCoordTP%GlobalY ! GPKDE
+              if ( .not. &
+                simulationData%TrackingOptions%skipTimeseriesWriter ) then 
+                  ! With interface
+                  call WriteTimeseries(p%SequenceNumber, p%ID, groupIndex, & 
+                              ktime, nt, pCoordTP, geoRef, timeseriesUnit, & 
+                              timeseriesRecordCounts, timeseriesTempUnits  )
+              end if 
+              timeseriesRecordWritten = .true. ! ?
+              
+              if ( simulationData%TrackingOptions%anyResObservation ) then  
+                ! Write record for resident observations
+                if ( &
+                  simulationData%TrackingOptions%isObservation(pCoordTP%CellNumber) ) then 
+                  obs => simulationData%TrackingOptions%Observations(&
+                      simulationData%TrackingOptions%idObservation(pCoordTP%CellNumber) )
+                  if ( obs%style .eq. 1 ) then  
+                    ! Get water volume and write record
+                    waterVolume = trackingEngine%TrackCell%CellData%GetWaterVolume()
+                    !$omp critical(resobservation)
+                    call WriteResidentObs(ktime, nt, p, pCoordTP,           &
+                          simulationData%ParticleGroups(groupIndex)%Solute, &
+                          simulationData%Retardation(pCoordTP%CellNumber),  &
+                          waterVolume, obs%recOutputUnit)
+                    !$omp end critical(resobservation)
+                    ! Count record
+                    obsRecordCounter(&
+                     simulationData%TrackingOptions%idObservation(pCoordTP%CellNumber)) = & 
+                    obsRecordCounter(&
+                     simulationData%TrackingOptions%idObservation(pCoordTP%CellNumber)) + 1
+                  end if
                 end if
               end if
-            end if ! p%Status .eq. 1
-            
-            ! If option is set to write timeseries records for all particles
-            ! regardless of status, write the record if not done already.
-            ! RWPT
-            if((simulationData%SimulationType .ge. 3) .and.              &
-               (simulationData%SimulationType .lt. 7) .and.              &
-               (simulationData%TimeseriesOutputOption .eq. 1) .and.      &
-               (isTimeSeriesPoint) .and. (.not.timeseriesRecordWritten)) then
-                  pCoord%CellNumber = p%CellNumber
-                  pCoord%Layer = p%Layer
-                  pCoord%LocalX = p%LocalX
-                  pCoord%LocalY = p%LocalY
-                  pCoord%LocalZ = p%LocalZ
-                  pCoord%TrackingTime = maxTime
-                  call modelGrid%ConvertToModelXYZ(pCoord%CellNumber,       &
-                    pCoord%LocalX, pCoord%LocalY, pCoord%LocalZ,            &
-                    pCoord%GlobalX, pCoord%GlobalY, pCoord%GlobalZ)
-                  p%GlobalX = pCoord%GlobalX ! GPKDE
-                  p%GlobalY = pCoord%GlobalY ! GPKDE
-                  if ( .not. &
-                    simulationData%TrackingOptions%skipTimeseriesWriter ) then 
-                      ! With interface
-                      call WriteTimeseries(p%SequenceNumber, p%ID, groupIndex, & 
-                                    ktime, nt, pCoord, geoRef, timeseriesUnit, &
-                                    timeseriesRecordCounts, timeseriesTempUnits)
-                  end if
 
-                  if ( simulationData%TrackingOptions%anyResObservation ) then  
-                    ! Write record for resident observations
-                    if ( &
-                      simulationData%TrackingOptions%isObservation(pCoord%CellNumber) ) then 
-                      obs => simulationData%TrackingOptions%Observations(&
-                          simulationData%TrackingOptions%idObservation(pCoord%CellNumber) )
-                      if ( obs%style .eq. 1 ) then  
-                        ! Get water volume and write record
-                        waterVolume = trackingEngine%TrackCell%CellData%GetWaterVolume()
-                        !$omp critical(resobservation)
-                        call WriteResidentObs(ktime, nt, p, pCoordTP,           &
-                              simulationData%ParticleGroups(groupIndex)%Solute, &
-                              simulationData%Retardation(pCoordTP%CellNumber),  &
-                              waterVolume, obs%recOutputUnit)
-                        !$omp end critical(resobservation)
-                        ! Count record
-                        obsRecordCounter(&
-                         simulationData%TrackingOptions%idObservation(pCoord%CellNumber)) = & 
-                        obsRecordCounter(&
-                         simulationData%TrackingOptions%idObservation(pCoord%CellNumber)) + 1
-                      end if
-                    end if
-                  end if
             end if
+          end if
+        end if ! p%Status .eq. 1
+        
+        ! If option is set to write timeseries records for all particles
+        ! regardless of status, write the record if not done already.
+        ! RWPT
+        if((simulationData%SimulationType .ge. 3) .and.              &
+           (simulationData%SimulationType .lt. 7) .and.              &
+           (simulationData%TimeseriesOutputOption .eq. 1) .and.      &
+           (isTimeSeriesPoint) .and. (.not.timeseriesRecordWritten)) then
+          pCoord%CellNumber = p%CellNumber
+          pCoord%Layer = p%Layer
+          pCoord%LocalX = p%LocalX
+          pCoord%LocalY = p%LocalY
+          pCoord%LocalZ = p%LocalZ
+          pCoord%TrackingTime = maxTime
+          call modelGrid%ConvertToModelXYZ(pCoord%CellNumber,       &
+            pCoord%LocalX, pCoord%LocalY, pCoord%LocalZ,            &
+            pCoord%GlobalX, pCoord%GlobalY, pCoord%GlobalZ)
+          p%GlobalX = pCoord%GlobalX ! GPKDE
+          p%GlobalY = pCoord%GlobalY ! GPKDE
+          if ( .not. &
+            simulationData%TrackingOptions%skipTimeseriesWriter ) then 
+              ! With interface
+              call WriteTimeseries(p%SequenceNumber, p%ID, groupIndex, & 
+                            ktime, nt, pCoord, geoRef, timeseriesUnit, &
+                            timeseriesRecordCounts, timeseriesTempUnits)
+          end if
 
-        end do ! Particles Loop
-        !$omp end parallel do
+          if ( simulationData%TrackingOptions%anyResObservation ) then  
+            ! Write record for resident observations
+            if ( &
+              simulationData%TrackingOptions%isObservation(pCoord%CellNumber) ) then 
+              obs => simulationData%TrackingOptions%Observations(&
+                  simulationData%TrackingOptions%idObservation(pCoord%CellNumber) )
+              if ( obs%style .eq. 1 ) then  
+                ! Get water volume and write record
+                waterVolume = trackingEngine%TrackCell%CellData%GetWaterVolume()
+                !$omp critical(resobservation)
+                call WriteResidentObs(ktime, nt, p, pCoordTP,           &
+                      simulationData%ParticleGroups(groupIndex)%Solute, &
+                      simulationData%Retardation(pCoordTP%CellNumber),  &
+                      waterVolume, obs%recOutputUnit)
+                !$omp end critical(resobservation)
+                ! Count record
+                obsRecordCounter(&
+                 simulationData%TrackingOptions%idObservation(pCoord%CellNumber)) = & 
+                obsRecordCounter(&
+                 simulationData%TrackingOptions%idObservation(pCoord%CellNumber)) + 1
+              end if
+            end if
+          end if
+        end if
+
+      end do ! Particles Loop
+      !$omp end parallel do
     end do ! ParticleGroups Loop
 
 
