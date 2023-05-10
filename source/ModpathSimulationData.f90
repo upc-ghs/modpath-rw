@@ -1083,11 +1083,14 @@ contains
   
         ! Load observation cells
         select case( obs%cellOption )
-          ! In case 1, a list of cell ids is specified, that 
+          ! In case 0, a list of cell ids is specified, that 
           ! compose the observation.  
-          case (1)
+          case (0)
             ! Read number of observation cells 
             call urword(line, icol, istart, istop, 2, n, r, 0, 0)
+            if ( n.lt.1 ) then 
+              call ustop('Given number of cells for observation is .lt. 1. Should be at least 1. Stop.')
+            end if 
             obs%nCells = n 
             
             ! Are these ids as (lay,row,col) or (cellid) ?
@@ -1127,8 +1130,8 @@ contains
               call ustop('Invalid cell reading style for this observation. Stop.')
             end if
 
-          case (2)
-            ! In case 2, observation cells are given by specifying a 3D array
+          case (1)
+            ! In case 1, observation cells are given by specifying a 3D array
             ! with 0 (not observation) and 1 (observation) 
 
             ! Required for u3d
@@ -1741,8 +1744,6 @@ contains
 
         ! Both the total number of particles and the effective mass are known
 
-        print *, 'TOTAL PARTICLE COUNT:', totalParticleCount 
-
         if ( saveValidCellNumbers ) then
           ! If valid cell numbers were saved...
 
@@ -1880,33 +1881,46 @@ contains
     write(outUnit, '(a,i10)') 'Total number of particles on initial conditions = ', particleCount
     write(outUnit, *)
 
-
     ! Extend simulationdata to include these particle groups
-    if ( nValidInitialConditions .gt. 0 ) then 
+    if ( nValidInitialConditions .gt. 0 ) then
+
+      ! Update the pgroup count
       newParticleGroupCount = this%ParticleGroupCount + nValidInitialConditions
-      allocate(newParticleGroups(newParticleGroupCount))
-      ! If some particle groups existed previously
-      if( this%ParticleGroupCount .gt. 0 ) then 
-        do n = 1, this%ParticleGroupCount
-          newParticleGroups(n) = this%ParticleGroups(n)
-        end do
-      end if 
-      pgCount = 0
-      do n = 1, nInitialConditions
-        if ( particleGroups(n)%TotalParticleCount .eq. 0 ) cycle
-        pgCount = pgCount + 1 
-        newParticleGroups(pgCount+this%ParticleGroupCount) = particleGroups(n)
-      end do 
-      if( this%ParticleGroupCount .gt. 0 ) then 
-        call move_alloc( newParticleGroups, this%ParticleGroups )
-        this%ParticleGroupCount = newParticleGroupCount
-        this%TotalParticleCount = this%TotalParticleCount + particleCount
-      else
+
+      ! If no previously defined pgroups, and all the new were 
+      ! valid, then simply move_alloc
+      if ( ( this%ParticleGroupCount .eq. 0 ) .and. &
+           ( nInitialConditions .eq. nValidInitialConditions ) ) then 
         this%ParticleGroupCount = newParticleGroupCount
         this%TotalParticleCount = particleCount
-        !allocate(this%ParticleGroups(this%ParticleGroupCount))
-        call move_alloc( newParticleGroups, this%ParticleGroups )
-      end if
+        call move_alloc( particleGroups, this%ParticleGroups )
+      else
+        ! Needs something more flexible that doesn't 
+        ! require copying the pgroups
+        allocate(newParticleGroups(newParticleGroupCount))
+        ! If some particle groups existed previously
+        if( this%ParticleGroupCount .gt. 0 ) then 
+          do n = 1, this%ParticleGroupCount
+            newParticleGroups(n) = this%ParticleGroups(n)
+          end do
+        end if 
+        pgCount = 0
+        do n = 1, nInitialConditions
+          if ( particleGroups(n)%TotalParticleCount .eq. 0 ) cycle
+          pgCount = pgCount + 1 
+          newParticleGroups(pgCount+this%ParticleGroupCount) = particleGroups(n)
+        end do 
+        if( this%ParticleGroupCount .gt. 0 ) then 
+          call move_alloc( newParticleGroups, this%ParticleGroups )
+          this%ParticleGroupCount = newParticleGroupCount
+          this%TotalParticleCount = this%TotalParticleCount + particleCount
+        else
+          this%ParticleGroupCount = newParticleGroupCount
+          this%TotalParticleCount = particleCount
+          call move_alloc( newParticleGroups, this%ParticleGroups )
+        end if
+      end if 
+
     end if
 
 
@@ -1915,8 +1929,6 @@ contains
 
 
   end subroutine pr_ReadICData
-
-
 
 
 

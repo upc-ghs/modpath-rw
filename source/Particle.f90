@@ -1,35 +1,24 @@
 module ParticleModule
+  use PrecisionModule, only : fp
   implicit none
-  
-! Set default access status to private
+
+  ! Set default access status to private
   private
 
-type,public :: ParticleType
-  integer :: CellNumber, Layer, Face, Group, ID, Status, SequenceNumber
-  doubleprecision :: LocalX, LocalY, LocalZ, GlobalZ, TrackingTime
-  integer :: InitialCellNumber, InitialFace, Drape, InitialLayer
-  doubleprecision :: InitialLocalX, InitialLocalY, InitialLocalZ, InitialGlobalZ, InitialTrackingTime
-  doubleprecision,dimension(:),allocatable :: ExitVelocity
-  ! GPKDE-RECONSTRUCTION
-  doubleprecision :: GlobalX, GlobalY
-  ! RWPT
-  doubleprecision :: Mass   = 1d0
-  integer         :: Solute = 1
-  ! may be deprecated
-  doubleprecision :: DAqueous
-
-end type
-
-
-
-
-
-
+  type,public :: ParticleType
+    ! RW: The Face property is a potential candidate for deprecation
+    integer :: CellNumber, Layer, Face, Group, ID, Status, SequenceNumber
+    real(fp) :: LocalX, LocalY, LocalZ, GlobalZ, TrackingTime
+    integer :: InitialCellNumber, InitialFace, Drape, InitialLayer
+    real(fp) :: InitialLocalX, InitialLocalY, InitialLocalZ, InitialGlobalZ, InitialTrackingTime
+    ! GPKDE-RECONSTRUCTION
+    real(fp) :: GlobalX, GlobalY
+    ! RWPT
+    real(fp) :: Mass = 1.0_fp
+  end type
 
 
 contains
-
-
 
 
 end module ParticleModule

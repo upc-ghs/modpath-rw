@@ -28,7 +28,7 @@ module ParticleManagerModule
   ! Write resident observation records 
   abstract interface
     subroutine ResidentObsWriter( timeStep, timePointIndex, particle, &
-                               pCoord, rFactor, waterVolume, outUnit)
+                      pCoord, soluteID, rFactor, waterVolume, outUnit )
       !-------------------------------------------------------------
       import ParticleType
       import ParticleCoordinateType
@@ -36,6 +36,7 @@ module ParticleManagerModule
       integer,intent(in)                      :: timeStep, timePointIndex
       type(ParticleType),intent(in)           :: particle
       type(ParticleCoordinateType),intent(in) :: pCoord
+      integer, intent(in)                     :: soluteID
       doubleprecision, intent(in)             :: rFactor, waterVolume 
       integer, intent(in)                     :: outUnit
     end subroutine ResidentObsWriter
@@ -44,13 +45,15 @@ module ParticleManagerModule
 
   ! Write sink observation records 
   abstract interface
-    subroutine SinkObsWriter( timeStep, timePointIndex, particle, flowRate, outUnit )
+    subroutine SinkObsWriter( timeStep, timePointIndex, particle, & 
+                                      soluteID, flowRate, outUnit )
       !-------------------------------------------------------------
       import ParticleType
       !-------------------------------------------------------------
       ! input
       integer,intent(in)              :: timeStep, timePointIndex
       type(ParticleType),intent(in)   :: particle
+      integer, intent(in)             :: soluteID
       doubleprecision, intent(in)     :: flowRate
       integer, intent(in)             :: outUnit
       !----------------------------------------------
@@ -612,7 +615,7 @@ contains
 
 
   subroutine WriteResidentObsRecord(timeStep, timePointIndex, particle, pCoord, &
-                                                     rFactor, waterVolume, outUnit )
+                                        soluteID, rFactor, waterVolume, outUnit )
   !--------------------------------------------------------------------------------
   ! Specifications
   !---------------------------------------------------------------------------------
@@ -620,6 +623,7 @@ contains
   integer,intent(in)                      :: timeStep, timePointIndex
   type(ParticleType),intent(in)           :: particle
   type(ParticleCoordinateType),intent(in) :: pCoord
+  integer, intent(in)                     :: soluteID
   doubleprecision, intent(in)             :: rFactor, waterVolume 
   integer, intent(in)                     :: outUnit
   doubleprecision :: modelX, modelY
@@ -630,7 +634,7 @@ contains
   
   write(outUnit, '(2I8,es18.9e3,i10,es18.9e3,2i5,2i10,5es18.9e3)')             &
     timePointIndex, timeStep, pCoord%TrackingTime, particle%ID, particle%Mass, & 
-             particle%Group, particle%Solute, pCoord%CellNumber, pCoord%Layer, &
+             particle%Group, soluteID, pCoord%CellNumber, pCoord%Layer, &
                          rFactor, waterVolume, modelX, modelY, pCoord%GlobalZ
 
 
@@ -638,7 +642,7 @@ contains
 
 
   subroutine WriteResidentObsRecordBinary(timeStep, timePointIndex, particle, pCoord, &
-                                                        rFactor, waterVolume, outUnit )
+                                              soluteID, rFactor, waterVolume, outUnit )
   !--------------------------------------------------------------------------------
   ! Specifications
   !---------------------------------------------------------------------------------
@@ -646,6 +650,7 @@ contains
   integer,intent(in)                      :: timeStep, timePointIndex
   type(ParticleType),intent(in)           :: particle
   type(ParticleCoordinateType),intent(in) :: pCoord
+  integer, intent(in)                     :: soluteID
   doubleprecision, intent(in)             :: rFactor, waterVolume 
   integer, intent(in)                     :: outUnit
   doubleprecision :: modelX, modelY
@@ -656,7 +661,7 @@ contains
   
   write(outUnit) &
     timePointIndex, timeStep, pCoord%TrackingTime, particle%ID, particle%Mass, & 
-             particle%Group, particle%Solute, pCoord%CellNumber, pCoord%Layer, &
+             particle%Group, soluteID, pCoord%CellNumber, pCoord%Layer, &
                          rFactor, waterVolume, modelX, modelY, pCoord%GlobalZ
 
 
@@ -664,7 +669,8 @@ contains
 
 
 
-  subroutine WriteSinkObsRecord( timeStep, timePointIndex, particle, flowRate, outUnit )
+  subroutine WriteSinkObsRecord( timeStep, timePointIndex, particle, &
+                                         soluteID, flowRate, outUnit )
     !-----------------------------------
     ! Write observation sink cell record
     !-----------------------------------
@@ -674,20 +680,22 @@ contains
     ! input
     integer,intent(in)              :: timeStep, timePointIndex
     type(ParticleType),intent(in)   :: particle
+    integer, intent(in)             :: soluteID
     doubleprecision, intent(in)     :: flowRate
     integer, intent(in)             :: outUnit
     !----------------------------------------------
 
 
-    write(outUnit, '(2I8,es18.9e3,i10,es18.9e3,2i5,2i10,es18.9e3)')                  &
-      timePointIndex, timeStep, particle%TrackingTime, particle%ID, particle%Mass,   & 
-        particle%Group, particle%Solute, particle%CellNumber, particle%Layer, flowRate
+    write(outUnit, '(2I8,es18.9e3,i10,es18.9e3,2i5,2i10,es18.9e3)')                &
+      timePointIndex, timeStep, particle%TrackingTime, particle%ID, particle%Mass, & 
+        particle%Group, soluteID, particle%CellNumber, particle%Layer, flowRate
 
 
   end subroutine WriteSinkObsRecord
 
 
-  subroutine WriteSinkObsRecordBinary( timeStep, timePointIndex, particle, flowRate, outUnit )
+  subroutine WriteSinkObsRecordBinary( timeStep, timePointIndex, particle, & 
+                                               soluteID, flowRate, outUnit )
     !-----------------------------------
     ! Write observation sink cell record
     !-----------------------------------
@@ -697,14 +705,15 @@ contains
     ! input
     integer,intent(in)              :: timeStep, timePointIndex
     type(ParticleType),intent(in)   :: particle
+    integer, intent(in)             :: soluteID
     doubleprecision, intent(in)     :: flowRate
     integer, intent(in)             :: outUnit
     !----------------------------------------------
 
 
     write(outUnit) &
-      timePointIndex, timeStep, particle%TrackingTime, particle%ID, particle%Mass,   & 
-        particle%Group, particle%Solute, particle%CellNumber, particle%Layer, flowRate
+      timePointIndex, timeStep, particle%TrackingTime, particle%ID, particle%Mass, & 
+        particle%Group, soluteID, particle%CellNumber, particle%Layer, flowRate
 
 
   end subroutine WriteSinkObsRecordBinary

@@ -144,9 +144,9 @@ program MPath7
   ! Test init
   logical :: testinit = .false.
   ! Interfaces 
-  procedure(TimeseriesWriter), pointer :: WriteTimeseries=>null()
-  procedure(ResidentObsWriter), pointer :: WriteResidentObs=>null()
-  procedure(SinkObsWriter), pointer :: WriteSinkObs=>null()
+  procedure(TimeseriesWriter) , pointer :: WriteTimeseries  => null()
+  procedure(ResidentObsWriter), pointer :: WriteResidentObs => null()
+  procedure(SinkObsWriter)    , pointer :: WriteSinkObs     => null()
   !-----------------------------------------------------------------------------
   ! Assign dedicated file unit numbers
   disUnit         = 101
@@ -362,7 +362,6 @@ program MPath7
       stop
   end select
   
-
   ! Write connection data
   if (logType == 2) then
     call ulog('Skip output of cell connection data.', logUnit)
@@ -386,11 +385,9 @@ program MPath7
       write(logUnit, *)        
     end do
   end if
-  
 
   ! Initialize the georeference data
   call geoRef%SetData(modelGrid%OriginX, modelGrid%OriginY, modelGrid%RotationAngle)
- 
 
   ! Initialize the budgetReader component
   call ulog('Allocate budget reader component.', logUnit)
@@ -403,7 +400,6 @@ program MPath7
   else
     call ustop('An error occurred processing the budget file. Stopping.')
   end if
-  
 
   ! Initialize the headReader component
   call ulog('Allocate head reader component.', logUnit)
@@ -411,13 +407,11 @@ program MPath7
   call ulog('Open head file in head reader component.', logUnit)
   call headReader%OpenFile(headFile, headUnit, mplistUnit)
   
-
   ! Read the MODPATH basic data file
   call ulog('Allocate MODPATH basic data component.', logUnit)
   allocate(basicData)
   call ulog('Read MODPATH basic data component.', logUnit)   
   call basicData%ReadData(mpbasUnit, mplistUnit, modelGrid)
-
 
   ! Read the remainder of the MODPATH simulation file
   call ulog('Read the remainder of the MODPATH-RW simulation data component.', logUnit)
@@ -435,7 +429,6 @@ program MPath7
   call flowModelData%SetRetardation(simulationData%Retardation, modelGrid%CellCount)
   call flowModelData%SetDefaultIface(basicData%DefaultIfaceLabels, &
           basicData%DefaultIfaceValues, basicData%DefaultIfaceCount)
-  
 
   ! Compute range of time steps to use in the time step loop
   message ='Compute range of time steps to be used in time step loop.'
@@ -1028,7 +1021,6 @@ program MPath7
   call ulog('Begin TRACKING_INTERVAL_LOOP', logUnit)
   TRACKING_INTERVAL_LOOP: do while (itend .eq. 0)
   itcount = itcount + 1
-  !print *, '--------------', itcount
   itend = 1
   maxTime = tsMax
   isTimeSeriesPoint = .false.
@@ -1206,8 +1198,10 @@ program MPath7
                       if ( obs%style .eq. 2 ) then
                         ! If a particle is removed due to strong sink
                         !$omp critical (sinkobservation)
-                        call WriteSinkObs(ktime, nt, p,& 
-                          trackingEngine%flowModelData%SinkFlows(p%CellNumber), obs%recOutputUnit)
+                        call WriteSinkObs(ktime, nt, p,                         &
+                          simulationData%ParticleGroups(groupIndex)%Solute,     &
+                          trackingEngine%flowModelData%SinkFlows(p%CellNumber), &
+                          obs%recOutputUnit)
                         !$omp end critical (sinkobservation)
                         ! Count record
                         obsRecordCounter(&
@@ -1240,13 +1234,13 @@ program MPath7
                       pathlineRecordCount = pathlineRecordCount + 1
                       !$omp critical (pathline)
                       select case (simulationData%PathlineFormatOption)
-                          case (1)
-                              call WriteBinaryPathlineRecord(             &
-                                trackPathResult, binPathlineUnit, period, &
-                                step, geoRef)
-                          case (2)
-                              call WritePathlineRecord(trackPathResult,   &
-                                pathlineUnit, period, step, geoRef)
+                      case (1)
+                        call WriteBinaryPathlineRecord(             &
+                          trackPathResult, binPathlineUnit, period, &
+                          step, geoRef)
+                      case (2)
+                        call WritePathlineRecord(trackPathResult,   &
+                          pathlineUnit, period, step, geoRef)
                       end select
                       !$omp end critical (pathline)
                   end if
@@ -1276,8 +1270,9 @@ program MPath7
                         ! Get water volume and write record
                         waterVolume = trackingEngine%TrackCell%CellData%GetWaterVolume()
                         !$omp critical(resobservation)
-                        call WriteResidentObs(ktime, nt, p, pCoordTP, &
-                              simulationData%Retardation(pCoordTP%CellNumber), &
+                        call WriteResidentObs(ktime, nt, p, pCoordTP,           &
+                              simulationData%ParticleGroups(groupIndex)%Solute, &
+                              simulationData%Retardation(pCoordTP%CellNumber),  &
                               waterVolume, obs%recOutputUnit)
                         !$omp end critical(resobservation)
                         ! Count record
@@ -1329,8 +1324,9 @@ program MPath7
                         ! Get water volume and write record
                         waterVolume = trackingEngine%TrackCell%CellData%GetWaterVolume()
                         !$omp critical(resobservation)
-                        call WriteResidentObs(ktime, nt, p, pCoord, &
-                              simulationData%Retardation(pCoord%CellNumber), &
+                        call WriteResidentObs(ktime, nt, p, pCoordTP,           &
+                              simulationData%ParticleGroups(groupIndex)%Solute, &
+                              simulationData%Retardation(pCoordTP%CellNumber),  &
                               waterVolume, obs%recOutputUnit)
                         !$omp end critical(resobservation)
                         ! Count record
