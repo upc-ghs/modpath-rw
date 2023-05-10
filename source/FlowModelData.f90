@@ -634,45 +634,44 @@ contains
     integer :: cellCount, n, arraySize
     !---------------------------------------------------------------------------------------------------------------
       
-        this%CurrentStressPeriod = 0
-        this%CurrentTimeStep = 0
+      this%CurrentStressPeriod = 0
+      this%CurrentTimeStep = 0
+      
+      if(allocated(this%SinkFlows)) then
+        cellCount = this%Grid%CellCount
+        do n = 1, cellCount
+          this%IBoundTS(n) = this%IBound(n)
+          this%Heads(n) = 0.0d0
+          this%SourceFlows(n) = 0.0d0
+          this%SinkFlows(n) = 0.0d0
+          this%StorageFlows(n) = 0.0d0
+          this%SubFaceFlowsComputed(n) = .false.
+        end do
         
-        if(allocated(this%SinkFlows)) then
-            cellCount = this%Grid%CellCount
-            do n = 1, cellCount
-                this%IBoundTS(n) = this%IBound(n)
-                this%Heads(n) = 0.0d0
-                this%SourceFlows(n) = 0.0d0
-                this%SinkFlows(n) = 0.0d0
-                this%StorageFlows(n) = 0.0d0
-                this%SubFaceFlowsComputed(n) = .false.
-            end do
-            
-            arraySize = cellCount * 6
-            do n = 1, arraySize
-                this%BoundaryFlows(n) = 0.0d0
-            end do
-            
-            arraySize = cellCount * 4
-            do n = 1, arraySize
-                this%SubFaceFlows(n) = 0.0d0
-            end do
+        arraySize = cellCount * 6
+        do n = 1, arraySize
+          this%BoundaryFlows(n) = 0.0d0
+        end do
         
-            arraySize = this%BudgetReader%GetFlowArraySize()
-            if(this%Grid%GridType .eq. 1) then
-                do n = 1, arraySize
-                this%FlowsRightFace(n) = 0.0d0
-                this%FlowsFrontFace(n) = 0.0d0
-                this%FlowsLowerFace(n) = 0.0d0
-                end do
-            else if(this%Grid%GridType .eq. 2) then
-                do n = 1, arraySize
-                    this%FlowsJA(n) = 0.0d0
-                end do
-            end if
-           
+        arraySize = cellCount * 4
+        do n = 1, arraySize
+          this%SubFaceFlows(n) = 0.0d0
+        end do
+      
+        arraySize = this%BudgetReader%GetFlowArraySize()
+        if(this%Grid%GridType .eq. 1) then
+          do n = 1, arraySize
+            this%FlowsRightFace(n) = 0.0d0
+            this%FlowsFrontFace(n) = 0.0d0
+            this%FlowsLowerFace(n) = 0.0d0
+          end do
+        else if(this%Grid%GridType .eq. 2) then
+          do n = 1, arraySize
+            this%FlowsJA(n) = 0.0d0
+          end do
         end if
- 
+      end if
+
 
     end subroutine pr_ClearTimeStepBudgetData
 
@@ -725,19 +724,18 @@ contains
     integer :: n
     integer,dimension(arraySize),intent(in),target :: ibound
     !---------------------------------------------------------------------------------------------------------------
+     
+      if(arraySize .ne. this%Grid%CellCount) then
+        write(*,*) "FlowModelDataType: The IBound array size does not match the cell count for the grid. stop"
+        stop
+      end if
       
-        if(arraySize .ne. this%Grid%CellCount) then
-          write(*,*) "FlowModelDataType: The IBound array size does not match the cell count for the grid. stop"
-          stop
-        end if
-       
-        this%IBound => ibound
-        ! Initialize the IBoundTS array to the same values as IBound whenever the IBound array is set.
-        ! The values of IBoundTS will be updated for dry cells every time that data for a time step is loaded.
-        do n = 1, arraySize
-          this%IBoundTS(n) = this%IBound(n)
-        end do
-  
+      this%IBound => ibound
+      ! Initialize the IBoundTS array to the same values as IBound whenever the IBound array is set.
+      ! The values of IBoundTS will be updated for dry cells every time that data for a time step is loaded.
+      do n = 1, arraySize
+        this%IBoundTS(n) = this%IBound(n)
+      end do
 
     end subroutine pr_SetIBound
 

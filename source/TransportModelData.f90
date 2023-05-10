@@ -592,12 +592,12 @@ contains
     !--------------------------------------------------------------
     implicit none
     ! input 
-    class(TransportModelDataType), target :: this
+    class(TransportModelDataType), target    :: this
     character(len=200), intent(in)           :: dspFile
     integer, intent(in)                      :: dspUnit
     integer, intent(in)                      :: outUnit
     ! local
-    type(ModpathSimulationDataType), pointer :: simulationData
+    type(ModpathSimulationDataType), pointer  :: simulationData
     class(ModflowRectangularGridType),pointer :: grid
     type(DispersionDataType),pointer          :: disp
     integer :: isThisFileOpen 
