@@ -122,9 +122,9 @@ program MPath7
   doubleprecision, allocatable, dimension(:)   :: waterVolBuffer
   integer, allocatable, dimension(:)           :: obsRecordCounter
   character(len=200) :: colFormat
-  !integer            :: idColFormat ! TO BE DEPRECATED
+  !integer            :: idColFormat ! To be deprecated
   !character(len=200) :: qSinkFormat
-  !character(len=200) :: waterVolFormat ! TO BE DEPRECATED
+  !character(len=200) :: waterVolFormat ! To be deprecated
   doubleprecision    :: dX, dY, dZ, dZC, porosity
   doubleprecision    :: modelX, modelY
   integer            :: timePointIndex, timeStep
@@ -714,72 +714,74 @@ program MPath7
         select case(obs%outputOption)
         case(0)
           ! Open only records unit in text-plain format
+          WriteResidentObs=> WriteResidentObsRecord
           open( unit=obs%recOutputUnit, &
                 file=obs%recOutputFileName,& 
                 status='replace', form='formatted', access='sequential')
         case(1)
           ! Both records and output unit as text plain 
+          WriteResidentObs=> WriteResidentObsRecord
           open( unit=obs%recOutputUnit, &
                 file=obs%recOutputFileName,& 
                 status='replace', form='formatted', access='sequential')
           open( unit=obs%outputUnit, &
                 file=obs%outputFileName,& 
                 status='replace', form='formatted', access='sequential')
-          ! Temporary binary
+          ! Temporary binary for aux data ( water volume )
           open( unit=obs%auxOutputUnit, &
                 status='scratch', form='unformatted',&
                 access='stream', action='readwrite')
-          WriteResidentObs=> WriteResidentObsRecord
         case(2)
-          ! Records as temporary binary
+          ! Records as temporary binary and output as text plain
+          WriteResidentObs=> WriteResidentObsRecordBinary
           open( unit=obs%recOutputUnit, &
                 status='scratch', form='unformatted',&
                 access='stream', action='readwrite')
           open( unit=obs%outputUnit, &
                 file=obs%outputFileName,& 
                 status='replace', form='formatted', access='sequential')
-          ! Temporary binary
+          ! Temporary binary for aux data ( water volume )
           open( unit=obs%auxOutputUnit, &
                 status='scratch', form='unformatted',&
                 access='stream', action='readwrite')
-          WriteResidentObs=> WriteResidentObsRecordBinary
         end select
       end if
       ! For a SINK observation
-      if ( obs%style .eq. 2 ) then 
+      if ( obs%style .eq. 2 ) then
         ! Assumed already validated at simdata
         select case(obs%outputOption)
         case(0)
           ! Open only records unit in text-plain format
+          WriteSinkObs=> WriteSinkObsRecord
           open( unit=obs%recOutputUnit, &
                 file=obs%recOutputFileName,& 
                 status='replace', form='formatted', access='sequential')
         case(1)
           ! Both records and output unit as text plain 
+          WriteSinkObs=> WriteSinkObsRecord
           open( unit=obs%recOutputUnit, &
                 file=obs%recOutputFileName,& 
                 status='replace', form='formatted', access='sequential')
           open( unit=obs%outputUnit, &
                 file=obs%outputFileName,& 
                 status='replace', form='formatted', access='sequential')
-          ! Temporary binary
+          ! Temporary binary for aux data ( flow rates )
           open( unit=obs%auxOutputUnit, &
                 status='scratch', form='unformatted',&
                 access='stream', action='readwrite')
-          WriteSinkObs=> WriteSinkObsRecord
         case(2)
-          ! Records as temporary binary
+          ! Records as temporary binary and output as text plain
+          WriteSinkObs=> WriteSinkObsRecordBinary
           open( unit=obs%recOutputUnit, &
                 status='scratch', form='unformatted',&
                 access='stream', action='readwrite')
           open( unit=obs%outputUnit, &
                 file=obs%outputFileName,& 
                 status='replace', form='formatted', access='sequential')
-          ! Temporary binary
+          ! Temporary binary for aux data ( flow rates )
           open( unit=obs%auxOutputUnit, &
                 status='scratch', form='unformatted',&
                 access='stream', action='readwrite')
-          WriteSinkObs=> WriteSinkObsRecordBinary
         end select
       end if
     end do
@@ -1324,9 +1326,9 @@ program MPath7
                 ! Get water volume and write record
                 waterVolume = trackingEngine%TrackCell%CellData%GetWaterVolume()
                 !$omp critical(resobservation)
-                call WriteResidentObs(ktime, nt, p, pCoordTP,           &
+                call WriteResidentObs(ktime, nt, p, pCoord,           &
                       simulationData%ParticleGroups(groupIndex)%Solute, &
-                      simulationData%Retardation(pCoordTP%CellNumber),  &
+                      simulationData%Retardation(pCoord%CellNumber),  &
                       waterVolume, obs%recOutputUnit)
                 !$omp end critical(resobservation)
                 ! Count record

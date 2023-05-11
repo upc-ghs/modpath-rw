@@ -550,20 +550,72 @@ contains
       this%databaseOptimization = defaultDatabaseOptimization
     end if
     ! Process kernel database discretization parameters 
-    if ( present( maxHOverLambda ) .and. (maxHOverLambda.gt.fZERO) ) then 
-      this%maxHOverLambda = maxHOverLambda
-    else 
-      this%maxHOverLambda = defaultMaxHOverLambda
-    end if
-    if ( present( minHOverLambda ) .and. (minHOverLambda.gt.fZERO) ) then 
-      this%minHOverLambda = minHOverLambda
+    if ( present( minHOverLambda ) ) then
+      if ( minHOverLambda.gt.fZERO )then 
+        this%minHOverLambda = minHOverLambda
+      else
+        write(*,*) 'Error: Invalid value for minHOverLambda: should be greater than zero. Stop.'
+        stop
+      end if
     else 
       this%minHOverLambda = defaultMinHOverLambda
     end if
-    if ( present( deltaHOverLambda ) .and. (deltaHOverLambda.gt.fZERO) ) then 
+
+    if ( present( maxHOverLambda ) ) then
+     if ( maxHOverLambda.gt.fZERO ) then 
+      if ( maxHOverLambda.le.this%minHOverLambda(1) ) then ! minhoverlambda is an array in memory
+       if ( this%reportToOutUnit ) then 
+       write( this%outFileUnit, *) 'Error: Invalid value for maxHOverLambda: should be greater than minHOverLambda.'
+       write( this%outFileUnit, *) '  Value of minHOverLambda: ', this%minHOverLambda(1)
+       write( this%outFileUnit, *) '  Value of maxHOverLamnda: ', maxHOverLambda
+       end if  
+       write(*,*) 'Error: Invalid value for maxHOverLambda: should be greater than minHOverLambda. Stop.'
+       stop
+      end if
+      this%maxHOverLambda = maxHOverLambda
+     else
+      write(*,*) 'Error: Invalid value for maxHOverLambda: should be greater than zero. Stop.'
+      stop
+     end if
+    else 
+     this%maxHOverLambda = defaultMaxHOverLambda
+     if ( this%maxHOverLambda(1).le.this%minHOverLambda(1) ) then 
+      if ( this%reportToOutUnit ) then 
+      write( this%outFileUnit, *) 'Error: Invalid value for maxHOverLambda: should be greater than minHOverLambda.'
+      write( this%outFileUnit, *) '  Value of minHOverLambda: ', this%minHOverLambda(1) 
+      write( this%outFileUnit, *) '  Value of maxHOverLamnda: ', this%maxHOverLambda(1)
+      end if  
+      write(*,*) 'Error: Invalid value for maxHOverLambda: should be greater than minHOverLambda. Stop.'
+      stop
+     end if
+    end if
+    if ( present( deltaHOverLambda ) ) then 
+     if ( deltaHOverLambda.gt.fZERO ) then 
+      if ( deltaHOverLambda.ge.this%maxHOverLambda(1) ) then ! maxhoverlambda is an array in memory
+       if ( this%reportToOutUnit ) then 
+       write( this%outFileUnit, *) 'Error: Invalid value for deltaHOverLambda: should be less than maxHOverLambda.'
+       write( this%outFileUnit, *) '  Value of maxHOverLambda  : ', this%maxHOverLambda(1)
+       write( this%outFileUnit, *) '  Value of deltaHOverLamnda: ', deltaHOverLambda
+       end if  
+       write(*,*) 'Error: Invalid value for deltaHOverLambda: should be less than maxHOverLambda. Stop.'
+       stop
+      end if
       this%deltaHOverLambda = deltaHOverLambda
+     else
+      write(*,*) 'Error: Invalid value for deltaHOverLambda: should be greater than zero. Stop.'
+      stop
+     end if
     else 
       this%deltaHOverLambda = defaultDeltaHOverLambda
+      if ( this%deltaHOverLambda(1).ge.this%maxHOverLambda(1) ) then 
+       if ( this%reportToOutUnit ) then 
+       write( this%outFileUnit, *) 'Error: Invalid value for deltaHOverLambda: should be less than maxHOverLambda.'
+       write( this%outFileUnit, *) '  Value of maxHOverLambda  : ', this%maxHOverLambda(1)
+       write( this%outFileUnit, *) '  Value of deltaHOverLamnda: ', this%deltaHOverLambda(1)
+       end if  
+       write(*,*) 'Error: Invalid value for deltaHOverLambda: should be less than maxHOverLambda. Stop.'
+       stop
+      end if
     end if
     if ( present( logKernelDatabase ) ) then ! Deprecate ? 
       this%logKernelDatabase = logKernelDatabase
@@ -3678,7 +3730,9 @@ contains
       flush( this%outFileUnit ) 
     end if 
 
+    ! For those special cases where nOptLoops .eq. 0
     if ( nOptLoops .eq. 0 ) then
+
       ! Export variables 
       if ( (exportVariables) ) then
         write( unit=loopId, fmt=* )0
@@ -3689,8 +3743,90 @@ contains
           curvatureBandwidth, nEstimateArray, roughnessXXArray, &
           roughnessYYArray, roughnessZZArray, netRoughnessArray )
       end if
+
+      ! Final density estimate for weighted histograms
+      if ( this%histogram%isWeighted ) then 
+        select case(this%histogram%effectiveWeightFormat)
+        case(0,1)
+          ! The formats where densities are transformed scaling by a uniform weight
+          this%histogram%counts = this%histogram%counts*this%histogram%effectiveMass
+          densityEstimateGrid = densityEstimateGrid*this%histogram%effectiveMass
+        case(2,3)
+          ! The formats where histogram stored both 
+          ! the count of points and cummulative weights. 
+          ! A last reconstruction over the weighted histogram is performed 
+          densityEstimateGrid = fZERO
+          !$omp parallel do schedule( dynamic, 1 )  &
+          !$omp default( none )                     &
+          !$omp shared( this )                      &
+          !$omp shared( activeGridCells )           & 
+          !$omp shared( kernelSmoothing )           & 
+          !$omp reduction( +: densityEstimateGrid ) & 
+          !$omp firstprivate( kernel )              & 
+          !$omp private( n )                        & 
+          !$omp private( gc )                        
+          do n = 1, this%nComputeBins
+            ! Assign pointer 
+            gc => activeGridCells(n)
+            ! Set kernel
+            call this%SetKernel( gc, kernel, kernelSmoothing(:,n) ) 
+            ! Compute estimate
+            densityEstimateGrid(                         &
+                  gc%kernelXGSpan(1):gc%kernelXGSpan(2), &
+                  gc%kernelYGSpan(1):gc%kernelYGSpan(2), & 
+                  gc%kernelZGSpan(1):gc%kernelZGSpan(2)  & 
+              ) = densityEstimateGrid(                   &
+                  gc%kernelXGSpan(1):gc%kernelXGSpan(2), &
+                  gc%kernelYGSpan(1):gc%kernelYGSpan(2), & 
+                  gc%kernelZGSpan(1):gc%kernelZGSpan(2)  & 
+              ) + this%histogram%wcounts(                &  ! Notice histogram%wcounts !
+                  gc%id(1), gc%id(2), gc%id(3) )*gc%kernelMatrix(&
+                       gc%kernelXMSpan(1):gc%kernelXMSpan(2), &
+                       gc%kernelYMSpan(1):gc%kernelYMSpan(2), & 
+                       gc%kernelZMSpan(1):gc%kernelZMSpan(2)  &
+              )
+          end do
+          !$omp end parallel do
+          densityEstimateGrid = densityEstimateGrid/this%histogram%binVolume
+        end select
+      end if 
+
+      ! Clean
+      call kernel%Reset()
+      call kernelSigma%Reset()
+      call kernelSDX%Reset()
+      call kernelSDY%Reset()
+      call kernelSDZ%Reset()
+      ! Deallocate stuff
+      kernelMatrix    => null()
+      gc              => null()
+      activeGridCells => null()
+      if( allocated( transposedKernelMatrix ) ) deallocate( transposedKernelMatrix )
+      !$omp parallel do
+      do n = 1, this%nComputeBins
+        call activeGridCellsMod(n)%Reset()
+      end do
+      !$omp end parallel do
+      ! Probably more to be deallocated !
+      deallocate( kernelSmoothing        )
+      deallocate( kernelSmoothingScale   )
+      deallocate( kernelSmoothingShape   )
+      deallocate( kernelSigmaSupportScale)
+      deallocate( curvatureBandwidth     )
+      deallocate( densityEstimateArray   )
+      deallocate( nEstimateArray         )
+      deallocate( roughnessXXArray       )
+      deallocate( roughnessYYArray       )
+      deallocate( roughnessZZArray       )
+      deallocate( netRoughnessArray      )
+      deallocate( activeGridCellsMod     )
+      deallocate( rawDensity             ) 
+      deallocate( densityEstimateArrayOld) 
+      deallocate( errorMetricArray       ) 
+
       ! Done
       return
+
     end if
 
     ! Initialize old error trackers
@@ -3946,123 +4082,51 @@ contains
       write( this%outFileUnit, '(A)' ) '    - Max loops '
     end if
 
-    ! Final density estimate for weighted histograms, scaling by effective mass
-    if ( (this%histogram%isWeighted).and.(this%histogram%effectiveWeightFormat.lt.2) ) then 
-
-      ! The standard format, where the effective histogram is transformed 
-      ! back to mass histogram using the effective weight 
-      this%histogram%counts = this%histogram%counts*this%histogram%effectiveMass
-      densityEstimateGrid = densityEstimateGrid*this%histogram%effectiveMass
-
-    else if ( (this%histogram%isWeighted).and.(this%histogram%effectiveWeightFormat.eq.2) ) then
-
-      ! A very specific format, where the histogram stored both the count of 
-      ! points and cummulative weights, mostly for analysis purposes. 
-      ! A last reconstruction of the weighted histogram is performed 
-      ! using the kernel smoothing determined from the count of particles
-
-      densityEstimateGrid = fZERO
-      densityEstimateArray = fZERO
-      !$omp parallel do schedule( dynamic, 1 )  &
-      !$omp default( none )                     &
-      !$omp shared( this )                      &
-      !$omp shared( activeGridCells )           & 
-      !$omp shared( kernelSmoothing )           & 
-      !$omp reduction( +: densityEstimateGrid ) & 
-      !$omp firstprivate( kernel )              & 
-      !$omp private( n )                        & 
-      !$omp private( gc )                        
-      do n = 1, this%nComputeBins
-
-        ! Assign pointer 
-        gc => activeGridCells(n)
-
-        ! Set kernel
-        call this%SetKernel( gc, kernel, kernelSmoothing(:,n) ) 
-
-        ! Compute estimate
-        densityEstimateGrid(                         &
-              gc%kernelXGSpan(1):gc%kernelXGSpan(2), &
-              gc%kernelYGSpan(1):gc%kernelYGSpan(2), & 
-              gc%kernelZGSpan(1):gc%kernelZGSpan(2)  & 
-          ) = densityEstimateGrid(                   &
-              gc%kernelXGSpan(1):gc%kernelXGSpan(2), &
-              gc%kernelYGSpan(1):gc%kernelYGSpan(2), & 
-              gc%kernelZGSpan(1):gc%kernelZGSpan(2)  & 
-          ) + this%histogram%wcounts(                &  ! Notice histogram%wcounts !
-              gc%id(1), gc%id(2), gc%id(3) )*gc%kernelMatrix(&
-                   gc%kernelXMSpan(1):gc%kernelXMSpan(2), &
-                   gc%kernelYMSpan(1):gc%kernelYMSpan(2), & 
-                   gc%kernelZMSpan(1):gc%kernelZMSpan(2)  &
-          )
-
-        !! Cannot be done here ! Reduction !
-        ! Assign into array   
-        !densityEstimateArray( n ) = densityEstimateGrid( gc%id(1), gc%id(2), gc%id(3) )
-      end do
-      !$omp end parallel do
-      densityEstimateGrid = densityEstimateGrid/this%histogram%binVolume
-      ! Transfer grid density to array ( not really needed for this case )
-      do n = 1, this%nComputeBins
-        gc => activeGridCells(n)
-        densityEstimateArray( n ) = densityEstimateGrid( gc%id(1), gc%id(2), gc%id(3) )
-      end do
-
-    else if ( (this%histogram%isWeighted).and.(this%histogram%effectiveWeightFormat.eq.3) ) then
-
-      ! A very specific format, where the histogram stored both the count of 
-      ! points and cummulative weights, mostly for analysis purposes. 
-      ! A last reconstruction of the weighted histogram is performed 
-      ! using the kernel smoothing determined from the effective localy 
-      ! count of particles
-
-      densityEstimateGrid = fZERO
-      densityEstimateArray = fZERO
-      !$omp parallel do schedule( dynamic, 1 )  &
-      !$omp default( none )                     &
-      !$omp shared( this )                      &
-      !$omp shared( activeGridCells )           & 
-      !$omp shared( kernelSmoothing )           & 
-      !$omp reduction( +: densityEstimateGrid ) & 
-      !$omp firstprivate( kernel )              & 
-      !$omp private( n )                        & 
-      !$omp private( gc )                        
-      do n = 1, this%nComputeBins
-
-        ! Assign pointer 
-        gc => activeGridCells(n)
-
-        ! Set kernel
-        call this%SetKernel( gc, kernel, kernelSmoothing(:,n) ) 
-
-        ! Compute estimate
-        densityEstimateGrid(                         &
-              gc%kernelXGSpan(1):gc%kernelXGSpan(2), &
-              gc%kernelYGSpan(1):gc%kernelYGSpan(2), & 
-              gc%kernelZGSpan(1):gc%kernelZGSpan(2)  & 
-          ) = densityEstimateGrid(                   &
-              gc%kernelXGSpan(1):gc%kernelXGSpan(2), &
-              gc%kernelYGSpan(1):gc%kernelYGSpan(2), & 
-              gc%kernelZGSpan(1):gc%kernelZGSpan(2)  & 
-          ) + this%histogram%wcounts(                &  ! Notice histogram%wcounts !
-              gc%id(1), gc%id(2), gc%id(3) )*gc%kernelMatrix(&
-                   gc%kernelXMSpan(1):gc%kernelXMSpan(2), &
-                   gc%kernelYMSpan(1):gc%kernelYMSpan(2), & 
-                   gc%kernelZMSpan(1):gc%kernelZMSpan(2)  &
-          )
-
-        !! Cannot be done here ! Reduction !
-        ! Assign into array   
-        !densityEstimateArray( n ) = densityEstimateGrid( gc%id(1), gc%id(2), gc%id(3) )
-      end do
-      !$omp end parallel do
-      densityEstimateGrid = densityEstimateGrid/this%histogram%binVolume
-      ! Transfer grid density to array ( not really needed for this case )
-      do n = 1, this%nComputeBins
-        gc => activeGridCells(n)
-        densityEstimateArray( n ) = densityEstimateGrid( gc%id(1), gc%id(2), gc%id(3) )
-      end do
-
+    ! Final density estimate for weighted histograms
+    if ( this%histogram%isWeighted ) then 
+      select case(this%histogram%effectiveWeightFormat)
+      case(0,1)
+        ! The formats where densities are transformed scaling by a uniform weight
+        this%histogram%counts = this%histogram%counts*this%histogram%effectiveMass
+        densityEstimateGrid = densityEstimateGrid*this%histogram%effectiveMass
+      case(2,3)
+        ! The formats where histogram stored both 
+        ! the count of points and cummulative weights. 
+        ! A last reconstruction over the weighted histogram is performed 
+        densityEstimateGrid = fZERO
+        !$omp parallel do schedule( dynamic, 1 )  &
+        !$omp default( none )                     &
+        !$omp shared( this )                      &
+        !$omp shared( activeGridCells )           & 
+        !$omp shared( kernelSmoothing )           & 
+        !$omp reduction( +: densityEstimateGrid ) & 
+        !$omp firstprivate( kernel )              & 
+        !$omp private( n )                        & 
+        !$omp private( gc )                        
+        do n = 1, this%nComputeBins
+          ! Assign pointer 
+          gc => activeGridCells(n)
+          ! Set kernel
+          call this%SetKernel( gc, kernel, kernelSmoothing(:,n) ) 
+          ! Compute estimate
+          densityEstimateGrid(                         &
+                gc%kernelXGSpan(1):gc%kernelXGSpan(2), &
+                gc%kernelYGSpan(1):gc%kernelYGSpan(2), & 
+                gc%kernelZGSpan(1):gc%kernelZGSpan(2)  & 
+            ) = densityEstimateGrid(                   &
+                gc%kernelXGSpan(1):gc%kernelXGSpan(2), &
+                gc%kernelYGSpan(1):gc%kernelYGSpan(2), & 
+                gc%kernelZGSpan(1):gc%kernelZGSpan(2)  & 
+            ) + this%histogram%wcounts(                &  ! Notice histogram%wcounts !
+                gc%id(1), gc%id(2), gc%id(3) )*gc%kernelMatrix(&
+                     gc%kernelXMSpan(1):gc%kernelXMSpan(2), &
+                     gc%kernelYMSpan(1):gc%kernelYMSpan(2), & 
+                     gc%kernelZMSpan(1):gc%kernelZMSpan(2)  &
+            )
+        end do
+        !$omp end parallel do
+        densityEstimateGrid = densityEstimateGrid/this%histogram%binVolume
+      end select
     end if 
 
     ! Clean

@@ -216,7 +216,6 @@ contains
      write(outUnit,'(A,I1)') 'Default ICBOUND set to open when no cell connection: ', 0
     end if
     
-
     ! Read impFormat
     read(impUnit, '(a)') line
     icol = 1

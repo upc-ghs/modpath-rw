@@ -1571,7 +1571,7 @@ contains
 
       select case ( initialConditionFormat )
       ! Read initial condition as resident concentration (ML^-3)
-      case (1) 
+      case (0) 
         ! Given a value for the mass of particles, 
         ! use flowModelData to compute cellvolume
         ! and a shape factor from which the number 
