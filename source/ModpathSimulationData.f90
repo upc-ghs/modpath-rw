@@ -2632,8 +2632,6 @@ contains
             if ( particleGroups(naux)%TotalParticleCount .gt. 0 ) then 
               nValidPGroup = nValidPGroup + 1
               particleCount =  particleCount + particleGroups(naux)%TotalParticleCount 
-              !write(outUnit,'(A,es18.9e3)') 'Original particle mass for this solute  = ', auxMasses(naux)
-              !write(outUnit,'(A,es18.9e3)') 'Effective particle mass for this solute = ', effectiveMass
               write(outUnit,'(A,es18.9e3)') 'Total released mass related to aux var  = ', totCummEffectiveMass
               write(outUnit,'(A,I10)') 'Total number of particles related to aux var = ', particleGroups(naux)%TotalParticleCount 
             end if
@@ -2779,7 +2777,7 @@ contains
             end if
 
             ! Read the cells
-            if( readAsUnstructured) then
+            if( readAsUnstructured ) then
               if ( .not. iFaceOption ) then 
                 do nc = 1, nCells
                   read(srcUnit,*) cellNumber
@@ -3702,8 +3700,6 @@ contains
             if ( particleGroups(naux)%TotalParticleCount .gt. 0 ) then 
               nValidPGroup = nValidPGroup + 1
               particleCount =  particleCount + particleGroups(naux)%TotalParticleCount 
-              !write(outUnit,'(A,es18.9e3)') 'Original particle mass for this solute  = ', auxMasses(naux)
-              !write(outUnit,'(A,es18.9e3)') 'Effective particle mass for this solute = ', effectiveMass
               write(outUnit,'(A,es18.9e3)') 'Total released mass related to aux var  = ', totCummEffectiveMass
               write(outUnit,'(A,I10)') 'Total number of particles related to aux var = ', particleGroups(naux)%TotalParticleCount 
             end if

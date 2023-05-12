@@ -1985,9 +1985,9 @@ contains
 
 
     subroutine pr_LoadFlowTimeseries(this, sourcePkgName, & 
-                                   initialTime, finalTime, tdisData, &
-                                        cellNumbers, flowTimeseries, &
-                                        readCellsFromBudget, outUnit )
+                        initialTime, finalTime, tdisData, &
+                             cellNumbers, flowTimeseries, &
+                             readCellsFromBudget, outUnit )
     !------------------------------------------------------------------------
     ! Given a range of times, extract a flow-rates timeseries from the header 
     ! sourcePkgName, only for cells in cellNumbers and positive flow-rates.
@@ -2067,7 +2067,7 @@ contains
       if ( readCells ) then
 
         ! Start by deallocating any given cellNumbers
-        if( allocated( cellNumbers ) ) deallocate( cellNumbers) 
+        if( allocated( cellNumbers ) ) deallocate( cellNumbers ) 
         
         ! Get the initial and final stress
         call tdisData%GetPeriodAndStep(kinitial, spInit, tsInit)
