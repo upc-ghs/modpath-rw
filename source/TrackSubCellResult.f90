@@ -1,4 +1,5 @@
 module TrackSubCellResultModule
+  use PrecisionModule, only : fp 
   use ParticleLocationModule,only : ParticleLocationType
   use ModpathSubCellDataModule,only : ModpathSubCellDataType
   implicit none
@@ -12,8 +13,8 @@ module TrackSubCellResultModule
     type(ParticleLocationType) :: FinalLocation
     integer :: ExitFace = 0
     integer :: ExitFaceConnection = 0
-!    logical :: InternalExitFace = .false.
-    doubleprecision :: MaximumTime = 0d0
+    !logical :: InternalExitFace = .false.
+    real(fp) :: MaximumTime = 0.0_fp
     integer :: Status = 0
   contains
     procedure :: Reset=>pr_Reset
@@ -30,21 +31,21 @@ module TrackSubCellResultModule
   
 contains
 
-subroutine pr_Reset(this)
-  implicit none
-  class(TrackSubCellResultType) :: this
+  subroutine pr_Reset(this)
+    implicit none
+    class(TrackSubCellResultType) :: this
+  
+    this%CellNumber = 0
+    this%ExitFace = 0
+    this%ExitFaceConnection = 0
+    this%MaximumTime = 0.0_fp
+    this%Status = 0
+    call this%InitialLocation%Reset()
+    call this%FinalLocation%Reset()
+  
+  end subroutine
 
-  this%CellNumber = 0
-  this%ExitFace = 0
-  this%ExitFaceConnection = 0
-  this%MaximumTime = 0.0d0
-  this%Status = 0
-  call this%InitialLocation%Reset()
-  call this%FinalLocation%Reset()
-
-end subroutine
-
-!---------------------------------------------------
+  !---------------------------------------------------
   function TrackSubCellResultType_Undefined(this) result(status)
   implicit none
   class(TrackSubCellResultType) :: this
@@ -54,7 +55,7 @@ end subroutine
   
   end function TrackSubCellResultType_Undefined
 
-!---------------------------------------------------
+  !---------------------------------------------------
   function TrackSubCellResultType_ExitAtCellFace(this) result(status)
   implicit none
   class(TrackSubCellResultType) :: this
@@ -64,7 +65,7 @@ end subroutine
   
   end function TrackSubCellResultType_ExitAtCellFace
 
-!---------------------------------------------------
+  !---------------------------------------------------
   function TrackSubCellResultType_ExitAtInternalFace(this) result(status)
   implicit none
   class(TrackSubCellResultType) :: this
@@ -74,7 +75,7 @@ end subroutine
   
   end function TrackSubCellResultType_ExitAtInternalFace
 
-!---------------------------------------------------
+  !---------------------------------------------------
   function TrackSubCellResultType_ReachedMaximumTime(this) result(status)
   implicit none
   class(TrackSubCellResultType) :: this
@@ -84,7 +85,7 @@ end subroutine
   
   end function TrackSubCellResultType_ReachedMaximumTime
 
-!---------------------------------------------------
+  !---------------------------------------------------
   function TrackSubCellResultType_NoExitPossible(this) result(status)
   implicit none
   class(TrackSubCellResultType) :: this
@@ -109,10 +110,10 @@ end subroutine
   !---------------------------------------------------
   !
   !---------------------------------------------------
-    class(TrackSubCellResultType) :: this
-    type(ParticleLocationType),intent(in) :: initialLocation
-    integer :: cellNumber
-    doubleprecision :: initialX,initialY,initialZ,initialTime
+  class(TrackSubCellResultType) :: this
+  type(ParticleLocationType),intent(in) :: initialLocation
+  integer :: cellNumber
+  real(fp) :: initialX,initialY,initialZ,initialTime
   !---------------------------------------------------
     
     call this%Reset()

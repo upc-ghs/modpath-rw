@@ -1,26 +1,27 @@
 module ParticleTrackingOptionsModule
+  use PrecisionModule, only : fp 
   use ObservationModule, only : ObservationType
   implicit none
   
-! Set default access status to private
+  ! Set default access status to private
   private
 
   type,public :: ParticleTrackingOptionsType
-    logical :: DebugMode = .false.
-    logical :: BackwardTracking = .false.
-    logical :: CreateTrackingLog = .false.
-    logical :: StopAtWeakSinks = .false.
-    logical :: StopAtWeakSources = .false.
-    logical :: ExtendSteadyState = .true.
-    logical :: SpecifyStoppingTime = .false.
-    logical :: SpecifyStoppingZone = .false.
-    doubleprecision :: Stoptime = 1.0d+30
-    integer :: StopZone = 0
+    logical  :: DebugMode = .false.
+    logical  :: BackwardTracking = .false.
+    logical  :: CreateTrackingLog = .false.
+    logical  :: StopAtWeakSinks = .false.
+    logical  :: StopAtWeakSources = .false.
+    logical  :: ExtendSteadyState = .true.
+    logical  :: SpecifyStoppingTime = .false.
+    logical  :: SpecifyStoppingZone = .false.
+    real(fp) :: Stoptime = 1.0e+30_fp
+    integer  :: StopZone = 0
 
     ! RWPT
     logical                            :: RandomWalkParticleTracking = .false.
     integer                            :: timeStepKind
-    doubleprecision, dimension(2)      :: timeStepParameters = 0
+    real(fp), dimension(2)             :: timeStepParameters = 0.0_fp
     integer                            :: advectionKind
     integer, dimension(3)              :: dimensionMask = 1
     integer                            :: nDim = 3
@@ -29,21 +30,21 @@ module ParticleTrackingOptionsModule
     integer                            :: randomGenFunction
 
     ! GPKDE
-    logical                       :: GPKDEReconstruction = .false.
-    doubleprecision, dimension(3) :: gpkdeDomainSize
-    doubleprecision, dimension(3) :: gpkdeBinSize
-    doubleprecision, dimension(3) :: gpkdeDomainOrigin
-    integer                       :: gpkdeNOptLoops 
-    character(len=200)            :: gpkdeOutputFile
-    integer                       :: gpkdeOutputUnit = 125
-    logical                       :: gpkdeKernelDatabase
-    logical                       :: gpkdeAsConcentration = .false.
-    doubleprecision               :: gpkdeBinVolume
-    doubleprecision               :: gpkdeScalingFactor
-    doubleprecision, dimension(3) :: gpkdeKDBParams  ! minHLambda, deltaHLambda, maxHLambda
+    logical                :: GPKDEReconstruction = .false.
+    real(fp), dimension(3) :: gpkdeDomainSize
+    real(fp), dimension(3) :: gpkdeBinSize
+    real(fp), dimension(3) :: gpkdeDomainOrigin
+    integer                :: gpkdeNOptLoops 
+    character(len=200)     :: gpkdeOutputFile
+    integer                :: gpkdeOutputUnit = 125
+    logical                :: gpkdeKernelDatabase
+    logical                :: gpkdeAsConcentration = .false.
+    real(fp)               :: gpkdeBinVolume
+    real(fp)               :: gpkdeScalingFactor
+    real(fp), dimension(3) :: gpkdeKDBParams  ! minHLambda, deltaHLambda, maxHLambda
 
     ! TimeseriesOutputOption
-    logical                       :: skipTimeseriesWriter = .false.
+    logical                :: skipTimeseriesWriter = .false.
 
     ! Observation Cells 
     integer :: nObservations
@@ -60,13 +61,12 @@ module ParticleTrackingOptionsModule
 
     ! DEPRECATION WARNNING
     ! NONLINEAR DISPERSION RWPT (TEMP)
-    doubleprecision :: betaTrans, betaLong
-    doubleprecision :: mediumDistance, mediumDelta
-    doubleprecision :: Dmol = 0d0
+    real(fp) :: betaTrans, betaLong
+    real(fp) :: mediumDistance, mediumDelta
+    real(fp) :: Dmol = 0.0_fp
     ! DEPRECATION WARNING
 
   contains
-
      procedure :: Reset=>pr_Reset
      ! Observations
      procedure :: InitializeObservations=>pr_InitializeObservations 
@@ -145,10 +145,10 @@ contains
 
     ! Check if cellNumber is on the list of observation cells     
     do n=1, this%nObservations
-        if ( this%observationCells( n ) .eq. cellNumber ) then 
-            output = n
-            return
-        end if 
+      if ( this%observationCells( n ) .eq. cellNumber ) then 
+        output = n
+        return
+      end if 
     end do 
 
     return 
