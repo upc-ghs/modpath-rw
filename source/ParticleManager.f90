@@ -605,17 +605,17 @@ contains
   !---------------------------------------------------------------------------------
   
     face = 0
-    if(x .eq. 0.0d0) then
+    if(x .eq. 0.0_fp) then
       face = 1
-    else if(x .eq. 1.0d0) then
+    else if(x .eq. 1.0_fp) then
       face = 2
-    else if(y .eq. 0.0d0) then
+    else if(y .eq. 0.0_fp) then
       face = 3
-    else if(y .eq. 1.0d0) then
+    else if(y .eq. 1.0_fp) then
       face =4
-    else if(z .eq. 0.0d0) then
+    else if(z .eq. 0.0_fp) then
       face = 5
-    else if(z .eq. 1.0d0) then
+    else if(z .eq. 1.0_fp) then
       face = 6
     end if
  
