@@ -768,11 +768,52 @@ contains
       this%TrackingOptions%GPKDEReconstruction = .true.
     
       ! Read gpkde output file
-      read(gpkdeUnit, '(a)') this%TrackingOptions%gpkdeOutputFile
+      read(gpkdeUnit, '(a)') line 
       icol = 1
-      call urword(this%TrackingOptions%gpkdeOutputFile,icol,istart,istop,0,n,r,0,0)
-      this%TrackingOptions%gpkdeOutputFile = this%TrackingOptions%gpkdeOutputFile(istart:istop)
-    
+      call urword(line,icol,istart,istop,0,n,r,0,0)
+      this%TrackingOptions%gpkdeOutputFile = line(istart:istop)
+      write(outUnit,'(A,A)') 'GPKDE output will be written to file: ', adjustl(trim(this%TrackingOptions%gpkdeOutputFile))
+ 
+      ! Look for output column format 
+      ! 0: bin ids, density data
+      ! 1: bin ids, cell coordinates, density data
+      ! 2: cell coordinates, density data
+      this%TrackingOptions%gpkdeOutColFormat = 0 
+      call urword(line, icol, istart, istop, 2, n, r, 0, 0)
+      if ( n.le.0 ) then
+        write(outUnit, '(a)') 'GPKDE output column format default to bin ids and density data.' 
+        this%TrackingOptions%gpkdeOutColFormat = 0 
+      else
+        select case(n)
+        case(1)
+          write(outUnit, '(a,I10)') 'GPKDE output column format write bin ids, cell coordinates and density data.' 
+          this%TrackingOptions%gpkdeOutColFormat = n 
+        case(2)
+          write(outUnit, '(a,I10)') 'GPKDE output column format write bin ids, cell coordinates and density data.' 
+          this%TrackingOptions%gpkdeOutColFormat = n 
+        case default
+          write(outUnit, '(a,I10)') 'GPKDE output column format not valid, default to bin ids and density data.' 
+        end select 
+      end if 
+
+      ! Look for output file format 
+      ! 0: text plain 
+      ! 1: binary 
+      this%TrackingOptions%gpkdeOutFileFormat = 0 
+      call urword(line, icol, istart, istop, 2, n, r, 0, 0)
+      if ( n.le.0 ) then
+        write(outUnit, '(a,I10)') 'GPKDE output file is written as text-plain.' 
+        this%TrackingOptions%gpkdeOutFileFormat = 0 
+      else
+        select case(n)
+        case(1)
+          write(outUnit, '(a,I10)') 'GPKDE output file is binary' 
+          this%TrackingOptions%gpkdeOutFileFormat = n
+        case default
+          write(outUnit, '(a,I10)') 'GPKDE output file defaults to text-plain.' 
+        end select 
+      end if 
+
       ! Read domainOrigin
       read(gpkdeUnit, '(a)') line
       icol = 1
@@ -782,7 +823,7 @@ contains
       this%TrackingOptions%gpkdeDomainOrigin(2) = r
       call urword(line, icol, istart, istop, 3, n, r, 0, 0)
       this%TrackingOptions%gpkdeDomainOrigin(3) = r
-    
+
       ! Read domainSize
       read(gpkdeUnit, '(a)') line
       icol = 1
@@ -792,7 +833,53 @@ contains
       this%TrackingOptions%gpkdeDomainSize(2) = r
       call urword(line, icol, istart, istop, 3, n, r, 0, 0)
       this%TrackingOptions%gpkdeDomainSize(3) = r
-    
+
+      ! Health control
+      if ( any(this%TrackingOptions%gpkdeDomainSize .lt. 0.0) ) then 
+        write(outUnit,'(A)') 'One of the GPKDE domain sizes is negative. They should be positive.'
+        call ustop('One of the GPKDE domain sizes is negative. They should be positive. Stop.')
+      end if 
+      if ( all(this%TrackingOptions%gpkdeDomainSize .eq. 0.0) ) then
+        ! No gpkde 
+        write(outUnit,'(A)') 'All the domain dimensions for GPKDE are zero, will disable spatial reconstruction.'
+        write(outUnit,'(A)') 'GPKDE reconstruction is disabled'
+        this%TrackingOptions%GPKDEReconstruction = .false.
+        return
+      end if 
+
+      ! Look for grid allocation format 
+      ! 0: allocate with domain grid size
+      ! 1: allocate according to particle positions
+      this%TrackingOptions%gpkdeGridAllocFormat = 0
+      this%TrackingOptions%gpkdeAdaptGridToCoords = .false.
+      call urword(line, icol, istart, istop, 2, n, r, 0, 0)
+      if ( n.le.0 ) then
+        write(outUnit, '(a)') 'GPKDE grid allocated according to domain size.' 
+      else
+        select case(n)
+        case(1)
+          write(outUnit, '(a)') 'GPKDE grid allocated according to the particle distribution.' 
+          this%TrackingOptions%gpkdeGridAllocFormat = n
+          this%TrackingOptions%gpkdeAdaptGridToCoords = .true.
+
+          ! Look for border fraction only if grid allocation format = 1
+          this%TrackingOptions%gpkdeGridBorderFraction= 0.05
+          call urword(line, icol, istart, istop, 3, n, r, 0, 0)
+          if ( r.ne.0.0 ) then
+            ! Bound border fraction to be between 0 and 1 
+            if ( (r.lt.0.0).or.(r.gt.1.0) ) then 
+              write(outUnit,'(a)') 'Border fraction should be between 0 and 1. Will remain as default.'
+            else
+              ! Ok 
+              this%TrackingOptions%gpkdeGridBorderFraction = r
+            end if
+            write(outUnit,'(a,es18.9e3)') 'Domain border fraction set to :', this%TrackingOptions%gpkdeGridBorderFraction
+          end if 
+        case default
+          write(outUnit, '(a)') 'GPKDE grid allocated according to domain size.' 
+        end select 
+      end if 
+
       ! Read binSize
       read(gpkdeUnit, '(a)') line
       icol = 1
@@ -805,30 +892,59 @@ contains
      
       ! Health control
       if ( any(this%TrackingOptions%gpkdeBinSize.lt.0d0) ) then 
-        write(outUnit,'(A)') 'One of the GPKDE binSizes is negative. They should be positive.'
-        call ustop('One of the GPKDE binSizes is negative. They should be positive. Stop.')
+        write(outUnit,'(A)') 'One of the GPKDE bin sizes is negative. They should be positive.'
+        call ustop('One of the GPKDE bin sizes is negative. They should be positive. Stop.')
       end if 
-
       if ( all(this%TrackingOptions%gpkdeBinSize.eq.0d0) ) then
         ! No gpkde 
-        write(outUnit,'(A)') 'GPKDE binSizes are zero, will disable spatial reconstruction. They should be positive.'
+        write(outUnit,'(A)') 'All the bin sizes are zero, will disable spatial reconstruction.'
         write(outUnit,'(A)') 'GPKDE reconstruction is disabled'
         this%TrackingOptions%GPKDEReconstruction = .false.
         return
       end if 
-
       ! Set binVolume, cannot be zero
       this%TrackingOptions%gpkdeBinVolume = product(&
           this%TrackingOptions%gpkdeBinSize, mask=this%TrackingOptions%gpkdeBinSize.ne.0d0)
-
 
       ! Read nOptimizationLoops
       read(gpkdeUnit, '(a)') line
       icol = 1
       call urword(line, icol, istart, istop, 2, n, r, 0, 0)
-      this%TrackingOptions%gpkdeNOptLoops = n
-    
-      ! Read reconstruction method
+      if (n.lt.0) then
+        write(outUnit,'(a)') 'Given number of optimization loops is less than 0. Defaults to 0.'
+        this%TrackingOptions%gpkdeNOptLoops = 0
+      else
+        this%TrackingOptions%gpkdeNOptLoops = n
+      end if
+
+      ! Skip error convergence ?
+      ! 0: Break if convergence criteria is met 
+      ! 1: Skip and run nOptLoops optimization loops 
+      this%TrackingOptions%gpkdeSkipError = .false.
+      read(gpkdeUnit, '(a)') line
+      icol = 1
+      call urword(line, icol, istart, istop, 2, n, r, 0, 0)
+      select case(n)
+      case(0)
+        this%TrackingOptions%gpkdeSkipError = .false.
+        call urword(line, icol, istart, istop, 3, n, r, 0, 0)
+        if ( r.lt.0.0 ) then 
+          this%TrackingOptions%gpkdeRelErrorConvergence = 0.02
+          write(outUnit,'(a,es18.9e3)') 'Relative error convergence cannot be negative, default to : ', &
+          this%TrackingOptions%gpkdeRelErrorConvergence
+        else 
+          this%TrackingOptions%gpkdeRelErrorConvergence = r
+          write(outUnit,'(a,es18.9e3)') 'Relative error convergence set to: ',& 
+          this%TrackingOptions%gpkdeRelErrorConvergence
+        end if 
+      case(1)
+        this%TrackingOptions%gpkdeSkipError = .true.
+        write(outUnit,'(a)') 'GPKDE will run until the maximum number of optimization loops.'
+      case default
+        write(outUnit,'(a)') 'Invalid skip error convergence parameter, will remain as false.'
+      end select
+
+      ! Read the kernel database parameter
       ! 0: without kernel database, brute force
       ! 1: with kernel database and read parameters
       read(gpkdeUnit, '(a)') line
@@ -839,7 +955,36 @@ contains
       else
         this%TrackingOptions%gpkdeKernelDatabase = .true.
       end if
-    
+      
+      ! Read the bound kernel size format
+      ! 0: bounded by domain restrictions
+      ! 1: bounded by minhl and maxhl 
+      ! 2: unbounded
+      this%TrackingOptions%gpkdeBoundKernelSize = 0
+      call urword(line, icol, istart, istop, 2, n, r, 0, 0)
+      select case(n)
+      case(1)
+        this%TrackingOptions%gpkdeBoundKernelSize = n
+        write(outUnit,'(A)') 'Kernel size will be bounded by MinHL and MaxHL.'
+      case(2)
+        this%TrackingOptions%gpkdeBoundKernelSize = n
+        write(outUnit,'(A)') 'Kernel size will be unbounded.'
+      case default
+        write(outUnit,'(A)') 'Kernel size will be bounded by domain restrictions.'
+      end select 
+
+      ! Read the kernels format 
+      ! 0: anisotropic kernels
+      ! 1: isotropic kernels 
+      call urword(line, icol, istart, istop, 2, n, r, 0, 0)
+      select case(n)
+      case(1)
+        this%TrackingOptions%gpkdeIsotropicKernels = .true.
+      case default 
+        this%TrackingOptions%gpkdeIsotropicKernels = .false.
+      end select 
+
+      ! Interpret KDB params
       if ( this%TrackingOptions%gpkdeKernelDatabase ) then 
         write(outUnit,'(A)') 'GPKDE reconstruction with kernel database'
         ! Read kernel database params
@@ -857,18 +1002,50 @@ contains
       else
         write(outUnit,'(A)') 'GPKDE reconstruction with brute force, no kernel database'
         this%TrackingOptions%gpkdeKernelDatabase = .false.
-        ! Read kernel params
-        ! - min   h/lambda
-        ! - max   h/lambda
-        read(gpkdeUnit, '(a)') line
-        icol = 1
-        call urword(line, icol, istart, istop, 3, n, r, 0, 0)
-        this%TrackingOptions%gpkdeKDBParams(1) = r
-        this%TrackingOptions%gpkdeKDBParams(2) = 0d0 ! NOT USED
-        call urword(line, icol, istart, istop, 3, n, r, 0, 0)
-        this%TrackingOptions%gpkdeKDBParams(3) = r
+        if ( this%TrackingOptions%gpkdeBoundKernelSize .eq. 1 ) then 
+          ! Read kernel database params
+          ! - min   h/lambda
+          ! - max   h/lambda
+          read(gpkdeUnit, '(a)') line
+          icol = 1
+          call urword(line, icol, istart, istop, 3, n, r, 0, 0)
+          this%TrackingOptions%gpkdeKDBParams(1) = r
+          ! call urword(line, icol, istart, istop, 3, n, r, 0, 0) ! don't read deltaHL
+          this%TrackingOptions%gpkdeKDBParams(2) = 0.0
+          call urword(line, icol, istart, istop, 3, n, r, 0, 0)
+          this%TrackingOptions%gpkdeKDBParams(3) = r
+        else
+          this%TrackingOptions%gpkdeKDBParams(:) = 0.0 ! all as zero
+        end if 
       end if 
-    
+      if ( this%TrackingOptions%gpkdeIsotropicKernels ) then 
+        write(outUnit,'(A)') 'GPKDE reconstruction with isotropic kernels' 
+      end if 
+
+      ! Read the initial smoothing format 
+      ! 0: automatic selection from the global expression of Silverman (1986)
+      ! 1: as a factor multiplying the bin size 
+      read(gpkdeUnit, '(a)') line
+      icol = 1
+      call urword(line, icol, istart, istop, 2, n, r, 0, 0)
+      this%TrackingOptions%gpkdeInitialSmoothingFormat = 0
+      this%TrackingOptions%gpkdeInitialSmoothingFormat = 2.0
+      select case(n)
+      case(1)
+        this%TrackingOptions%gpkdeInitialSmoothingFormat =  n
+        write(outUnit,'(A)') 'Initial kernel size as a factor multiplying bin size.'
+        call urword(line, icol, istart, istop, 3, n, r, 0, 0)
+        if ( r.le.0.0 ) then 
+          write(outUnit,'(A)') 'Given initial bin size factor is less or equal to zero, will default to automatic global selection.' 
+          this%TrackingOptions%gpkdeInitialSmoothingFormat = 0
+        else
+          this%TrackingOptions%gpkdeBinSizeFactor = r
+          write(outUnit,'(A,es18.9e3)') 'Bin size factor set to : ', this%TrackingOptions%gpkdeBinSizeFactor
+        end if 
+      case default 
+        write(outUnit,'(A)') 'Initial kernel size selected from automatic global selection of Silverman (1986).' 
+      end select
+
       ! Read kind of reconstruction output
       ! 0: as total mass density. Smoothed phi*R*c_r
       ! 1: as resident concentration
@@ -879,7 +1056,7 @@ contains
         write(outUnit,'(A)') 'GPKDE output is expressed as smoothed total mass density.'
         this%TrackingOptions%gpkdeAsConcentration = .false.
         this%TrackingOptions%gpkdeScalingFactor =&
-          1d0/(this%TrackingOptions%gpkdeBinVolume)
+          1.0/(this%TrackingOptions%gpkdeBinVolume)
       else
         ! If requested as resident concentration, 
         ! verifies whether porosities and retardation 
@@ -889,26 +1066,51 @@ contains
           write(outUnit,'(A)') 'Porosity and retardation are spatially uniform, GPKDE output is given as concentration.'
           this%TrackingOptions%gpkdeAsConcentration = .true.
           this%TrackingOptions%gpkdeScalingFactor =&
-            1d0/(this%uniformPorosity*this%uniformRetardation*this%TrackingOptions%gpkdeBinVolume)
+            1.0/(this%uniformPorosity*this%uniformRetardation*this%TrackingOptions%gpkdeBinVolume)
         else
           write(outUnit,'(A)') 'Porosity and retardation are NOT spatially uniform, GPKDE output is total mass density.'
           this%TrackingOptions%gpkdeAsConcentration = .false.
           this%TrackingOptions%gpkdeScalingFactor =&
-            1d0/(this%TrackingOptions%gpkdeBinVolume)
+            1.0/(this%TrackingOptions%gpkdeBinVolume)
         end if
+      end if
 
+      ! effectiveWeightFormat
+      ! 0: compute effective number of points at domain-level (Kish 1965,1992)
+      ! 1: compute average particles weight 
+      ! 2: bandwidth selection based on particle positions and final mass density reconstruction
+      ! 3: bandwidth selection based on local effective particles and final mass density reconstruction
+      read(gpkdeUnit, '(a)') line
+      icol = 1
+      call urword(line, icol, istart, istop, 2, n, r, 0, 0)
+      write(outUnit,'(a)') 'Determining the method for reconstruction of weighted particles. '
+      this%TrackingOptions%gpkdeEffectiveWeightFormat = 0
+      if ( n.gt.0 ) then 
+        select case(n)
+        case(1)
+          write(outUnit,'(a)') 'Effective weight obtained as the average over particles.'
+          this%TrackingOptions%gpkdeEffectiveWeightFormat = n
+        case(2)
+          write(outUnit,'(a)') 'Histogram calculates both counts and weights, bandwidth selected with counts.'
+          this%TrackingOptions%gpkdeEffectiveWeightFormat = n
+        case(3)
+          write(outUnit,'(a)') 'Histogram calculates both counts and weights, bandwidth selected with cell effective counts.'
+          this%TrackingOptions%gpkdeEffectiveWeightFormat = n
+        case default
+          write(outUnit,'(a)') 'Default to domain-level effective weight from effective number of points (Kish, 1965,1992).'
+          this%TrackingOptions%gpkdeEffectiveWeightFormat = 0
+        end select
+      else
+        write(outUnit,'(a)') 'Default to domain-level effective weight from effective number of points (Kish, 1965,1992).'
       end if
 
     else
-
       ! If simulation is not timeseries
       write(outUnit,'(A)') 'GPKDE reconstruction requires a timeseries. Will remain disabled.'
-
     end if
 
     ! Close gpkde data file
     close( gpkdeUnit )
-
 
   end subroutine pr_ReadGPKDEData
 

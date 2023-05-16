@@ -550,21 +550,36 @@ program MPath7
     ! rectangular grid, given particles position.
     call ulog('Initialize GPKDE object and output unit', logUnit)
     call gpkde%Initialize(& 
-        simulationData%TrackingOptions%gpkdeDomainSize,                          &
-        simulationData%TrackingOptions%gpkdeBinSize,                             &
-        domainOrigin=simulationData%TrackingOptions%gpkdeDomainOrigin,           &
-        nOptimizationLoops=simulationData%TrackingOptions%gpkdeNOptLoops,        &
-        databaseOptimization=simulationData%TrackingOptions%gpkdeKernelDatabase, &
-        minHOverLambda=simulationData%TrackingOptions%gpkdeKDBParams(1),         &
-        deltaHOverLambda=simulationData%TrackingOptions%gpkdeKDBParams(2),       &
-        maxHOverLambda=simulationData%TrackingOptions%gpkdeKDBParams(3),         &
-        outFileName=mplistFile &
+     simulationData%TrackingOptions%gpkdeDomainSize,                                      &
+     simulationData%TrackingOptions%gpkdeBinSize,                                         &
+     domainOrigin=simulationData%TrackingOptions%gpkdeDomainOrigin,                       &
+     adaptGridToCoords=simulationData%TrackingOptions%gpkdeAdaptGridToCoords,             &
+     borderFraction=simulationData%TrackingOptions%gpkdeGridBorderFraction,               &
+     nOptimizationLoops=simulationData%TrackingOptions%gpkdeNOptLoops,                    &
+     databaseOptimization=simulationData%TrackingOptions%gpkdeKernelDatabase,             &
+     minHOverLambda=simulationData%TrackingOptions%gpkdeKDBParams(1),                     &
+     deltaHOverLambda=simulationData%TrackingOptions%gpkdeKDBParams(2),                   &
+     maxHOverLambda=simulationData%TrackingOptions%gpkdeKDBParams(3),                     &
+     initialSmoothingSelection=simulationData%TrackingOptions%gpkdeInitialSmoothingFormat,&
+     initialSmoothingFactor=simulationData%TrackingOptions%gpkdeBinSizeFactor,            &
+     effectiveWeightFormat=simulationData%TrackingOptions%gpkdeEffectiveWeightFormat,     & 
+     boundKernelSizeFormat=simulationData%TrackingOptions%gpkdeBoundKernelSize,           & 
+     outFileName=mplistFile                                                               &
     )
-    ! Initialize output unit/file
-    open(unit=simulationData%TrackingOptions%gpkdeOutputUnit, &
-         file=simulationData%TrackingOptions%gpkdeOutputFile, &
-       status='replace', form='formatted', access='sequential')
-    
+
+    select case(simulationData%TrackingOptions%gpkdeOutFileFormat)
+    case(0)
+     ! Initialize output file as text-plain
+     open(unit=simulationData%TrackingOptions%gpkdeOutputUnit, &
+          file=simulationData%TrackingOptions%gpkdeOutputFile, &
+        status='replace', form='formatted', access='sequential')
+    case(1)
+     ! Initialize output file as binary
+     open(unit=simulationData%TrackingOptions%gpkdeOutputUnit, &
+          file=simulationData%TrackingOptions%gpkdeOutputFile, &
+        status='replace', form='unformatted', access='stream')
+    end select
+
   end if
 
   ! Test init
@@ -973,7 +988,6 @@ program MPath7
         allocate( activeParticleMasses(activeCounter) )
         activeParticleMasses = 0d0
 
-        ! Could be parallelized ?
         ! Fill coordinates array
         activeCounter = 0 
         do npg=1,solute%nParticleGroups
@@ -991,20 +1005,24 @@ program MPath7
           end do
         end do
 
-
         ! GPKDE
         ! Compute density for the particles linked to a given 
         ! solute. These may have different mass
-        call gpkde%ComputeDensity(                                                  &
-         activeParticleCoordinates,                                                 &
-         outputFileUnit    = simulationData%TrackingOptions%gpkdeOutputUnit,        &
-         outputDataId      = 0,                                                     & ! timeindex
-         particleGroupId   = solute%id,                                             &
-         unitVolume        = .true.,                                                &
-         weightedHistogram = .true.,                                                &
-         weights           = activeParticleMasses,                                  &
-         scalingFactor     = simulationData%TrackingOptions%gpkdeScalingFactor,     &
-         histogramScalingFactor = simulationData%TrackingOptions%gpkdeScalingFactor &
+        call gpkde%ComputeDensity(                                                         &
+         activeParticleCoordinates,                                                        &
+         outputFileUnit=simulationData%TrackingOptions%gpkdeOutputUnit,                    &
+         outputColumnFormat=simulationData%TrackingOptions%gpkdeOutColFormat,              &
+         outputDataFormat=simulationData%TrackingOptions%gpkdeOutFileFormat,               & 
+         outputDataId=0,                                                                   & ! timeindex
+         particleGroupId=solute%id,                                                        &
+         unitVolume=.true.,                                                                &
+         weightedHistogram=.true.,                                                         &
+         weights=activeParticleMasses,                                                     &
+         scalingFactor=simulationData%TrackingOptions%gpkdeScalingFactor,                  & ! transform to resident
+         histogramScalingFactor=simulationData%TrackingOptions%gpkdeScalingFactor,         &
+         isotropic=simulationData%TrackingOptions%gpkdeIsotropicKernels,                   &
+         skipErrorConvergence=simulationData%TrackingOptions%gpkdeSkipError,               &
+         relativeErrorConvergence=simulationData%TrackingOptions%gpkdeRelErrorConvergence  &
         )
 
       end do 
@@ -1402,22 +1420,29 @@ program MPath7
             end if
           end do
         end do
+
         ! GPKDE
         ! Compute density for the particles linked to a given 
         ! solute. These may have different mass
-        call gpkde%ComputeDensity(                                                  &
-         activeParticleCoordinates,                                                 &
-         outputFileUnit    = simulationData%TrackingOptions%gpkdeOutputUnit,        &
-         outputDataId      = nt,                                                    & ! timeindex
-         particleGroupId   = solute%id,                                             &
-         unitVolume        = .true.,                                                &
-         weightedHistogram = .true.,                                                &
-         weights           = activeParticleMasses,                                  &
-         scalingFactor     = simulationData%TrackingOptions%gpkdeScalingFactor,     &
-         histogramScalingFactor = simulationData%TrackingOptions%gpkdeScalingFactor &
+        call gpkde%ComputeDensity(                                                         &
+         activeParticleCoordinates,                                                        &
+         outputFileUnit=simulationData%TrackingOptions%gpkdeOutputUnit,                    &
+         outputColumnFormat=simulationData%TrackingOptions%gpkdeOutColFormat,              &
+         outputDataFormat=simulationData%TrackingOptions%gpkdeOutFileFormat,               & 
+         outputDataId=nt,                                                                  & ! timeindex
+         particleGroupId=solute%id,                                                        &
+         unitVolume=.true.,                                                                &
+         weightedHistogram=.true.,                                                         &
+         weights=activeParticleMasses,                                                     &
+         scalingFactor=simulationData%TrackingOptions%gpkdeScalingFactor,                  & ! transform to resident
+         histogramScalingFactor=simulationData%TrackingOptions%gpkdeScalingFactor,         &
+         isotropic=simulationData%TrackingOptions%gpkdeIsotropicKernels,                   &
+         skipErrorConvergence=simulationData%TrackingOptions%gpkdeSkipError,               &
+         relativeErrorConvergence=simulationData%TrackingOptions%gpkdeRelErrorConvergence  &
         )
 
-      end do 
+      end do ! ns=1,transportModelData%nSolutes
+
     end if ! GPKDEReconstruction
 
   end if ! ParticleGroupCount .gt. 0
@@ -1520,11 +1545,14 @@ program MPath7
     end if
   end if
 
+
   end do TRACKING_INTERVAL_LOOP   
   call ulog('Exit TRACKING_INTERVAL_LOOP', logUnit)
-     
+  
+
   ! Exit TIME_STEP_LOOP if the tracking time has reached the specified stop time.
-  IF(time .ge. stoptime) exit TIME_STEP_LOOP
+  if(time .ge. stoptime) exit TIME_STEP_LOOP
+
 
   end do TIME_STEP_LOOP
   call ulog('Exit TIME_STEP_LOOP', logUnit)
@@ -1544,7 +1572,7 @@ program MPath7
      (simulationData%SimulationType .eq. 6)) then
       if(simulationData%PathlineFormatOption .eq. 1) then
           call ulog('Consolidating pathline segments.', logUnit)
-          call ConsolidatePathlines(binPathlineUnit, pathlineUnit,            &
+          call ConsolidatePathlines(binPathlineUnit, pathlineUnit,  &
             pathlineRecordCount, simulationData%TotalParticleCount) 
       end if
   end if
@@ -1726,7 +1754,7 @@ program MPath7
             ! Timeseries reconstruction    
             call gpkde%ComputeDensity(      &
               gpkdeDataCarrier,             &
-              exactPoint        = .true.,   &
+              exactPoint        = .true.,   & ! for res obs, time is exactly the bin boundary
               unitVolume        = .true.,   &
               weightedHistogram = .true.,   &
               weights = gpkdeWeightsCarrier )
@@ -2029,23 +2057,15 @@ program MPath7
           end do
         end select 
 
-        ! It seems that gpkde%reset() is not working properly
-        ! or needs some reorder of variables
-        !call gpkde%Reset()
-
-        ! Deallocate 
-        !if ( allocated( gpkde ) ) deallocate( gpkde )
-        ! Deallocate 
+        ! Reset gpkde
         if ( allocated( gpkde ) ) then
            call gpkde%Reset()
-           !deallocate( gpkde )
         end if
 
         ! continue to next
         cycle
 
       end if ! If obs%style.eq.2
-
 
     end do ! obsLoop
 
@@ -2060,7 +2080,6 @@ program MPath7
 
   ! Write particle summary information
   call WriteParticleSummaryInfo(simulationData, mplistUnit)
-
 
 
 !100 continue    

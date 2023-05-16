@@ -38,10 +38,22 @@ module ParticleTrackingOptionsModule
     character(len=200)     :: gpkdeOutputFile
     integer                :: gpkdeOutputUnit = 125
     logical                :: gpkdeKernelDatabase
+    logical                :: gpkdeIsotropicKernels
     logical                :: gpkdeAsConcentration = .false.
     real(fp)               :: gpkdeBinVolume
     real(fp)               :: gpkdeScalingFactor
-    real(fp), dimension(3) :: gpkdeKDBParams  ! minHLambda, deltaHLambda, maxHLambda
+    real(fp), dimension(3) :: gpkdeKDBParams    ! minHLambda, deltaHLambda, maxHLambda
+    integer                :: gpkdeOutColFormat 
+    integer                :: gpkdeOutFileFormat 
+    integer                :: gpkdeGridAllocFormat
+    logical                :: gpkdeAdaptGridToCoords
+    real(fp)               :: gpkdeGridBorderFraction 
+    logical                :: gpkdeSkipError = .false.
+    real(fp)               :: gpkdeRelErrorConvergence
+    integer                :: gpkdeInitialSmoothingFormat ! restricted to 0,1 
+    real(fp)               :: gpkdeBinSizeFactor
+    integer                :: gpkdeBoundKernelSize
+    integer                :: gpkdeEffectiveWeightFormat
 
     ! TimeseriesOutputOption
     logical                :: skipTimeseriesWriter = .false.
