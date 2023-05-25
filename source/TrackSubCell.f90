@@ -50,6 +50,7 @@ module TrackSubCellModule
     procedure(DispersionModel), pass, pointer :: ComputeRWPTDisplacements=>null()
     procedure(RandomDisplacement), pass, pointer :: DisplacementRandomDischarge=>null()
     procedure(RandomGenerator), pass, pointer :: GenerateStandardNormalRandom=>null()
+    procedure(CornerPorosity), pass, pointer :: ComputeCornerPorosity=>null()
 
     ! Needed for OBS (?)
     type(TrackSubCellResultType) :: TrackSubCellResult
@@ -78,7 +79,7 @@ module TrackSubCellModule
     procedure :: ComputeCornerDischarge=>pr_ComputeCornerDischarge
     procedure :: GetInterpolatedCornerDischarge=>pr_GetInterpolatedCornerDischarge
     procedure :: SetCornerComponentsIndexes=>pr_SetCornerComponentsIndexes
-    procedure :: ComputeCornerPorosity=> pr_ComputeCornerPorosity
+    !procedure :: ComputeCornerPorosity=> pr_ComputeCornerPorosity
     procedure :: GetInterpolatedCornerPorosity=>pr_GetInterpolatedCornerPorosity
     procedure :: SetCornerPorosityIndexes=> pr_SetCornerPorosityIndexes
     procedure :: Trilinear=>pr_Trilinear
@@ -92,84 +93,92 @@ module TrackSubCellModule
   end type
 
 
-  ! RWPT
   ! Interfaces
   abstract interface
 
-      ! Advection model
-      subroutine Advection( this, x, y, z, dt, vx, vy, vz, &
-                            dAdvx, dAdvy, dAdvz )
-          import TrackSubCellType
-          ! this
-          class(TrackSubCellType) :: this 
-          !input
-          doubleprecision, intent(in) :: x, y, z, dt
-          doubleprecision, intent(in) :: vx, vy, vz
-          ! output
-          doubleprecision, intent(inout) :: dAdvx, dAdvy, dAdvz
-      end subroutine Advection
+    ! Advection model
+    subroutine Advection( this, x, y, z, dt, vx, vy, vz, &
+                          dAdvx, dAdvy, dAdvz )
+      import TrackSubCellType
+      ! this
+      class(TrackSubCellType) :: this 
+      !input
+      doubleprecision, intent(in) :: x, y, z, dt
+      doubleprecision, intent(in) :: vx, vy, vz
+      ! output
+      doubleprecision, intent(inout) :: dAdvx, dAdvy, dAdvz
+    end subroutine Advection
 
-      ! Update time step model,
-      ! determined by advection model
-      subroutine ExitFaceAndTimeStep( this, x, y, z, nx, ny, nz, & 
-                 vx, vy, vz, divDx, divDy, divDz, dBx, dBy, dBz, &
-                 t, dt, dtxyz, exitFace )
-          import TrackSubCellType
-          ! this
-          class(TrackSubCellType) :: this 
-          ! input
-          doubleprecision, intent(in) :: x, y, z
-          doubleprecision, intent(in) :: nx, ny, nz
-          doubleprecision, intent(in) :: vx, vy, vz
-          doubleprecision, intent(in) :: divDx, divDy, divDz
-          doubleprecision, intent(in) :: dBx, dBy, dBz
-          ! output
-          doubleprecision, intent(inout) :: t, dt
-          integer, intent(inout)         :: exitFace
-          doubleprecision, dimension(3), intent(inout) :: dtxyz
-      end subroutine ExitFaceAndTimeStep
+    ! Update time step model,
+    ! determined by advection model
+    subroutine ExitFaceAndTimeStep( this, x, y, z, nx, ny, nz, & 
+               vx, vy, vz, divDx, divDy, divDz, dBx, dBy, dBz, &
+               t, dt, dtxyz, exitFace )
+      import TrackSubCellType
+      ! this
+      class(TrackSubCellType) :: this 
+      ! input
+      doubleprecision, intent(in) :: x, y, z
+      doubleprecision, intent(in) :: nx, ny, nz
+      doubleprecision, intent(in) :: vx, vy, vz
+      doubleprecision, intent(in) :: divDx, divDy, divDz
+      doubleprecision, intent(in) :: dBx, dBy, dBz
+      ! output
+      doubleprecision, intent(inout) :: t, dt
+      integer, intent(inout)         :: exitFace
+      doubleprecision, dimension(3), intent(inout) :: dtxyz
+    end subroutine ExitFaceAndTimeStep
 
-      ! Dispersion model 
-      ! Interfaces between linear and nonlinear dispersion
-      subroutine DispersionModel( this, x, y, z, vx, vy, vz, &
-                                       dt, trackingOptions, &
-                                       dAdvx, dAdvy, dAdvz, &
-                                             dBx, dBy, dBz, &
-                                       divDx, divDy, divDz  )
-          import TrackSubCellType
-          import ParticleTrackingOptionsType
-          ! this
-          class(TrackSubCellType) :: this
-          ! input
-          type(ParticleTrackingOptionsType),intent(in) :: trackingOptions
-          doubleprecision, intent(in)    :: x, y, z, dt
-          ! output
-          doubleprecision, intent(inout) :: vx, vy, vz 
-          doubleprecision, intent(inout) :: dAdvx, dAdvy, dAdvz 
-          doubleprecision, intent(inout) :: dBx, dBy, dBz 
-          doubleprecision, intent(inout) :: divDx, divDy, divDz  
-      end subroutine DispersionModel 
+    ! Dispersion model 
+    ! Interfaces between linear and nonlinear dispersion
+    subroutine DispersionModel( this, x, y, z, vx, vy, vz, &
+                                      dt, trackingOptions, &
+                                      dAdvx, dAdvy, dAdvz, &
+                                            dBx, dBy, dBz, &
+                                      divDx, divDy, divDz  )
+      import TrackSubCellType
+      import ParticleTrackingOptionsType
+      ! this
+      class(TrackSubCellType) :: this
+      ! input
+      type(ParticleTrackingOptionsType),intent(in) :: trackingOptions
+      doubleprecision, intent(in)    :: x, y, z, dt
+      ! output
+      doubleprecision, intent(inout) :: vx, vy, vz 
+      doubleprecision, intent(inout) :: dAdvx, dAdvy, dAdvz 
+      doubleprecision, intent(inout) :: dBx, dBy, dBz 
+      doubleprecision, intent(inout) :: divDx, divDy, divDz  
+    end subroutine DispersionModel 
 
-      ! Random displacement function
-      ! Determined by dimensions 
-      subroutine RandomDisplacement( this, x, y, z, alphaL, alphaT, &
-                                               dMEff, dBx, dBy, dBz )
-          import TrackSubCellType
-          class (TrackSubCellType) :: this
-          ! input
-          doubleprecision, intent(in)    :: x, y, z
-          doubleprecision, intent(in)    :: alphaL, alphaT, dMEff
-          ! output
-          doubleprecision, intent(out) :: dBx, dBy, dBz
-      end subroutine RandomDisplacement
+    ! Random displacement function
+    ! Determined by dimensions 
+    subroutine RandomDisplacement( this, x, y, z, alphaL, alphaT, &
+                                             dMEff, dBx, dBy, dBz )
+      import TrackSubCellType
+      class (TrackSubCellType) :: this
+      ! input
+      doubleprecision, intent(in)    :: x, y, z
+      doubleprecision, intent(in)    :: alphaL, alphaT, dMEff
+      ! output
+      doubleprecision, intent(out) :: dBx, dBy, dBz
+    end subroutine RandomDisplacement
 
-      ! Random generator function
-      subroutine RandomGenerator( this, random_value )
-          import TrackSubCellType
-          class (TrackSubCellType) :: this
-          ! input/output
-          doubleprecision, intent(out) :: random_value
-      end subroutine RandomGenerator
+    ! Random generator function
+    subroutine RandomGenerator( this, random_value )
+      import TrackSubCellType
+      class (TrackSubCellType) :: this
+      ! input/output
+      doubleprecision, intent(out) :: random_value
+    end subroutine RandomGenerator
+
+    ! Compute corner porosity function 
+    subroutine CornerPorosity( this, neighborSubCellVolume, neighborSubCellPorosity )
+      import TrackSubCellType
+      class (TrackSubCellType) :: this
+      ! input
+      doubleprecision, dimension(18), intent(in) :: neighborSubCellVolume   
+      doubleprecision, dimension(18), intent(in) :: neighborSubCellPorosity
+    end subroutine CornerPorosity 
 
 
   end interface
@@ -177,161 +186,162 @@ module TrackSubCellModule
 
 contains
 
+
   subroutine pr_ExecuteTracking(this,stopIfNoExit,initialLocation,maximumTime, trackingResult)
-  !-------------------------------------------------------------------
-  !
-  !-------------------------------------------------------------------
-  ! Specifications
-  !-------------------------------------------------------------------
-  implicit none
-  class(TrackSubCellType) :: this
-  logical,intent(in) :: stopIfNoExit
-  type(ParticleLocationType),intent(in) :: initialLocation
-  doubleprecision,intent(in) :: maximumTime
-  type(TrackSubCellResultType),intent(inout) :: trackingResult
-  integer :: cellNumber
-  doubleprecision :: initialX,initialY,initialZ,initialTime
-  doubleprecision :: vx1,vx2,vy1,vy2,vz1,vz2
-  doubleprecision :: vx,dvxdx,dtx,vy,dvydy,dty,vz,dvzdz,dtz,dt
-  doubleprecision :: t,x,y,z
-  integer :: exitFace
-  integer :: statusVX,statusVY,statusVZ
-  !-------------------------------------------------------------------
+    !-------------------------------------------------------------------
+    !
+    !-------------------------------------------------------------------
+    ! Specifications
+    !-------------------------------------------------------------------
+    implicit none
+    class(TrackSubCellType) :: this
+    logical,intent(in) :: stopIfNoExit
+    type(ParticleLocationType),intent(in) :: initialLocation
+    doubleprecision,intent(in) :: maximumTime
+    type(TrackSubCellResultType),intent(inout) :: trackingResult
+    integer :: cellNumber
+    doubleprecision :: initialX,initialY,initialZ,initialTime
+    doubleprecision :: vx1,vx2,vy1,vy2,vz1,vz2
+    doubleprecision :: vx,dvxdx,dtx,vy,dvydy,dty,vz,dvzdz,dtz,dt
+    doubleprecision :: t,x,y,z
+    integer :: exitFace
+    integer :: statusVX,statusVY,statusVZ
+    !-------------------------------------------------------------------
 
-  call trackingResult%Reset()
-  
-  cellNumber = initialLocation%CellNumber
-  initialX = initialLocation%LocalX
-  initialY = initialLocation%LocalY
-  initialZ = initialLocation%LocalZ
-  initialTime = initialLocation%TrackingTime
-  
-  trackingResult%CellNumber = cellNumber
-  trackingResult%Row = this%SubCellData%Row
-  trackingResult%Column = this%SubCellData%Column
-  trackingResult%InitialLocation%CellNumber = cellNumber
-  trackingResult%InitialLocation%LocalX = initialX
-  trackingResult%InitialLocation%LocalY = initialY
-  trackingResult%InitialLocation%LocalZ = initialZ
-  trackingResult%InitialLocation%TrackingTime = initialTime
-  trackingResult%FinalLocation%LocalX = initialX
-  trackingResult%FinalLocation%LocalY = initialY
-  trackingResult%FinalLocation%LocalZ = initialZ
-  trackingResult%FinalLocation%TrackingTime = initialTime
-  trackingResult%MaximumTime = maximumTime
-  trackingResult%Status = trackingResult%Status_Undefined()
-  
-  if(stopIfNoExit) then
-    if(.not. this%SubCellData%HasExitFace()) then
-      trackingResult%Status = trackingResult%Status_NoExitPossible()
-      return
-    end if
-  end if
-  
-  ! Make local copies of face velocities for convenience
-  vx1 = this%SubCellData%VX1
-  vx2 = this%SubCellData%VX2
-  vy1 = this%SubCellData%VY1
-  vy2 = this%SubCellData%VY2
-  vz1 = this%SubCellData%VZ1
-  vz2 = this%SubCellData%VZ2
-
-  ! Compute time of travel to each possible exit face
-  statusVX = this%CalculateDT(vx1, vx2, this%SubCellData%DX, initialX, vx, dvxdx, dtx)
-  statusVY = this%CalculateDT(vy1, vy2, this%SubCellData%DY, initialY, vy, dvydy, dty)
-  statusVZ = this%CalculateDT(vz1, vz2, this%SubCellData%DZ, initialZ, vz, dvzdz, dtz)
-
-  ! This snippet selects dt and determines the exitFace
-  exitFace = 0
-  dt = 1.0d+30
-  if((statusVX .lt. 2) .or. (statusVY .lt. 2) .or. (statusVZ .lt. 2)) then
-    dt = dtx
-    if(vx .lt. 0d0) then
-      exitFace = 1
-    else if(vx .gt. 0) then
-      exitFace = 2
-    end if
+    call trackingResult%Reset()
     
-    if(dty .lt. dt) then
-      dt = dty
-      if(vy .lt. 0d0) then
-        exitFace = 3
-      else if(vy .gt. 0d0) then
-        exitFace = 4
+    cellNumber = initialLocation%CellNumber
+    initialX = initialLocation%LocalX
+    initialY = initialLocation%LocalY
+    initialZ = initialLocation%LocalZ
+    initialTime = initialLocation%TrackingTime
+    
+    trackingResult%CellNumber = cellNumber
+    trackingResult%Row = this%SubCellData%Row
+    trackingResult%Column = this%SubCellData%Column
+    trackingResult%InitialLocation%CellNumber = cellNumber
+    trackingResult%InitialLocation%LocalX = initialX
+    trackingResult%InitialLocation%LocalY = initialY
+    trackingResult%InitialLocation%LocalZ = initialZ
+    trackingResult%InitialLocation%TrackingTime = initialTime
+    trackingResult%FinalLocation%LocalX = initialX
+    trackingResult%FinalLocation%LocalY = initialY
+    trackingResult%FinalLocation%LocalZ = initialZ
+    trackingResult%FinalLocation%TrackingTime = initialTime
+    trackingResult%MaximumTime = maximumTime
+    trackingResult%Status = trackingResult%Status_Undefined()
+    
+    if(stopIfNoExit) then
+      if(.not. this%SubCellData%HasExitFace()) then
+        trackingResult%Status = trackingResult%Status_NoExitPossible()
+        return
       end if
     end if
     
-    if(dtz .lt. dt) then
-      dt = dtz
-      if(vz .lt. 0d0) then
-        exitFace = 5
-      else if(vz .gt. 0d0) then
-        exitFace = 6
-      end if
-    end if
-  else
-  end if
+    ! Make local copies of face velocities for convenience
+    vx1 = this%SubCellData%VX1
+    vx2 = this%SubCellData%VX2
+    vy1 = this%SubCellData%VY1
+    vy2 = this%SubCellData%VY2
+    vz1 = this%SubCellData%VZ1
+    vz2 = this%SubCellData%VZ2
 
-  ! Increment t
-  t = initialTime + dt
-  
-  ! If the maximum time is less than the computed exit time, then calculate the
-  ! particle location at the maximum time and set the final time equal to
-  ! the maximum time. Set status to 2 (MaximumTimeReached) and return.
-  if(maximumTime .lt. t) then
-    dt = maximumTime - initialTime
-    t = maximumTime
-    x = this%NewXYZ(vx, dvxdx, vx1, vx2, dt, initialX, this%SubCellData%DX, statusVX)
-    y = this%NewXYZ(vy, dvydy, vy1, vy2, dt, initialY, this%SubCellData%DY, statusVY)
-    z = this%NewXYZ(vz, dvzdz, vz1, vz2, dt, initialZ, this%SubCellData%DZ, statusVZ)
-    trackingResult%ExitFace = 0
-    trackingResult%FinalLocation%CellNumber = cellNumber
-    trackingResult%FinalLocation%LocalX = x
-    trackingResult%FinalLocation%LocalY = y
-    trackingResult%FinalLocation%LocalZ = z
-    trackingResult%FinalLocation%TrackingTime = t
-    trackingResult%Status = trackingResult%Status_ReachedMaximumTime()
-  else
-      ! Otherwise, if the computed exit time is less than or equal to the maximum time,
-      ! then calculate the exit location and set the final time equal to the computed
-      ! exit time.
-      if((exitFace .eq. 1) .or. (exitFace .eq.2)) then
-          x = 0d0
-          y = this%NewXYZ(vy, dvydy, vy1, vy2, dt, initialY, this%SubCellData%DY, statusVY)
-          z = this%NewXYZ(vz, dvzdz, vz1, vz2, dt, initialZ, this%SubCellData%DZ, statusVZ)
-          if(exitFace .eq. 2) x = 1.0d0
-      else if((exitFace .eq. 3) .or. (exitFace .eq.4)) then
-          x = this%NewXYZ(vx, dvxdx, vx1, vx2, dt, initialX, this%SubCellData%DX, statusVX)
-          y = 0d0
-          z = this%NewXYZ(vz, dvzdz, vz1, vz2, dt, initialZ, this%SubCellData%DZ, statusVZ)
-          if(exitFace .eq. 4) y = 1.0d0
-      else if((exitFace .eq. 5) .or. (exitFace .eq.6)) then
-          x = this%NewXYZ(vx, dvxdx, vx1, vx2, dt, initialX, this%SubCellData%DX, statusVX)
-          y = this%NewXYZ(vy, dvydy, vy1, vy2, dt, initialY, this%SubCellData%DY, statusVY)
-          z = 0d0
-          if(exitFace .eq. 6) z = 1.0d0
-      else
-          ! If it gets this far, something went wrong. Signal an error condition by
-          ! setting Status = 0 (undefined) and then return.
-          trackingResult%ExitFace = exitFace
-          trackingResult%Status = trackingResult%Status_Undefined()
-          return
+    ! Compute time of travel to each possible exit face
+    statusVX = this%CalculateDT(vx1, vx2, this%SubCellData%DX, initialX, vx, dvxdx, dtx)
+    statusVY = this%CalculateDT(vy1, vy2, this%SubCellData%DY, initialY, vy, dvydy, dty)
+    statusVZ = this%CalculateDT(vz1, vz2, this%SubCellData%DZ, initialZ, vz, dvzdz, dtz)
+
+    ! This snippet selects dt and determines the exitFace
+    exitFace = 0
+    dt = 1.0d+30
+    if((statusVX .lt. 2) .or. (statusVY .lt. 2) .or. (statusVZ .lt. 2)) then
+      dt = dtx
+      if(vx .lt. 0d0) then
+        exitFace = 1
+      else if(vx .gt. 0) then
+        exitFace = 2
       end if
       
-      ! Assign tracking result data
-      trackingResult%ExitFaceConnection = this%SubCellData%Connection(exitFace)
-      if(this%SubCellData%Connection(exitFace) .lt. 0) then
-          trackingResult%Status = trackingResult%Status_ExitAtInternalFace()
-      else
-          trackingResult%Status = trackingResult%Status_ExitAtCellFace()
+      if(dty .lt. dt) then
+        dt = dty
+        if(vy .lt. 0d0) then
+          exitFace = 3
+        else if(vy .gt. 0d0) then
+          exitFace = 4
+        end if
       end if
-      trackingResult%ExitFace = exitFace
+      
+      if(dtz .lt. dt) then
+        dt = dtz
+        if(vz .lt. 0d0) then
+          exitFace = 5
+        else if(vz .gt. 0d0) then
+          exitFace = 6
+        end if
+      end if
+    else
+    end if
+
+    ! Increment t
+    t = initialTime + dt
+    
+    ! If the maximum time is less than the computed exit time, then calculate the
+    ! particle location at the maximum time and set the final time equal to
+    ! the maximum time. Set status to 2 (MaximumTimeReached) and return.
+    if(maximumTime .lt. t) then
+      dt = maximumTime - initialTime
+      t = maximumTime
+      x = this%NewXYZ(vx, dvxdx, vx1, vx2, dt, initialX, this%SubCellData%DX, statusVX)
+      y = this%NewXYZ(vy, dvydy, vy1, vy2, dt, initialY, this%SubCellData%DY, statusVY)
+      z = this%NewXYZ(vz, dvzdz, vz1, vz2, dt, initialZ, this%SubCellData%DZ, statusVZ)
+      trackingResult%ExitFace = 0
       trackingResult%FinalLocation%CellNumber = cellNumber
       trackingResult%FinalLocation%LocalX = x
       trackingResult%FinalLocation%LocalY = y
       trackingResult%FinalLocation%LocalZ = z
       trackingResult%FinalLocation%TrackingTime = t
-  end if
+      trackingResult%Status = trackingResult%Status_ReachedMaximumTime()
+    else
+        ! Otherwise, if the computed exit time is less than or equal to the maximum time,
+        ! then calculate the exit location and set the final time equal to the computed
+        ! exit time.
+        if((exitFace .eq. 1) .or. (exitFace .eq.2)) then
+            x = 0d0
+            y = this%NewXYZ(vy, dvydy, vy1, vy2, dt, initialY, this%SubCellData%DY, statusVY)
+            z = this%NewXYZ(vz, dvzdz, vz1, vz2, dt, initialZ, this%SubCellData%DZ, statusVZ)
+            if(exitFace .eq. 2) x = 1.0d0
+        else if((exitFace .eq. 3) .or. (exitFace .eq.4)) then
+            x = this%NewXYZ(vx, dvxdx, vx1, vx2, dt, initialX, this%SubCellData%DX, statusVX)
+            y = 0d0
+            z = this%NewXYZ(vz, dvzdz, vz1, vz2, dt, initialZ, this%SubCellData%DZ, statusVZ)
+            if(exitFace .eq. 4) y = 1.0d0
+        else if((exitFace .eq. 5) .or. (exitFace .eq.6)) then
+            x = this%NewXYZ(vx, dvxdx, vx1, vx2, dt, initialX, this%SubCellData%DX, statusVX)
+            y = this%NewXYZ(vy, dvydy, vy1, vy2, dt, initialY, this%SubCellData%DY, statusVY)
+            z = 0d0
+            if(exitFace .eq. 6) z = 1.0d0
+        else
+            ! If it gets this far, something went wrong. Signal an error condition by
+            ! setting Status = 0 (undefined) and then return.
+            trackingResult%ExitFace = exitFace
+            trackingResult%Status = trackingResult%Status_Undefined()
+            return
+        end if
+        
+        ! Assign tracking result data
+        trackingResult%ExitFaceConnection = this%SubCellData%Connection(exitFace)
+        if(this%SubCellData%Connection(exitFace) .lt. 0) then
+            trackingResult%Status = trackingResult%Status_ExitAtInternalFace()
+        else
+            trackingResult%Status = trackingResult%Status_ExitAtCellFace()
+        end if
+        trackingResult%ExitFace = exitFace
+        trackingResult%FinalLocation%CellNumber = cellNumber
+        trackingResult%FinalLocation%LocalX = x
+        trackingResult%FinalLocation%LocalY = y
+        trackingResult%FinalLocation%LocalZ = z
+        trackingResult%FinalLocation%TrackingTime = t
+    end if
 
   end subroutine pr_ExecuteTracking
   
@@ -487,8 +497,15 @@ contains
     ! Set indexes for corner x,y,z components
     call this%SetCornerComponentsIndexes() 
 
-    ! Set indexes for corner porosities
-    call this%SetCornerPorosityIndexes()
+    ! interface for porosities    
+    if ( trackingOptions%isUniformPorosity ) then 
+      this%ComputeCornerPorosity => pr_ComputeCornerPorosityUniform
+    else
+      ! Set indexes for corner porosities
+      call this%SetCornerPorosityIndexes()
+      this%ComputeCornerPorosity => pr_ComputeCornerPorosityInterpolated 
+    end if 
+
 
     ! Dispersion displacement function is set in particletrackingengine
     !call this%SetDispersionDisplacement( trackingOptions%dispersionModel )
@@ -3161,11 +3178,10 @@ contains
   end subroutine  pr_GenerateStandardNormalRandomZig
 
 
-
   ! RWPT
   subroutine pr_ComputeCornerVariables( this, currentCellData, neighborCellData )
   !----------------------------------------------------------------
-  !
+  ! Note: called in trackcell
   !----------------------------------------------------------------
   ! Specifications
   !----------------------------------------------------------------
@@ -3193,11 +3209,10 @@ contains
         neighborSubCellFaceFlows, neighborSubCellFaceAreas )
 
     ! Compute porosities
-    call pr_ComputeCornerPorosity( this, neighborSubCellVolume, neighborSubCellPorosity )
+    call this%ComputeCornerPorosity( neighborSubCellVolume, neighborSubCellPorosity )
 
     ! Done
     return
-
 
   end subroutine pr_ComputeCornerVariables
 
@@ -3207,157 +3222,157 @@ contains
   subroutine pr_FillNeighborSubCellVariables( this, centerCellData, neighborCellData, &
           neighborSubCellIndexes, neighborSubCellFaceFlows, neighborSubCellFaceAreas, & 
                                       neighborSubCellVolume, neighborSubCellPorosity  )
-      !-----------------------------------------------------------
-      !
-      !-----------------------------------------------------------
-      ! Specifications
-      !-----------------------------------------------------------
-      implicit none
-      class (TrackSubCellType) :: this
-      class (ModpathCellDataType), intent(in) :: centerCellData 
-      class (ModpathCellDataType), dimension(2,18), intent(in) :: neighborCellData 
-      integer, dimension(3,18), intent(in) ::  neighborSubCellIndexes ! nCellBuffer, subRow, subCol
-      doubleprecision, dimension(6,18), intent(out) :: neighborSubCellFaceFlows ! faceFlows
-      doubleprecision, dimension(3,18), intent(out) :: neighborSubCellFaceAreas ! faceAreas
-      doubleprecision, dimension(18)  , intent(out) :: neighborSubCellVolume    ! volumes
-      doubleprecision, dimension(18)  , intent(out) :: neighborSubCellPorosity  ! porosities
-      logical :: skipSubCells = .false.
-      integer :: subConnectionIndex, neighborSubRow, neighborSubColumn
-      integer :: n
-      !-----------------------------------------------------------
+    !-----------------------------------------------------------
+    !
+    !-----------------------------------------------------------
+    ! Specifications
+    !-----------------------------------------------------------
+    implicit none
+    class (TrackSubCellType) :: this
+    class (ModpathCellDataType), intent(in) :: centerCellData 
+    class (ModpathCellDataType), dimension(2,18), intent(in) :: neighborCellData 
+    integer, dimension(3,18), intent(in) ::  neighborSubCellIndexes ! nCellBuffer, subRow, subCol
+    doubleprecision, dimension(6,18), intent(out) :: neighborSubCellFaceFlows ! faceFlows
+    doubleprecision, dimension(3,18), intent(out) :: neighborSubCellFaceAreas ! faceAreas
+    doubleprecision, dimension(18)  , intent(out) :: neighborSubCellVolume    ! volumes
+    doubleprecision, dimension(18)  , intent(out) :: neighborSubCellPorosity  ! porosities
+    logical :: skipSubCells = .false.
+    integer :: subConnectionIndex, neighborSubRow, neighborSubColumn
+    integer :: n
+    !-----------------------------------------------------------
 
 
-      ! Reset arrays
-      neighborSubCellFaceFlows = 0d0
-      neighborSubCellFaceAreas = 0d0
-      neighborSubCellVolume    = 0d0
-      neighborSubCellPorosity  = 0d0
+    ! Reset arrays
+    neighborSubCellFaceFlows = 0d0
+    neighborSubCellFaceAreas = 0d0
+    neighborSubCellVolume    = 0d0
+    neighborSubCellPorosity  = 0d0
 
 
-      ! If current cell is not refined
-      if ( centerCellData%GetSubCellCount() .eq. 1 ) then 
-          ! Cell is not refined then neighbors
-          ! have the same size, some maybe refined
-          ! due to connections with smaller cells.
-          ! Skip sub cell indexation in such case. 
-          skipSubCells = .true.
-          do n = 1,18
+    ! If current cell is not refined
+    if ( centerCellData%GetSubCellCount() .eq. 1 ) then 
+      ! Cell is not refined then neighbors
+      ! have the same size, some maybe refined
+      ! due to connections with smaller cells.
+      ! Skip sub cell indexation in such case. 
+      skipSubCells = .true.
+      do n = 1,18
 
-              if ( neighborCellData( 1, neighborSubCellIndexes( 1, n ) )%CellNumber .eq. 0 ) cycle
+        if ( neighborCellData( 1, neighborSubCellIndexes( 1, n ) )%CellNumber .eq. 0 ) cycle
 
-              call neighborCellData( &
-                  1, neighborSubCellIndexes( 1, n ) )%FillSubCellFaceFlows( 1, 1, &
-                                    neighborSubCellFaceFlows( :, n ), skipSubCells )
-              call neighborCellData( & 
-                  1, neighborSubCellIndexes( 1, n ) )%FillSubCellFaceAreas( neighborSubCellFaceAreas( :, n ), skipSubCells ) 
+        call neighborCellData( &
+            1, neighborSubCellIndexes( 1, n ) )%FillSubCellFaceFlows( 1, 1, &
+                              neighborSubCellFaceFlows( :, n ), skipSubCells )
+        call neighborCellData( & 
+            1, neighborSubCellIndexes( 1, n ) )%FillSubCellFaceAreas( neighborSubCellFaceAreas( :, n ), skipSubCells ) 
 
-              neighborSubCellVolume(n)   = neighborCellData( 1, neighborSubCellIndexes( 1, n ) )%GetVolume( skipSubCells )
-              neighborSubCellPorosity(n) = neighborCellData( 1, neighborSubCellIndexes( 1, n ) )%Porosity
-
-          end do
-
-          ! Done 
-          return
-
-      end if  
-
-
-      ! If current cell is refined
-      do n = 1, 18
-          skipSubCells = .false.
-
-          ! Fill face flows with one of its own subcells
-          if ( neighborSubCellIndexes( 1, n ) .eq. 0 ) then
-              call centerCellData%FillSubCellFaceFlowsBuffer( &
-                                neighborSubCellIndexes( 2, n ), neighborSubCellIndexes( 3, n ), & 
-                                                               neighborSubCellFaceFlows( :, n ) )
-
-              call centerCellData%FillSubCellFaceAreas( neighborSubCellFaceAreas( :, n ), skipSubCells )
-
-              neighborSubCellVolume(n)   = centerCellData%GetVolume( skipSubCells )
-              neighborSubCellPorosity(n) = centerCellData%Porosity
-
-              cycle
-
-          end if
-
-          ! Fill face flows with data obtained from neighbors
-          if ( neighborCellData( 2, neighborSubCellIndexes( 1, n ) )%CellNumber .gt. 0 ) then
-              ! If double buffer 
-
-              ! When the buffer is double, 
-              ! these cells are smaller, then skip 
-              ! sub cell indexation if refined. 
-              if ( & 
-                  ( neighborCellData(1, neighborSubCellIndexes( 1, n ) )%GetSubCellCount() .gt. 1 ) .or. &
-                  ( neighborCellData(2, neighborSubCellIndexes( 1, n ) )%GetSubCellCount() .gt. 1 ) ) then 
-                  skipSubCells = .true.
-              end if 
-
-              ! Detect from which direction where requested.
-              if ( neighborCellData( 2, neighborSubCellIndexes( 1, n ) )%requestedFromDirection .eq. 1 ) then 
-                  ! If x-direction, location in buffer is given by subcell row index 
-                  subConnectionIndex = neighborSubCellIndexes( 2, n )
-                  neighborSubRow     = 1 
-                  neighborSubColumn  = 1
-              else if ( neighborCellData( 2, neighborSubCellIndexes( 1, n ) )%requestedFromDirection .eq. 2 ) then
-                  ! If y-direction, location in buffer is given by subcell column index 
-                  subConnectionIndex = neighborSubCellIndexes( 3, n )
-                  neighborSubRow     = 1 
-                  neighborSubColumn  = 1
-              else 
-                  ! If z-direction, location in buffer is also given 
-                  ! by subcell column index. This is true because double 
-                  ! buffers requested from a vertical face are possible 
-                  ! only if horizontal buffer is double too. This means 
-                  ! that this case is related to indirect buffers, which 
-                  ! in the current protocol of neighbor cells initialization 
-                  ! are only possible after initialization of a direct connection 
-                  ! through the y-direction. 
-                  subConnectionIndex = neighborSubCellIndexes( 3, n )
-                  neighborSubRow     = 1 
-                  neighborSubColumn  = 1
-              end if 
-
-          else if ( &
-              ( neighborCellData( 1, neighborSubCellIndexes( 1, n ) )%CellNumber .gt. 0 ) .or. & 
-              ( neighborCellData( 1, neighborSubCellIndexes( 1, n ) )%fromSubCell ) ) then
-              ! If single buffer 
-
-              if ( neighborCellData(1, neighborSubCellIndexes( 1, n ) )%GetSubCellCount() .gt. 1 ) then 
-                  ! If its refined request the sub cell indexes
-                  subConnectionIndex = 1
-                  neighborSubRow     = neighborSubCellIndexes( 2, n )
-                  neighborSubColumn  = neighborSubCellIndexes( 3, n ) 
-              else
-                  ! If its not refined, all ones
-                  subConnectionIndex = 1
-                  neighborSubRow     = 1
-                  neighborSubColumn  = 1
-              end if
-
-          else
-              ! Buffer is empty, continue
-              cycle
-          end if  
-
-          ! Fill variables 
-          call neighborCellData( subConnectionIndex, neighborSubCellIndexes( 1, n ) )%FillSubCellFaceFlows( &
-                          neighborSubRow, neighborSubColumn, neighborSubCellFaceFlows( :, n ), skipSubCells )
-
-          call neighborCellData( subConnectionIndex, neighborSubCellIndexes( 1, n ) )%FillSubCellFaceAreas( &
-                                                             neighborSubCellFaceAreas( :, n ), skipSubCells )  
-
-          neighborSubCellVolume(n)   = neighborCellData(&
-              subConnectionIndex, neighborSubCellIndexes( 1, n ) )%GetVolume( skipSubCells )
-          neighborSubCellPorosity(n) = neighborCellData(&
-              subConnectionIndex, neighborSubCellIndexes( 1, n ) )%Porosity
+        neighborSubCellVolume(n)   = neighborCellData( 1, neighborSubCellIndexes( 1, n ) )%GetVolume( skipSubCells )
+        neighborSubCellPorosity(n) = neighborCellData( 1, neighborSubCellIndexes( 1, n ) )%Porosity
 
       end do
 
-
-      ! Done
+      ! Done 
       return
+
+    end if  
+
+
+    ! If current cell is refined
+    do n = 1, 18
+      skipSubCells = .false.
+
+      ! Fill face flows with one of its own subcells
+      if ( neighborSubCellIndexes( 1, n ) .eq. 0 ) then
+        call centerCellData%FillSubCellFaceFlowsBuffer( &
+                          neighborSubCellIndexes( 2, n ), neighborSubCellIndexes( 3, n ), & 
+                                                         neighborSubCellFaceFlows( :, n ) )
+
+        call centerCellData%FillSubCellFaceAreas( neighborSubCellFaceAreas( :, n ), skipSubCells )
+
+        neighborSubCellVolume(n)   = centerCellData%GetVolume( skipSubCells )
+        neighborSubCellPorosity(n) = centerCellData%Porosity
+
+        cycle
+
+      end if
+
+      ! Fill face flows with data obtained from neighbors
+      if ( neighborCellData( 2, neighborSubCellIndexes( 1, n ) )%CellNumber .gt. 0 ) then
+        ! If double buffer 
+
+        ! When the buffer is double, 
+        ! these cells are smaller, then skip 
+        ! sub cell indexation if refined. 
+        if ( & 
+          ( neighborCellData(1, neighborSubCellIndexes( 1, n ) )%GetSubCellCount() .gt. 1 ) .or. &
+          ( neighborCellData(2, neighborSubCellIndexes( 1, n ) )%GetSubCellCount() .gt. 1 ) ) then 
+          skipSubCells = .true.
+        end if 
+
+        ! Detect from which direction where requested.
+        if ( neighborCellData( 2, neighborSubCellIndexes( 1, n ) )%requestedFromDirection .eq. 1 ) then 
+          ! If x-direction, location in buffer is given by subcell row index 
+          subConnectionIndex = neighborSubCellIndexes( 2, n )
+          neighborSubRow     = 1 
+          neighborSubColumn  = 1
+        else if ( neighborCellData( 2, neighborSubCellIndexes( 1, n ) )%requestedFromDirection .eq. 2 ) then
+          ! If y-direction, location in buffer is given by subcell column index 
+          subConnectionIndex = neighborSubCellIndexes( 3, n )
+          neighborSubRow     = 1 
+          neighborSubColumn  = 1
+        else 
+          ! If z-direction, location in buffer is also given 
+          ! by subcell column index. This is true because double 
+          ! buffers requested from a vertical face are possible 
+          ! only if horizontal buffer is double too. This means 
+          ! that this case is related to indirect buffers, which 
+          ! in the current protocol of neighbor cells initialization 
+          ! are only possible after initialization of a direct connection 
+          ! through the y-direction. 
+          subConnectionIndex = neighborSubCellIndexes( 3, n )
+          neighborSubRow     = 1 
+          neighborSubColumn  = 1
+        end if 
+
+      else if ( &
+        ( neighborCellData( 1, neighborSubCellIndexes( 1, n ) )%CellNumber .gt. 0 ) .or. & 
+        ( neighborCellData( 1, neighborSubCellIndexes( 1, n ) )%fromSubCell ) ) then
+        ! If single buffer 
+
+        if ( neighborCellData(1, neighborSubCellIndexes( 1, n ) )%GetSubCellCount() .gt. 1 ) then 
+          ! If its refined request the sub cell indexes
+          subConnectionIndex = 1
+          neighborSubRow     = neighborSubCellIndexes( 2, n )
+          neighborSubColumn  = neighborSubCellIndexes( 3, n ) 
+        else
+          ! If its not refined, all ones
+          subConnectionIndex = 1
+          neighborSubRow     = 1
+          neighborSubColumn  = 1
+        end if
+
+      else
+        ! Buffer is empty, continue
+        cycle
+      end if  
+
+      ! Fill variables 
+      call neighborCellData( subConnectionIndex, neighborSubCellIndexes( 1, n ) )%FillSubCellFaceFlows( &
+                      neighborSubRow, neighborSubColumn, neighborSubCellFaceFlows( :, n ), skipSubCells )
+
+      call neighborCellData( subConnectionIndex, neighborSubCellIndexes( 1, n ) )%FillSubCellFaceAreas( &
+                                                         neighborSubCellFaceAreas( :, n ), skipSubCells )  
+
+      neighborSubCellVolume(n)   = neighborCellData(&
+        subConnectionIndex, neighborSubCellIndexes( 1, n ) )%GetVolume( skipSubCells )
+      neighborSubCellPorosity(n) = neighborCellData(&
+        subConnectionIndex, neighborSubCellIndexes( 1, n ) )%Porosity
+
+    end do
+
+
+    ! Done
+    return
 
 
   end subroutine pr_FillNeighborSubCellVariables
@@ -3575,57 +3590,72 @@ contains
   end subroutine pr_SetCornerComponentsIndexes
 
 
+  subroutine pr_ComputeCornerPorosityUniform( this, neighborSubCellVolume, neighborSubCellPorosity )
+    !----------------------------------------------------------------
+    ! Assign uniform porosity 
+    !----------------------------------------------------------------
+    ! Specifications
+    !----------------------------------------------------------------
+    implicit none
+    class( TrackSubCellType ) :: this
+    ! input
+    doubleprecision, dimension(18), intent(in) :: neighborSubCellVolume   
+    doubleprecision, dimension(18), intent(in) :: neighborSubCellPorosity
+    !-----------------------------------------------------------------
+
+    ! spatially constant porosity
+    this%porosity000 = this%SubCellData%Porosity   
+    this%porosity100 = this%SubCellData%Porosity
+    this%porosity010 = this%SubCellData%Porosity       
+    this%porosity110 = this%SubCellData%Porosity
+    this%porosity001 = this%SubCellData%Porosity
+    this%porosity101 = this%SubCellData%Porosity       
+    this%porosity011 = this%SubCellData%Porosity
+    this%porosity111 = this%SubCellData%Porosity
+
+    return
+    
+  end subroutine pr_ComputeCornerPorosityUniform
+
 
   ! RWPT
-  subroutine pr_ComputeCornerPorosity( this, neighborSubCellVolume, neighborSubCellPorosity )
-      !----------------------------------------------------------------
-      ! From its subCellData and neighborSubCellData array, 
-      ! computes velocities at cell corners
-      !
-      !----------------------------------------------------------------
-      ! Specifications
-      !----------------------------------------------------------------
-      implicit none
-      class( TrackSubCellType ) :: this
-      ! input
-      doubleprecision, dimension(18), intent(in) :: neighborSubCellVolume   
-      doubleprecision, dimension(18), intent(in) :: neighborSubCellPorosity
-      !-----------------------------------------------------------------
+  subroutine pr_ComputeCornerPorosityInterpolated( this, neighborSubCellVolume, neighborSubCellPorosity )
+    !----------------------------------------------------------------
+    ! From its subCellData and neighborSubCellData array, 
+    ! computes velocities at cell corners
+    !
+    !----------------------------------------------------------------
+    ! Specifications
+    !----------------------------------------------------------------
+    implicit none
+    class( TrackSubCellType ) :: this
+    ! input
+    doubleprecision, dimension(18), intent(in) :: neighborSubCellVolume   
+    doubleprecision, dimension(18), intent(in) :: neighborSubCellPorosity
+    !-----------------------------------------------------------------
 
-      ! If spatially variable porosity, something to identify ?
+    ! If spatially variable porosity, something to identify ?
 
-      ! Assign interpolated values
-      this%porosity000 = this%GetInterpolatedCornerPorosity( neighborSubCellVolume, neighborSubCellPorosity, 1 )
-      this%porosity100 = this%GetInterpolatedCornerPorosity( neighborSubCellVolume, neighborSubCellPorosity, 2 )
-      this%porosity010 = this%GetInterpolatedCornerPorosity( neighborSubCellVolume, neighborSubCellPorosity, 3 )
-      this%porosity110 = this%GetInterpolatedCornerPorosity( neighborSubCellVolume, neighborSubCellPorosity, 4 )
-      this%porosity001 = this%GetInterpolatedCornerPorosity( neighborSubCellVolume, neighborSubCellPorosity, 5 )
-      this%porosity101 = this%GetInterpolatedCornerPorosity( neighborSubCellVolume, neighborSubCellPorosity, 6 )
-      this%porosity011 = this%GetInterpolatedCornerPorosity( neighborSubCellVolume, neighborSubCellPorosity, 7 )
-      this%porosity111 = this%GetInterpolatedCornerPorosity( neighborSubCellVolume, neighborSubCellPorosity, 8 )
-
-        
-      !! This is the fallback for spatially 
-      !! constant porosity
-      !this%porosity000 = this%SubCellData%Porosity   
-      !this%porosity100 = this%SubCellData%Porosity
-      !this%porosity010 = this%SubCellData%Porosity       
-      !this%porosity110 = this%SubCellData%Porosity
-      !this%porosity001 = this%SubCellData%Porosity
-      !this%porosity101 = this%SubCellData%Porosity       
-      !this%porosity011 = this%SubCellData%Porosity
-      !this%porosity111 = this%SubCellData%Porosity
-
-
-      return
+    ! Assign interpolated values
+    this%porosity000 = this%GetInterpolatedCornerPorosity( neighborSubCellVolume, neighborSubCellPorosity, 1 )
+    this%porosity100 = this%GetInterpolatedCornerPorosity( neighborSubCellVolume, neighborSubCellPorosity, 2 )
+    this%porosity010 = this%GetInterpolatedCornerPorosity( neighborSubCellVolume, neighborSubCellPorosity, 3 )
+    this%porosity110 = this%GetInterpolatedCornerPorosity( neighborSubCellVolume, neighborSubCellPorosity, 4 )
+    this%porosity001 = this%GetInterpolatedCornerPorosity( neighborSubCellVolume, neighborSubCellPorosity, 5 )
+    this%porosity101 = this%GetInterpolatedCornerPorosity( neighborSubCellVolume, neighborSubCellPorosity, 6 )
+    this%porosity011 = this%GetInterpolatedCornerPorosity( neighborSubCellVolume, neighborSubCellPorosity, 7 )
+    this%porosity111 = this%GetInterpolatedCornerPorosity( neighborSubCellVolume, neighborSubCellPorosity, 8 )
 
       
-  end subroutine pr_ComputeCornerPorosity
+    return
+
+      
+  end subroutine pr_ComputeCornerPorosityInterpolated
 
 
   ! RWPT-USG
   function pr_GetInterpolatedCornerPorosity( this, neighborSubCellVolume, &
-                                     neighborSubCellPorosity, cornerIndex ) result( cornerPorosity ) 
+            neighborSubCellPorosity, cornerIndex ) result( cornerPorosity ) 
   !-------------------------------------------------------------------------
   ! Compute equivalent corner porosity for a given cornerIndex, 
   ! using source information in neighborSubCellVolume and 
@@ -3648,23 +3678,22 @@ contains
   !------------------------------------------------------------------------
 
 
-      sumVolume           = this%SubCellData%DX*this%SubCellData%DY*this%SubCellData%DZ
-      sumWeightedPorosity = this%SubCellData%Porosity*sumVolume
-      do m = 1, 6
-          sumVolume = sumVolume + &
-              neighborSubCellVolume( this%cornerPorosityIndexes( cornerIndex, m ) )
-          sumWeightedPorosity = sumWeightedPorosity + & 
-              neighborSubCellVolume( this%cornerPorosityIndexes( cornerIndex, m ) )*&
-              neighborSubCellPorosity( this%cornerPorosityIndexes( cornerIndex, m ) ) 
-      end do
+    sumVolume           = this%SubCellData%DX*this%SubCellData%DY*this%SubCellData%DZ
+    sumWeightedPorosity = this%SubCellData%Porosity*sumVolume
+    do m = 1, 6
+      sumVolume = sumVolume + &
+        neighborSubCellVolume( this%cornerPorosityIndexes( cornerIndex, m ) )
+      sumWeightedPorosity = sumWeightedPorosity + & 
+        neighborSubCellVolume( this%cornerPorosityIndexes( cornerIndex, m ) )*&
+        neighborSubCellPorosity( this%cornerPorosityIndexes( cornerIndex, m ) ) 
+    end do
 
-      cornerPorosity = sumWeightedPorosity/sumVolume
+    cornerPorosity = sumWeightedPorosity/sumVolume
 
-      return
+    return
 
 
   end function pr_GetInterpolatedCornerPorosity
-
 
 
   subroutine pr_SetCornerPorosityIndexes( this ) 

@@ -449,7 +449,7 @@ contains
 
       ! Assign additional params for RWPT in trackSubCell
       call this%TrackCell%TrackSubCell%InitializeRandomWalk( &
-          this%TrackingOptions )
+                                        this%TrackingOptions )
 
     else 
       ! MODPATH

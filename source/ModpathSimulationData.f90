@@ -119,7 +119,9 @@ contains
       ! Needs something to handle the case were ibound(1) != 0 ?
       this%uniformPorosity = basicData%Porosity(1)
     end if
- 
+
+    ! At trackingoptions, goes to tracksubcell
+    this%TrackingOptions%isUniformPorosity = basicData%isUniformPorosity
 
   end subroutine pr_SetUniformPorosity
 

@@ -28,6 +28,7 @@ module ParticleTrackingOptionsModule
     integer                            :: idDim1, idDim2
     integer, dimension(:), allocatable :: dimensions
     integer                            :: randomGenFunction
+    logical                            :: isUniformPorosity = .false.
 
     ! GPKDE
     logical                :: GPKDEReconstruction = .false.
