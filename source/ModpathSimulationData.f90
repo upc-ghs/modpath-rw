@@ -47,22 +47,23 @@ module ModpathSimulationDataModule
     character(len=200) :: TimeseriesFile
     character(len=200) :: TraceFile
     character(len=200) :: AdvectiveObservationsFile
-    character(len=200) :: DispersionFile          ! RWPT
-    integer            :: ParticlesMassOption     ! RWPT
-    integer            :: SolutesOption           ! RWPT
-    logical            :: shouldUpdateDispersion = .false.     ! RWPT
-    logical            :: isMF6 = .false.                      ! RWPT
+    character(len=200) :: DispersionFile                   ! RWPT
+    integer            :: ParticlesMassOption              ! RWPT
+    integer            :: SolutesOption                    ! RWPT
+    logical            :: shouldUpdateDispersion = .false. ! RWPT
+    logical            :: isMF6 = .false.                  ! RWPT
     integer,dimension(:),allocatable :: BudgetCells
     integer,dimension(:),allocatable :: Zones
     doubleprecision,dimension(:),allocatable :: Retardation
     doubleprecision,dimension(:),allocatable :: TimePoints
     type(ParticleGroupType),dimension(:),allocatable :: ParticleGroups
     type(ParticleTrackingOptionsType),allocatable :: TrackingOptions
-    logical :: isUniformPorosity =.false.       ! RWPT
-    logical :: isUniformRetardation = .false.   ! RWPT
-    doubleprecision :: uniformPorosity = 1d0    ! RWPT
-    doubleprecision :: uniformRetardation = 1d0 ! RWPT
+    logical :: isUniformPorosity =.false.                  ! RWPT
+    logical :: isUniformRetardation = .false.              ! RWPT
+    doubleprecision :: uniformPorosity = 1d0               ! RWPT
+    doubleprecision :: uniformRetardation = 1d0            ! RWPT
     class(TimeDiscretizationDataType), pointer :: tdisData ! RWPT
+    integer :: currentSeqNumber                            ! RWPT
   contains
     procedure :: ReadFileHeaders=>pr_ReadFileHeaders
     procedure :: ReadData=>pr_ReadData
@@ -603,6 +604,7 @@ contains
     write(outUnit,'(/A,I5)') 'Number of particle groups = ', this%ParticleGroupCount
   
     seqNumber = 0
+    this%currentSeqNumber = seqNumber ! Save seqNumber, see below
     this%TotalParticleCount = 0
     particleCount = 0
     if(this%ParticleGroupCount .gt. 0) then
@@ -682,6 +684,12 @@ contains
       write(outUnit, '(a,i10)') 'Total number of particles = ', this%TotalParticleCount
       write(outUnit, *)
     end if
+        
+    ! Needs to save sequence number. This is unique 
+    ! across all particle groups and while reading 
+    ! SRC and IC packages, sequence number should 
+    ! start from the already defined value.
+    this%currentSeqNumber = seqNumber
 
     ! TrackingOptions data
     !allocate(this%TrackingOptions) ! Moved up 
@@ -1771,6 +1779,10 @@ contains
       ! 1: concentration
       read(icUnit, *) initialConditionFormat
 
+      ! Initialize sequence number to the current value
+      seqNumber = this%currentSeqNumber
+     
+      ! And process initial condition 
       select case ( initialConditionFormat )
       ! Read initial condition as resident concentration (ML^-3)
       case (0) 
@@ -2035,9 +2047,12 @@ contains
 
         end if 
 
-        ! Assign layer value to each particle
+        ! Assign for each particle of this group
+        !  - id
+        !  - group
+        !  - sequence number
+        !  - layer 
         idmax = 0
-        seqNumber = 0
         do m = 1, totalParticleCount
           seqNumber = seqNumber + 1
           if(particleGroups(nic)%Particles(m)%Id .gt. idmax) idmax = particleGroups(nic)%Particles(m)%Id
@@ -2078,6 +2093,8 @@ contains
       ! Incremenent particleCount
       particleCount = particleCount + particleGroups(nic)%TotalParticleCount
 
+      ! Save the current sequence number
+      this%currentSeqNumber = seqNumber
 
     end do ! loop over initial conditions 
     write(outUnit, '(a,i10)') 'Total number of particles on initial conditions = ', particleCount
@@ -2578,7 +2595,7 @@ contains
             ! Variables for defining the particles of this group
             idmax = 0
             offset = 0
-            seqNumber = 0
+            seqNumber = this%currentSeqNumber
             cellCounter = 0
             currentParticleCount = 0 
 
@@ -2638,23 +2655,16 @@ contains
                   0, effectiveMass, -999d0  )
               end if
 
-              ! Assign layer value to each particle
+              ! Assign values for particle template
+              !   - layer
+              !   - group
               do m = 1, currentParticleCount 
-                seqNumber = seqNumber + 1
-                if(particleGroups(naux)%Particles(m)%Id .gt. idmax) idmax = particleGroups(naux)%Particles(m)%Id
                 particleGroups(naux)%Particles(m)%Group = particleGroups(naux)%Group
-                particleGroups(naux)%Particles(m)%SequenceNumber = seqNumber
                 particleGroups(naux)%Particles(m)%InitialLayer =                       &
                   grid%GetLayer(particleGroups(naux)%Particles(m)%InitialCellNumber)
                 particleGroups(naux)%Particles(m)%Layer =                              &
                   grid%GetLayer(particleGroups(naux)%Particles(m)%CellNumber)
               end do
-              ! Notice that offset should remain as the starting count. These particles 
-              ! still have an invalid release time and it will be corrected 
-              ! downstream
-              offset = currentParticleCount - auxNPCell(naux,nc)
-              ! Same with idmax, all particles are reprocessed downstream
-              idmax  = 0
 
               ! Note: 
               ! Interpolator requires strictly increasing x and 
@@ -2764,7 +2774,7 @@ contains
                     end if
 
                     ! Interpolate the release time        
-                    call interp1d%evaluate( cummEffectiveMass, releaseTimes(nr) ) ! THIS ARRAY RELEASE TIMES BYE BYE
+                    call interp1d%evaluate( cummEffectiveMass, releaseTimes(nr) ) ! Replace array of release times by a single value
 
                     ! Assign to particles
                     do m = 1, npThisRelease
@@ -2829,6 +2839,9 @@ contains
 
             end do ! nc=1, nCells
 
+            ! Save the current sequence number once finished the 
+            ! processing of this aux var
+            this%currentSeqNumber = seqNumber
 
             ! Increase counters
             if ( particleGroups(naux)%TotalParticleCount .gt. 0 ) then 
@@ -2866,7 +2879,6 @@ contains
             else
               this%ParticleGroupCount = newParticleGroupCount
               this%TotalParticleCount = particleCount
-              !allocate(this%ParticleGroups(this%ParticleGroupCount))
               call move_alloc( newParticleGroups, this%ParticleGroups )
             end if
           end if
@@ -3646,7 +3658,7 @@ contains
             ! Variables for defining the particles of this group
             idmax = 0
             offset = 0
-            seqNumber = 0
+            seqNumber = this%currentSeqNumber 
             cellCounter = 0
             currentParticleCount = 0 
 
@@ -3706,23 +3718,16 @@ contains
                   0, effectiveMass, -999d0  )
               end if
 
-              ! Assign layer value to each particle
+              ! Assign values for particle template
+              !   - layer
+              !   - group
               do m = 1, currentParticleCount 
-                seqNumber = seqNumber + 1
-                if(particleGroups(naux)%Particles(m)%Id .gt. idmax) idmax = particleGroups(naux)%Particles(m)%Id
                 particleGroups(naux)%Particles(m)%Group = particleGroups(naux)%Group
-                particleGroups(naux)%Particles(m)%SequenceNumber = seqNumber
                 particleGroups(naux)%Particles(m)%InitialLayer =                       &
                   grid%GetLayer(particleGroups(naux)%Particles(m)%InitialCellNumber)
                 particleGroups(naux)%Particles(m)%Layer =                              &
                   grid%GetLayer(particleGroups(naux)%Particles(m)%CellNumber)
               end do
-              ! Notice that offset should remain as the starting count. These particles 
-              ! still have an invalid release time and it will be corrected 
-              ! downstream
-              offset = currentParticleCount - auxNPCell(naux,nc)
-              ! Same with idmax, all particles are reprocessed downstream
-              idmax  = 0
 
               ! Note: 
               ! Interpolator requires strictly increasing x and 
@@ -3897,6 +3902,10 @@ contains
               totCummEffectiveMass = totCummEffectiveMass + cummEffectiveMass
 
             end do ! nc=1, nCells
+
+            ! Save the current sequence number once finished the 
+            ! processing of this source 
+            this%currentSeqNumber = seqNumber
 
             ! Increase counters
             if ( particleGroups(naux)%TotalParticleCount .gt. 0 ) then 

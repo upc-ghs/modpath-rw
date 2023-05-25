@@ -1253,6 +1253,7 @@ program MPath7
           end if
           
           ! Write particle output
+          ! pathline
           if((simulationData%SimulationType .eq. 2)  .or.              &
              (simulationData%SimulationType .eq. 4)  .or.              & 
              (simulationData%SimulationType .eq. 6)) then
@@ -1271,8 +1272,11 @@ program MPath7
               end select
               !$omp end critical (pathline)
             end if
-          end if
-          if(simulationData%SimulationType .ge. 3) then
+          end if ! pathline
+
+          ! timeseries
+          if((simulationData%SimulationType .ge. 3) .and. & 
+             (simulationData%SimulationType .lt. 7) ) then 
             if(tsCount .gt. 0) then
               ! Write timeseries record to the timeseries file
               pCoordTP => trackPathResult%ParticlePath%Timeseries%Items(1)
@@ -1310,17 +1314,16 @@ program MPath7
                   end if
                 end if
               end if
-
             end if
-          end if
+          end if ! timeseries
         end if ! p%Status .eq. 1
         
         ! If option is set to write timeseries records for all particles
         ! regardless of status, write the record if not done already.
-        ! RWPT
-        if((simulationData%SimulationType .ge. 3) .and.              &
-           (simulationData%SimulationType .lt. 7) .and.              &
-           (simulationData%TimeseriesOutputOption .eq. 1) .and.      &
+        ! timeseries
+        if((simulationData%SimulationType .ge. 3) .and.         &
+           (simulationData%SimulationType .lt. 7) .and.         &
+           (simulationData%TimeseriesOutputOption .eq. 1) .and. &
            (isTimeSeriesPoint) .and. (.not.timeseriesRecordWritten)) then
           pCoord%CellNumber = p%CellNumber
           pCoord%Layer = p%Layer
@@ -1328,8 +1331,8 @@ program MPath7
           pCoord%LocalY = p%LocalY
           pCoord%LocalZ = p%LocalZ
           pCoord%TrackingTime = maxTime
-          call modelGrid%ConvertToModelXYZ(pCoord%CellNumber,       &
-            pCoord%LocalX, pCoord%LocalY, pCoord%LocalZ,            &
+          call modelGrid%ConvertToModelXYZ(pCoord%CellNumber, &
+            pCoord%LocalX, pCoord%LocalY, pCoord%LocalZ,      &
             pCoord%GlobalX, pCoord%GlobalY, pCoord%GlobalZ)
           p%GlobalX = pCoord%GlobalX ! GPKDE
           p%GlobalY = pCoord%GlobalY ! GPKDE
@@ -1351,9 +1354,9 @@ program MPath7
                 ! Get water volume and write record
                 waterVolume = trackingEngine%TrackCell%CellData%GetWaterVolume()
                 !$omp critical(resobservation)
-                call WriteResidentObs(ktime, nt, p, pCoord,           &
+                call WriteResidentObs(ktime, nt, p, pCoord,             &
                       simulationData%ParticleGroups(groupIndex)%Solute, &
-                      simulationData%Retardation(pCoord%CellNumber),  &
+                      simulationData%Retardation(pCoord%CellNumber),    &
                       waterVolume, obs%recOutputUnit)
                 !$omp end critical(resobservation)
                 ! Count record
@@ -1364,7 +1367,7 @@ program MPath7
               end if
             end if
           end if
-        end if
+        end if ! timeseries
 
       end do ! Particles Loop
       !$omp end parallel do
@@ -1461,7 +1464,7 @@ program MPath7
     end if ! GPKDEReconstruction
 
   end if ! ParticleGroupCount .gt. 0
- 
+
 
   ! Sink observations: write a temporary file
   ! with flow-rates per time. Works for the 

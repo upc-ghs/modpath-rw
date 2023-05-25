@@ -487,7 +487,7 @@ contains
   
     count = tpResult%ParticlePath%Pathline%GetItemCount()
     if(count .lt. 2) return
-    
+
     inquire(unit=outUnit, pos=currentPosition)
     write(outUnit) tpResult%SequenceNumber, count, tpResult%Group, tpResult%ParticleID
     do n = 1, count
@@ -536,7 +536,7 @@ contains
       recordPointCounts(n) = 0
       recordPointers(n) = 0
     end do 
-    
+   
     ! Read and save pathline record header index information
     pos = 1
     do n = 1, recordCount
