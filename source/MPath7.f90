@@ -105,7 +105,7 @@ program MPath7
   doubleprecision, dimension(:), allocatable   :: activeParticleMasses
   doubleprecision, dimension(:,:), allocatable :: gpkdeDataCarrier
   doubleprecision, dimension(:), allocatable :: gpkdeWeightsCarrier
-  integer :: activeCounter, itcount, ns, npg
+  integer :: itcount, ns, npg, particleCounter
   ! Observations
   integer :: io, irow, nobs, nit, cellNumber
   integer :: timeIndex, solCount
@@ -969,38 +969,45 @@ program MPath7
         end if 
 
         ! Count the number of particles linked to the current solute 
-        activeCounter = 0
+        particleCounter = 0
         do npg=1,solute%nParticleGroups
           groupIndex = solute%pGroups(npg)
           do particleIndex = 1, simulationData%ParticleGroups(groupIndex)%TotalParticleCount
             p => simulationData%ParticleGroups(groupIndex)%Particles(particleIndex)
             if((p%Status .eq. 0) .and. (p%InitialTrackingTime .eq. 0.0d0)) then 
-              activeCounter = activeCounter + 1
+              particleCounter = particleCounter + 1
             end if
           end do
         end do
 
+        if ( particleCounter.eq.0 ) then
+          ! Nothing to do
+          write(mplistUnit,'(a,I4)') 'Warning: no GPKDE reconstruction for initial condition of solute ', solute%id 
+          call ulog('No GPKDE reconstruction for the initial condition', logUnit)
+          cycle 
+        end if 
+
         ! Allocate particles coordinates and mass
         if ( allocated( activeParticleCoordinates ) ) deallocate( activeParticleCoordinates )
-        allocate( activeParticleCoordinates(activeCounter,3) )
+        allocate( activeParticleCoordinates(particleCounter,3) )
         activeParticleCoordinates = 0d0
         if ( allocated( activeParticleMasses ) ) deallocate( activeParticleMasses )
-        allocate( activeParticleMasses(activeCounter) )
+        allocate( activeParticleMasses(particleCounter) )
         activeParticleMasses = 0d0
 
         ! Fill coordinates array
-        activeCounter = 0 
+        particleCounter = 0 
         do npg=1,solute%nParticleGroups
           groupIndex = solute%pGroups(npg)
           do particleIndex = 1, simulationData%ParticleGroups(groupIndex)%TotalParticleCount
             p => simulationData%ParticleGroups(groupIndex)%Particles(particleIndex)
             ! To the array for GPKDE
             if((p%Status .eq. 0) .and. (p%InitialTrackingTime .eq. 0.0d0)) then 
-              activeCounter = activeCounter + 1
-              activeParticleCoordinates( activeCounter, 1 ) = p%GlobalX
-              activeParticleCoordinates( activeCounter, 2 ) = p%GlobalY
-              activeParticleCoordinates( activeCounter, 3 ) = p%GlobalZ
-              activeParticleMasses( activeCounter ) = p%Mass
+              particleCounter = particleCounter + 1
+              activeParticleCoordinates( particleCounter, 1 ) = p%GlobalX
+              activeParticleCoordinates( particleCounter, 2 ) = p%GlobalY
+              activeParticleCoordinates( particleCounter, 3 ) = p%GlobalZ
+              activeParticleMasses( particleCounter ) = p%Mass
             end if
           end do
         end do
@@ -1383,40 +1390,48 @@ program MPath7
 
         ! Count how many active, considering
         ! all the particle groups linked to a given solute 
-        activeCounter = 0
+        particleCounter = 0
         do npg=1,solute%nParticleGroups
           groupIndex = solute%pGroups(npg)
           do particleIndex = 1, simulationData%ParticleGroups(groupIndex)%TotalParticleCount
             p => simulationData%ParticleGroups(groupIndex)%Particles(particleIndex)
             ! If active, to the array for GPKDE
             if( (p%Status .eq. 1) ) then
-              activeCounter = activeCounter + 1
+              particleCounter = particleCounter + 1
             end if
           end do
         end do
 
+        if ( particleCounter.eq.0 ) then
+          ! Nothing to do
+          write(mplistUnit,'(a,I4)') 'Warning: skip GPKDE reconstruction for solute ', solute%id 
+          call ulog('Skip GPKDE reconstruction, no particles found', logUnit)
+          cycle 
+        end if 
+
+
         ! Allocate active particles coordinates
         if ( allocated( activeParticleCoordinates ) ) deallocate( activeParticleCoordinates )
-        allocate( activeParticleCoordinates(activeCounter,3) )
+        allocate( activeParticleCoordinates(particleCounter,3) )
         activeParticleCoordinates = 0d0
         if ( allocated( activeParticleMasses ) ) deallocate( activeParticleMasses )
-        allocate( activeParticleMasses(activeCounter) )
+        allocate( activeParticleMasses(particleCounter) )
         activeParticleMasses = 0d0
 
         ! Could be parallelized ?
         ! Restart active counter and fill coordinates array
-        activeCounter = 0 
+        particleCounter = 0 
         do npg=1,solute%nParticleGroups
           groupIndex = solute%pGroups(npg)
           do particleIndex = 1, simulationData%ParticleGroups(groupIndex)%TotalParticleCount
             p => simulationData%ParticleGroups(groupIndex)%Particles(particleIndex)
             ! If active, to the array for GPKDE
             if( (p%Status .eq. 1) ) then
-              activeCounter = activeCounter + 1
-              activeParticleCoordinates( activeCounter, 1 ) = p%GlobalX
-              activeParticleCoordinates( activeCounter, 2 ) = p%GlobalY
-              activeParticleCoordinates( activeCounter, 3 ) = p%GlobalZ
-              activeParticleMasses( activeCounter ) = p%Mass
+              particleCounter = particleCounter + 1
+              activeParticleCoordinates( particleCounter, 1 ) = p%GlobalX
+              activeParticleCoordinates( particleCounter, 2 ) = p%GlobalY
+              activeParticleCoordinates( particleCounter, 3 ) = p%GlobalZ
+              activeParticleMasses( particleCounter ) = p%Mass
             end if
           end do
         end do

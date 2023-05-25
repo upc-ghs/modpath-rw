@@ -215,9 +215,8 @@ contains
 
     ! Reset counts
     this%counts  = fZERO
-    nPointsShape = shape(dataPoints)
+    nPointsShape = shape(dataPoints) ! (nParticles,3)
 
-    ! This could be done with OpenMP (?) 
     do np = 1, nPointsShape(1)
       ! Initialize point
       inside      = .true.
@@ -279,9 +278,8 @@ contains
 
     ! Reset counts
     this%counts  = fZERO
-    nPointsShape = shape(dataPoints)
+    nPointsShape = shape(dataPoints) ! (nParticles,3)
 
-    ! This could be done with OpenMP (?) 
     do np = 1, nPointsShape(1)
       ! Initialize point
       inside      = .true.
@@ -358,9 +356,8 @@ contains
     ! Reset counts
     this%counts  = fZERO
     this%wcounts = fZERO
-    nPointsShape = shape(dataPoints)
+    nPointsShape = shape(dataPoints) ! (nParticles,3)
 
-    ! This could be done with OpenMP (?) 
     do np = 1, nPointsShape(1)
       ! Initialize point
       inside      = .true.
@@ -427,9 +424,8 @@ contains
     ! Reset counts
     this%counts  = fZERO
     this%wcounts = fZERO
-    nPointsShape = shape(dataPoints)
+    nPointsShape = shape(dataPoints) ! (nParticles,3)
 
-    ! This could be done with OpenMP (?) 
     do np = 1, nPointsShape(1)
       ! Initialize point
       inside      = .true.

@@ -352,9 +352,7 @@ contains
     !---------------------------------------------------------------------------
     ! Specifications 
     !---------------------------------------------------------------------------
-    !!DEV
     use PrecisionModule, only : fp 
-    !!DEV
     implicit none
     ! input
     class( GridProjectedKDEType ) :: this
@@ -833,7 +831,7 @@ contains
 
   subroutine prReset( this )
     !------------------------------------------------------------------------------
-    ! Incomplete ! 
+    ! It could be improved, review
     !------------------------------------------------------------------------------
     ! Specifications 
     !------------------------------------------------------------------------------
@@ -845,6 +843,8 @@ contains
     dimensionMask = (/1,1,1/)
     nDim          = 3
     fNDim         = 3.0_fp
+    this%dimensionMask = dimensionMask
+    if ( allocated( this%dimensions ) ) deallocate( this%dimensions  ) 
 
     if ( allocated(  densityGrid             )) deallocate(  densityGrid             )
     if ( allocated(  kernelSmoothing         )) deallocate(  kernelSmoothing         )
@@ -883,31 +883,30 @@ contains
     this%ComputeKernelDatabaseIndexes      => null()
     this%ComputeKernelDatabaseFlatIndexes  => null()
 
-    if ( allocated( this%dimensions ) )deallocate( this%dimensions  ) 
 
   end subroutine prReset
 
 
-  subroutine prAllocateArrays( nComputeBins,  &
-                              inkernelSmoothing,&
-                              inkernelSmoothingScale,&
-                              inkernelSmoothingShape,&
+  subroutine prAllocateArrays( this, nComputeBins,      &
+                              inkernelSmoothing,        &
+                              inkernelSmoothingScale,   &
+                              inkernelSmoothingShape,   &
                               inkernelSigmaSupportScale,&
-                              incurvatureBandwidth,&
-                              indensityEstimateArray ,&
-                              innEstimateArray,&
-                              inroughnessXXArray,&
-                              inroughnessYYArray,&
-                              inroughnessZZArray,&
-                              innetRoughnessArray,&
-                              activeGridCellsIn   )
+                              incurvatureBandwidth,     &
+                              indensityEstimateArray,   &
+                              innEstimateArray,         &
+                              inroughnessXXArray,       &
+                              inroughnessYYArray,       &
+                              inroughnessZZArray,       &
+                              innetRoughnessArray,      &
+                              activeGridCellsIn         )
     !------------------------------------------------------------------------------
-    ! 
-    !
+    ! It could be improved, review
     !------------------------------------------------------------------------------
     ! Specifications 
     !------------------------------------------------------------------------------
     implicit none
+    class( GridProjectedKDEType ) :: this
     integer, intent(in) :: nComputeBins
     real(fp), dimension(:,:), allocatable, intent(out) :: inkernelSmoothing
     real(fp), dimension(:)  , allocatable, intent(out) :: inkernelSmoothingScale
@@ -935,22 +934,17 @@ contains
     type( GridCellType ), dimension(:), allocatable :: activeGridCellsLocal
     !------------------------------------------------------------------------------
 
-
     ! Allocate arrays
-    allocate(         lockernelSmoothing( 3, nComputeBins ) )
-    allocate(    lockernelSmoothingShape( 3, nComputeBins ) )
-    allocate(      loccurvatureBandwidth( 3, nComputeBins ) )
-    allocate(          lockernelSmoothingScale( nComputeBins ) )
-    allocate(       lockernelSigmaSupportScale( nComputeBins ) )
-    allocate(          locdensityEstimateArray( nComputeBins ) )
-    allocate(                locnEstimateArray( nComputeBins ) )
-    allocate(              locroughnessXXArray( nComputeBins ) ) ! According to dimensions 
-    allocate(              locroughnessYYArray( nComputeBins ) ) ! According to dimensions 
-    allocate(              locroughnessZZArray( nComputeBins ) ) ! According to dimensions 
-    allocate(             locnetRoughnessArray( nComputeBins ) )
-    allocate(             activeGridCellsLocal( nComputeBins ) )
+    allocate(      lockernelSmoothing( 3, nComputeBins ) )
+    allocate( lockernelSmoothingShape( 3, nComputeBins ) )
+    allocate(   loccurvatureBandwidth( 3, nComputeBins ) )
+    allocate(    lockernelSmoothingScale( nComputeBins ) )
+    allocate( lockernelSigmaSupportScale( nComputeBins ) )
+    allocate(    locdensityEstimateArray( nComputeBins ) )
+    allocate(          locnEstimateArray( nComputeBins ) )
+    allocate(       locnetRoughnessArray( nComputeBins ) )
+    allocate(       activeGridCellsLocal( nComputeBins ) )
 
-    call move_alloc(        activeGridCellsLocal,       activeGridCellsIn  )
     call move_alloc(          lockernelSmoothing,        inkernelSmoothing )
     call move_alloc(     lockernelSmoothingShape,   inkernelSmoothingShape )
     call move_alloc(       loccurvatureBandwidth,     incurvatureBandwidth )
@@ -958,10 +952,22 @@ contains
     call move_alloc(  lockernelSigmaSupportScale,inkernelSigmaSupportScale )
     call move_alloc(     locdensityEstimateArray,   indensityEstimateArray )
     call move_alloc(           locnEstimateArray,         innEstimateArray )
-    call move_alloc(         locroughnessXXArray,       inroughnessXXArray )! According to dimensions  
-    call move_alloc(         locroughnessYYArray,       inroughnessYYArray )! According to dimensions 
-    call move_alloc(         locroughnessZZArray,       inroughnessZZArray )! According to dimensions 
     call move_alloc(        locnetRoughnessArray,      innetRoughnessArray )
+    call move_alloc(        activeGridCellsLocal,       activeGridCellsIn  )
+
+    ! roughness
+    if (this%dimensionMask(1).eq.1) then 
+      allocate(locroughnessXXArray(nComputeBins))
+      call move_alloc(locroughnessXXArray,inroughnessXXArray)
+    end if 
+    if (this%dimensionMask(2).eq.1) then 
+      allocate(locroughnessYYArray(nComputeBins))
+      call move_alloc(locroughnessYYArray,inroughnessYYArray)
+    end if 
+    if (this%dimensionMask(3).eq.1) then 
+      allocate(locroughnessZZArray(nComputeBins))
+      call move_alloc(locroughnessZZArray,inroughnessZZArray)
+    end if 
 
 
   end subroutine prAllocateArrays
@@ -3193,7 +3199,6 @@ contains
     ! Compute sub grid parameters if grids
     ! are to be adapted to the given coordinates 
     if ( this%adaptGridToCoords ) then
-
       maxCoords        = maxval( dataPoints, dim=1 ) 
       minCoords        = minval( dataPoints, dim=1 )
       deltaCoords      = abs( maxCoords - minCoords )
@@ -3610,7 +3615,7 @@ subroutine prComputeDensityOptimization( this, densityEstimateGrid, nOptimizatio
     kernelMatrix => null()
 
     ! Allocate arrays according to nComputebins
-    call prAllocateArrays( this%nComputeBins,      &
+    call prAllocateArrays( this, this%nComputeBins,&
                            kernelSmoothing,        &
                            kernelSmoothingScale,   &
                            kernelSmoothingShape,   &
@@ -3871,9 +3876,9 @@ subroutine prComputeDensityOptimization( this, densityEstimateGrid, nOptimizatio
       deallocate( curvatureBandwidth     )
       deallocate( densityEstimateArray   )
       deallocate( nEstimateArray         )
-      deallocate( roughnessXXArray       )
-      deallocate( roughnessYYArray       )
-      deallocate( roughnessZZArray       )
+      if (allocated(roughnessXXArray)) deallocate(roughnessXXArray)
+      if (allocated(roughnessYYArray)) deallocate(roughnessYYArray)
+      if (allocated(roughnessZZArray)) deallocate(roughnessZZArray)
       deallocate( netRoughnessArray      )
       deallocate( activeGridCellsMod     )
       deallocate( rawDensity             ) 
@@ -4211,9 +4216,9 @@ subroutine prComputeDensityOptimization( this, densityEstimateGrid, nOptimizatio
     deallocate( curvatureBandwidth     )
     deallocate( densityEstimateArray   )
     deallocate( nEstimateArray         )
-    deallocate( roughnessXXArray       )
-    deallocate( roughnessYYArray       )
-    deallocate( roughnessZZArray       )
+    if (allocated(roughnessXXArray)) deallocate(roughnessXXArray)
+    if (allocated(roughnessYYArray)) deallocate(roughnessYYArray)
+    if (allocated(roughnessZZArray)) deallocate(roughnessZZArray)
     deallocate( netRoughnessArray      )
     deallocate( activeGridCellsMod     )
     deallocate( rawDensity             ) 
