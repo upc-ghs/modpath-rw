@@ -573,7 +573,7 @@ contains
     call urword(line, icol, istart, istop, 2, n, r, 0, 0)
     this%RetardationFactorOption = n  
     if(this%RetardationFactorOption .gt. 1) then
-      write(outUnit,'(/A)') 'The retardation factor array will be read.'
+      write(outUnit,'(A)') 'The retardation factor array will be read.'
       if((grid%GridType .eq. 1) .or. (grid%GridType .eq. 3)) then
         call u3ddblmp(inUnit, outUnit, grid%LayerCount, grid%RowCount,     &
           grid%ColumnCount, grid%CellCount, this%Retardation, aname(2)) 
@@ -592,7 +592,7 @@ contains
           this%uniformRetardation = this%Retardation(1) 
       end if
     else
-      write(outUnit,'(/A)') 'The retardation factor for all cells = 1'
+      write(outUnit,'(A)') 'The retardation factor for all cells = 1'
       do n = 1, grid%CellCount
         this%Retardation(n) = 1.0d0
       end do
@@ -601,7 +601,7 @@ contains
       
     ! Particle data
     read(inUnit, *) this%ParticleGroupCount
-    write(outUnit,'(/A,I5)') 'Number of particle groups = ', this%ParticleGroupCount
+    write(outUnit,'(A,I5)') 'Number of particle groups in simulation file = ', this%ParticleGroupCount
   
     seqNumber = 0
     this%currentSeqNumber = seqNumber ! Save seqNumber, see below

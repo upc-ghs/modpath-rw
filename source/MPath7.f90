@@ -1696,11 +1696,13 @@ program MPath7
         end if
 
         ! Initialize gpkde for timeseries reconstruction
+        ! Note: if spatial gpkde was given, it will preserve
+        ! the number of loops given in the package
         call gpkde%Initialize(& 
             (/simulationData%TimePoints(obs%nAuxRecords),0d0,0d0/),            &
             (/dtObsSeries,0d0,0d0/),                                           &
             domainOrigin=(/0d0,0d0,0d0/),                                      &
-            nOptimizationLoops=simulationData%TrackingOptions%gpkdeNOptLoops,  &
+            nOptimizationLoops=simulationData%TrackingOptions%gpkdeNOptLoops,  & 
             databaseOptimization=.false.,                                      &
             outFileName=mplistFile &
         )

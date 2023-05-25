@@ -34,7 +34,7 @@ module ParticleTrackingOptionsModule
     real(fp), dimension(3) :: gpkdeDomainSize
     real(fp), dimension(3) :: gpkdeBinSize
     real(fp), dimension(3) :: gpkdeDomainOrigin
-    integer                :: gpkdeNOptLoops 
+    integer                :: gpkdeNOptLoops = 10
     character(len=200)     :: gpkdeOutputFile
     integer                :: gpkdeOutputUnit = 125
     logical                :: gpkdeKernelDatabase
