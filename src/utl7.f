@@ -1,5 +1,4 @@
       module utl7module
-      use PrecisionModule, only : fp
       contains
       SUBROUTINE URWORD(LINE,ICOL,ISTART,ISTOP,NCODE,N,R,IOUT,IN)
 C     ******************************************************************
@@ -885,7 +884,7 @@ C
 C        SPECIFICATIONS:
 C     ------------------------------------------------------------------
       CHARACTER(LEN=24) ANAME
-      real(fp) A(JJ,II)
+      DOUBLEPRECISION A(JJ,II)
       CHARACTER(LEN=20) FMTIN
       CHARACTER(LEN=200) CNTRL
       CHARACTER(LEN=16) TEXT
@@ -1416,7 +1415,7 @@ C
 C        SPECIFICATIONS:
 C     ------------------------------------------------------------------
       CHARACTER(LEN=16) TEXT
-      real(fp) BUF(NCOL,NROW)
+      DOUBLEPRECISION BUF(NCOL,NROW)
 C     ------------------------------------------------------------------
 C
 C1------PRINT A HEADER DEPENDING ON ILAY
@@ -1682,7 +1681,7 @@ C     ******************************************************************
 C
 C        SPECIFICATIONS:
 C     ------------------------------------------------------------------
-      real(fp) A(NCOL,NROW)
+      DOUBLEPRECISION A(NCOL,NROW)
       CHARACTER*(*) ANAME
 C     ------------------------------------------------------------------
 C

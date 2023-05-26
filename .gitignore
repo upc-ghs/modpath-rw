@@ -38,8 +38,17 @@
 msvs/bin
 work
 
-examples/
-
+#
 source/.*sw*
-
+#
 *.sw*
+#
+src/.*sw*
+
+
+# force if necessary
+examples/
+#
+src/lib/gpkde/examples/
+#
+make/

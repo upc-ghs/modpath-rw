@@ -1,5 +1,4 @@
 module ParticleTrackingOptionsModule
-  use PrecisionModule, only : fp 
   use ObservationModule, only : ObservationType
   implicit none
   
@@ -15,13 +14,13 @@ module ParticleTrackingOptionsModule
     logical  :: ExtendSteadyState = .true.
     logical  :: SpecifyStoppingTime = .false.
     logical  :: SpecifyStoppingZone = .false.
-    real(fp) :: Stoptime = 1.0e+30_fp
+    doubleprecision :: Stoptime = 1.0E+30
     integer  :: StopZone = 0
 
     ! RWPT
     logical                            :: RandomWalkParticleTracking = .false.
     integer                            :: timeStepKind
-    real(fp), dimension(2)             :: timeStepParameters = 0.0_fp
+    doubleprecision, dimension(2)      :: timeStepParameters = 0d0
     integer                            :: advectionKind
     integer, dimension(3)              :: dimensionMask = 1
     integer                            :: nDim = 3
@@ -31,30 +30,30 @@ module ParticleTrackingOptionsModule
     logical                            :: isUniformPorosity = .false.
 
     ! GPKDE
-    logical                :: GPKDEReconstruction = .false.
-    real(fp), dimension(3) :: gpkdeDomainSize
-    real(fp), dimension(3) :: gpkdeBinSize
-    real(fp), dimension(3) :: gpkdeDomainOrigin
-    integer                :: gpkdeNOptLoops = 10
-    character(len=200)     :: gpkdeOutputFile
-    integer                :: gpkdeOutputUnit = 125
-    logical                :: gpkdeKernelDatabase
-    logical                :: gpkdeIsotropicKernels
-    logical                :: gpkdeAsConcentration = .false.
-    real(fp)               :: gpkdeBinVolume
-    real(fp)               :: gpkdeScalingFactor
-    real(fp), dimension(3) :: gpkdeKDBParams    ! minHLambda, deltaHLambda, maxHLambda
-    integer                :: gpkdeOutColFormat 
-    integer                :: gpkdeOutFileFormat 
-    integer                :: gpkdeGridAllocFormat
-    logical                :: gpkdeAdaptGridToCoords
-    real(fp)               :: gpkdeGridBorderFraction 
-    logical                :: gpkdeSkipError = .false.
-    real(fp)               :: gpkdeRelErrorConvergence
-    integer                :: gpkdeInitialSmoothingFormat ! restricted to 0,1 
-    real(fp)               :: gpkdeBinSizeFactor
-    integer                :: gpkdeBoundKernelSize
-    integer                :: gpkdeEffectiveWeightFormat
+    logical                       :: GPKDEReconstruction = .false.
+    doubleprecision, dimension(3) :: gpkdeDomainSize
+    doubleprecision, dimension(3) :: gpkdeBinSize
+    doubleprecision, dimension(3) :: gpkdeDomainOrigin
+    integer                       :: gpkdeNOptLoops = 10
+    character(len=200)            :: gpkdeOutputFile
+    integer                       :: gpkdeOutputUnit = 125
+    logical                       :: gpkdeKernelDatabase
+    logical                       :: gpkdeIsotropicKernels
+    logical                       :: gpkdeAsConcentration = .false.
+    doubleprecision               :: gpkdeBinVolume
+    doubleprecision               :: gpkdeScalingFactor
+    doubleprecision, dimension(3) :: gpkdeKDBParams    ! minHLambda, deltaHLambda, maxHLambda
+    integer                       :: gpkdeOutColFormat 
+    integer                       :: gpkdeOutFileFormat 
+    integer                       :: gpkdeGridAllocFormat
+    logical                       :: gpkdeAdaptGridToCoords
+    doubleprecision               :: gpkdeGridBorderFraction 
+    logical                       :: gpkdeSkipError = .false.
+    doubleprecision               :: gpkdeRelErrorConvergence
+    integer                       :: gpkdeInitialSmoothingFormat ! restricted to 0,1 
+    doubleprecision               :: gpkdeBinSizeFactor
+    integer                       :: gpkdeBoundKernelSize
+    integer                       :: gpkdeEffectiveWeightFormat
 
     ! TimeseriesOutputOption
     logical                :: skipTimeseriesWriter = .false.
@@ -74,9 +73,9 @@ module ParticleTrackingOptionsModule
 
     ! DEPRECATION WARNNING
     ! NONLINEAR DISPERSION RWPT (TEMP)
-    real(fp) :: betaTrans, betaLong
-    real(fp) :: mediumDistance, mediumDelta
-    real(fp) :: Dmol = 0.0_fp
+    doubleprecision :: betaTrans, betaLong
+    doubleprecision :: mediumDistance, mediumDelta
+    doubleprecision :: Dmol = 0d0
     ! DEPRECATION WARNING
 
   contains

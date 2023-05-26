@@ -1,5 +1,4 @@
 module DispersionDataModule
-  use PrecisionModule, only: fp 
   implicit none
   
   ! Set default access status to private
@@ -25,18 +24,18 @@ module DispersionDataModule
     ! parameters are distributed or not 
 
     ! Dispersivities for linear dispersion model
-    real(fp),dimension(:),allocatable :: AlphaL
-    real(fp),dimension(:),allocatable :: AlphaTH ! AlphaT is pointing HERE!
-    real(fp),dimension(:),allocatable :: AlphaTV
-    real(fp),dimension(:),allocatable :: DMEff   ! Effective, corrected by tortuosity
+    doubleprecision,dimension(:),allocatable :: AlphaL
+    doubleprecision,dimension(:),allocatable :: AlphaTH ! AlphaT is pointing HERE!
+    doubleprecision,dimension(:),allocatable :: AlphaTV
+    doubleprecision,dimension(:),allocatable :: DMEff   ! Effective, corrected by tortuosity
 
     ! Parameters for nonlinear dispersion model 
-    real(fp) :: dmaqueous = 0.0_fp
-    real(fp),dimension(:),allocatable :: BetaL
-    real(fp),dimension(:),allocatable :: BetaTH
-    real(fp),dimension(:),allocatable :: BetaTV
-    real(fp),dimension(:),allocatable :: Delta
-    real(fp),dimension(:),allocatable :: DGrain
+    doubleprecision :: dmaqueous = 0d0
+    doubleprecision,dimension(:),allocatable :: BetaL
+    doubleprecision,dimension(:),allocatable :: BetaTH
+    doubleprecision,dimension(:),allocatable :: BetaTV
+    doubleprecision,dimension(:),allocatable :: Delta
+    doubleprecision,dimension(:),allocatable :: DGrain
 
     logical :: initialized =.false.
 

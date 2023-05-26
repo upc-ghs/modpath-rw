@@ -1,5 +1,4 @@
-# makefile created on 2017-12-20 13:16:47.325722
-# by pymake (version 1.1.0)
+# makefile 05-2023
 # using the gfortran fortran and gcc c/c++ compilers.
 
 # Define the directories for the object and module files,
@@ -8,16 +7,16 @@ OBJDIR = ./objtemp
 BINDIR = .
 PROGRAM = mpathrw
 
-SOURCEDIR1=../source
-#SOURCEDIR2=../lib/gpkde/src
-#SOURCEDIR3=../lib/finterp/src
-#SOURCEDIR4=../lib/rngzig/
+SOURCEDIR1=../src
+SOURCEDIR2=../src/lib/gpkde/src
+SOURCEDIR3=../src/lib/finterp/src
+SOURCEDIR4=../src/lib/rngzig
 
 VPATH = \
-${SOURCEDIR1} 
-#${SOURCEDIR2} \
-#${SOURCEDIR3} \
-#${SOURCEDIR4} 
+${SOURCEDIR1} \
+${SOURCEDIR2} \
+${SOURCEDIR3} \
+${SOURCEDIR4} 
 
 
 .SUFFIXES: .c .cpp .f .f90 .F90 .fpp .o
@@ -33,10 +32,11 @@ CFLAGS = -O3 -D_UF
 # Define the libraries
 SYSLIBS = 
 
-# Start with objects from GPKDE, 
-# then the library for linear interpolation, 
-# then the library for random number generator, 
-# and then modpath files
+# Order:
+# - GPKDE
+# - linear interpolation
+# - random number generator
+# - modpath files
 OBJECTS = \
 $(OBJDIR)/Precision.o \
 $(OBJDIR)/Constants.o \

@@ -1,5 +1,4 @@
 module ParticleModule
-  use PrecisionModule, only : fp
   implicit none
 
   ! Set default access status to private
@@ -8,13 +7,13 @@ module ParticleModule
   type,public :: ParticleType
     ! RW: The Face property is a potential candidate for deprecation
     integer :: CellNumber, Layer, Face, Group, ID, Status, SequenceNumber
-    real(fp) :: LocalX, LocalY, LocalZ, GlobalZ, TrackingTime
+    doubleprecision :: LocalX, LocalY, LocalZ, GlobalZ, TrackingTime
     integer :: InitialCellNumber, InitialFace, Drape, InitialLayer
-    real(fp) :: InitialLocalX, InitialLocalY, InitialLocalZ, InitialGlobalZ, InitialTrackingTime
+    doubleprecision :: InitialLocalX, InitialLocalY, InitialLocalZ, InitialGlobalZ, InitialTrackingTime
     ! GPKDE-RECONSTRUCTION
-    real(fp) :: GlobalX, GlobalY
+    doubleprecision :: GlobalX, GlobalY
     ! RWPT
-    real(fp) :: Mass = 1.0_fp
+    doubleprecision :: Mass = 1d0
   end type
 
 

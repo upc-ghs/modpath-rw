@@ -2,7 +2,6 @@
 !    fortran style.
 !
 module UTL8MODULE
-  use PrecisionModule, only : fp
   use UTL7MODULE,only:ustop,ulaprw,ucolno,ulstlb
   contains
   
@@ -111,7 +110,7 @@ module UTL8MODULE
     integer :: istart
     integer :: istop
     integer :: ival
-    real(fp) :: rval
+    double precision :: rval
 ! ------------------------------------------------------------------------------
     !code
     isfound = .false.
@@ -153,7 +152,7 @@ module UTL8MODULE
     integer :: istart
     integer :: istop
     integer :: ival
-    real(fp) :: rval
+    double precision :: rval
 ! ------------------------------------------------------------------------------
     !code
     isfound = .false.
@@ -203,7 +202,7 @@ module UTL8MODULE
     integer :: istart
     integer :: istop
     integer :: ival
-    real(fp) :: rval
+    double precision :: rval
     !format
 1   format(//,'ERROR. "',A,'" DETECTED WITHOUT "',A,'"',/,'"END',1X,A, &
       '" MUST BE USED TO END ',A,'.',/,'STOPPING...')      
@@ -304,10 +303,10 @@ module UTL8MODULE
     integer, intent(in) :: nrow
     integer, intent(in) :: ncol
     integer, intent(in) :: neq
-    real(fp), dimension(neq), intent(inout) :: rval
+    double precision, dimension(neq), intent(inout) :: rval
     character (len=24), intent(in) :: cval
     !local
-    real(fp), dimension(:,:), allocatable :: rtemp
+    double precision, dimension(:,:), allocatable :: rtemp
     integer :: node
     integer :: i, j, k
     !functions
@@ -358,7 +357,7 @@ module UTL8MODULE
 !C
 !C        SPECIFICATIONS:
 !C     ------------------------------------------------------------------
-      real(fp),intent(inout) :: r
+      double precision,intent(inout) :: r
       CHARACTER*(*) LINE
       CHARACTER(LEN=20) STRING
       CHARACTER(LEN=30) RW
@@ -490,7 +489,7 @@ module UTL8MODULE
 !C        SPECIFICATIONS:
 !C     ------------------------------------------------------------------
       USE OpenSpecModule
-      real(fp) :: r,cnstnt
+      double precision :: r,cnstnt
       CHARACTER(LEN=24) ANAME
       DIMENSION A(JJ)
       CHARACTER(LEN=20) FMTIN
@@ -618,8 +617,8 @@ module UTL8MODULE
 !C     ------------------------------------------------------------------
       USE OpenSpecModule
       CHARACTER(LEN=24) ANAME
-      real(fp),DIMENSION(jj),intent(inout) :: A
-      real(fp) :: r,cnstnt
+      DOUBLE PRECISION,DIMENSION(jj),intent(inout) :: A
+      double precision :: r,cnstnt
       CHARACTER(LEN=20) FMTIN
       CHARACTER(LEN=200) CNTRL
       CHARACTER(LEN=200) FNAME
@@ -744,7 +743,7 @@ module UTL8MODULE
 !C        SPECIFICATIONS:
 !C     ------------------------------------------------------------------
       USE OpenSpecModule
-      real(fp) :: r
+      double precision :: r
       CHARACTER(LEN=24) ANAME
       DIMENSION IA(JJ)
       CHARACTER(LEN=20) FMTIN
@@ -875,9 +874,9 @@ module UTL8MODULE
 !C        SPECIFICATIONS:
 !C     ------------------------------------------------------------------
       USE OpenSpecModule
-      real(fp) :: r,cnstnt
+      double precision :: r,cnstnt
       CHARACTER(LEN=24) ANAME
-      real(fp) A(JJ,II)
+      DOUBLEPRECISION A(JJ,II)
       CHARACTER(LEN=20) FMTIN
       CHARACTER(LEN=200) CNTRL
       CHARACTER(LEN=16) TEXT
@@ -1042,7 +1041,7 @@ module UTL8MODULE
       END SUBROUTINE
       SUBROUTINE U2DDBL(A,ANAME,II,JJ,K,IN,IOUT)
 !C     ******************************************************************
-!C     ROUTINE TO INPUT 2-D real(fp) DATA MATRICES
+!C     ROUTINE TO INPUT 2-D DOUBLE PRECISION DATA MATRICES
 !C       A IS ARRAY TO INPUT
 !C       ANAME IS 24 CHARACTER DESCRIPTION OF A
 !C       II IS NO. OF ROWS
@@ -1057,9 +1056,9 @@ module UTL8MODULE
 !C        SPECIFICATIONS:
 !C     ------------------------------------------------------------------
       USE OpenSpecModule
-      real(fp) :: r,cnstnt
+      double precision :: r,cnstnt
       CHARACTER(LEN=24) ANAME
-      real(fp),DIMENSION(JJ,II) :: A
+      DOUBLE PRECISION,DIMENSION(JJ,II) :: A
       CHARACTER(LEN=20) FMTIN
       CHARACTER(LEN=200) CNTRL
       CHARACTER(LEN=16) TEXT
@@ -1239,7 +1238,7 @@ module UTL8MODULE
 !C        SPECIFICATIONS:
 !C     ------------------------------------------------------------------
       use OpenSpecModule
-      real(fp) :: r
+      double precision :: r
       CHARACTER(LEN=24) ANAME
       DIMENSION IA(JJ,II)
       CHARACTER(LEN=20) FMTIN
@@ -1562,7 +1561,7 @@ module UTL8MODULE
 !C        SPECIFICATIONS:
 !C     ------------------------------------------------------------------
       CHARACTER(LEN=16) TEXT,AUXTXT(*)
-      real(fp),intent(in) :: delt,pertim,totim
+      double precision,intent(in) :: delt,pertim,totim
 !C     ------------------------------------------------------------------
 !C
 !C1------WRITE UNFORMATTED RECORDS IDENTIFYING DATA.
@@ -1608,13 +1607,13 @@ module UTL8MODULE
 !C     optional -- auxiliary data.
 !C     ******************************************************************
       USE OpenSpecModule
-      real(fp) :: r,sfac
+      double precision :: r,sfac
       CHARACTER*(*) LABEL
       CHARACTER(LEN=16) CAUX(NCAUX)
       DIMENSION NODELIST(MXLIST)
       !DIMENSION RLIST(LDIM,MXLIST)
-      real(fp), DIMENSION(LDIM,MXLIST) :: RLIST
-      real(fp), DIMENSION(NAUX,MXLIST) :: AUXVAR
+      DOUBLE PRECISION, DIMENSION(LDIM,MXLIST) :: RLIST
+      DOUBLE PRECISION, DIMENSION(NAUX,MXLIST) :: AUXVAR
       INTEGER,DIMENSION(MODELNDIM) :: MODELSHAPE
       CHARACTER(LEN=200) LINE,FNAME
       CHARACTER(LEN=20) FMTARG, ACCARG
@@ -1874,7 +1873,7 @@ module UTL8MODULE
 !**************************************
   subroutine u3ddblmpusg(iin,iout,neq,nlay,rval,cval,layerNodeCounts)
 ! ******************************************************************************
-! Read three-dimensional real(fp) array for unstructured grid, consisting of 
+! Read three-dimensional double precision array for unstructured grid, consisting of 
 ! multiple 1d layer arrays with array headers. EXTERNAL key word is not 
 ! supported. Fixed format is not supported. All arrays are read using free format
 ! regardless of the value of FMTIN specified on the array control records.
@@ -1887,7 +1886,7 @@ module UTL8MODULE
     integer, intent(in) :: iout
     integer, intent(in) :: nlay
     integer, intent(in) :: neq
-    real(fp), dimension(neq), intent(inout) :: rval
+    doubleprecision, dimension(neq), intent(inout) :: rval
     integer, dimension(nlay), intent(in) :: layerNodeCounts
     character (len=24), intent(in) :: cval
     !local
@@ -1921,10 +1920,10 @@ module UTL8MODULE
     integer, intent(in) :: nrow
     integer, intent(in) :: ncol
     integer, intent(in) :: neq
-    real(fp), dimension(neq), intent(inout) :: rval
+    double precision, dimension(neq), intent(inout) :: rval
     character (len=24), intent(in) :: cval
     !local
-    real(fp), dimension(:,:), allocatable :: rtemp
+    double precision, dimension(:,:), allocatable :: rtemp
     integer :: node
     integer :: i, j, k
     !functions
@@ -1945,7 +1944,7 @@ module UTL8MODULE
   end subroutine u3ddblmp     
       SUBROUTINE U2DDBLMP(A,ANAME,II,JJ,K,IN,IOUT)
 !C     ******************************************************************
-!C     ROUTINE TO INPUT 2-D real(fp) DATA MATRICES
+!C     ROUTINE TO INPUT 2-D DOUBLE PRECISION DATA MATRICES
 !C       A IS ARRAY TO INPUT
 !C       ANAME IS 24 CHARACTER DESCRIPTION OF A
 !C       II IS NO. OF ROWS
@@ -1959,9 +1958,9 @@ module UTL8MODULE
 !C        SPECIFICATIONS:
 !C     ------------------------------------------------------------------
       USE OpenSpecModule
-      real(fp) :: r,cnstnt
+      double precision :: r,cnstnt
       CHARACTER(LEN=24) ANAME
-      real(fp),DIMENSION(JJ,II) :: A
+      DOUBLE PRECISION,DIMENSION(JJ,II) :: A
       CHARACTER(LEN=20) FMTIN
       CHARACTER(LEN=200) CNTRL
       CHARACTER(LEN=16) TEXT
@@ -2125,8 +2124,8 @@ module UTL8MODULE
 !C     ------------------------------------------------------------------
       USE OpenSpecModule
       CHARACTER(LEN=24) ANAME
-      real(fp),DIMENSION(jj),intent(inout) :: A
-      real(fp) :: r,cnstnt
+      DOUBLE PRECISION,DIMENSION(jj),intent(inout) :: A
+      double precision :: r,cnstnt
       integer :: m, i, j, nr, npr, jfirst, jlast
       CHARACTER(LEN=20) FMTIN
       CHARACTER(LEN=200) CNTRL
@@ -2330,7 +2329,7 @@ module UTL8MODULE
 !C        SPECIFICATIONS:
 !C     ------------------------------------------------------------------
       USE OpenSpecModule
-      real(fp) :: r
+      double precision :: r
       integer :: m, i, j, nr, npr, jfirst, jlast
       integer, dimension(9) :: nprvals
       CHARACTER(LEN=24) ANAME
@@ -2494,7 +2493,7 @@ module UTL8MODULE
 !C        SPECIFICATIONS:
 !C     ------------------------------------------------------------------
       use OpenSpecModule
-      real(fp) :: r
+      double precision :: r
       CHARACTER(LEN=24) ANAME
       DIMENSION IA(JJ,II)
       CHARACTER(LEN=20) FMTIN

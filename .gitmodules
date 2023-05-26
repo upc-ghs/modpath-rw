@@ -1,6 +1,6 @@
 [submodule "gpkde"]
-	path = lib/gpkde
+	path = src/lib/gpkde
 	url =  https://github.com/upc-ghs/gpkde.git
-[submodule "lib/finterp"]
-	path = lib/finterp
+[submodule "finterp"]
+	path = src/lib/finterp
 	url = https://github.com/jacobwilliams/finterp.git

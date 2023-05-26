@@ -1,5 +1,4 @@
 module TrackCellModule
-  use PrecisionModule, only : fp 
   use ParticleLocationModule,only : ParticleLocationType
   use TrackCellResultModule,only : TrackCellResultType
   use TrackSubCellResultModule,only : TrackSubCellResultType
@@ -53,8 +52,8 @@ contains
   class(TrackCellType) :: this
   type(ParticleLocationType),intent(in) :: location
   integer,intent(inout) :: row,column
-  real(fp),dimension(3) :: offset
-  real(fp) :: xmin,xmax,ymin,ymax,x,y
+  doubleprecision,dimension(3) :: offset
+  doubleprecision :: xmin,xmax,ymin,ymax,x,y
   integer  :: i,j,subCellCount
   !-------------------------------------------------------------------
   
@@ -66,9 +65,9 @@ contains
       row = 1
       column = 1
     else if(subCellCount .eq. 4) then
-      offset(1) = 0.0_fp
-      offset(2) = 1.0_fp / 2.0_fp
-      offset(3) = 1.0_fp
+      offset(1) = 0d0
+      offset(2) = 1d0 / 2d0
+      offset(3) = 1d0
       
       x = location%LocalX
       y = location%LocalY
@@ -131,7 +130,7 @@ contains
   class(TrackCellType) :: this
   type(ParticleLocationType),intent(in)   :: initialLocation
   type(TrackCellResultType),intent(inout) :: trackCellResult
-  real(fp),intent(in)                     :: maximumTime
+  doubleprecision,intent(in)                     :: maximumTime
   type(TrackSubCellResultType) :: subCellResult
   type(ParticleLocationType) :: subLoc,pLoc
   logical :: stopIfNoSubCellExit,hasExit
@@ -196,10 +195,10 @@ contains
         trackCellResult%Status = trackCellResult%Status_NoExitPossible()
         return;
       else
-        if((this%TrackingOptions%BackwardTracking) .and. (this%CellData%SourceFlow .ne. 0.0_fp)) then
+        if((this%TrackingOptions%BackwardTracking) .and. (this%CellData%SourceFlow .ne. 0d0)) then
           trackCellResult%Status = trackCellResult%Status_NoExitPossible()
           return;
-        else if((.not. this%TrackingOptions%BackwardTracking) .and. (this%CellData%SinkFlow .ne. 0.0_fp)) then
+        else if((.not. this%TrackingOptions%BackwardTracking) .and. (this%CellData%SinkFlow .ne. 0d0)) then
           trackCellResult%Status = trackCellResult%Status_NoExitPossible()
           return;
         end if
@@ -209,7 +208,7 @@ contains
     ! Check weak sink/source stopping option
     if(this%TrackingOptions%BackwardTracking) then
       if(this%TrackingOptions%StopAtWeakSources) then
-        if(this%CellData%SourceFlow .ne. 0.0_fp) then 
+        if(this%CellData%SourceFlow .ne. 0d0) then 
           trackCellResult%Status = trackCellResult%Status_StopAtWeakSource()
           return;
         else
@@ -218,7 +217,7 @@ contains
       end if
     else
       if(this%TrackingOptions%StopAtWeakSinks) then
-        if(this%CellData%SinkFlow .ne. 0.0_fp) then
+        if(this%CellData%SinkFlow .ne. 0d0) then
           trackCellResult%Status = trackCellResult%Status_StopAtWeakSink()
           return;
         else
@@ -267,7 +266,7 @@ contains
               trackCellResult%Status = trackCellResult%Status_Undefined()
               return
             end if
-            subLoc%LocalX = 1.0_fp
+            subLoc%LocalX = 1d0
             subLoc%LocalY = subCellResult%FinalLocation%LocalY
             subLoc%LocalZ = subCellResult%FinalLocation%LocalZ
             subLoc%TrackingTime = subCellResult%FinalLocation%TrackingTime
@@ -282,7 +281,7 @@ contains
               trackCellResult%Status = trackCellResult%Status_Undefined()
               return
             end if
-            subLoc%LocalX = 0.0_fp
+            subLoc%LocalX = 0d0
             subLoc%LocalY = subCellResult%FinalLocation%LocalY
             subLoc%LocalZ = subCellResult%FinalLocation%LocalZ
             subLoc%TrackingTime = subCellResult%FinalLocation%TrackingTime
@@ -298,7 +297,7 @@ contains
               return
             end if
             subLoc%LocalX = subCellResult%FinalLocation%LocalX
-            subLoc%LocalY = 1.0_fp
+            subLoc%LocalY = 1d0
             subLoc%LocalZ = subCellResult%FinalLocation%LocalZ
             subLoc%TrackingTime = subCellResult%FinalLocation%TrackingTime
             subRow = 2
@@ -313,7 +312,7 @@ contains
               return
             end if
             subLoc%LocalX = subCellResult%FinalLocation%LocalX
-            subLoc%LocalY = 0.0_fp
+            subLoc%LocalY = 0d0
             subLoc%LocalZ = subCellResult%FinalLocation%LocalZ
             subLoc%TrackingTime = subCellResult%FinalLocation%TrackingTime
             subRow = 1
@@ -387,7 +386,7 @@ contains
   class(TrackCellType) :: this
   type(ParticleLocationType),intent(in)   :: initialLocation
   type(TrackCellResultType),intent(inout) :: trackCellResult
-  real(fp),intent(in)                     :: maximumTime
+  doubleprecision,intent(in)                     :: maximumTime
   type(TrackSubCellResultType) :: subCellResult
   type(ParticleLocationType) :: subLoc,pLoc
   logical :: stopIfNoSubCellExit,hasExit
@@ -454,7 +453,7 @@ contains
     ! Check weak sink/source stopping option
     if(this%TrackingOptions%BackwardTracking) then
       if(this%TrackingOptions%StopAtWeakSources) then
-        if(this%CellData%SourceFlow .ne. 0.0_fp) then 
+        if(this%CellData%SourceFlow .ne. 0d0) then 
           trackCellResult%Status = trackCellResult%Status_StopAtWeakSource()
           return
         else
@@ -463,7 +462,7 @@ contains
       end if
     else
       if(this%TrackingOptions%StopAtWeakSinks) then
-        if(this%CellData%SinkFlow .ne. 0.0_fp) then
+        if(this%CellData%SinkFlow .ne. 0d0) then
           trackCellResult%Status = trackCellResult%Status_StopAtWeakSink()
           return
         else
@@ -487,10 +486,10 @@ contains
         trackCellResult%Status = trackCellResult%Status_NoExitPossible()
         return;
       else
-        if((this%TrackingOptions%BackwardTracking) .and. (this%CellData%SourceFlow .ne. 0.0_fp)) then
+        if((this%TrackingOptions%BackwardTracking) .and. (this%CellData%SourceFlow .ne. 0d0)) then
           trackCellResult%Status = trackCellResult%Status_NoExitPossible()
           return;
-        else if((.not. this%TrackingOptions%BackwardTracking) .and. (this%CellData%SinkFlow .ne. 0.0_fp)) then
+        else if((.not. this%TrackingOptions%BackwardTracking) .and. (this%CellData%SinkFlow .ne. 0d0)) then
           trackCellResult%Status = trackCellResult%Status_NoExitPossible()
           return;
         end if
@@ -546,7 +545,7 @@ contains
               trackCellResult%Status = trackCellResult%Status_Undefined()
               return
             end if
-            subLoc%LocalX = 1.0_fp
+            subLoc%LocalX = 1d0
             subLoc%LocalY = subCellResult%FinalLocation%LocalY
             subLoc%LocalZ = subCellResult%FinalLocation%LocalZ
             subLoc%TrackingTime = subCellResult%FinalLocation%TrackingTime
@@ -563,7 +562,7 @@ contains
               trackCellResult%Status = trackCellResult%Status_Undefined()
               return
             end if
-            subLoc%LocalX = 0.0_fp
+            subLoc%LocalX = 0d0
             subLoc%LocalY = subCellResult%FinalLocation%LocalY
             subLoc%LocalZ = subCellResult%FinalLocation%LocalZ
             subLoc%TrackingTime = subCellResult%FinalLocation%TrackingTime
@@ -581,7 +580,7 @@ contains
               return
             end if
             subLoc%LocalX = subCellResult%FinalLocation%LocalX
-            subLoc%LocalY = 1.0_fp
+            subLoc%LocalY = 1d0
             subLoc%LocalZ = subCellResult%FinalLocation%LocalZ
             subLoc%TrackingTime = subCellResult%FinalLocation%TrackingTime
             subRow = 2
@@ -598,7 +597,7 @@ contains
               return
             end if
             subLoc%LocalX = subCellResult%FinalLocation%LocalX
-            subLoc%LocalY = 0.0_fp
+            subLoc%LocalY = 0d0
             subLoc%LocalZ = subCellResult%FinalLocation%LocalZ
             subLoc%TrackingTime = subCellResult%FinalLocation%TrackingTime
             subRow = 1

@@ -1,5 +1,4 @@
 module TrackSubCellResultModule
-  use PrecisionModule, only : fp 
   use ParticleLocationModule,only : ParticleLocationType
   use ModpathSubCellDataModule,only : ModpathSubCellDataType
   implicit none
@@ -14,7 +13,7 @@ module TrackSubCellResultModule
     integer :: ExitFace = 0
     integer :: ExitFaceConnection = 0
     !logical :: InternalExitFace = .false.
-    real(fp) :: MaximumTime = 0.0_fp
+    doubleprecision :: MaximumTime = 0d0
     integer :: Status = 0
   contains
     procedure :: Reset=>pr_Reset
@@ -38,7 +37,7 @@ contains
     this%CellNumber = 0
     this%ExitFace = 0
     this%ExitFaceConnection = 0
-    this%MaximumTime = 0.0_fp
+    this%MaximumTime = 0d0
     this%Status = 0
     call this%InitialLocation%Reset()
     call this%FinalLocation%Reset()
@@ -113,7 +112,7 @@ contains
   class(TrackSubCellResultType) :: this
   type(ParticleLocationType),intent(in) :: initialLocation
   integer :: cellNumber
-  real(fp) :: initialX,initialY,initialZ,initialTime
+  doubleprecision :: initialX,initialY,initialZ,initialTime
   !---------------------------------------------------
     
     call this%Reset()
