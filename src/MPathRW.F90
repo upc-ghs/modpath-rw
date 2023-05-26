@@ -2288,7 +2288,7 @@ program MPathRW
 
 #ifdef _OPENMP
     ! Set parallel processes
-    if ( parallel .and. (nprocs .eq. 0) ) then 
+    if ( parallel .and. (nprocs .eq. 0) ) then
       ! If parallel and no np specified, set number of processors 
       call omp_set_num_threads( omp_get_num_procs() )
       ! Set default outputType to parallel consolidated

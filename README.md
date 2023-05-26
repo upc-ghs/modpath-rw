@@ -4,37 +4,77 @@ A Random Walk Particle Tracking Code for Solute Transport in Heterogeneous Aquif
 ![](img/banner.png)
 
 ## Overview
-MODPATH-RW is an extension of MODPATH-v7 implementing particles displacement based on the Random Walk Particle Tracking (RWPT) method. Code is built on top of MODPATH-OMP, so it can process particles in parallel using the OpenMP library. 
+MODPATH-RW is Random Walk Particle Tracking (RWPT) model, implemented by extension of the particle tracking program [MODPATH-v7](https://github.com/MODFLOW-USGS/modpath-v7). The code employs discrete solute particles to solve the Advection Dispersion Equation (ADE), and inherits the parallel processing of particles from [MODPATH-OMP](https://github.com/upc-ghs/modpath-omp).
 
-## Get the code
-There are some external dependencies in the program. This means that while cloning, do it recursively to bring the latest version of these dependencies. 
+Program is naturally integrated with groundwater flow models obtained with MODFLOW-2005, MODFLOW-USG and [MODFLOW-6](https://github.com/MODFLOW-USGS/modflow6), for structured and rectangular unstructured grids.
+
+## Build
+
+### Get the code
+Clone the repository
 
 ```
-git clone --recursive https://github.com/upc-ghs/modpath-rw.git
+git clone https://github.com/upc-ghs/modpath-rw
 ```
 
-The external dependencies are stored in the ``lib`` folder: 
+Some external dependencies are stored in the ``src/lib`` folder. The necessary files are all explicitly included in the repository for convenience. 
 
-- [``gpkde``](https://github.com/upc-ghs/gpkde): module for smoothed reconstruction of concentrations.
+- [``gpkde``](https://github.com/upc-ghs/gpkde.git): module for smoothed reconstruction of concentrations.
 
 - [``finterp``](https://github.com/jacobwilliams/finterp.git): module for linear interpolation.
 
-- [``rng_par_zig``](https://bitbucket.org/LadaF/elmm/src/master/src/rng_par_zig.f90): module for random number generation in parallel with the ziggurat method. This file is included in the repo.
+- [``rng_par_zig``](https://bitbucket.org/LadaF/elmm/src/master/src/rng_par_zig.f90): module for random number generation in parallel with the Ziggurat method. 
 
 
-If you decide not to clone recursively, then be sure to bring the external dependencies and place them inside the ``lib`` folder. 
+### Makefile
+Makefiles are available at the folder `make`:
 
-## Compilation
-Makefiles are available at the `make` folder. Compilation has been verified with ``gfortran@>=9.2.1`` and with ``ifort`` from Intel ``oneAPI@2021.3.0``. For example, to compile with ``gfortran``
+- `makefile-gfortran-pc`: for the `gfortran` compiler.
+- `makefile-ifort-pc`: for the `ifort` compiler, verified for `ifort@2021.9.0`.
+- `makefile-gfortran-mac`: for the `gfortran` compiler. 
+
+By default, the compiled program is called ``mpathrw``. Compilation process will create a folder with temporary objects (``make/objtemp``). When integrating program updates and recompiling, it is advised to remove this folder to avoid inconsistencies. 
+
+### Meson
+The program can be built with the [meson](https://mesonbuild.com/) build system:
+
+- Setup the configuration:
 
 ```
-make -f makefile-gfortran-pc
+    meson setup builddir -Ddebug=false --prefix=$(pwd) --libdir=bin
+``` 
+
+- Compile: 
+
+```
+    meson install -C builddir
 ```
 
-By default, the compiled program is called ``mpathrw``. Compilation process will create an objects folder (``obj_temp``) where the compiled modules reside. When integrating program updates and recompiling, it is advised to remove this folder to avoid any inconsistencies. 
+- Test:
+
+```
+    meson test --verbose --no-rebuild -C builddir
+```
+
+### Visual Studio
+The folder `msvs` contains the project and solution files generated with Visual Studio 2022 on a Windows system.
+
+### Windows binary
+ An executable file and complementary `dll`'s providing the OpenMP library are available at the folder `wbin/`. Users can make easy use of these files at a system level by extending the `PATH` environment variable, adding their specific address to the `wbin/` folder (as [here](https://www.itprotoday.com/windows-server/how-can-i-add-new-folder-my-system-path) or [here](https://windowsloop.com/how-to-add-to-windows-path/)).
+
+The `dll`'s could also be installed from the intel and visual studio redistributables (`x86`), respectively:
+
+ - [Intel Fortran Compiler Runtime for Windows](https://www.intel.com/content/www/us/en/developer/articles/tool/compilers-redistributable-libraries-by-version.html) 
+ - [Microsoft Visual C++ Redistributable](https://learn.microsoft.com/en-US/cpp/windows/latest-supported-vc-redist?view=msvc-170)
+
+## Input files
+Details about the configuration of input files are provided in the program [Documentation of Input-Output](doc/modpath-rw_IO_v100_.pdf). It is recommended to follow closely the documentation for input/output of [MODPATH-v7](doc/MODPATH_7_io.pdf).
+
+Users familiarized with the `python` interface [FloPy](https://github.com/modflowpy/flopy) are encouraged to write input files for MODPATH-RW with the extension [flopyrw](https://github.com/upc-ghs/flopyrw). The latter provide classes based on the interface for [mp7](https://github.com/modflowpy/flopy/tree/develop/flopy/modpath), adapted to MODPATH-RW requirements. This interface is consistent with the program documentation and example configuration routines can be found on the project page.
+
 
 ## Command line interface 
-A command line interface with some simple instructions for running the program and parameters has been included. Asking for help (``mpathrw -h``) will display the following message
+A command line interface provides some simple instructions and shortcuts for running the program. Asking for help (``mpathrw -h``) displays the following message
 
 ```
 MODPATH-RW version *.*.*               
@@ -61,19 +101,24 @@ options:
 For bug reports and updates, follow:                                             
   https://github.com/upc-ghs/modpath-rw  
 ```
+Note: if the OpenMP library is not found by compilers, then the program will compile anyways but without the input parameters `nprocs`, `parallel` and `tsoutput`, so if these are listed on the program help message, then compilation with parallel compatibility was successful. 
+
+#### Some relevant CLI arguments
+
+`--init`: initialize the program packages, but stop execution before displacing particles. Useful to monitor the initialization workflow from reports written to the `mplst` file.
+
+`--nprocs`: run in parallel with the given number of processes (`omp_set_num_threads(nprocs)`).
+ 
+`--parallel`: shorthand for running in parallel with the maximum number of processors (`omp_get_num_procs()`).
+
+Note: if neither ``--parallel`` nor ``--nprocs`` are given, the program will by default employ ``omp_get_max_threads()``, whose value can be controlled with environment variable `OMP_NUM_THREADS`.
 
 
-## Parallel output for timeseries
-Three different output protocols for timeseries running in parallel have been implemented. The protocol can be selected via the command line argument ``-tsoutput``:
+`--tsoutput`: controls the output protocol for timeseries runs while running in parallel
 
-- ``--tsoutput 1``: is the default format, output is performed into a single output unit with OpenMP thread exclusive clause (critical). Only difference versus a serial run is that the output file contains non-sorted particle indexes.
-- ``--tsoutput 2``: timeseries records are written into thread specific binary units and then consolidated into a single file after each timeseries output time. Timeseries file generated with this format does not contains a file header.
-- ``--tsoutput 3``: timeseries records are written into thread specific output units. Timeseries file header is only written to output unit related to the first thread ``1_example.timeseries``. Initial particle positions are also written to the file of the first thread.
-
-
-## Input files
-Users familiarized with [FloPy](https://github.com/modflowpy/flopy) are encouraged to write input files for MODPATH-RW with the extension [flopyrw](https://github.com/modflowpy/flopyrw). The latter is based on the classes for MODPATH-v7, adapted for specific MODPATH-RW requirements.
-
+- 1: is the default format, output is performed into a single output unit with OpenMP thread exclusive clause (critical). Only difference versus a serial run is that the output file contains non-sorted particle indexes.
+- 2: timeseries records are written into thread specific binary units and then consolidated into a single file after each timeseries output time. Timeseries file generated with this format does not contains a file header.
+- 3: timeseries records are written into thread specific output units. Timeseries file header is only written to output unit related to the first thread ``1_example.timeseries``. Initial particle positions are also written to the file of the first thread.
 
 ## Contributing
 Follow the [contribution guidelines](readme/CONTRIBUTING.md) for this project.
@@ -82,7 +127,6 @@ Follow the [contribution guidelines](readme/CONTRIBUTING.md) for this project.
 MIT License
 
 ## Resources
-
 * [MODPATH](https://www.usgs.gov/software/modpath-particle-tracking-model-modflow)
 * [MODPATH-v7](https://github.com/MODFLOW-USGS/modpath-v7)
 * [MODPATH-OMP](https://github.com/upc-ghs/modpath-omp)
