@@ -2816,18 +2816,18 @@ program MPathRW
   !---------------------------------------------------------------------------------
     
     do n = 0, 9
-        statusBins(n) = 0
+      statusBins(n) = 0
     end do
     
     do groupIndex = 1, simulationData%ParticleGroupCount
-        do particleIndex = 1, simulationData%ParticleGroups(groupIndex)%TotalParticleCount
-            p => simulationData%ParticleGroups(groupIndex)%Particles(particleIndex)
-            if(p%Status.ge.0 .and. p%Status.le.9) then
-                statusBins(p%Status) = statusBins(p%Status) + 1
-            else
-                statusBins(9) = statusBins(9) + 1
-            end if
-        end do
+      do particleIndex = 1, simulationData%ParticleGroups(groupIndex)%TotalParticleCount
+        p => simulationData%ParticleGroups(groupIndex)%Particles(particleIndex)
+        if(p%Status.ge.0 .and. p%Status.le.9) then
+          statusBins(p%Status) = statusBins(p%Status) + 1
+        else
+          statusBins(9) = statusBins(9) + 1
+        end if
+      end do
     end do
     
     ! Write to listing file
@@ -2835,6 +2835,7 @@ program MPathRW
     write(outUnit, '(i10,1x,a)') statusBins(0), 'particles are pending release.'
     write(outUnit, '(i10,1x,a)') statusBins(1), 'particles remain active.'
     write(outUnit, '(i10,1x,a)') statusBins(2), 'particles terminated at boundary faces.'
+    write(outUnit, '(i10,1x,a)') statusBins(3), 'particles terminated at weak sink cells.'
     write(outUnit, '(i10,1x,a)') statusBins(4), 'particles terminated at weak source cells.'
     write(outUnit, '(i10,1x,a)') statusBins(5),                                 &
       'particles terminated at strong source/sink cells or other cells with no potential exit face.'
@@ -2857,7 +2858,8 @@ program MPathRW
     write(*, '(i10,1x,a)') statusBins(8), 'particles were unreleased.'
     write(*, '(i10,1x,a)') statusBins(9), 'particles have an unknown status.'
     write(*, '(a)') ' '
-    
+   
+
   end subroutine WriteParticleSummaryInfo
 
 
