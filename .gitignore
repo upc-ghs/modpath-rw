@@ -56,3 +56,9 @@ make/
 builddir/
 #
 bin/
+#
+.vs/*
+#
+msvs/Release/*
+#
+msvs/.vs/*
