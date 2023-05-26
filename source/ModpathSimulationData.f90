@@ -1039,7 +1039,7 @@ contains
       icol = 1
       call urword(line, icol, istart, istop, 2, n, r, 0, 0)
       this%TrackingOptions%gpkdeInitialSmoothingFormat = 0
-      this%TrackingOptions%gpkdeInitialSmoothingFormat = 2.0
+      this%TrackingOptions%gpkdeBinSizeFactor = 5.0
       select case(n)
       case(1)
         this%TrackingOptions%gpkdeInitialSmoothingFormat =  n
