@@ -431,6 +431,13 @@ contains
       call ustop('Number of given species/solutes is .le. 0.')
     end if
 
+    ! Report
+    if ( simulationData%ParticlesMassOption .ne. 2 ) then
+     write(outUnit,'(A)') 'ParticleMassOption.ne.2: Read pgroups related to each species from the pkg.'
+    else if ( simulationData%ParticlesMassOption .eq. 2 ) then
+     write(outUnit,'(A)') 'ParticleMassOption.eq.2: Interpret pgroups related to each species from particle groups.'
+    end if 
+
     ! Allocate solutes
     if ( allocated(this%Solutes) ) deallocate( this%Solutes )
     allocate( this%Solutes(this%nSolutes) )
@@ -440,8 +447,8 @@ contains
       write(outUnit,'(A,I4)') 'Processing species specification ', ns
 
       ! Internal id assigned increasingly
-      this%Solutes(ns)%id = n 
-      this%Solutes(ns)%userid = n 
+      this%Solutes(ns)%id = ns 
+      this%Solutes(ns)%userid = ns
       
       ! Read the string id
       read(spcUnit, '(a)') line
@@ -452,8 +459,6 @@ contains
       ! Assign pgroups related to the solute
       if ( simulationData%ParticlesMassOption .ne. 2 ) then
         ! Read pgroups related to the solute from the pkg
-        write(outUnit,'(A)') 'ParticleMassOption.ne.2: '
-        write(outUnit,'(A)') 'Read pgroups related to this species/solutes from the pkg.'
 
         if ( .not. allocated( pGroupsIds ) ) then 
           allocate( pGroupsIds(simulationData%ParticleGroupCount) ) 
@@ -495,8 +500,6 @@ contains
 
       else if ( simulationData%ParticlesMassOption .eq. 2 ) then
         ! Read pgroups related to the solute ids at pgroups
-        write(outUnit,'(A)') 'ParticleMassOption.eq.2: '
-        write(outUnit,'(A)') 'Interpret pgroups related to this species/solutes from pgroups list.'
 
         ! Read the soluteId's from simulationData%ParticleGroup list
         ! and count how many for this solute
@@ -536,7 +539,6 @@ contains
         
       end if
 
-
       ! If simulation is multispecies dispersiom
       if ( simulationData%SolutesOption.eq.1 ) then
        ! Read the dispersion string id
@@ -549,7 +551,6 @@ contains
        'Species ',trim(adjustl(this%Solutes(ns)%stringid)),&
        ' will be related to dispersion ',trim(adjustl(this%Solutes(ns)%dispersionStringid))
       end if 
-
 
     end do ! ns =1,this%nSolutes
 
