@@ -1,5 +1,5 @@
 # makefile 05-2023
-# using the gfortran fortran and gcc c/c++ compilers.
+# using the gfortran and gcc c/c++ compilers.
 
 # Define the directories for the object and module files,
 # the executable, and the executable name and path.
@@ -8,8 +8,8 @@ BINDIR = .
 PROGRAM = mpathrw
 
 SOURCEDIR1=../src
-SOURCEDIR2=../src/lib/gpkde/src
-SOURCEDIR3=../src/lib/finterp/src
+SOURCEDIR2=../src/lib/gpkde
+SOURCEDIR3=../src/lib/finterp
 SOURCEDIR4=../src/lib/rngzig
 
 VPATH = \

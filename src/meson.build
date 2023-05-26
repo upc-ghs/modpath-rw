@@ -1,13 +1,13 @@
 external_sources = files(
   # gpkde
-  'lib' / 'gpkde' / 'src' / 'Precision.F90',
-  'lib' / 'gpkde' / 'src' / 'Constants.f90',
-  'lib' / 'gpkde' / 'src' / 'Histogram.f90',
-  'lib' / 'gpkde' / 'src' / 'KernelMultiGaussian.f90',
-  'lib' / 'gpkde' / 'src' / 'GridCell.f90', 
-  'lib' / 'gpkde' / 'src' / 'GridProjectedKDE.f90',
+  'lib' / 'gpkde' / 'Precision.F90',
+  'lib' / 'gpkde' / 'Constants.f90',
+  'lib' / 'gpkde' / 'Histogram.f90',
+  'lib' / 'gpkde' / 'KernelMultiGaussian.f90',
+  'lib' / 'gpkde' / 'GridCell.f90', 
+  'lib' / 'gpkde' / 'GridProjectedKDE.f90',
   # finterp
-  'lib' / 'finterp' / 'src' / 'linear_interpolation_module.F90',
+  'lib' / 'finterp' / 'linear_interpolation_module.F90',
   # ziggurat random number
   'lib' / 'rngzig' / 'rng_par_zig.f90',
 )

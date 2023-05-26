@@ -88,6 +88,7 @@ if fc_id == 'intel-cl'
                    '/Qdiag-disable:7416', # f2008 warning
                    '/Qdiag-disable:7025', # f2008 warning
                    '/Qdiag-disable:5268', # Line too long
+                   '/Qdiag-disable:5462', # Global name too long
                   ]
   link_args += ['/ignore:4217',  # access through ddlimport might be inefficient
                 '/ignore:4286'   # same as 4217, but more general
@@ -105,6 +106,7 @@ elif fc_id == 'intel'
                    '-diag-disable:7416',  # f2008 warning
                    '-diag-disable:7025',  # f2008 warning
                    '-diag-disable:5268',  # Line too long
+                   '-diag-disable:5462',  # Global name too long
                   ]
   link_args += '-static-intel'
 

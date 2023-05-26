@@ -1,17 +1,16 @@
-# makefile created on 2017-12-20 13:11:59.176409
-# by pymake (version 1.1.0)
-# using the gfortran fortran and gcc c/c++ compilers.
+# makefile 05-2023
+# using the gfortran and gcc c/c++ compilers.
 
 # Define the directories for the object and module files,
 # the executable, and the executable name and path.
-OBJDIR = ./obj_temp
+OBJDIR = ./objtemp
 BINDIR = .
 PROGRAM = mpathrw
 
-SOURCEDIR1=../source
-SOURCEDIR2=../lib/gpkde/src
-SOURCEDIR3=../lib/finterp/src
-SOURCEDIR4=../lib/rngzig/
+SOURCEDIR1=../src
+SOURCEDIR2=../src/lib/gpkde
+SOURCEDIR3=../src/lib/finterp
+SOURCEDIR4=../src/lib/rngzig
 
 VPATH = \
 ${SOURCEDIR1} \
@@ -32,11 +31,14 @@ CFLAGS = -O3 -D_UF
 # Define the libraries
 SYSLIBS = -lc 
 
-# Start with objects from GPKDE, 
-# then the library for linear interpolation, 
-# then the library for random number generator, 
-# and then modpath files
+# Order:
+# - GPKDE
+# - linear interpolation
+# - random number generator
+# - modpath files
 OBJECTS = \
+$(OBJDIR)/Precision.o \
+$(OBJDIR)/Constants.o \
 $(OBJDIR)/Histogram.o \
 $(OBJDIR)/KernelMultiGaussian.o \
 $(OBJDIR)/GridCell.o \
@@ -95,7 +97,7 @@ $(OBJDIR)/ParticleManager.o \
 $(OBJDIR)/TrackCell.o \
 $(OBJDIR)/TransportModelData.o \
 $(OBJDIR)/ParticleTrackingEngine.o \
-$(OBJDIR)/MPath7.o 
+$(OBJDIR)/MPathRW.o 
 
 # Define task functions
 
