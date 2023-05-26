@@ -62,10 +62,11 @@ The folder `msvs` contains the project and solution files generated with Visual 
 ### Windows binary
  An executable file and complementary `dll`'s providing the OpenMP library are available at the folder `wbin/`. Users can make easy use of these files at a system level by extending the `PATH` environment variable, adding their specific address to the `wbin/` folder (as [here](https://www.itprotoday.com/windows-server/how-can-i-add-new-folder-my-system-path) or [here](https://windowsloop.com/how-to-add-to-windows-path/)).
 
-The `dll`'s could also be installed from the intel and visual studio redistributables (`x86`), respectively:
+The necessary `dll`'s can also be installed from the Intel and Visual Studio redistributables (`x86`), respectively:
 
  - [Intel Fortran Compiler Runtime for Windows](https://www.intel.com/content/www/us/en/developer/articles/tool/compilers-redistributable-libraries-by-version.html) 
  - [Microsoft Visual C++ Redistributable](https://learn.microsoft.com/en-US/cpp/windows/latest-supported-vc-redist?view=msvc-170)
+
 
 ## Input files
 Details about the configuration of input files are provided in the program [Documentation of Input-Output](doc/modpath-rw_IO_v100_.pdf). It is recommended to follow closely the documentation for input/output of [MODPATH-v7](doc/MODPATH_7_io.pdf).
