@@ -52,3 +52,7 @@ examples/
 src/lib/gpkde/examples/
 #
 make/
+#
+builddir/
+#
+bin/

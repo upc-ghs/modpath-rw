@@ -1,0 +1,8 @@
+name: modpath-rw
+
+channels:
+  - conda-forge
+  - defaults
+
+dependencies:
+  - meson!=0.63.0
