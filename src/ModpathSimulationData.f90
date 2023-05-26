@@ -2371,7 +2371,7 @@ contains
             write(outUnit,'(A)') 'Will read species ids due to ParticlesMassOption.eq.2 '
             ! Read solute id
             if( allocated( soluteIds ) ) deallocate( soluteIds )
-            allocate( soluteIds( nSpecies ) )
+            allocate( soluteIds( nAuxNames ) )
           end if
 
           ! Loop over aux names and interpret data
