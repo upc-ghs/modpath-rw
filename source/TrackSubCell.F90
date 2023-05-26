@@ -5,7 +5,9 @@ module TrackSubCellModule
   use ParticleTrackingOptionsModule,only : ParticleTrackingOptionsType
   use ModpathCellDataModule,only : ModpathCellDataType
   use rng_par_zig, only : rng_uni, rng_init ! RGN parallel ifort
+#ifdef _OPENMP
   use omp_lib
+#endif
   implicit none
   
 ! Set default access status to private
@@ -506,7 +508,6 @@ contains
       this%ComputeCornerPorosity => pr_ComputeCornerPorosityInterpolated 
     end if 
 
-
     ! Dispersion displacement function is set in particletrackingengine
     !call this%SetDispersionDisplacement( trackingOptions%dispersionModel )
 
@@ -515,7 +516,11 @@ contains
     case(1)
       this%GenerateStandardNormalRandom => pr_GenerateStandardNormalRandom
     case(2)
+#ifdef _OPENMP
       ompNumThreads = omp_get_max_threads()
+#else
+      ompNumThreads = 1
+#endif
       seedzigrng    = baseseed
       call rng_init(ompNumThreads, seedzigrng) 
       this%GenerateStandardNormalRandom => pr_GenerateStandardNormalRandomZig
@@ -3164,7 +3169,11 @@ contains
     doubleprecision :: r,p 
     !----------------------------------------------------------------
 
+#ifdef _OPENMP
     threadId = omp_get_thread_num()
+#else
+    threadId = 0
+#endif
     
     r = 0d0
     do m=1,nvals

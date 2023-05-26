@@ -1,19 +1,11 @@
-!  MPath7.f90 
-!  PROGRAM: MPath7
+!  MPathRW.F90
+!  PROGRAM: MPathRW
 
-!  This software is preliminary or provisional and is subject to revision.       
-!  It is being provided to meet the need for timely best science. The software
-!  has not received final approval by the U.S. Geological Survey (USGS).
-!  No warranty, expressed or implied, is made by the USGS or the U.S. Government
-!  as to the functionality of the software and related material nor shall the
-!  fact of release constitute any such warranty. The software is provided on
-!  the condition that neither the USGS nor the U.S. Government shall be held
-!  liable for any damages resulting from the authorized or unauthorized use of
-!  the software.
-
-program MPath7
-!*********************************************************************************
-! Main program code for USGS MODPATH particle tracking model - Version 7
+program MPathRW
+!---------------------------------------------------------------------------------
+! Main program code for MODPATH-RW random walk particle tracking model
+!
+! Based on USGS MODPATH particle tracking model - Version 7
 !
 !   Specifications:
 !---------------------------------------------------------------------------------
@@ -56,7 +48,9 @@ program MPath7
   use SoluteModule, only : SoluteType ! RWPT
   use ObservationModule, only : ObservationType ! OBS
   use GridProjectedKDEModule, only : GridProjectedKDEType ! GPKDE
+#ifdef _OPENMP
   use omp_lib ! OpenMP
+#endif
   !--------------------------------------------------------------------------
   implicit none
   
@@ -177,7 +171,7 @@ program MPath7
   baseTimeseriesUnit = 660 ! OpenMP
   !-----------------------------------------------------------------------------
   ! Set version
-  version = '0.0.1'
+  version = '1.0.0'
   ! Set the default termination message
   terminationMessage = "Normal termination."
   ! Compiler 
@@ -199,12 +193,16 @@ program MPath7
   else
     logUnit = -logUnit
   end if
+#ifdef _OPENMP
   ! Get the number of threads for the parallel region
   if ( parallel ) then
     ompNumThreads = omp_get_max_threads()
   else
     ompNumThreads = 1
   end if
+#else
+  ompNumThreads = 1
+#endif
   call ulog('Command line parsed.', logUnit)
   !-----------------------------------------------------------------------------
 
@@ -2177,8 +2175,10 @@ program MPath7
   character(len=200) :: comlin
   integer :: narg, length, status, na
   integer :: nprocs
+#ifdef _OPENMP
   character(len=200) :: nprocschar
   character(len=200) :: tsoutchar
+#endif
   !---------------------------------------------------------------------------------
     
     ! Get the number of command-line arguments
@@ -2236,6 +2236,7 @@ program MPath7
           else
             call ustop('Conflicting log file names on the command line. Stop.')
           end if
+#ifdef _OPENMP
         case ("-parallel","-p","--parallel")
           ! -parallel option
           parallel = .true.
@@ -2260,6 +2261,7 @@ program MPath7
             tsoutchar = comlin(1:length)
             read(tsoutchar,*) tsOutputType
           end if
+#endif
         case ('-h', "--help")
           ! --help
           call DisplayHelpMessage(progname)
@@ -2284,6 +2286,7 @@ program MPath7
     ! If log file name not specified, set to default
     if (mplogFile == "") mplogFile = "mpathRW.log"
 
+#ifdef _OPENMP
     ! Set parallel processes
     if ( parallel .and. (nprocs .eq. 0) ) then 
       ! If parallel and no np specified, set number of processors 
@@ -2305,6 +2308,11 @@ program MPath7
       call omp_set_num_threads( nprocs )
       if ( tsOutputType .eq. 0 ) tsOutputType = defaultTsOutputType
     end if 
+#else
+    tsOutputType = defaultTsOutputType
+    parallel = .false.
+    nprocs   = 1
+#endif 
 
 
     return
@@ -2378,6 +2386,7 @@ program MPath7
   use, intrinsic :: iso_fortran_env, only: output_unit 
   implicit none
   character(len=*), intent(in) :: progname
+#ifdef _OPENMP
   character(len=*), parameter  :: helpmessage = &
    "(/,&
    &'options:',/,&
@@ -2395,6 +2404,22 @@ program MPath7
    &'For bug reports and updates, follow:                                             ',/,&
    &'  https://github.com/upc-ghs/modpath-rw                                          ',/,&
    &/)"
+#else
+  character(len=*), parameter  :: helpmessage = &
+   "(/,&
+   &'options:',/,&
+   &'                                                                                 ',/,&
+   &'  -h         --help                Show this message                             ',/,&
+   &'  -i         --init                Initialize simulation without running         ',/,&
+   &'  -l  <str>  --logname    <str>    Write program logs to <str>                   ',/,&
+   &'  -nl        --nolog               Do not write log file                         ',/,&
+   &'  -s         --shortlog            Simplified logs                               ',/,&
+   &'  -v         --version             Show program version                          ',/,&
+   &'                                                                                 ',/,&
+   &'For bug reports and updates, follow:                                             ',/,&
+   &'  https://github.com/upc-ghs/modpath-rw                                          ',/,&
+   &/)"
+#endif
   !----------------------------------------------------------------------------------------
 
     write(output_unit,'(a)') &
@@ -2836,4 +2861,4 @@ program MPath7
   end subroutine WriteParticleSummaryInfo
 
 
-end program MPath7
+end program MPathRW

@@ -1,11 +1,12 @@
 module ParticleManagerModule
-  use PrecisionModule, only : fp
   use ParticleGroupModule,only : ParticleGroupType
   use ParticleModule,only : ParticleType
   use ParticleCoordinateModule,only : ParticleCoordinateType
   use ModpathSimulationDataModule,only : ModpathSimulationDataType
   use GeoReferenceModule,only : GeoReferenceType
+#ifdef _OPENMP
   use omp_lib
+#endif
   implicit none
  
   ! For parallel output in timeseries
@@ -33,13 +34,12 @@ module ParticleManagerModule
       !-------------------------------------------------------------
       import ParticleType
       import ParticleCoordinateType
-      import fp
       !-------------------------------------------------------------
       integer,intent(in)                      :: timeStep, timePointIndex
       type(ParticleType),intent(in)           :: particle
       type(ParticleCoordinateType),intent(in) :: pCoord
       integer, intent(in)                     :: soluteID
-      real(fp), intent(in)                    :: rFactor, waterVolume 
+      doubleprecision, intent(in)             :: rFactor, waterVolume 
       integer, intent(in)                     :: outUnit
     end subroutine ResidentObsWriter
   end interface
@@ -51,13 +51,12 @@ module ParticleManagerModule
                                       soluteID, flowRate, outUnit )
       !-------------------------------------------------------------
       import ParticleType
-      import fp
       !-------------------------------------------------------------
       ! input
       integer,intent(in)              :: timeStep, timePointIndex
       type(ParticleType),intent(in)   :: particle
       integer, intent(in)             :: soluteID
-      real(fp), intent(in)            :: flowRate
+      doubleprecision, intent(in)     :: flowRate
       integer, intent(in)             :: outUnit
       !----------------------------------------------
     end subroutine SinkObsWriter
@@ -76,7 +75,7 @@ contains
   integer,intent(in) :: outUnit
   integer :: version, subversion, pgIndex, pIndex, n, face, zone, initialZone,  &
     totalCount, releaseCount, maximumID
-  real(fp) :: initialGlobalZ, globalZ, initialModelX, initialModelY, modelX, modelY
+  doubleprecision :: initialGlobalZ, globalZ, initialModelX, initialModelY, modelX, modelY
   integer,dimension(0:9) :: statusSums
   type(ParticleType),pointer :: p
   class(ModflowRectangularGridType),intent(in) :: grid
@@ -152,7 +151,7 @@ contains
   !--------------------------------------------------------------------------------
   implicit none
   integer,intent(in) :: outUnit, trackingDirection
-  real(fp),intent(in) :: referenceTime, originX, originY, rotationAngle
+  doubleprecision,intent(in) :: referenceTime, originX, originY, rotationAngle
   integer :: version, subversion
   !--------------------------------------------------------------------------------
   
@@ -176,7 +175,7 @@ contains
   type(GeoReferenceType),intent(in) :: geoRef
   integer,intent(in) :: outUnit, particleID, timePointIndex, groupIndex,        &
     timeStep, sequenceNumber
-  real(fp) :: modelX, modelY
+  doubleprecision :: modelX, modelY
   !--------------------------------------------------------------------------------
   
     modelX = pCoord%GlobalX
@@ -200,7 +199,7 @@ contains
   type(GeoReferenceType),intent(in) :: geoRef
   integer,intent(in) :: outUnit, particleID, timePointIndex, groupIndex,        &
     timeStep, sequenceNumber, particleStatus
-  real(fp) :: modelX, modelY
+  doubleprecision :: modelX, modelY
   !--------------------------------------------------------------------------------
   
     modelX = pCoord%GlobalX
@@ -225,7 +224,7 @@ contains
   integer,intent(in) :: outUnit, particleID, timePointIndex, groupIndex,&
     timeStep, sequenceNumber
   integer, intent(in) :: recordID
-  real(fp) :: modelX, modelY
+  doubleprecision :: modelX, modelY
   !--------------------------------------------------------------------------------
     
     modelX = pCoord%GlobalX
@@ -300,7 +299,11 @@ contains
   integer :: ompThreadId
   !--------------------------------------------------------------------------------
 
+#ifdef _OPENMP
     ompThreadId = omp_get_thread_num() + 1 ! Starts at zero
+#else
+    ompThreadId = 1
+#endif
 
     tsRecordCounts( ompThreadId ) = tsRecordCounts( ompThreadId ) + 1
     call WriteBinaryTimeseriesRecordId(sequenceNumber, particleID, groupIndex, & 
@@ -325,7 +328,11 @@ contains
   integer :: ompThreadId
   !--------------------------------------------------------------------------------
 
+#ifdef _OPENMP
     ompThreadId = omp_get_thread_num() + 1 ! Starts at zero
+#else
+    ompThreadId = 1
+#endif
 
     call WriteTimeseriesRecord(sequenceNumber, particleID, groupIndex, timeStep, &
                       timePointIndex, pCoord, geoRef, tsTempUnits( ompThreadId ) )
@@ -344,10 +351,9 @@ contains
   integer, intent(inout) :: lastRecord
   type(ParticleCoordinateType) :: pCoord
   integer  :: timePointIndex, timeStep, sequenceNumber,  groupIndex, particleID
-  real(fp) :: modelX, modelY
+  doubleprecision :: modelX, modelY
   integer  :: n, i
   integer  :: nThreads, recordID
-  integer  :: reclen, reclencumm
   integer  :: startFromRecord(size(recordCounts)+1)
   !--------------------------------------------------------------------------------------
 
@@ -392,7 +398,7 @@ contains
     !$omp shared( startFromRecord, nThreads )                     &
     !$omp private( timePointIndex, timeStep, pCoord )             &
     !$omp private( sequenceNumber, groupIndex, particleID )       &
-    !$omp private( modelX, modelY, recordID, reclen, reclencumm )
+    !$omp private( modelX, modelY, recordID )
     do n = 1, nThreads
       if( recordCounts(n) .ge. 1 ) then
           rewind( inUnits(n) )
@@ -424,7 +430,7 @@ contains
   !---------------------------------------------------------------------------------
   implicit none
   integer,intent(in)  :: outUnit, trackingDirection
-  real(fp),intent(in) :: referenceTime, originX, originY, rotationAngle
+  doubleprecision,intent(in) :: referenceTime, originX, originY, rotationAngle
   integer :: version, subversion
   !---------------------------------------------------------------------------------
 
@@ -450,7 +456,7 @@ contains
   type(ParticleCoordinateType),pointer :: c
   type(GeoReferenceType) :: geoRef
   integer  :: n, count
-  real(fp) :: modelX, modelY
+  doubleprecision :: modelX, modelY
   !---------------------------------------------------------------------------------
   
     count = tpResult%ParticlePath%Pathline%GetItemCount()
@@ -482,7 +488,7 @@ contains
   type(ParticleCoordinateType),pointer :: c
   type(GeoReferenceType) :: geoRef
   integer  :: n, count, currentPosition
-  real(fp) :: modelX, modelY
+  doubleprecision :: modelX, modelY
   !---------------------------------------------------------------------------------
   
     count = tpResult%ParticlePath%Pathline%GetItemCount()
@@ -516,7 +522,7 @@ contains
     stressPeriod, timeStep
   integer (kind=8) :: pos, ptr
   integer  :: cellNumber, layer, pointCount
-  real(fp) :: modelX, modelY, globalZ, trackingTime, localX, localY, localZ
+  doubleprecision :: modelX, modelY, globalZ, trackingTime, localX, localY, localZ
   !---------------------------------------------------------------------------------
   
     allocate(sequenceNumbers(recordCount))
@@ -600,22 +606,22 @@ contains
   ! Specifications
   !---------------------------------------------------------------------------------
   implicit none
-  real(fp), intent(in) :: x, y, z
+  doubleprecision, intent(in) :: x, y, z
   integer :: face
   !---------------------------------------------------------------------------------
   
     face = 0
-    if(x .eq. 0.0_fp) then
+    if(x .eq. 0d0) then
       face = 1
-    else if(x .eq. 1.0_fp) then
+    else if(x .eq. 1d0) then
       face = 2
-    else if(y .eq. 0.0_fp) then
+    else if(y .eq. 0d0) then
       face = 3
-    else if(y .eq. 1.0_fp) then
-      face =4
-    else if(z .eq. 0.0_fp) then
+    else if(y .eq. 1d0) then
+      face = 4
+    else if(z .eq. 0d0) then
       face = 5
-    else if(z .eq. 1.0_fp) then
+    else if(z .eq. 1d0) then
       face = 6
     end if
  
@@ -633,9 +639,9 @@ contains
   type(ParticleType),intent(in)           :: particle
   type(ParticleCoordinateType),intent(in) :: pCoord
   integer, intent(in)                     :: soluteID
-  real(fp), intent(in)                    :: rFactor, waterVolume 
+  doubleprecision, intent(in)             :: rFactor, waterVolume 
   integer, intent(in)                     :: outUnit
-  real(fp) :: modelX, modelY
+  doubleprecision :: modelX, modelY
   !---------------------------------------------------------------------------------
   
     modelX = pCoord%GlobalX
@@ -660,9 +666,9 @@ contains
   type(ParticleType),intent(in)           :: particle
   type(ParticleCoordinateType),intent(in) :: pCoord
   integer, intent(in)                     :: soluteID
-  real(fp), intent(in)                    :: rFactor, waterVolume 
+  doubleprecision, intent(in)             :: rFactor, waterVolume 
   integer, intent(in)                     :: outUnit
-  real(fp) :: modelX, modelY
+  doubleprecision :: modelX, modelY
   !---------------------------------------------------------------------------------
   
     modelX = pCoord%GlobalX
@@ -689,7 +695,7 @@ contains
   integer,intent(in)              :: timeStep, timePointIndex
   type(ParticleType),intent(in)   :: particle
   integer, intent(in)             :: soluteID
-  real(fp), intent(in)            :: flowRate
+  doubleprecision, intent(in)     :: flowRate
   integer, intent(in)             :: outUnit
   !---------------------------------------------------------------------------------
 
@@ -714,7 +720,7 @@ contains
   integer,intent(in)              :: timeStep, timePointIndex
   type(ParticleType),intent(in)   :: particle
   integer, intent(in)             :: soluteID
-  real(fp), intent(in)            :: flowRate
+  doubleprecision, intent(in)     :: flowRate
   integer, intent(in)             :: outUnit
   !---------------------------------------------------------------------------------
 
