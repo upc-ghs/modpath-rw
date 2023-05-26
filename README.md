@@ -112,7 +112,7 @@ Note: if the OpenMP library is not found by compilers, then the program will com
  
 `--parallel`: shorthand for running in parallel with the maximum number of processors (`omp_get_num_procs()`).
 
-Note: if neither ``--parallel`` nor ``--nprocs`` are given, the program will by default employ ``omp_get_max_threads()``, whose value can be controlled with environment variable `OMP_NUM_THREADS`.
+Note: if neither ``--parallel`` nor ``--nprocs`` are given, the program will by default employ ``omp_get_max_threads()``, whose value can be controlled with the environment variable `OMP_NUM_THREADS`.
 
 
 `--tsoutput`: controls the output protocol for timeseries runs while running in parallel
