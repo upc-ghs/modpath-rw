@@ -1322,7 +1322,19 @@ contains
             !obs%nRecordsCell(:) = 0
 
             ! Load the observation cells
+
             if( readStyle .eq. 0) then
+              ! Validate grid type for reading as layer, row, column
+              ! GridType .eq. 1 = RectangularGridDis       (MF2005)
+              ! GridType .eq. 2 = RectangularGridDisuMfusg (MFUSG)
+              ! GridType .eq. 3 = RectangularGridDisMf6    (MF6DIS)
+              ! GridType .eq. 4 = RectangularGridDisvMf6   (MF6DISV)
+              ! GridType .eq. 5 = RectangularGridDisuMf6   (MF6DISU)
+              select case(grid%GridType)
+              case(0,2,4,5) ! mfusg, disv, disu
+              write(outUnit,'(A)') 'Error: reading cells as (lay,row,col) only allowed for structured grids (DIS).'
+              call ustop('Error: reading cells as (lay,row,col) only allowed for structured grids (DIS).')
+              end select
               ! Read as layer, row, column
               do no = 1, obs%nCells
                 read(obsUnit, *) layer, row, column
@@ -1334,6 +1346,7 @@ contains
                 obs%cells(no) = cellNumber
               end do 
             else if ( readStyle .eq. 1 ) then 
+              ! Read as cell number
               do no = 1, obs%nCells
                 read(obsUnit,*)  cellNumber
                 obs%cells(no) = cellNumber
@@ -3016,6 +3029,18 @@ contains
                 end do
               end if  
             else
+              ! Validate grid type for reading as layer, row, column
+              ! GridType .eq. 1 = RectangularGridDis       (MF2005)
+              ! GridType .eq. 2 = RectangularGridDisuMfusg (MFUSG)
+              ! GridType .eq. 3 = RectangularGridDisMf6    (MF6DIS)
+              ! GridType .eq. 4 = RectangularGridDisvMf6   (MF6DISV)
+              ! GridType .eq. 5 = RectangularGridDisuMf6   (MF6DISU)
+              select case(grid%GridType)
+              case(2,4,5) ! mfusg, disv, disu
+              write(outUnit,'(A)') 'Error: reading cells as (lay,row,col) only allowed for structured grids (DIS).'
+              call ustop('Error: reading cells as (lay,row,col) only allowed for structured grids (DIS).')
+              end select
+
               if ( .not. iFaceOption ) then 
                 ! Read as layer, row, column
                 do nc = 1, nCells
