@@ -69,7 +69,7 @@ The necessary `dll`'s can also be installed from the Intel and Visual Studio red
 
 
 ## Input files
-Details about the configuration of input files are provided in the program [Documentation of Input-Output](doc/modpath-rw_IO_v100_.pdf). It is recommended to follow this document closely with the documentation for input/output of [MODPATH-v7](doc/MODPATH_7_io.pdf).
+Details about the configuration of input files are provided in the program [Documentation of Input-Output](doc/modpath-rw_IO_v100_.pdf). It is recommended to follow this document closely with the [Description of Model Input and Output of MODPATH-v7](doc/MODPATH_7_io.pdf).
 
 Users familiarized with the `python` interface [FloPy](https://github.com/modflowpy/flopy) are encouraged to write input files for MODPATH-RW with the extension [flopyrw](https://github.com/upc-ghs/flopyrw). The latter provide classes based on the interface for [mp7](https://github.com/modflowpy/flopy/tree/develop/flopy/modpath), which have been adapted to the specific requirements of MODPATH-RW, and implements classes for the new model packages. The extension is consistent with the program documentation and example configuration routines can be found on the project page.
 
