@@ -69,13 +69,13 @@ The necessary `dll`'s can also be installed from the Intel and Visual Studio red
 
 
 ## Input files
-Details about the configuration of input files are provided in the program [Documentation of Input-Output](doc/modpath-rw_IO_v100_.pdf). It is recommended to follow closely the documentation for input/output of [MODPATH-v7](doc/MODPATH_7_io.pdf).
+Details about the configuration of input files are provided in the program [Documentation of Input-Output](doc/modpath-rw_IO_v100_.pdf). It is recommended to follow this document closely with the documentation for input/output of [MODPATH-v7](doc/MODPATH_7_io.pdf).
 
-Users familiarized with the `python` interface [FloPy](https://github.com/modflowpy/flopy) are encouraged to write input files for MODPATH-RW with the extension [flopyrw](https://github.com/upc-ghs/flopyrw). The latter provide classes based on the interface for [mp7](https://github.com/modflowpy/flopy/tree/develop/flopy/modpath), adapted to MODPATH-RW requirements. This interface is consistent with the program documentation and example configuration routines can be found on the project page.
+Users familiarized with the `python` interface [FloPy](https://github.com/modflowpy/flopy) are encouraged to write input files for MODPATH-RW with the extension [flopyrw](https://github.com/upc-ghs/flopyrw). The latter provide classes based on the interface for [mp7](https://github.com/modflowpy/flopy/tree/develop/flopy/modpath), which have been adapted to the specific requirements of MODPATH-RW, and implements classes for the new model packages. The extension is consistent with the program documentation and example configuration routines can be found on the project page.
 
 
 ## Command line interface 
-A command line interface provides some simple instructions and shortcuts for running the program. Asking for help (``mpathrw -h``) displays the following message
+A command line interface provides some simple instructions and shortcuts for managing program execution. Asking for help (``mpathrw -h``) displays the following message
 
 ```
 MODPATH-RW version *.*.*               
@@ -102,11 +102,11 @@ options:
 For bug reports and updates, follow:                                             
   https://github.com/upc-ghs/modpath-rw  
 ```
-Note: if the OpenMP library is not found by compilers, then the program will compile anyways but without the input parameters `nprocs`, `parallel` and `tsoutput`, so if these are listed on the program help message, then compilation with parallel compatibility was successful. 
+Note: if the OpenMP library is not found by compilers, the program will be generated without parallel compatibility, without the input parameters `nprocs`, `parallel` and `tsoutput`. If these are listed on the program help message (as above), the compilation with parallel compatibility was successful. 
 
 #### Some relevant CLI arguments
 
-`--init`: initialize the program packages, but stop execution before displacing particles. Useful to monitor the initialization workflow from reports written to the `mplst` file.
+`--init`: initialize the program packages and stop execution before displacing particles. Useful to monitor the initialization workflow and reports written to the `mplst` file.
 
 `--nprocs`: run in parallel with the given number of processes (`omp_set_num_threads(nprocs)`).
  
@@ -117,9 +117,9 @@ Note: if neither ``--parallel`` nor ``--nprocs`` are given, the program will by 
 
 `--tsoutput`: controls the output protocol for timeseries runs while running in parallel
 
-- 1: is the default format, output is performed into a single output unit with OpenMP thread exclusive clause (critical). Only difference versus a serial run is that the output file contains non-sorted particle indexes.
+- 1: is the default format, output is performed into a single output unit with the OpenMP thread exclusive clause (critical). Only difference versus a serial run is that the output file contains non-sorted particle indexes.
 - 2: timeseries records are written into thread specific binary units and then consolidated into a single file after each timeseries output time. Timeseries file generated with this format does not contains a file header.
-- 3: timeseries records are written into thread specific output units. Timeseries file header is only written to output unit related to the first thread ``1_example.timeseries``. Initial particle positions are also written to the file of the first thread.
+- 3: timeseries records are written into thread specific output units. Timeseries file header is written only to the output unit of the first thread ``1_example.timeseries``. Initial particle positions are also written to the file of the first thread.
 
 ## Contributing
 Follow the [contribution guidelines](readme/CONTRIBUTING.md) for this project.
