@@ -833,19 +833,19 @@ contains
 
           ! Recompute dt for maximumTime 
           if (maximumTime .lt. t) then
-              t  = t - dt
-              dt = max( maximumTime - t, 0d0 ) ! avoids numerical error effects
-              t  = maximumTime
-              reachedMaximumTime = .true.
+            t  = t - dt
+            dt = max( maximumTime - t, 0d0 ) ! avoids numerical error 
+            t  = maximumTime
+            reachedMaximumTime = .true.
           end if
 
           ! Compute RWPT movement
-          call this%ComputeRWPTDisplacements(       &
-                               x, y, z, vx, vy, vz, &
-                               dt, trackingOptions, &
-                               dAdvx, dAdvy, dAdvz, &
-                                     dBx, dBy, dBz, &
-                               divDx, divDy, divDz  )
+          call this%ComputeRWPTDisplacements( &
+                         x, y, z, vx, vy, vz, &
+                         dt, trackingOptions, &
+                         dAdvx, dAdvy, dAdvz, &
+                               dBx, dBy, dBz, &
+                         divDx, divDy, divDz  )
 
           ! Vectorize coordinates maybe ?
           dxrw = dAdvx + divDx*dt + dBx*sqrt( dt )
@@ -854,6 +854,7 @@ contains
           ny   = y + dyrw/dy
           dzrw = dAdvz + divDz*dt + dBz*sqrt( dt )
           nz   = z + dzrw/dz
+
 
           ! particleLeavingCell:
           ! Detect if particle leaving the cell
@@ -1078,7 +1079,7 @@ contains
 
                           ! Recompute time step 
                           t  = t - dt
-                          dt = max( maximumTime - t, 0d0 ) ! avoids numerical error effects
+                          dt = max( maximumTime - t, 0d0 ) ! avoids numerical error
                           t  = maximumTime
                           reachedMaximumTime = .true.
 
