@@ -711,7 +711,7 @@ contains
       doubleprecision :: dxrw, dyrw, dzrw
       logical         :: continueTimeLoop
       logical         :: reachedMaximumTime
-      doubleprecision :: dtold
+      doubleprecision :: tinit, dtold
       doubleprecision, dimension(3) :: dtxyz
       integer :: dtLoopCounter, posRestartCounter
       integer :: reboundCounter, intLoopCounter
@@ -799,6 +799,7 @@ contains
 
       ! Initializes current time
       t     = initialTime
+      tinit = initialTime
       dtold = dt
 
       ! Something wrong, leave
@@ -854,14 +855,19 @@ contains
 
           ! Reduce dt if large relative jumps
           do while (                   & 
-           ( dxrw/dx .gt. 1.0d0 ) .or. &
-           ( dyrw/dy .gt. 1.0d0 ) .or. &
-           ( dzrw/dz .gt. 1.0d0 ) )
+           ( abs(dxrw/dx) .gt. 0.5 ) .or. &
+           ( abs(dyrw/dy) .gt. 0.5 ) .or. &
+           ( abs(dzrw/dz) .gt. 0.5 ) )
+           !( abs(dxrw/dx) .gt. 0.33 ) .or. &
+           !( abs(dyrw/dy) .gt. 0.33 ) .or. &
+           !( abs(dzrw/dz) .gt. 0.33 ) )
 
-           call pr_UpdateTimeStepQuadratic( this, &
-                             x, y, z, nx, ny, nz, & 
-                 vx, vy, vz, divDx, divDy, divDz, & 
-                     dBx, dBy, dBz, t, dt, dtxyz  )
+            t = t - dt
+            dt = 0.1*dt
+            !call pr_UpdateTimeStepQuadratic( this, &
+            !                  x, y, z, nx, ny, nz, & 
+            !      vx, vy, vz, divDx, divDy, divDz, & 
+            !          dBx, dBy, dBz, t, dt, dtxyz  )
             !! Compute RWPT movement
             !call this%ComputeRWPTDisplacements( &
             !               x, y, z, vx, vy, vz, &
@@ -880,7 +886,8 @@ contains
              
             dtold = dt  ! something like this 
 
-            print *, 'ASD?', dt
+            t = t + dt
+
           end do
 
           nx   = x + dxrw/dx
@@ -904,24 +911,32 @@ contains
               ! Recompute dt for exact interface
               call this%ExitFaceAndUpdateTimeStep( x, y, z, nx, ny, nz, &
                                        vx, vy, vz, divDx, divDy, divDz, &
-                                       dBx, dBy, dBz, t, dt, dtxyz, exitFace )
+                                  dBx, dBy, dBz, t, dt, dtxyz, exitFace )
 
-              if ( intLoopCounter .gt. 3 ) then
+              if ( intLoopCounter .gt. 5 ) then
                   ! Restart new coordinates 
+                  !nx = x
+                  !ny = y
+                  !nz = z
                   nx = initialLocation%LocalX
                   ny = initialLocation%LocalY
                   nz = initialLocation%LocalZ
 
                   ! Restart time 
-                  t  = t - dt
+                  t  = tinit
+                  !t  = t - dt
                   dt = dtold
 
                   posRestartCounter = posRestartCounter + 1
 
-                  if ( posRestartCounter .gt. 5 ) then 
+                  if ( posRestartCounter .gt. 10 ) then 
                     ! Something wrong, leave
                     trackingResult%ExitFace = 0
                     trackingResult%Status = trackingResult%Status_Undefined()
+                    print *, 'HERE'
+                    print *, x, y, z
+                    !print *, nx, ny, nz
+                    print *, dxrw/dx, dyrw/dy, dzrw/dz
                     trackingResult%FinalLocation%CellNumber = cellNumber
                     trackingResult%FinalLocation%LocalX = x
                     trackingResult%FinalLocation%LocalY = y
@@ -929,6 +944,9 @@ contains
                     trackingResult%FinalLocation%TrackingTime = t
                     return
                   end if
+
+                  ! exit interface loop
+                  exit
 
               end if
 
@@ -977,13 +995,15 @@ contains
                   ny = initialLocation%LocalY
                   nz = initialLocation%LocalZ
                   ! Restart time 
-                  t  = t - dt
+                  t  = tinit
+                  !t  = t - dt
                   dt = dtold
                   posRestartCounter = posRestartCounter + 1
-                  if ( posRestartCounter .gt. 5 ) then 
+                  if ( posRestartCounter .gt. 10 ) then 
                     ! Something wrong, leave
                     trackingResult%ExitFace = 0
                     trackingResult%Status = trackingResult%Status_Undefined()
+                    print *, 'HERE 2 '
                     trackingResult%FinalLocation%CellNumber = cellNumber
                     trackingResult%FinalLocation%LocalX = x
                     trackingResult%FinalLocation%LocalY = y
@@ -1053,6 +1073,7 @@ contains
                           ! If particle has been rebounding for a long time, stop
                           trackingResult%ExitFace = 0
                           trackingResult%Status   = trackingResult%Status_Undefined()
+                    print *, 'HERE 3 '
                           trackingResult%FinalLocation%CellNumber = cellNumber
                           trackingResult%FinalLocation%LocalX = x
                           trackingResult%FinalLocation%LocalY = y
@@ -3921,289 +3942,289 @@ contains
   end subroutine pr_ComputeNonlinearDispersivities
 
 
-  ! RWPT
-  subroutine pr_UpdateTimeStepQuadratic( this, &
-                          x, y, z, nx, ny, nz, & 
-              vx, vy, vz, divDx, divDy, divDz, & 
-                  dBx, dBy, dBz, t, dt, dtxyz  )
-      !----------------------------------------------------------------
-      ! Detects exit face and computes time step to force particle
-      ! into the interface, using analytical quadratic solution method.
-      ! Related to eulerian advection model
-      ! 
-      ! Params:
-      !     - x, y, z             : local cell coordinates
-      !     - nx, ny, nz          : updated coordinates after RWPT
-      !     - vx, vy, vz          : interpolated velocities
-      !     - divDx, divDy, divDz : dispersion divergence
-      !     - dBx, dBy, dBz       : random dispersion displacements
-      !     - t                   : current time
-      !     - dt                  : time step
-      !     - dtxyz               : array for saving each dt
-      !     - exitFace            : holder for exit face
-      !  
-      ! Interface:
-      !     - ExitFaceAndTimeStep
-      !----------------------------------------------------------------
-      ! Specifications
-      !----------------------------------------------------------------
-      implicit none
-      class (TrackSubCellType) :: this
-      ! input
-      doubleprecision, intent(in) :: x, y, z
-      doubleprecision, intent(in) :: nx, ny, nz
-      doubleprecision, intent(in) :: vx, vy, vz
-      doubleprecision, intent(in) :: divDx, divDy, divDz
-      doubleprecision, intent(in) :: dBx, dBy, dBz
-      ! output
-      doubleprecision, intent(inout) :: t, dt
-      doubleprecision, dimension(3), intent(inout) :: dtxyz
-      ! local
-      integer :: imindt
-      doubleprecision :: dx, dy, dz
-      doubleprecision :: dInterface
-      doubleprecision :: AFace, BFace, z1, z2, zsqrt, zsqrtarg
-      !----------------------------------------------------------------
-        
-      ! Local copies of cell size 
-      dx = this%SubCellData%DX
-      dy = this%SubCellData%DY
-      dz = this%SubCellData%DZ
+  !! RWPT
+  !subroutine pr_UpdateTimeStepQuadratic( this, &
+  !                        x, y, z, nx, ny, nz, & 
+  !            vx, vy, vz, divDx, divDy, divDz, & 
+  !                dBx, dBy, dBz, t, dt, dtxyz  )
+  !    !----------------------------------------------------------------
+  !    ! Detects exit face and computes time step to force particle
+  !    ! into the interface, using analytical quadratic solution method.
+  !    ! Related to eulerian advection model
+  !    ! 
+  !    ! Params:
+  !    !     - x, y, z             : local cell coordinates
+  !    !     - nx, ny, nz          : updated coordinates after RWPT
+  !    !     - vx, vy, vz          : interpolated velocities
+  !    !     - divDx, divDy, divDz : dispersion divergence
+  !    !     - dBx, dBy, dBz       : random dispersion displacements
+  !    !     - t                   : current time
+  !    !     - dt                  : time step
+  !    !     - dtxyz               : array for saving each dt
+  !    !     - exitFace            : holder for exit face
+  !    !  
+  !    ! Interface:
+  !    !     - ExitFaceAndTimeStep
+  !    !----------------------------------------------------------------
+  !    ! Specifications
+  !    !----------------------------------------------------------------
+  !    implicit none
+  !    class (TrackSubCellType) :: this
+  !    ! input
+  !    doubleprecision, intent(in) :: x, y, z
+  !    doubleprecision, intent(in) :: nx, ny, nz
+  !    doubleprecision, intent(in) :: vx, vy, vz
+  !    doubleprecision, intent(in) :: divDx, divDy, divDz
+  !    doubleprecision, intent(in) :: dBx, dBy, dBz
+  !    ! output
+  !    doubleprecision, intent(inout) :: t, dt
+  !    doubleprecision, dimension(3), intent(inout) :: dtxyz
+  !    ! local
+  !    integer :: imindt
+  !    doubleprecision :: dx, dy, dz
+  !    doubleprecision :: dInterface
+  !    doubleprecision :: AFace, BFace, z1, z2, zsqrt, zsqrtarg
+  !    !----------------------------------------------------------------
+  !      
+  !    ! Local copies of cell size 
+  !    dx = this%SubCellData%DX
+  !    dy = this%SubCellData%DY
+  !    dz = this%SubCellData%DZ
 
-      !Reset t, dt will be replaced
-      t = t - dt
+  !    !Reset t, dt will be replaced
+  !    t = t - dt
 
-      !! Long jump in x
-      !dInterface = 0.25*dx
-      !AFace      = 0d0
-      !BFace      = 0d0
-      !z1         = 0d0
-      !z2         = 0d0
-      !zsqrt      = 0d0 
-      !zsqrtarg   = 0d0 
-      !if ( ( dAdvx + divDx*dt + dBx*sqrt( dt ) )/dx .gt. 1d0  ) then
+  !    !! Long jump in x
+  !    !dInterface = 0.25*dx
+  !    !AFace      = 0d0
+  !    !BFace      = 0d0
+  !    !z1         = 0d0
+  !    !z2         = 0d0
+  !    !zsqrt      = 0d0 
+  !    !zsqrtarg   = 0d0 
+  !    !if ( ( dAdvx + divDx*dt + dBx*sqrt( dt ) )/dx .gt. 1d0  ) then
 
-      !  if ( dInterface .gt. 0d0 ) then
+  !    !  if ( dInterface .gt. 0d0 ) then
 
-      !    ! Coefficients
-      !    AFace = vx + divDx
-      !    BFace = dBx
+  !    !    ! Coefficients
+  !    !    AFace = vx + divDx
+  !    !    BFace = dBx
 
-      !    ! Given dInterface, compute new dt
-      !    zsqrtarg = BFace**2 + 4*dInterface*AFace
+  !    !    ! Given dInterface, compute new dt
+  !    !    zsqrtarg = BFace**2 + 4*dInterface*AFace
 
-      !    if ( ( zsqrtarg .ge. 0d0 ) .and. ( AFace .ne. 0d0 ) ) then 
-      !        zsqrt = sqrt( zsqrtarg )
-      !        z1    = (-BFace + zsqrt )/( 2*AFace )
-      !        z2    = (-BFace - zsqrt )/( 2*AFace )
+  !    !    if ( ( zsqrtarg .ge. 0d0 ) .and. ( AFace .ne. 0d0 ) ) then 
+  !    !        zsqrt = sqrt( zsqrtarg )
+  !    !        z1    = (-BFace + zsqrt )/( 2*AFace )
+  !    !        z2    = (-BFace - zsqrt )/( 2*AFace )
 
-      !        if ( any( (/ z1, z2 /) .gt. 0d0) ) then 
-      !            ! Compute new dt
-      !            dtxyz(1) = minval( (/z1, z2/), mask=(/z1, z2/)>0d0 )**2
-      !            ! If computed dt is zero, then 
-      !            ! particle is at the interface
-      !            if ( dtxyz(1) .eq. 0d0 ) then
-      !                exitFace = exitFaceX
-      !                dt = 0.0 
-      !                return
-      !            end if
-      !        else if ( any( (/ z1, z2 /) .eq. 0d0) ) then 
-      !            ! This is equivalent to being at the interface, 
-      !            ! It didn't detected any solution gt 0, but one zero,
-      !            ! which means interface
-      !            exitFace = exitFaceX
-      !            dt       = 0.0
-      !            return
-      !        end if
+  !    !        if ( any( (/ z1, z2 /) .gt. 0d0) ) then 
+  !    !            ! Compute new dt
+  !    !            dtxyz(1) = minval( (/z1, z2/), mask=(/z1, z2/)>0d0 )**2
+  !    !            ! If computed dt is zero, then 
+  !    !            ! particle is at the interface
+  !    !            if ( dtxyz(1) .eq. 0d0 ) then
+  !    !                exitFace = exitFaceX
+  !    !                dt = 0.0 
+  !    !                return
+  !    !            end if
+  !    !        else if ( any( (/ z1, z2 /) .eq. 0d0) ) then 
+  !    !            ! This is equivalent to being at the interface, 
+  !    !            ! It didn't detected any solution gt 0, but one zero,
+  !    !            ! which means interface
+  !    !            exitFace = exitFaceX
+  !    !            dt       = 0.0
+  !    !            return
+  !    !        end if
 
-      !    else if ( AFace .eq. 0d0 ) then 
-      !        ! If A is zero, then the equation is linear
-      !        ! At this point, it is important to note
-      !        ! that dInterface is non zero, but could be really small
-      !        if ( BFace .ne. 0d0 ) then 
-      !            dtxyz(1) = ( dInterface/BFace )**2
-      !            ! If computed dt is zero, then 
-      !            ! particle is at the interface
-      !            if ( dtxyz(1) .eq. 0d0 ) then
-      !                exitFace = exitFaceX
-      !                dt = 0.0 
-      !                return
-      !            end if
-      !        end if 
-      !    end if
+  !    !    else if ( AFace .eq. 0d0 ) then 
+  !    !        ! If A is zero, then the equation is linear
+  !    !        ! At this point, it is important to note
+  !    !        ! that dInterface is non zero, but could be really small
+  !    !        if ( BFace .ne. 0d0 ) then 
+  !    !            dtxyz(1) = ( dInterface/BFace )**2
+  !    !            ! If computed dt is zero, then 
+  !    !            ! particle is at the interface
+  !    !            if ( dtxyz(1) .eq. 0d0 ) then
+  !    !                exitFace = exitFaceX
+  !    !                dt = 0.0 
+  !    !                return
+  !    !            end if
+  !    !        end if 
+  !    !    end if
 
-      !    ! If computed dt is higher than current
-      !    ! is not valid, set to zero
-      !    if ( dtxyz(1) .gt. dt ) dtxyz(1) = 0d0
+  !    !    ! If computed dt is higher than current
+  !    !    ! is not valid, set to zero
+  !    !    if ( dtxyz(1) .gt. dt ) dtxyz(1) = 0d0
 
-      !end if
+  !    !end if
 
-      !! Leaving through y face
-      !dInterface = 0.25*dy
-      !AFace      = 0d0
-      !BFace      = 0d0
-      !z1         = 0d0
-      !z2         = 0d0
-      !zsqrt      = 0d0 
-      !zsqrtarg   = 0d0 
-      !if ( ( ny .gt. 1.0d0 ) .or. ( ny .lt. 0d0 )  ) then
+  !    !! Leaving through y face
+  !    !dInterface = 0.25*dy
+  !    !AFace      = 0d0
+  !    !BFace      = 0d0
+  !    !z1         = 0d0
+  !    !z2         = 0d0
+  !    !zsqrt      = 0d0 
+  !    !zsqrtarg   = 0d0 
+  !    !if ( ( ny .gt. 1.0d0 ) .or. ( ny .lt. 0d0 )  ) then
 
-      !    ! Compute dInterface
-      !    if ( ny .gt. 1.0d0 ) then 
-      !        dInterface = dy*( 1.0d0 - y )
-      !        exitFaceY  = 4
-      !    else 
-      !        dInterface = -dy*y
-      !        exitFaceY  = 3
-      !    end if
+  !    !    ! Compute dInterface
+  !    !    if ( ny .gt. 1.0d0 ) then 
+  !    !        dInterface = dy*( 1.0d0 - y )
+  !    !        exitFaceY  = 4
+  !    !    else 
+  !    !        dInterface = -dy*y
+  !    !        exitFaceY  = 3
+  !    !    end if
 
-      !    ! Exactly at interface, force new cell
-      !    if ( dInterface .eq. 0.0 ) then
-      !        exitFace = exitFaceY
-      !        dt = 0.0
-      !        return
-      !    end if
+  !    !    ! Exactly at interface, force new cell
+  !    !    if ( dInterface .eq. 0.0 ) then
+  !    !        exitFace = exitFaceY
+  !    !        dt = 0.0
+  !    !        return
+  !    !    end if
 
-      !    ! Coefficients
-      !    AFace = vy + divDy
-      !    BFace = dBy
+  !    !    ! Coefficients
+  !    !    AFace = vy + divDy
+  !    !    BFace = dBy
 
-      !    ! Given dInterface, compute new dt
-      !    zsqrtarg = BFace**2 + 4*dInterface*AFace
+  !    !    ! Given dInterface, compute new dt
+  !    !    zsqrtarg = BFace**2 + 4*dInterface*AFace
 
-      !    if ( ( zsqrtarg .ge. 0d0 ) .and. ( AFace .ne. 0d0 ) ) then
-      !        zsqrt = sqrt( zsqrtarg )
-      !        z1    = (-BFace + zsqrt )/( 2*AFace )
-      !        z2    = (-BFace - zsqrt )/( 2*AFace )
+  !    !    if ( ( zsqrtarg .ge. 0d0 ) .and. ( AFace .ne. 0d0 ) ) then
+  !    !        zsqrt = sqrt( zsqrtarg )
+  !    !        z1    = (-BFace + zsqrt )/( 2*AFace )
+  !    !        z2    = (-BFace - zsqrt )/( 2*AFace )
 
-      !        if ( any( (/ z1, z2 /) .gt. 0d0) ) then 
-      !            ! Compute new dt
-      !            dtxyz(2) = minval( (/z1, z2/), mask=(/z1, z2/)>0d0 )**2
-      !            ! If computed dt is zero, then 
-      !            ! particle is at the interface
-      !            if ( dtxyz(2) .eq. 0d0 ) then
-      !                exitFace = exitFaceY
-      !                dt = 0.0 
-      !                return
-      !            end if
-      !        else if ( any( (/ z1, z2 /) .eq. 0d0) ) then 
-      !            ! This is equivalent to being at the interface, 
-      !            ! It didn't detected any solution gt 0, but one zero,
-      !            ! which means interface
-      !            exitFace = exitFaceY
-      !            dt       = 0.0
-      !            return
-      !        end if
+  !    !        if ( any( (/ z1, z2 /) .gt. 0d0) ) then 
+  !    !            ! Compute new dt
+  !    !            dtxyz(2) = minval( (/z1, z2/), mask=(/z1, z2/)>0d0 )**2
+  !    !            ! If computed dt is zero, then 
+  !    !            ! particle is at the interface
+  !    !            if ( dtxyz(2) .eq. 0d0 ) then
+  !    !                exitFace = exitFaceY
+  !    !                dt = 0.0 
+  !    !                return
+  !    !            end if
+  !    !        else if ( any( (/ z1, z2 /) .eq. 0d0) ) then 
+  !    !            ! This is equivalent to being at the interface, 
+  !    !            ! It didn't detected any solution gt 0, but one zero,
+  !    !            ! which means interface
+  !    !            exitFace = exitFaceY
+  !    !            dt       = 0.0
+  !    !            return
+  !    !        end if
 
-      !    else if ( AFace .eq. 0d0 ) then 
-      !        ! If A is zero, then the equation is linear
-      !        ! At this point, it is important to note
-      !        ! that dInterface is non zero, but could be really small
-      !        if ( BFace .ne. 0d0 ) then 
-      !            dtxyz(2) = ( dInterface/BFace )**2
-      !            ! If computed dt is zero, then 
-      !            ! particle is at the interface
-      !            if ( dtxyz(2) .eq. 0d0 ) then
-      !                exitFace = exitFaceY
-      !                dt = 0.0 
-      !                return
-      !            end if
-      !        end if 
-      !    end if
+  !    !    else if ( AFace .eq. 0d0 ) then 
+  !    !        ! If A is zero, then the equation is linear
+  !    !        ! At this point, it is important to note
+  !    !        ! that dInterface is non zero, but could be really small
+  !    !        if ( BFace .ne. 0d0 ) then 
+  !    !            dtxyz(2) = ( dInterface/BFace )**2
+  !    !            ! If computed dt is zero, then 
+  !    !            ! particle is at the interface
+  !    !            if ( dtxyz(2) .eq. 0d0 ) then
+  !    !                exitFace = exitFaceY
+  !    !                dt = 0.0 
+  !    !                return
+  !    !            end if
+  !    !        end if 
+  !    !    end if
 
-      !    ! If computed dt is higher than current
-      !    ! is not valid, set to zero
-      !    if ( dtxyz(2) .gt. dt ) dtxyz(2) = 0d0
+  !    !    ! If computed dt is higher than current
+  !    !    ! is not valid, set to zero
+  !    !    if ( dtxyz(2) .gt. dt ) dtxyz(2) = 0d0
 
-      !end if
+  !    !end if
 
-      ! Long jump in z direction
-      dInterface = 0.25*dz
-      AFace      = 0d0
-      BFace      = 0d0
-      z1         = 0d0
-      z2         = 0d0
-      zsqrt      = 0d0 
-      zsqrtarg   = 0d0 
-      ! TEMP
-      if ( ( ( vz + divDz )*dt + dBz*sqrt( dt ) )/dz .gt. 1.0d0  ) then
+  !    ! Long jump in z direction
+  !    dInterface = 0.25*dz
+  !    AFace      = 0d0
+  !    BFace      = 0d0
+  !    z1         = 0d0
+  !    z2         = 0d0
+  !    zsqrt      = 0d0 
+  !    zsqrtarg   = 0d0 
+  !    ! TEMP
+  !    if ( ( ( vz + divDz )*dt + dBz*sqrt( dt ) )/dz .gt. 1.0d0  ) then,
 
-        ! Coefficients
-        AFace = vz + divDz
-        BFace = dBz
-        
-        ! Given dInterface, compute new dt
-        zsqrtarg = BFace**2 + 4*dInterface*AFace
+  !      ! Coefficients
+  !      AFace = vz + divDz
+  !      BFace = dBz
+  !      
+  !      ! Given dInterface, compute new dt
+  !      zsqrtarg = BFace**2 + 4*dInterface*AFace
 
-        if ( ( zsqrtarg .ge. 0d0 ) .and. ( abs(AFace) .gt. 1d-15 ) )  then
-        !if ( ( zsqrtarg .ge. 0d0 ) .and. ( AFace .ne. 0d0 ) )  then
+  !      if ( ( zsqrtarg .ge. 0d0 ) .and. ( abs(AFace) .gt. 1d-15 ) )  then
+  !      !if ( ( zsqrtarg .ge. 0d0 ) .and. ( AFace .ne. 0d0 ) )  then
 
-          zsqrt = sqrt( zsqrtarg )
-          z1    = (-BFace + zsqrt )/( 2*AFace )
-          z2    = (-BFace - zsqrt )/( 2*AFace )
+  !        zsqrt = sqrt( zsqrtarg )
+  !        z1    = (-BFace + zsqrt )/( 2*AFace )
+  !        z2    = (-BFace - zsqrt )/( 2*AFace )
 
-          if ( any( (/ z1, z2 /) .gt. 0d0 ) ) then 
-            ! Compute new dt
-            dtxyz(3) = minval( (/z1, z2/), mask=(/z1, z2/)>0d0 )**2
-            !! If computed dt is zero, then 
-            !! particle is at the interface
-            !if ( dtxyz(3) .eq. 0d0 ) then
-            !    exitFace = exitFaceZ
-            !    dt = 0.0 
-            !    return
-            !end if
-          !else if ( any( (/ z1, z2 /) .eq. 0d0) ) then 
-          !    ! This is equivalent to being at the interface, 
-          !    ! It didn't detected any solution gt 0, but one zero,
-          !    ! which means interface
-          !    exitFace = exitFaceZ
-          !    dt       = 0.0
-          !    return
-          end if
+  !        if ( any( (/ z1, z2 /) .gt. 0d0 ) ) then 
+  !          ! Compute new dt
+  !          dtxyz(3) = minval( (/z1, z2/), mask=(/z1, z2/)>0d0 )**2
+  !          !! If computed dt is zero, then 
+  !          !! particle is at the interface
+  !          !if ( dtxyz(3) .eq. 0d0 ) then
+  !          !    exitFace = exitFaceZ
+  !          !    dt = 0.0 
+  !          !    return
+  !          !end if
+  !        !else if ( any( (/ z1, z2 /) .eq. 0d0) ) then 
+  !        !    ! This is equivalent to being at the interface, 
+  !        !    ! It didn't detected any solution gt 0, but one zero,
+  !        !    ! which means interface
+  !        !    exitFace = exitFaceZ
+  !        !    dt       = 0.0
+  !        !    return
+  !        end if
 
-        else if ( AFace .lt. 1d-15 ) then 
-        !else if ( AFace .eq. 0d0 ) then 
-            ! If A is zero, then the equation is linear
-            ! At this point, it is important to note
-            ! that dInterface is non zero
-            if ( BFace .ne. 0d0 ) then 
-                dtxyz(3) = ( dInterface/BFace )**2
-                ! If computed dt is zero, then 
-                ! particle is at the interface
-                !if ( dtxyz(3) .eq. 0d0 ) then
-                !    exitFace = exitFaceZ
-                !    dt = 0.0 
-                !    return
-                !end if
-            end if 
-        end if
+  !      else if ( AFace .lt. 1d-15 ) then 
+  !      !else if ( AFace .eq. 0d0 ) then 
+  !          ! If A is zero, then the equation is linear
+  !          ! At this point, it is important to note
+  !          ! that dInterface is non zero
+  !          if ( BFace .ne. 0d0 ) then 
+  !              dtxyz(3) = ( dInterface/BFace )**2
+  !              ! If computed dt is zero, then 
+  !              ! particle is at the interface
+  !              !if ( dtxyz(3) .eq. 0d0 ) then
+  !              !    exitFace = exitFaceZ
+  !              !    dt = 0.0 
+  !              !    return
+  !              !end if
+  !          end if 
+  !      end if
 
-        ! If computed dt is higher than current
-        ! is not valid, set something smaller
-        if ( dtxyz(3) .gt. dt ) dtxyz(3) = 0.5*dt
+  !      ! If computed dt is higher than current
+  !      ! is not valid, set something smaller
+  !      if ( dtxyz(3) .gt. dt ) dtxyz(3) = 0.5*dt
 
-      end if
-
-
-      !! If all dts where zero, restore t + dt
-      !! and leave
-      !if ( all( dtxyz .eq. 0d0 ) ) then 
-      !  t = t + dt
-      !  return
-      !end if
+  !    end if
 
 
-      ! Find minimum dt and 
-      ! assign values accordingly
-      imindt = minloc( dtxyz, dim=1, mask=(dtxyz > 0d0) )
-      dt     = dtxyz(imindt)
+  !    !! If all dts where zero, restore t + dt
+  !    !! and leave
+  !    !if ( all( dtxyz .eq. 0d0 ) ) then 
+  !    !  t = t + dt
+  !    !  return
+  !    !end if
 
 
-      ! Update time
-      t = t + dt
+  !    ! Find minimum dt and 
+  !    ! assign values accordingly
+  !    imindt = minloc( dtxyz, dim=1, mask=(dtxyz > 0d0) )
+  !    dt     = dtxyz(imindt)
 
 
-  end subroutine pr_UpdateTimeStepQuadratic
+  !    ! Update time
+  !    t = t + dt
+
+
+  !end subroutine pr_UpdateTimeStepQuadratic
 
 
 end module TrackSubCellModule
