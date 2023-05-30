@@ -81,7 +81,6 @@ module TrackSubCellModule
     procedure :: ComputeCornerDischarge=>pr_ComputeCornerDischarge
     procedure :: GetInterpolatedCornerDischarge=>pr_GetInterpolatedCornerDischarge
     procedure :: SetCornerComponentsIndexes=>pr_SetCornerComponentsIndexes
-    !procedure :: ComputeCornerPorosity=> pr_ComputeCornerPorosity
     procedure :: GetInterpolatedCornerPorosity=>pr_GetInterpolatedCornerPorosity
     procedure :: SetCornerPorosityIndexes=> pr_SetCornerPorosityIndexes
     procedure :: Trilinear=>pr_Trilinear
@@ -140,6 +139,7 @@ module TrackSubCellModule
                                       divDx, divDy, divDz  )
       import TrackSubCellType
       import ParticleTrackingOptionsType
+      !----------------------------------------------------------------
       ! this
       class(TrackSubCellType) :: this
       ! input
@@ -157,6 +157,7 @@ module TrackSubCellModule
     subroutine RandomDisplacement( this, x, y, z, alphaL, alphaT, &
                                              dMEff, dBx, dBy, dBz )
       import TrackSubCellType
+      !------------------------------------------------------------
       class (TrackSubCellType) :: this
       ! input
       doubleprecision, intent(in)    :: x, y, z
@@ -168,14 +169,17 @@ module TrackSubCellModule
     ! Random generator function
     subroutine RandomGenerator( this, random_value )
       import TrackSubCellType
+      !---------------------------------------------
       class (TrackSubCellType) :: this
       ! input/output
       doubleprecision, intent(out) :: random_value
     end subroutine RandomGenerator
 
     ! Compute corner porosity function 
-    subroutine CornerPorosity( this, neighborSubCellVolume, neighborSubCellPorosity )
+    subroutine CornerPorosity( this, neighborSubCellVolume,&
+                                   neighborSubCellPorosity )
       import TrackSubCellType
+      !-------------------------------------------------------------------
       class (TrackSubCellType) :: this
       ! input
       doubleprecision, dimension(18), intent(in) :: neighborSubCellVolume   
@@ -547,9 +551,9 @@ contains
         this%DisplacementRandomDischarge => pr_DisplacementRandomDischarge
     end select
 
-
     ! Done
     return
+
 
   end subroutine pr_InitializeRandomWalk
 
@@ -575,7 +579,8 @@ contains
       else 
        ! Not set !
        ! Some kind of error handling
-       write(*,*) 'TrackSubCell:SetDispersionDisplacement: dispersionModel ' , dispersionModel ,' NOT implemented. Stop.'
+       write(*,*)&
+         'TrackSubCell:SetDispersionDisplacement: dispersionModel ' , dispersionModel ,' NOT implemented. Stop.'
        stop
       end if
 
@@ -681,703 +686,652 @@ contains
 !-------------------------------------------------------------------
   subroutine pr_ExecuteRandomWalkParticleTracking(this,stopIfNoExit, &
           initialLocation,maximumTime,trackingResult,trackingOptions)
-      !------------------------------------------------------------
-      ! Function moves particles following RWPT protocol.
-      ! It has been adapted from ExecuteTracking but logic
-      ! differs significantly as particles are moved numerically 
-      ! instead of semi-analytically
-      !------------------------------------------------------------
-      ! Specifications
-      !------------------------------------------------------------
-      implicit none
-      class(TrackSubCellType) :: this
-      logical,intent(in) :: stopIfNoExit
-      type(ParticleLocationType),intent(in) :: initialLocation
-      doubleprecision,intent(in) :: maximumTime
-      type(TrackSubCellResultType),intent(inout) :: trackingResult
-      integer :: cellNumber
-      doubleprecision :: initialX,initialY,initialZ,initialTime
-      doubleprecision :: vx,vy,vz,dt
-      doubleprecision :: t,x,y,z
-      integer :: exitFace
-      ! RWPT
-      type(ParticleTrackingOptionsType),intent(in) :: trackingOptions
-      doubleprecision :: divDx, divDy, divDz
-      doubleprecision :: dAdvx, dAdvy, dAdvz
-      doubleprecision :: dBx, dBy, dBz
-      doubleprecision :: dx, dy, dz
-      doubleprecision :: nx, ny, nz
-      doubleprecision :: xi, yi, zi
-      doubleprecision :: dxrw, dyrw, dzrw
-      logical         :: continueTimeLoop
-      logical         :: reachedMaximumTime
-      doubleprecision :: tinit, dtold
-      doubleprecision, dimension(3) :: dtxyz
-      integer :: dtLoopCounter, posRestartCounter
-      integer :: reboundCounter, intLoopCounter
-      !------------------------------------------------------------
+  !------------------------------------------------------------
+  ! Function moves particles following RWPT protocol.
+  ! It has been adapted from ExecuteTracking but logic
+  ! differs significantly as particles are moved numerically 
+  ! instead of semi-analytically
+  !------------------------------------------------------------
+  ! Specifications
+  !------------------------------------------------------------
+  implicit none
+  class(TrackSubCellType) :: this
+  logical,intent(in) :: stopIfNoExit
+  type(ParticleLocationType),intent(in) :: initialLocation
+  doubleprecision,intent(in) :: maximumTime
+  type(TrackSubCellResultType),intent(inout) :: trackingResult
+  integer :: cellNumber
+  doubleprecision :: initialX,initialY,initialZ,initialTime
+  doubleprecision :: vx,vy,vz,dt
+  doubleprecision :: t,x,y,z
+  integer :: exitFace
+  ! RWPT
+  type(ParticleTrackingOptionsType),intent(in) :: trackingOptions
+  doubleprecision :: divDx, divDy, divDz
+  doubleprecision :: dAdvx, dAdvy, dAdvz
+  doubleprecision :: dBx, dBy, dBz
+  doubleprecision :: dx, dy, dz
+  doubleprecision :: nx, ny, nz
+  doubleprecision :: xi, yi, zi
+  doubleprecision :: dxrw, dyrw, dzrw
+  logical         :: continueTimeLoop
+  logical         :: reachedMaximumTime
+  doubleprecision :: tinit, dtold
+  doubleprecision, dimension(3) :: dtxyz
+  integer :: dtLoopCounter, posRestartCounter
+  integer :: reboundCounter, intLoopCounter
+  integer, parameter :: maxInterfaceLoopCounter   = 5
+  integer, parameter :: maxRestartPositionCounter = 10
+  doubleprecision, parameter :: maxRelativeJump   = 0.5
+  doubleprecision, parameter :: dtReductionFactor = 0.1
+  !------------------------------------------------------------
 
-      ! Initialize trackingResult
-      call trackingResult%Reset()
-      
-      cellNumber = initialLocation%CellNumber
-      initialX = initialLocation%LocalX
-      initialY = initialLocation%LocalY
-      initialZ = initialLocation%LocalZ
-      initialTime = initialLocation%TrackingTime
-      
-      trackingResult%CellNumber = cellNumber
-      trackingResult%Row = this%SubCellData%Row
-      trackingResult%Column = this%SubCellData%Column
-      trackingResult%InitialLocation%CellNumber = cellNumber
-      trackingResult%InitialLocation%LocalX = initialX
-      trackingResult%InitialLocation%LocalY = initialY
-      trackingResult%InitialLocation%LocalZ = initialZ
-      trackingResult%InitialLocation%TrackingTime = initialTime
-      trackingResult%FinalLocation%LocalX = initialX
-      trackingResult%FinalLocation%LocalY = initialY
-      trackingResult%FinalLocation%LocalZ = initialZ
-      trackingResult%FinalLocation%TrackingTime = initialTime
-      trackingResult%MaximumTime = maximumTime
-      trackingResult%Status = trackingResult%Status_Undefined()
-      
-      if(stopIfNoExit) then
-        if(.not. this%SubCellData%HasExitFace()) then
-          trackingResult%Status = trackingResult%Status_NoExitPossible()
-          return
-        end if
-      end if
-
-      ! Advection model pointers are assigned in InitializeRandomWalk 
-      ! called at initialize tracking engine
+    ! Initialize trackingResult
+    call trackingResult%Reset()
     
-      ! Local copies of cell size
-      dx = this%SubCellData%DX
-      dy = this%SubCellData%DY
-      dz = this%SubCellData%DZ
-
-      ! Initialize positions
-      x  = initialLocation%LocalX
-      y  = initialLocation%LocalY
-      z  = initialLocation%LocalZ
-      nx = initialLocation%LocalX
-      ny = initialLocation%LocalY
-      nz = initialLocation%LocalZ
-
-
-      if ( this%SubCellData%dry ) then
-        ! If cell is completely dry, then particle is not displaced
-        ! Q:
-        ! If particle is set to InactiveCell, 
-        ! can be displaced in a later cycle if cell is rewetted ?
-        ! A: 
-        ! in MPath7.f90 there is a verification. If cell 
-        ! is partially dry, particle status is set to active for 
-        ! retracking
-        trackingResult%Status = trackingResult%Status_InactiveCell()
-        trackingResult%FinalLocation%CellNumber = cellNumber
-        trackingResult%FinalLocation%LocalX = x
-        trackingResult%FinalLocation%LocalY = y
-        trackingResult%FinalLocation%LocalZ = z
-        trackingResult%FinalLocation%TrackingTime = t
-        return
-      end if 
-
-      ! In case somehing needs to be done 
-      ! for partially dry cells
-      if ( this%SubCellData%partiallyDry ) then
-        continue
-      end if 
-
-      ! Initialize displacements
-      dxrw = 0d0
-      dyrw = 0d0
-      dzrw = 0d0
-
-      ! Compute time step for RWPT
-      call this%ComputeRandomWalkTimeStep( trackingOptions, dt )
-
-      ! Initializes current time
-      t     = initialTime
-      tinit = initialTime
-      dtold = dt
-
-      ! Something wrong, leave
-      if ( dt .le. 0d0 ) then 
-        trackingResult%ExitFace = exitFace
-        trackingResult%Status = trackingResult%Status_Undefined()
-        trackingResult%FinalLocation%CellNumber = cellNumber
-        trackingResult%FinalLocation%LocalX = x
-        trackingResult%FinalLocation%LocalY = y
-        trackingResult%FinalLocation%LocalZ = z
-        trackingResult%FinalLocation%TrackingTime = t
+    cellNumber = initialLocation%CellNumber
+    initialX = initialLocation%LocalX
+    initialY = initialLocation%LocalY
+    initialZ = initialLocation%LocalZ
+    initialTime = initialLocation%TrackingTime
+    
+    trackingResult%CellNumber = cellNumber
+    trackingResult%Row = this%SubCellData%Row
+    trackingResult%Column = this%SubCellData%Column
+    trackingResult%InitialLocation%CellNumber = cellNumber
+    trackingResult%InitialLocation%LocalX = initialX
+    trackingResult%InitialLocation%LocalY = initialY
+    trackingResult%InitialLocation%LocalZ = initialZ
+    trackingResult%InitialLocation%TrackingTime = initialTime
+    trackingResult%FinalLocation%LocalX = initialX
+    trackingResult%FinalLocation%LocalY = initialY
+    trackingResult%FinalLocation%LocalZ = initialZ
+    trackingResult%FinalLocation%TrackingTime = initialTime
+    trackingResult%MaximumTime = maximumTime
+    trackingResult%Status = trackingResult%Status_Undefined()
+    
+    if(stopIfNoExit) then
+      if(.not. this%SubCellData%HasExitFace()) then
+        trackingResult%Status = trackingResult%Status_NoExitPossible()
         return
       end if
+    end if
 
-      ! Sanity counters
-      dtLoopCounter     = 0
-      intLoopCounter    = 0
-      posRestartCounter = 0
+    ! Advection model pointers are assigned in InitializeRandomWalk 
+    ! called at initialize tracking engine
+    
+    ! Local copies of cell size
+    dx = this%SubCellData%DX
+    dy = this%SubCellData%DY
+    dz = this%SubCellData%DZ
+
+    ! Initialize positions
+    x  = initialLocation%LocalX
+    y  = initialLocation%LocalY
+    z  = initialLocation%LocalZ
+    nx = initialLocation%LocalX
+    ny = initialLocation%LocalY
+    nz = initialLocation%LocalZ
 
 
-      ! Local cell time loop 
-      exitFace = 0
-      continueTimeLoop = .true.
-      reachedMaximumTime = .false.
-      do while( continueTimeLoop )
+    if ( this%SubCellData%dry ) then
+      ! If cell is completely dry, then particle is not displaced
+      ! Q:
+      ! If particle is set to InactiveCell, 
+      ! can be displaced in a later cycle if cell is rewetted ?
+      ! A: 
+      ! in MPath7.f90 there is a verification. If cell 
+      ! is partially dry, particle status is set to active for 
+      ! retracking
+      trackingResult%Status = trackingResult%Status_InactiveCell()
+      trackingResult%FinalLocation%CellNumber = cellNumber
+      trackingResult%FinalLocation%LocalX = x
+      trackingResult%FinalLocation%LocalY = y
+      trackingResult%FinalLocation%LocalZ = z
+      trackingResult%FinalLocation%TrackingTime = t
+      return
+    end if 
 
-          ! Time loop counter
-          dtLoopCounter = dtLoopCounter + 1
+    ! In case somehing needs to be done 
+    ! for partially dry cells
+    if ( this%SubCellData%partiallyDry ) then
+      continue
+    end if 
 
-          ! Update current time
-          t = t + dt
+    ! Initialize displacements
+    dxrw = 0d0
+    dyrw = 0d0
+    dzrw = 0d0
 
-          ! Recompute dt for maximumTime 
-          if (maximumTime .lt. t) then
-            t  = t - dt
-            dt = max( maximumTime - t, 0d0 ) ! avoids numerical error 
-            t  = maximumTime
-            reachedMaximumTime = .true.
+    ! Compute time step for RWPT
+    call this%ComputeRandomWalkTimeStep( trackingOptions, dt )
+
+    ! Initializes current time
+    t     = initialTime
+    tinit = initialTime
+    dtold = dt
+
+    ! Something wrong, leave
+    if ( dt .le. 0d0 ) then 
+      trackingResult%ExitFace = exitFace
+      trackingResult%Status = trackingResult%Status_Undefined()
+      trackingResult%FinalLocation%CellNumber = cellNumber
+      trackingResult%FinalLocation%LocalX = x
+      trackingResult%FinalLocation%LocalY = y
+      trackingResult%FinalLocation%LocalZ = z
+      trackingResult%FinalLocation%TrackingTime = t
+      return
+    end if
+
+    ! Sanity counters
+    dtLoopCounter     = 0
+    intLoopCounter    = 0
+    posRestartCounter = 0
+
+    ! Local cell time loop 
+    exitFace = 0
+    continueTimeLoop = .true.
+    reachedMaximumTime = .false.
+    do while( continueTimeLoop )
+
+      ! Time loop counter
+      dtLoopCounter = dtLoopCounter + 1
+
+      ! Update current time
+      t = t + dt
+
+      ! Recompute dt for maximumTime 
+      if (maximumTime .lt. t) then
+        t  = t - dt
+        dt = max( maximumTime - t, 0d0 ) ! avoids numerical error 
+        t  = maximumTime
+        reachedMaximumTime = .true.
+      end if
+
+      ! Compute RWPT movement
+      call this%ComputeRWPTDisplacements( &
+                     x, y, z, vx, vy, vz, &
+                     dt, trackingOptions, &
+                     dAdvx, dAdvy, dAdvz, &
+                           dBx, dBy, dBz, &
+                     divDx, divDy, divDz  )
+
+      ! Vectorize coordinates maybe ?
+      dxrw = dAdvx + divDx*dt + dBx*sqrt( dt )
+      dyrw = dAdvy + divDy*dt + dBy*sqrt( dt )
+      dzrw = dAdvz + divDz*dt + dBz*sqrt( dt )
+
+      ! Reduce dt if large relative jumps
+      do while ( & 
+        ( abs(dxrw/dx) .gt. maxRelativeJump ) .or. &
+        ( abs(dyrw/dy) .gt. maxRelativeJump ) .or. &
+        ( abs(dzrw/dz) .gt. maxRelativeJump ) )
+        
+        t  = t - dt
+        dt = dtReductionFactor*dt
+
+        ! Given new dt, recompute displacements
+        call this%AdvectionDisplacement( x, y, z, dt, vx, vy, vz, & 
+                                              dAdvx, dAdvy, dAdvz )
+        dxrw = dAdvx + divDx*dt + dBx*sqrt( dt )
+        dyrw = dAdvy + divDy*dt + dBy*sqrt( dt )
+        dzrw = dAdvz + divDz*dt + dBz*sqrt( dt )
+         
+        dtold = dt
+        t = t + dt
+      end do
+
+      ! new positions
+      nx   = x + dxrw/dx
+      ny   = y + dyrw/dy
+      nz   = z + dzrw/dz
+
+      ! particleLeavingCell:
+      ! Detect if particle leaving the cell
+      ! and force the particle into exactly one
+      ! interface by computing the required dt
+      intLoopCounter = 0
+      do while (                                       &
+          ( nx .gt. 1.0d0 ) .or. ( nx .lt. 0d0 )  .or. &
+          ( ny .gt. 1.0d0 ) .or. ( ny .lt. 0d0 )  .or. &
+          ( nz .gt. 1.0d0 ) .or. ( nz .lt. 0d0 )       & 
+      )
+
+          intLoopCounter = intLoopCounter + 1
+          dtxyz(:) = 0d0
+
+          ! Recompute dt for exact interface
+          call this%ExitFaceAndUpdateTimeStep( x, y, z, nx, ny, nz, &
+                                   vx, vy, vz, divDx, divDy, divDz, &
+                              dBx, dBy, dBz, t, dt, dtxyz, exitFace )
+
+          ! Health control
+          if ( intLoopCounter .gt. maxInterfaceLoopCounter ) then
+            ! Restart coordinates 
+            nx = initialLocation%LocalX
+            ny = initialLocation%LocalY
+            nz = initialLocation%LocalZ
+            t  = tinit
+            dt = dtold
+            posRestartCounter = posRestartCounter + 1
+            if ( posRestartCounter .gt. maxRestartPositionCounter ) then 
+              ! Something wrong, leave
+              trackingResult%ExitFace = 0
+              trackingResult%Status = trackingResult%Status_Undefined()
+              trackingResult%FinalLocation%CellNumber = cellNumber
+              trackingResult%FinalLocation%LocalX = x
+              trackingResult%FinalLocation%LocalY = y
+              trackingResult%FinalLocation%LocalZ = z
+              trackingResult%FinalLocation%TrackingTime = t
+              return
+            end if
+            ! exit interface loop
+            exit
           end if
 
-          ! Compute RWPT movement
-          call this%ComputeRWPTDisplacements( &
-                         x, y, z, vx, vy, vz, &
-                         dt, trackingOptions, &
-                         dAdvx, dAdvy, dAdvz, &
-                               dBx, dBy, dBz, &
-                         divDx, divDy, divDz  )
+          ! Given new dt, recompute advection displacements
+          call this%AdvectionDisplacement( x, y, z, dt, vx, vy, vz, & 
+                                                dAdvx, dAdvy, dAdvz )
 
-          ! Vectorize coordinates maybe ?
-          dxrw = dAdvx + divDx*dt + dBx*sqrt( dt )
-          dyrw = dAdvy + divDy*dt + dBy*sqrt( dt )
-          dzrw = dAdvz + divDz*dt + dBz*sqrt( dt )
+          ! If maximumTime was reached, but particle left
+          ! the cell, then the condition is resetted
+          if (reachedMaximumTime) then
+            reachedMaximumTime = .false.
+          end if
 
-          ! Reduce dt if large relative jumps
-          do while (                   & 
-           ( abs(dxrw/dx) .gt. 0.5 ) .or. &
-           ( abs(dyrw/dy) .gt. 0.5 ) .or. &
-           ( abs(dzrw/dz) .gt. 0.5 ) )
-           !( abs(dxrw/dx) .gt. 0.33 ) .or. &
-           !( abs(dyrw/dy) .gt. 0.33 ) .or. &
-           !( abs(dzrw/dz) .gt. 0.33 ) )
+          ! Find new RWPT displacements
+          select case (exitFace)
+            ! X Face
+            case(1,2)
+              nx   = 1.0d0
+              if ( exitFace .eq. 1 ) nx=0d0
+              dyrw = dAdvy + divDy*dt + dBy*sqrt( dt )
+              ny   = y + dyrw/dy
+              dzrw = dAdvz + divDz*dt + dBz*sqrt( dt )
+              nz   = z + dzrw/dz
+            ! Y Face
+            case(3,4)
+              dxrw = dAdvx + divDx*dt + dBx*sqrt( dt )
+              nx   = x + dxrw/dx
+              ny   = 1.0d0
+              if ( exitFace .eq. 3 ) ny=0d0
+              dzrw = dAdvz + divDz*dt + dBz*sqrt( dt )
+              nz   = z + dzrw/dz
+            ! Z Face
+            case(5,6)
+              dxrw = dAdvx + divDx*dt + dBx*sqrt( dt )
+              nx   = x + dxrw/dx
+              dyrw = dAdvy + divDy*dt + dBy*sqrt( dt )
+              ny   = y + dyrw/dy
+              nz   = 1.0d0
+              if ( exitFace .eq. 5 ) nz=0d0
+            ! No exit
+            case(0)
+              ! Fallback
+              ! If exitFace .eq. 0, restart coordinates 
+              nx = initialLocation%LocalX
+              ny = initialLocation%LocalY
+              nz = initialLocation%LocalZ
+              t  = tinit
+              dt = dtold
+              posRestartCounter = posRestartCounter + 1
+              if ( posRestartCounter .gt. maxRestartPositionCounter ) then 
+                ! Something wrong, leave
+                trackingResult%ExitFace = 0
+                trackingResult%Status = trackingResult%Status_Undefined()
+                trackingResult%FinalLocation%CellNumber = cellNumber
+                trackingResult%FinalLocation%LocalX = x
+                trackingResult%FinalLocation%LocalY = y
+                trackingResult%FinalLocation%LocalZ = z
+                trackingResult%FinalLocation%TrackingTime = t
+                return
+              end if
+              ! Exit interface loop and try again,
+              ! new random displacements
+              exit
+          end select
 
-            t = t - dt
-            dt = 0.1*dt
-            !call pr_UpdateTimeStepQuadratic( this, &
-            !                  x, y, z, nx, ny, nz, & 
-            !      vx, vy, vz, divDx, divDy, divDz, & 
-            !          dBx, dBy, dBz, t, dt, dtxyz  )
-            !! Compute RWPT movement
-            !call this%ComputeRWPTDisplacements( &
-            !               x, y, z, vx, vy, vz, &
-            !               dt, trackingOptions, &
-            !               dAdvx, dAdvy, dAdvz, &
-            !                     dBx, dBy, dBz, &
-            !               divDx, divDy, divDz  )
+          ! Think how to integrate these conditions into single 
+          ! interface loop.  
 
-            ! Given new dt, recompute advection displacements
-            call this%AdvectionDisplacement( x, y, z, dt, vx, vy, vz, & 
-                                                  dAdvx, dAdvy, dAdvz )
+          ! Found proper interface ?
+          !
+          ! It is possible that nx,ny,nz are not consistent
+          ! values after previous displacement "to the interface".
+          ! This effect is originated due to changing direction of displacement vector 
+          ! for different dts. So even after finding time step for exitFace,
+          ! this new timestep may lead to landing outside the cell from an orthogonal 
+          ! direction, typical case of cell corners. If that is the case, then 
+          ! interface loop continues but now finding a smaller timestep for the "new" crossing.
+          if (                                               &
+                ( nx .gt. 1.0d0 ) .or. ( nx .lt. 0d0 )  .or. &
+                ( ny .gt. 1.0d0 ) .or. ( ny .lt. 0d0 )  .or. &
+                ( nz .gt. 1.0d0 ) .or. ( nz .lt. 0d0 )       & 
+            ) then 
+            ! Continue looking exact interface
+            continue
+          else
+            ! Once the interface is consistent, 
+            ! apply boundary conditions
 
-            dxrw = dAdvx + divDx*dt + dBx*sqrt( dt )
-            dyrw = dAdvy + divDy*dt + dBy*sqrt( dt )
-            dzrw = dAdvz + divDz*dt + dBz*sqrt( dt )
-             
-            dtold = dt  ! something like this 
+            ! Boundary conditions
+            ! Logic should be: 
+            ! Is there an interface and which kind
+            ! At this point, program already 
+            ! found an exitFace
+            ! By default, if a cell is not active from 
+            ! the flow model data, 
 
-            t = t + dt
+            ! Consider a flag indicating whether the
+            ! center is connected to ANY rebound boundary 
 
-          end do
+            ! elasticRebound:
+            ! Verify if particle has to rebound 
+            ! against boundary face.
+            ! Note: one of the possible outputs
+            ! from a reboundBoundary relies on 
+            ! the interface processing 
+            ! being inside the interface detection loop
+            reboundCounter = 0
+            do while( ( exitFace .gt. 0 ) )
 
-          nx   = x + dxrw/dx
-          ny   = y + dyrw/dy
-          nz   = z + dzrw/dz
-
-          ! particleLeavingCell:
-          ! Detect if particle leaving the cell
-          ! and force the particle into exactly one
-          ! interface by computing the required dt
-          intLoopCounter = 0
-          do while (                                       &
-              ( nx .gt. 1.0d0 ) .or. ( nx .lt. 0d0 )  .or. &
-              ( ny .gt. 1.0d0 ) .or. ( ny .lt. 0d0 )  .or. &
-              ( nz .gt. 1.0d0 ) .or. ( nz .lt. 0d0 )       & 
-          )
-
-              intLoopCounter = intLoopCounter + 1
-              dtxyz(:) = 0d0
-
-              ! Recompute dt for exact interface
-              call this%ExitFaceAndUpdateTimeStep( x, y, z, nx, ny, nz, &
-                                       vx, vy, vz, divDx, divDy, divDz, &
-                                  dBx, dBy, dBz, t, dt, dtxyz, exitFace )
-
-              if ( intLoopCounter .gt. 5 ) then
-                  ! Restart new coordinates 
-                  !nx = x
-                  !ny = y
-                  !nz = z
-                  nx = initialLocation%LocalX
-                  ny = initialLocation%LocalY
-                  nz = initialLocation%LocalZ
-
-                  ! Restart time 
-                  t  = tinit
-                  !t  = t - dt
-                  dt = dtold
-
-                  posRestartCounter = posRestartCounter + 1
-
-                  if ( posRestartCounter .gt. 10 ) then 
-                    ! Something wrong, leave
-                    trackingResult%ExitFace = 0
-                    trackingResult%Status = trackingResult%Status_Undefined()
-                    print *, 'HERE'
-                    print *, x, y, z
-                    !print *, nx, ny, nz
-                    print *, dxrw/dx, dyrw/dy, dzrw/dz
-                    trackingResult%FinalLocation%CellNumber = cellNumber
-                    trackingResult%FinalLocation%LocalX = x
-                    trackingResult%FinalLocation%LocalY = y
-                    trackingResult%FinalLocation%LocalZ = z
-                    trackingResult%FinalLocation%TrackingTime = t
-                    return
-                  end if
-
-                  ! exit interface loop
-                  exit
-
+              ! If not connected to rebound boundary cell, leave
+              if ( this%SubCellData%MassBoundary(exitFace) .ne. 1 ) then 
+                exit
               end if
 
-              ! Given new dt, recompute advection displacements
-              call this%AdvectionDisplacement( x, y, z, dt, vx, vy, vz, & 
-                                                    dAdvx, dAdvy, dAdvz )
+              ! reboundCounter and a catch for unexpected cases
+              reboundCounter = reboundCounter + 1
+              if ( reboundCounter .gt. maxRestartPositionCounter ) then
+                ! If particle has been rebounding for a long time, stop
+                trackingResult%ExitFace = 0
+                trackingResult%Status   = trackingResult%Status_Undefined()
+                trackingResult%FinalLocation%CellNumber = cellNumber
+                trackingResult%FinalLocation%LocalX = x
+                trackingResult%FinalLocation%LocalY = y
+                trackingResult%FinalLocation%LocalZ = z
+                trackingResult%FinalLocation%TrackingTime = t
+                return
+              end if 
 
-              ! If maximumTime was reached, but particle left
-              ! the cell, then the condition is resetted
-              if (reachedMaximumTime) then
-                  reachedMaximumTime = .false.
+              ! Save interface positions 
+              xi = nx
+              yi = ny
+              zi = nz
+              
+              ! If dt .eq. 0d0 then the particle is exactly 
+              ! at the interface, and is a rebound interface.
+              ! In the meantime, restart.
+              if ( dt .eq. 0d0 ) then
+                ! Restart coordinates 
+                nx = initialLocation%LocalX
+                ny = initialLocation%LocalY
+                nz = initialLocation%LocalZ
+                t  = t - dt
+                dt = dtold
+                exitFace = 0
+                posRestartCounter = posRestartCounter + 1
+                ! With nx, ny, nz adopting the starting values, 
+                ! interface loop is also broken
+                ! Exit rebound loop 
+                exit
               end if
+              
+              ! Update current time with same time step 
+              ! determined for interface displacement 
+              t = t + dt
 
-              ! Find new RWPT displacements
-              select case (exitFace)
+              ! In case the new time for an elastic rebound 
+              ! is higher than maximum time, updates dt
+              if (maximumTime .lt. t) then
+                ! Note: if maximumTime is reached in second half of 
+                ! rebound, rebound is shortened
+
+                ! Recompute time step 
+                t  = t - dt
+                dt = max( maximumTime - t, 0d0 ) ! avoids numerical error
+                t  = maximumTime
+                reachedMaximumTime = .true.
+
+                ! Recompute advection displacement for new time step, 
+                ! as if starting from original position
+                call this%AdvectionDisplacement( x, y, z, dt, vx, vy, vz, dAdvx, dAdvy, dAdvz )
+
+                ! Recompute RWPT displacements for new dt
+                dxrw = dAdvx + divDx*dt + dBx*sqrt( dt )
+                dyrw = dAdvy + divDy*dt + dBy*sqrt( dt )
+                dzrw = dAdvz + divDz*dt + dBz*sqrt( dt )
+
+                ! If particle lands outside cell, 
+                ! entering interface loop will modify
+                ! reachedMaximumTime back to .false.
+                !exitFace = 0 ! It is used later so dont' reset yet
+              end if ! maximumTime 
+
+              ! Particle rebounds with elastic reflection
+              select case ( exitFace )
                 ! X Face
                 case(1,2)
-                  nx   = 1.0d0
-                  if ( exitFace .eq. 1 ) nx=0d0
-                  dyrw = dAdvy + divDy*dt + dBy*sqrt( dt )
-                  ny   = y + dyrw/dy
-                  dzrw = dAdvz + divDz*dt + dBz*sqrt( dt )
-                  nz   = z + dzrw/dz
+                  nx = nx - dxrw/dx
+                  ny = ny + dyrw/dy
+                  nz = nz + dzrw/dz
                 ! Y Face
                 case(3,4)
-                  dxrw = dAdvx + divDx*dt + dBx*sqrt( dt )
-                  nx   = x + dxrw/dx
-                  ny   = 1.0d0
-                  if ( exitFace .eq. 3 ) ny=0d0
-                  dzrw = dAdvz + divDz*dt + dBz*sqrt( dt )
-                  nz   = z + dzrw/dz
+                  nx = nx + dxrw/dx
+                  ny = ny - dyrw/dy
+                  nz = nz + dzrw/dz
                 ! Z Face
                 case(5,6)
-                  dxrw = dAdvx + divDx*dt + dBx*sqrt( dt )
-                  nx   = x + dxrw/dx
-                  dyrw = dAdvy + divDy*dt + dBy*sqrt( dt )
-                  ny   = y + dyrw/dy
-                  nz   = 1.0d0
-                  if ( exitFace .eq. 5 ) nz=0d0
-                ! No exit
-                case(0)
-                  ! Fallback
-                  ! If exitFace .eq. 0
-                  ! Restart new coordinates 
-                  nx = initialLocation%LocalX
-                  ny = initialLocation%LocalY
-                  nz = initialLocation%LocalZ
-                  ! Restart time 
-                  t  = tinit
-                  !t  = t - dt
-                  dt = dtold
-                  posRestartCounter = posRestartCounter + 1
-                  if ( posRestartCounter .gt. 10 ) then 
-                    ! Something wrong, leave
-                    trackingResult%ExitFace = 0
-                    trackingResult%Status = trackingResult%Status_Undefined()
-                    print *, 'HERE 2 '
-                    trackingResult%FinalLocation%CellNumber = cellNumber
-                    trackingResult%FinalLocation%LocalX = x
-                    trackingResult%FinalLocation%LocalY = y
-                    trackingResult%FinalLocation%LocalZ = z
-                    trackingResult%FinalLocation%TrackingTime = t
-                    return
-                  end if
+                  nx = nx + dxrw/dx
+                  ny = ny + dyrw/dy
+                  nz = nz - dzrw/dz
+               end select
 
-                  ! Exit interface loop and try again,
-                  ! new random displacements
-                  exit
-              end select
+              ! If nx, ny or nz are outside cell interfaces, 
+              ! then the interface loop will continue.
+              ! Set initial particle position to rebound interface
+              if (                                             &
+                  ( nx .gt. 1.0d0 ) .or. ( nx .lt. 0d0 )  .or. &
+                  ( ny .gt. 1.0d0 ) .or. ( ny .lt. 0d0 )  .or. &
+                  ( nz .gt. 1.0d0 ) .or. ( nz .lt. 0d0 )       & 
+              ) then
 
-              ! Think how to integrate these conditions into single 
-              ! interface loop.  
+                ! Set starting position to rebound interface
+                x = xi
+                y = yi
+                z = zi
 
-              ! Found proper interface ?
-              !
-              ! It is possible that nx,ny,nz are not consistent
-              ! values after previous displacement "to the interface".
-              ! This effect is originated due to changing direction of displacement vector 
-              ! for different dts. So even after finding time step for exitFace,
-              ! this new timestep may lead to landing outside the cell from an orthogonal 
-              ! direction, typical case of cell corners. If that is the case, then 
-              ! interface loop continues but now finding a smaller timestep for the "new" crossing.
-              ! 
-              if (                                               &
-                    ( nx .gt. 1.0d0 ) .or. ( nx .lt. 0d0 )  .or. &
-                    ( ny .gt. 1.0d0 ) .or. ( ny .lt. 0d0 )  .or. &
-                    ( nz .gt. 1.0d0 ) .or. ( nz .lt. 0d0 )       & 
-                ) then 
-                  ! Continue looking exact interface
-                  continue
+                ! As particle is at the rebound interface, reverts
+                ! displacements of the rebound direction. 
+                ! These are going to be used in determining 
+                ! time step and exact exit position at interface loop
+                if ( ( exitFace .eq. 1 ) .or. ( exitFace .eq. 2 ) ) then 
+                  vx    = -vx
+                  divDx = -divDx
+                  dBx   = -dBx
+                end if 
+                if ( ( exitFace .eq. 3 ) .or. ( exitFace .eq. 4 ) ) then 
+                  vy    = -vy
+                  divDy = -divDy
+                  dBy   = -dBy
+                end if
+                if ( ( exitFace .eq. 5 ) .or. ( exitFace .eq. 6 ) ) then 
+                  vz    = -vz
+                  divDz = -divDz
+                   dBz   = -dBz
+                end if 
+
+                ! Go to: particleLeavingCell
+                exitFace = 0
+
               else
-                  ! Once the interface is consistent, 
-                  ! apply boundary conditions
+                ! If nx, ny and nz are inside the cell, then no problem
+                ! particleLeavingCell loop is broken and will update 
+                ! particle position to rebound position and continue
+                ! time loop with cell characteristic time step
+                dt =  dtold
+                exitFace = 0
 
-                  ! Boundary conditions
-                  ! Logic should be: 
-                  ! Is there an interface and which kind
-                  ! At this point, program already 
-                  ! found an exitFace
-                  ! By default, if a cell is not active from 
-                  ! the flow model data, 
+                ! If one of the positions is exactly an interface
+                ! Not the most beautiful way
+                if (                                          & 
+                    ( nx .eq. 0d0 ) .or. ( nx .eq. 1d0 ) .or. & 
+                    ( ny .eq. 0d0 ) .or. ( ny .eq. 1d0 ) .or. & 
+                    ( nz .eq. 0d0 ) .or. ( nz .eq. 1d0 )      & 
+                ) then
+                    if ( nx .eq. 0d0 ) exitFace = 1 
+                    if ( nx .eq. 1d0 ) exitFace = 2
+                    if ( ny .eq. 0d0 ) exitFace = 3
+                    if ( ny .eq. 1d0 ) exitFace = 4
+                    if ( nz .eq. 0d0 ) exitFace = 5
+                    if ( nz .eq. 1d0 ) exitFace = 6
+                end if
 
-                  ! Consider a flag indicating whether the
-                  ! center is connected to ANY rebound boundary 
+              end if ! outsideInterfaces  
 
-                  ! elasticRebound:
-                  ! Verify if particle has to rebound 
-                  ! against boundary face.
-                  ! Note: one of the possible outputs
-                  ! from a reboundBoundary relies on 
-                  ! the interface processing 
-                  ! being inside the interface detection loop
-                  reboundCounter = 0
-                  do while( ( exitFace .gt. 0 ) )
+            end do ! elasticRebound
 
-                      ! If not connected to rebound boundary cell, leave
-                      if ( this%SubCellData%MassBoundary(exitFace) .ne. 1 ) then 
-                        exit
-                      end if
+          end if ! If found proper interface
 
-                      ! reboundCounter and a catch for unexpected cases
-                      reboundCounter = reboundCounter + 1
-                      if ( reboundCounter .gt. 10 ) then
-                          ! If particle has been rebounding for a long time, stop
-                          trackingResult%ExitFace = 0
-                          trackingResult%Status   = trackingResult%Status_Undefined()
-                    print *, 'HERE 3 '
-                          trackingResult%FinalLocation%CellNumber = cellNumber
-                          trackingResult%FinalLocation%LocalX = x
-                          trackingResult%FinalLocation%LocalY = y
-                          trackingResult%FinalLocation%LocalZ = z
-                          trackingResult%FinalLocation%TrackingTime = t
-                          return
-                      end if 
+      end do ! particleLeavingCell
 
 
-                      ! Save interface positions 
-                      xi = nx
-                      yi = ny
-                      zi = nz
-                     
+      ! Report and leave
 
-                      ! If dt .eq. 0d0 then the particle is exactly 
-                      ! at the interface, and is a rebound interface.
-                      ! Stays there ? Becomes inactive ?
-                      ! In the meantime, restart.
-                      ! This may generate problems for pure advection sims.
-                      if ( dt .eq. 0d0 ) then
+      ! Time is up
+      if (reachedMaximumTime) then
+        ! In this case it is allowed for a particle
+        ! to reach the maximum time and eventually have an exit face
+        trackingResult%Status = trackingResult%Status_ReachedMaximumTime()
+        trackingResult%ExitFace = exitFace
+        trackingResult%FinalLocation%CellNumber = cellNumber
+        trackingResult%FinalLocation%LocalX = nx
+        trackingResult%FinalLocation%LocalY = ny
+        trackingResult%FinalLocation%LocalZ = nz
+        trackingResult%FinalLocation%TrackingTime = t
+        continueTimeLoop = .false.
+        ! Done
+        return
+      end if
 
-                          ! Restart new coordinates 
-                          nx = initialLocation%LocalX
-                          ny = initialLocation%LocalY
-                          nz = initialLocation%LocalZ
+      ! Particle left cell
+      if( exitFace .gt. 0 ) then 
+        ! Based on connected cell id, it is determined 
+        ! what happens to the particle (see: source/ModpathCellData.f90:FillSubCellDataBuffer ) 
+        ! if ExitFaceConnection = 0, domainBoundary
+        ! if ExitFaceConnection > 0, anotherCell
+        ! if ExitFaceConnection < 0, subCell, usg-grid
+        trackingResult%ExitFaceConnection = this%SubCellData%Connection(exitFace)
+        if( trackingResult%ExitFaceConnection .lt. 0 ) then
+          ! Internal transfer. This is the case for unstructured grid
+          trackingResult%Status = trackingResult%Status_ExitAtInternalFace()
+        else
+          ! Transfer to another cell
+          trackingResult%Status = trackingResult%Status_ExitAtCellFace()
+        end if
+        trackingResult%ExitFace                   = exitFace
+        trackingResult%FinalLocation%CellNumber   = cellNumber
+        trackingResult%FinalLocation%LocalX       = nx
+        trackingResult%FinalLocation%LocalY       = ny
+        trackingResult%FinalLocation%LocalZ       = nz
+        trackingResult%FinalLocation%TrackingTime = t
+        continueTimeLoop = .false.
+        ! Done
+        return
+      end if 
 
-                          ! Restart time 
-                          t  = t - dt
-                          dt = dtold
-                          exitFace = 0
-                          posRestartCounter = posRestartCounter + 1
+      ! Update particle positions
+      x = nx
+      y = ny
+      z = nz
 
-                          ! With nx, ny, nz adopting the starting values, 
-                          ! interface loop is also broken
+    end do ! continueTimeLoop 
 
-                          ! Exit rebound loop 
-                          exit
-
-                      end if
-                      
-
-                      ! Update current time with same time step 
-                      ! determined for interface displacement 
-                      t = t + dt
-
-                      ! Remember that dt to interface is smaller
-                      ! than cell base time step
-
-                      ! In case the new time for an elastic rebound 
-                      ! is higher than maximum time, updates dt
-                      if (maximumTime .lt. t) then
-                          ! Note: if maximumTime is reached in second half of 
-                          ! rebound, rebound is shortened
-
-                          ! Recompute time step 
-                          t  = t - dt
-                          dt = max( maximumTime - t, 0d0 ) ! avoids numerical error
-                          t  = maximumTime
-                          reachedMaximumTime = .true.
-
-                          ! Recompute advection displacement for new time step, 
-                          ! as if starting from original position
-                          call this%AdvectionDisplacement( x, y, z, dt, vx, vy, vz, dAdvx, dAdvy, dAdvz )
-
-                          ! Recompute RWPT displacements for new dt
-                          dxrw = dAdvx + divDx*dt + dBx*sqrt( dt )
-                          dyrw = dAdvy + divDy*dt + dBy*sqrt( dt )
-                          dzrw = dAdvz + divDz*dt + dBz*sqrt( dt )
-
-                          ! If particle lands outside cell, 
-                          ! entering interface loop will modify
-                          ! reachedMaximumTime back to .false.
-                          !exitFace = 0 ! It is used later so dont' reset yet
-
-                      end if ! maximumTime 
-
-                      ! Particle rebounds with elastic reflection
-                      select case ( exitFace )
-                        ! X Face
-                        case(1,2)
-                          nx = nx - dxrw/dx
-                          ny = ny + dyrw/dy
-                          nz = nz + dzrw/dz
-                        ! Y Face
-                        case(3,4)
-                          nx = nx + dxrw/dx
-                          ny = ny - dyrw/dy
-                          nz = nz + dzrw/dz
-                        ! Z Face
-                        case(5,6)
-                          nx = nx + dxrw/dx
-                          ny = ny + dyrw/dy
-                          nz = nz - dzrw/dz
-                       end select
-
-                      ! If nx, ny or nz are outside cell interfaces, 
-                      ! then the interface loop will continue.
-                      ! Set initial particle position to rebound interface
-                      if (                                             &
-                          ( nx .gt. 1.0d0 ) .or. ( nx .lt. 0d0 )  .or. &
-                          ( ny .gt. 1.0d0 ) .or. ( ny .lt. 0d0 )  .or. &
-                          ( nz .gt. 1.0d0 ) .or. ( nz .lt. 0d0 )       & 
-                      ) then
-
-                          ! Set starting position to rebound interface
-                          x = xi
-                          y = yi
-                          z = zi
-
-                          ! As particle is at the rebound interface, reverts
-                          ! displacements of the rebound direction. 
-                          ! These are going to be used in determining 
-                          ! time step and exact exit position at interface loop
-                          if ( ( exitFace .eq. 1 ) .or. ( exitFace .eq. 2 ) ) then 
-                            vx    = -vx
-                            divDx = -divDx
-                            dBx   = -dBx
-                          end if 
-                          if ( ( exitFace .eq. 3 ) .or. ( exitFace .eq. 4 ) ) then 
-                            vy    = -vy
-                            divDy = -divDy
-                            dBy   = -dBy
-                          end if
-                          if ( ( exitFace .eq. 5 ) .or. ( exitFace .eq. 6 ) ) then 
-                            vz    = -vz
-                            divDz = -divDz
-                             dBz   = -dBz
-                          end if 
-
-                          ! Go to: particleLeavingCell
-                          exitFace = 0
-
-                      else
-                          ! If nx, ny and nz are inside the cell, then no problem
-                          ! particleLeavingCell loop is broken and will update 
-                          ! particle position to rebound position and continue
-                          ! time loop with cell characteristic time step
-                          dt =  dtold
-                          exitFace = 0
-
-                          ! If one of the positions is exactly an interface
-                          ! Not the most beautiful way
-                          if (                                          & 
-                              ( nx .eq. 0d0 ) .or. ( nx .eq. 1d0 ) .or. & 
-                              ( ny .eq. 0d0 ) .or. ( ny .eq. 1d0 ) .or. & 
-                              ( nz .eq. 0d0 ) .or. ( nz .eq. 1d0 )      & 
-                          ) then
-                              if ( nx .eq. 0d0 ) exitFace = 1 
-                              if ( nx .eq. 1d0 ) exitFace = 2
-                              if ( ny .eq. 0d0 ) exitFace = 3
-                              if ( ny .eq. 1d0 ) exitFace = 4
-                              if ( nz .eq. 0d0 ) exitFace = 5
-                              if ( nz .eq. 1d0 ) exitFace = 6
-                          end if
-
-                      end if ! outsideInterfaces  
-
-                  end do ! elasticRebound
-
-              end if ! If found proper interface
-
-          end do ! particleLeavingCell
-
-
-          ! Report and leave
-
-          ! Time is up
-          if (reachedMaximumTime) then
-            ! In this case it is allowed for a particle
-            ! to reach the maximum time and eventually have an exit face
-            trackingResult%Status = trackingResult%Status_ReachedMaximumTime()
-            trackingResult%ExitFace = exitFace
-            trackingResult%FinalLocation%CellNumber = cellNumber
-            trackingResult%FinalLocation%LocalX = nx
-            trackingResult%FinalLocation%LocalY = ny
-            trackingResult%FinalLocation%LocalZ = nz
-            trackingResult%FinalLocation%TrackingTime = t
-            continueTimeLoop = .false.
-
-            ! Done
-            return
-          end if
-
-          ! Particle left cell
-          if( exitFace .gt. 0 ) then 
-            ! Based on connected cell id, it is determined 
-            ! what happens to the particle (see: source/ModpathCellData.f90:FillSubCellDataBuffer ) 
-            ! if ExitFaceConnection = 0, domainBoundary
-            ! if ExitFaceConnection > 0, anotherCell
-            ! if ExitFaceConnection < 0, subCell, usg-grid
-            trackingResult%ExitFaceConnection = this%SubCellData%Connection(exitFace)
-            if( trackingResult%ExitFaceConnection .lt. 0 ) then
-                ! Internal transfer. This is the case for unstructured grid
-                trackingResult%Status = trackingResult%Status_ExitAtInternalFace()
-            else
-                ! Transfer to another cell
-                trackingResult%Status = trackingResult%Status_ExitAtCellFace()
-            end if
-            trackingResult%ExitFace                   = exitFace
-            trackingResult%FinalLocation%CellNumber   = cellNumber
-            trackingResult%FinalLocation%LocalX       = nx
-            trackingResult%FinalLocation%LocalY       = ny
-            trackingResult%FinalLocation%LocalZ       = nz
-            trackingResult%FinalLocation%TrackingTime = t
-            continueTimeLoop = .false.
-
-            ! Done
-            return
-          end if 
-
-
-          ! Update particle positions
-          x = nx
-          y = ny
-          z = nz
-
-      end do ! continueTimeLoop 
-
-      ! Done
-      return
+    ! Done
+    return
 
   end subroutine pr_ExecuteRandomWalkParticleTracking
 
 
   ! RWPT
   subroutine pr_ComputeRandomWalkTimeStep( this, trackingOptions, dt )
-      !----------------------------------------------------------------
-      ! From user defined options and cell properties, 
-      ! compute time step  
-      ! 
-      ! Params:
-      !     - trackingOptions : simulation options
-      !     - dt              : time step, output
-      !----------------------------------------------------------------
-      ! Specifications
-      !----------------------------------------------------------------
-      implicit none
-      class (TrackSubCellType) :: this
-      ! input
-      type(ParticleTrackingOptionsType),intent(in) :: trackingOptions
-      ! output
-      doubleprecision, intent(inout) :: dt
-      ! local
-      doubleprecision :: vx1, vx2, vy1, vy2, vz1, vz2 
-      doubleprecision :: dx, dy, dz
-      doubleprecision :: alphaL, alphaT
-      doubleprecision, dimension(2) :: dts
-      !----------------------------------------------------------------
+  !----------------------------------------------------------------
+  ! From user defined options and cell properties, 
+  ! compute time step  
+  ! 
+  ! Params:
+  !     - trackingOptions : simulation options
+  !     - dt              : time step, output
+  !----------------------------------------------------------------
+  ! Specifications
+  !----------------------------------------------------------------
+  implicit none
+  class (TrackSubCellType) :: this
+  ! input
+  type(ParticleTrackingOptionsType),intent(in) :: trackingOptions
+  ! output
+  doubleprecision, intent(inout) :: dt
+  ! local
+  doubleprecision :: vx1, vx2, vy1, vy2, vz1, vz2 
+  doubleprecision :: dx, dy, dz
+  doubleprecision :: alphaL, alphaT
+  doubleprecision, dimension(2) :: dts
+  !----------------------------------------------------------------
 
-      ! Initialize
-      dts(:) = 0d0
+    ! Initialize
+    dts(:) = 0d0
 
-      ! Make local copies of face velocities for convenience
-      vx1 = this%SubCellData%VX1
-      vx2 = this%SubCellData%VX2
-      vy1 = this%SubCellData%VY1
-      vy2 = this%SubCellData%VY2
-      vz1 = this%SubCellData%VZ1
-      vz2 = this%SubCellData%VZ2
+    ! Make local copies of face velocities for convenience
+    vx1 = this%SubCellData%VX1
+    vx2 = this%SubCellData%VX2
+    vy1 = this%SubCellData%VY1
+    vy2 = this%SubCellData%VY2
+    vz1 = this%SubCellData%VZ1
+    vz2 = this%SubCellData%VZ2
    
-      ! Local copies of cell size
-      dx = this%SubCellData%DX
-      dy = this%SubCellData%DY
-      dz = this%SubCellData%DZ
+    ! Local copies of cell size
+    dx = this%SubCellData%DX
+    dy = this%SubCellData%DY
+    dz = this%SubCellData%DZ
 
-      ! Local copies of dispersivities 
-      alphaL = this%SubCellData%alphaL
-      alphaT = this%SubCellData%alphaT
+    ! Local copies of dispersivities 
+    alphaL = this%SubCellData%alphaL
+    alphaT = this%SubCellData%alphaT
 
-      ! Compute time step
-      select case (trackingOptions%timeStepKind)
-        case (1)
-          ! Advection criteria
-          dt = trackingOptions%timeStepParameters(1)/( &
-              max(abs(vx1), abs(vx2))/dx +             &
-              max(abs(vy1), abs(vy2))/dy +             &
-              max(abs(vz1), abs(vz2))/dz )
-        case (2)
-          ! Dispersion criteria
-          ! dt = c_T dx**2/D
-          dt = trackingOptions%timeStepParameters(2)/(        &
-                   alphaL*max(abs(vx1), abs(vx2))/( dx**2 ) + & 
-                   alphaT*max(abs(vy1), abs(vy2))/( dy**2 ) + &
-                   alphaT*max(abs(vz1), abs(vz2))/( dz**2 ) )
-        case (3)
-          ! Advection condition
-          ! dt = CFL dx / v 
-          dts(1) = trackingOptions%timeStepParameters(1)/( & 
-              max(abs(vx1), abs(vx2))/dx +                 &
-              max(abs(vy1), abs(vy2))/dy +                 &
-              max(abs(vz1), abs(vz2))/dz )
-          ! Dispersion condition
-          ! dt = c_T dx**2/D
-          dts(2) = trackingOptions%timeStepParameters(2)/(    &
-                   alphaL*max(abs(vx1), abs(vx2))/( dx**2 ) + & 
-                   alphaT*max(abs(vy1), abs(vy2))/( dy**2 ) + &
-                   alphaT*max(abs(vz1), abs(vz2))/( dz**2 ) )
-          ! Compute minimum
-          dt     = minval( dts, dts > 0 )
-        case (4)
-          ! Fixed
-          dt = trackingOptions%timeStepParameters(1)
-      end select
+    ! Compute time step
+    select case (trackingOptions%timeStepKind)
+      case (1)
+        ! Advection criteria
+        dt = trackingOptions%timeStepParameters(1)/( &
+            max(abs(vx1), abs(vx2))/dx +             &
+            max(abs(vy1), abs(vy2))/dy +             &
+            max(abs(vz1), abs(vz2))/dz )
+      case (2)
+        ! Dispersion criteria
+        ! dt = c_T dx**2/D
+        dt = trackingOptions%timeStepParameters(2)/(        &
+                 alphaL*max(abs(vx1), abs(vx2))/( dx**2 ) + & 
+                 alphaT*max(abs(vy1), abs(vy2))/( dy**2 ) + &
+                 alphaT*max(abs(vz1), abs(vz2))/( dz**2 ) )
+      case (3)
+        ! Advection condition
+        ! dt = CFL dx / v 
+        dts(1) = trackingOptions%timeStepParameters(1)/( & 
+            max(abs(vx1), abs(vx2))/dx +                 &
+            max(abs(vy1), abs(vy2))/dy +                 &
+            max(abs(vz1), abs(vz2))/dz )
+        ! Dispersion condition
+        ! dt = c_T dx**2/D
+        dts(2) = trackingOptions%timeStepParameters(2)/(    &
+                 alphaL*max(abs(vx1), abs(vx2))/( dx**2 ) + & 
+                 alphaT*max(abs(vy1), abs(vy2))/( dy**2 ) + &
+                 alphaT*max(abs(vz1), abs(vz2))/( dz**2 ) )
+        ! Compute minimum
+        dt     = minval( dts, dts > 0 )
+      case (4)
+        ! Fixed
+        dt = trackingOptions%timeStepParameters(1)
+    end select
 
 
   end subroutine pr_ComputeRandomWalkTimeStep
@@ -1385,27 +1339,27 @@ contains
 
   ! RWPT
   subroutine pr_LinearInterpolationVelocities( this, x, y, z, vx, vy, vz )
-      !----------------------------------------------------------------
-      ! Computes velocity at given location using cell face velocities
-      ! 
-      ! Params:
-      !     - x, y, z    : local cell coordinates
-      !     - vx, vy, vz : holders for velocities, output 
-      !                                       
-      !----------------------------------------------------------------
-      ! Specifications
-      !----------------------------------------------------------------
-      implicit none
-      class(TrackSubCellType) :: this
-      ! input
-      doubleprecision, intent(in) :: x, y, z
-      ! output
-      doubleprecision, intent(out) :: vx, vy, vz
-      !----------------------------------------------------------------
+  !----------------------------------------------------------------
+  ! Computes velocity at given location using cell face velocities
+  ! 
+  ! Params:
+  !     - x, y, z    : local cell coordinates
+  !     - vx, vy, vz : holders for velocities, output 
+  !                                       
+  !----------------------------------------------------------------
+  ! Specifications
+  !----------------------------------------------------------------
+  implicit none
+  class(TrackSubCellType) :: this
+  ! input
+  doubleprecision, intent(in) :: x, y, z
+  ! output
+  doubleprecision, intent(out) :: vx, vy, vz
+  !----------------------------------------------------------------
 
-      vx = ( 1.0d0 - x )*this%SubCellData%vx1 + x*this%SubCellData%vx2
-      vy = ( 1.0d0 - y )*this%SubCellData%vy1 + y*this%SubCellData%vy2
-      vz = ( 1.0d0 - z )*this%SubCellData%vz1 + z*this%SubCellData%vz2
+    vx = ( 1.0d0 - x )*this%SubCellData%vx1 + x*this%SubCellData%vx2
+    vy = ( 1.0d0 - y )*this%SubCellData%vy1 + y*this%SubCellData%vy2
+    vz = ( 1.0d0 - z )*this%SubCellData%vz1 + z*this%SubCellData%vz2
 
 
   end subroutine pr_LinearInterpolationVelocities
@@ -1413,91 +1367,92 @@ contains
 
   ! RWPT
   subroutine pr_AdvectionDisplacementExponential( this, x, y, z, dt, vx, vy, vz, dAdvx, dAdvy, dAdvz )
-      !----------------------------------------------------------------
-      ! Compute advection displacement using exponential analytical
-      ! expression
-      ! 
-      ! Params: 
-      !     - x, y, z             : local cell coordinates
-      !     - dt                  : time step
-      !     - vx, vy, vz          : interpolated velocities 
-      !     - dAdvx, dAdvy, dAdvz : holders for displacements
-      !
-      ! Interface:
-      !     - Advection
-      !----------------------------------------------------------------
-      ! Specifications
-      !----------------------------------------------------------------
-      implicit none
-      class(TrackSubCellType) :: this
-      ! input
-      doubleprecision, intent(in) :: x, y, z, dt
-      doubleprecision, intent(in) :: vx, vy, vz
-      ! output
-      doubleprecision, intent(inout) :: dAdvx, dAdvy, dAdvz
-      ! local
-      doubleprecision :: dvxdx, dvydy, dvzdz
-      doubleprecision :: dvtol = 1.0d-10
-      !----------------------------------------------------------------
+  !----------------------------------------------------------------
+  ! Compute advection displacement using exponential analytical
+  ! expression
+  ! 
+  ! Params: 
+  !     - x, y, z             : local cell coordinates
+  !     - dt                  : time step
+  !     - vx, vy, vz          : interpolated velocities 
+  !     - dAdvx, dAdvy, dAdvz : holders for displacements
+  !
+  ! Interface:
+  !     - Advection
+  !----------------------------------------------------------------
+  ! Specifications
+  !----------------------------------------------------------------
+  implicit none
+  class(TrackSubCellType) :: this
+  ! input
+  doubleprecision, intent(in) :: x, y, z, dt
+  doubleprecision, intent(in) :: vx, vy, vz
+  ! output
+  doubleprecision, intent(inout) :: dAdvx, dAdvy, dAdvz
+  ! local
+  doubleprecision :: dvxdx, dvydy, dvzdz
+  doubleprecision :: dvtol = 1.0d-10
+  !----------------------------------------------------------------
 
-      ! Compute displacement
-      ! x
-      dvxdx = ( this%SubCellData%vx2 - this%SubCellData%vx1 )/this%SubCellData%dx
-      if ( ( abs(dvxdx) .gt. dvtol ) ) then
-          dAdvx = vx*( exp(dvxdx*dt) - 1.0d0 )/dvxdx
-      else
-          dAdvx = vx*dt
-      end if
-      ! y
-      dvydy = ( this%SubCellData%vy2 - this%SubCellData%vy1 )/this%SubCellData%dy
-      if ( ( abs(dvydy) .gt. dvtol ) ) then
-          dAdvy = vy*( exp(dvydy*dt) - 1.0d0 )/dvydy
-      else
-          dAdvy = vy*dt
-      end if
-      ! z
-      dvzdz = ( this%SubCellData%vz2 - this%SubCellData%vz1 )/this%SubCellData%dz
-      if ( ( abs(dvzdz) .gt. dvtol ) ) then
-          dAdvz = vz*( exp(dvzdz*dt) - 1.0d0 )/dvzdz
-      else
-          dAdvz = vz*dt
-      end if
+    ! Compute displacement
+    ! x
+    dvxdx = ( this%SubCellData%vx2 - this%SubCellData%vx1 )/this%SubCellData%dx
+    if ( ( abs(dvxdx) .gt. dvtol ) ) then
+      dAdvx = vx*( exp(dvxdx*dt) - 1.0d0 )/dvxdx
+    else
+      dAdvx = vx*dt
+    end if
+    ! y
+    dvydy = ( this%SubCellData%vy2 - this%SubCellData%vy1 )/this%SubCellData%dy
+    if ( ( abs(dvydy) .gt. dvtol ) ) then
+      dAdvy = vy*( exp(dvydy*dt) - 1.0d0 )/dvydy
+    else
+      dAdvy = vy*dt
+    end if
+    ! z
+    dvzdz = ( this%SubCellData%vz2 - this%SubCellData%vz1 )/this%SubCellData%dz
+    if ( ( abs(dvzdz) .gt. dvtol ) ) then
+      dAdvz = vz*( exp(dvzdz*dt) - 1.0d0 )/dvzdz
+    else
+      dAdvz = vz*dt
+    end if
+
 
   end subroutine pr_AdvectionDisplacementExponential
 
 
   ! RWPT
   subroutine pr_AdvectionDisplacementEulerian( this, x, y, z, dt, vx, vy, vz, dAdvx, dAdvy, dAdvz )
-      !----------------------------------------------------------------
-      ! Compute advection displacement using eulerian approximation 
-      ! 
-      ! Params: 
-      !     - x, y, z             : local cell coordinates
-      !     - dt                  : time step
-      !     - vx, vy, vz          : interpolated velocities 
-      !     - dAdvx, dAdvy, dAdvz : holders for displacements
-      !
-      ! Interface:
-      !     - Advection
-      !----------------------------------------------------------------
-      ! Specifications
-      !----------------------------------------------------------------
-      implicit none
-      class(TrackSubCellType) :: this
-      ! input
-      doubleprecision, intent(in) :: x, y, z, dt
-      doubleprecision, intent(in) :: vx, vy, vz
-      ! output
-      doubleprecision, intent(inout) :: dAdvx, dAdvy, dAdvz
-      !----------------------------------------------------------------
+  !----------------------------------------------------------------
+  ! Compute advection displacement using eulerian approximation 
+  ! 
+  ! Params: 
+  !     - x, y, z             : local cell coordinates
+  !     - dt                  : time step
+  !     - vx, vy, vz          : interpolated velocities 
+  !     - dAdvx, dAdvy, dAdvz : holders for displacements
+  !
+  ! Interface:
+  !     - Advection
+  !----------------------------------------------------------------
+  ! Specifications
+  !----------------------------------------------------------------
+  implicit none
+  class(TrackSubCellType) :: this
+  ! input
+  doubleprecision, intent(in) :: x, y, z, dt
+  doubleprecision, intent(in) :: vx, vy, vz
+  ! output
+  doubleprecision, intent(inout) :: dAdvx, dAdvy, dAdvz
+  !----------------------------------------------------------------
       
-      ! Compute displacement
-      ! x
-      dAdvx = vx*dt
-      ! y
-      dAdvy = vy*dt
-      ! z
-      dAdvz = vz*dt
+    ! Compute displacement
+    ! x
+    dAdvx = vx*dt
+    ! y
+    dAdvy = vy*dt
+    ! z
+    dAdvz = vz*dt
 
 
   end subroutine pr_AdvectionDisplacementEulerian
@@ -1506,323 +1461,319 @@ contains
   ! RWPT
   subroutine pr_DetectExitFaceAndUpdateTimeStepQuadratic( this, x, y, z, nx, ny, nz, & 
                vx, vy, vz, divDx, divDy, divDz, dBx, dBy, dBz, t, dt, dtxyz, exitFace )
-      !----------------------------------------------------------------
-      ! Detects exit face and computes time step to force particle
-      ! into the interface, using analytical quadratic solution method.
-      ! Related to eulerian advection model
-      ! 
-      ! Params:
-      !     - x, y, z             : local cell coordinates
-      !     - nx, ny, nz          : updated coordinates after RWPT
-      !     - vx, vy, vz          : interpolated velocities
-      !     - divDx, divDy, divDz : dispersion divergence
-      !     - dBx, dBy, dBz       : random dispersion displacements
-      !     - t                   : current time
-      !     - dt                  : time step
-      !     - dtxyz               : array for saving each dt
-      !     - exitFace            : holder for exit face
-      !  
-      ! Interface:
-      !     - ExitFaceAndTimeStep
-      !----------------------------------------------------------------
-      ! Specifications
-      !----------------------------------------------------------------
-      implicit none
-      class (TrackSubCellType) :: this
-      ! input
-      doubleprecision, intent(in) :: x, y, z
-      doubleprecision, intent(in) :: nx, ny, nz
-      doubleprecision, intent(in) :: vx, vy, vz
-      doubleprecision, intent(in) :: divDx, divDy, divDz
-      doubleprecision, intent(in) :: dBx, dBy, dBz
-      ! output
-      doubleprecision, intent(inout) :: t, dt
-      integer, intent(inout)         :: exitFace
-      doubleprecision, dimension(3), intent(inout) :: dtxyz
-      ! local
-      integer :: exitFaceX, exitFaceY, exitFaceZ
-      integer :: imindt
-      doubleprecision :: dx, dy, dz
-      doubleprecision :: dInterface
-      doubleprecision :: AFace, BFace, z1, z2, zsqrt, zsqrtarg
-      !----------------------------------------------------------------
+  !----------------------------------------------------------------
+  ! Detects exit face and computes time step to force particle
+  ! into the interface, using analytical quadratic solution method.
+  ! Related to eulerian advection model
+  ! 
+  ! Params:
+  !     - x, y, z             : local cell coordinates
+  !     - nx, ny, nz          : updated coordinates after RWPT
+  !     - vx, vy, vz          : interpolated velocities
+  !     - divDx, divDy, divDz : dispersion divergence
+  !     - dBx, dBy, dBz       : random dispersion displacements
+  !     - t                   : current time
+  !     - dt                  : time step
+  !     - dtxyz               : array for saving each dt
+  !     - exitFace            : holder for exit face
+  !  
+  ! Interface:
+  !     - ExitFaceAndTimeStep
+  !----------------------------------------------------------------
+  ! Specifications
+  !----------------------------------------------------------------
+  implicit none
+  class (TrackSubCellType) :: this
+  ! input
+  doubleprecision, intent(in) :: x, y, z
+  doubleprecision, intent(in) :: nx, ny, nz
+  doubleprecision, intent(in) :: vx, vy, vz
+  doubleprecision, intent(in) :: divDx, divDy, divDz
+  doubleprecision, intent(in) :: dBx, dBy, dBz
+  ! output
+  doubleprecision, intent(inout) :: t, dt
+  integer, intent(inout)         :: exitFace
+  doubleprecision, dimension(3), intent(inout) :: dtxyz
+  ! local
+  integer :: exitFaceX, exitFaceY, exitFaceZ
+  integer :: imindt
+  doubleprecision :: dx, dy, dz
+  doubleprecision :: dInterface
+  doubleprecision :: AFace, BFace, z1, z2, zsqrt, zsqrtarg
+  !----------------------------------------------------------------
         
+    ! Initialize
+    exitFaceX  = 0
+    exitFaceY  = 0
+    exitFaceZ  = 0
 
-      ! Initialize
-      exitFaceX  = 0
-      exitFaceY  = 0
-      exitFaceZ  = 0
+    ! Local copies of cell size 
+    dx = this%SubCellData%DX
+    dy = this%SubCellData%DY
+    dz = this%SubCellData%DZ
 
-      ! Local copies of cell size 
-      dx = this%SubCellData%DX
-      dy = this%SubCellData%DY
-      dz = this%SubCellData%DZ
+    !Reset t, dt will be replaced
+    t = t - dt
 
-      !Reset t, dt will be replaced
-      t = t - dt
+    ! Leaving through x face
+    dInterface = 0d0
+    AFace      = 0d0
+    BFace      = 0d0
+    z1         = 0d0
+    z2         = 0d0
+    zsqrt      = 0d0 
+    zsqrtarg   = 0d0 
+    if ( ( nx .gt. 1.0d0 ) .or. ( nx .lt. 0d0 )  ) then
 
-      ! Leaving through x face
-      dInterface = 0d0
-      AFace      = 0d0
-      BFace      = 0d0
-      z1         = 0d0
-      z2         = 0d0
-      zsqrt      = 0d0 
-      zsqrtarg   = 0d0 
-      if ( ( nx .gt. 1.0d0 ) .or. ( nx .lt. 0d0 )  ) then
-
-          ! Compute dInterface
-          if ( nx .gt. 1.0d0 ) then 
-              dInterface = dx*( 1.0d0 - x )
-              exitFaceX  = 2
-          else 
-              dInterface = -dx*x
-              exitFaceX  = 1
-          end if
-
-          ! Exactly at interface, force new cell
-          if ( dInterface .eq. 0d0 ) then
-              exitFace = exitFaceX
-              dt = 0.0 
-              return
-          end if
-
-          ! Coefficients
-          AFace = vx + divDx
-          BFace = dBx
-
-          ! Given dInterface, compute new dt
-          zsqrtarg = BFace**2 + 4*dInterface*AFace
-
-          if ( ( zsqrtarg .ge. 0d0 ) .and. ( AFace .ne. 0d0 ) ) then 
-              zsqrt = sqrt( zsqrtarg )
-              z1    = (-BFace + zsqrt )/( 2*AFace )
-              z2    = (-BFace - zsqrt )/( 2*AFace )
-
-              if ( any( (/ z1, z2 /) .gt. 0d0) ) then 
-                  ! Compute new dt
-                  dtxyz(1) = minval( (/z1, z2/), mask=(/z1, z2/)>0d0 )**2
-                  ! If computed dt is zero, then 
-                  ! particle is at the interface
-                  if ( dtxyz(1) .eq. 0d0 ) then
-                      exitFace = exitFaceX
-                      dt = 0.0 
-                      return
-                  end if
-              else if ( any( (/ z1, z2 /) .eq. 0d0) ) then 
-                  ! This is equivalent to being at the interface, 
-                  ! It didn't detected any solution gt 0, but one zero,
-                  ! which means interface
-                  exitFace = exitFaceX
-                  dt       = 0.0
-                  return
-              end if
-
-          else if ( AFace .eq. 0d0 ) then 
-              ! If A is zero, then the equation is linear
-              ! At this point, it is important to note
-              ! that dInterface is non zero, but could be really small
-              if ( BFace .ne. 0d0 ) then 
-                  dtxyz(1) = ( dInterface/BFace )**2
-                  ! If computed dt is zero, then 
-                  ! particle is at the interface
-                  if ( dtxyz(1) .eq. 0d0 ) then
-                      exitFace = exitFaceX
-                      dt = 0.0 
-                      return
-                  end if
-              end if 
-          end if
-
-          ! If computed dt is higher than current
-          ! is not valid, set to zero
-          if ( dtxyz(1) .gt. dt ) dtxyz(1) = 0d0
-
+      ! Compute dInterface
+      if ( nx .gt. 1.0d0 ) then 
+        dInterface = dx*( 1.0d0 - x )
+        exitFaceX  = 2
+      else 
+        dInterface = -dx*x
+        exitFaceX  = 1
       end if
 
-      ! Leaving through y face
-      dInterface = 0d0
-      AFace      = 0d0
-      BFace      = 0d0
-      z1         = 0d0
-      z2         = 0d0
-      zsqrt      = 0d0 
-      zsqrtarg   = 0d0 
-      if ( ( ny .gt. 1.0d0 ) .or. ( ny .lt. 0d0 )  ) then
-
-          ! Compute dInterface
-          if ( ny .gt. 1.0d0 ) then 
-              dInterface = dy*( 1.0d0 - y )
-              exitFaceY  = 4
-          else 
-              dInterface = -dy*y
-              exitFaceY  = 3
-          end if
-
-          ! Exactly at interface, force new cell
-          if ( dInterface .eq. 0.0 ) then
-              exitFace = exitFaceY
-              dt = 0.0
-              return
-          end if
-
-          ! Coefficients
-          AFace = vy + divDy
-          BFace = dBy
-
-          ! Given dInterface, compute new dt
-          zsqrtarg = BFace**2 + 4*dInterface*AFace
-
-          if ( ( zsqrtarg .ge. 0d0 ) .and. ( AFace .ne. 0d0 ) ) then
-              zsqrt = sqrt( zsqrtarg )
-              z1    = (-BFace + zsqrt )/( 2*AFace )
-              z2    = (-BFace - zsqrt )/( 2*AFace )
-
-              if ( any( (/ z1, z2 /) .gt. 0d0) ) then 
-                  ! Compute new dt
-                  dtxyz(2) = minval( (/z1, z2/), mask=(/z1, z2/)>0d0 )**2
-                  ! If computed dt is zero, then 
-                  ! particle is at the interface
-                  if ( dtxyz(2) .eq. 0d0 ) then
-                      exitFace = exitFaceY
-                      dt = 0.0 
-                      return
-                  end if
-              else if ( any( (/ z1, z2 /) .eq. 0d0) ) then 
-                  ! This is equivalent to being at the interface, 
-                  ! It didn't detected any solution gt 0, but one zero,
-                  ! which means interface
-                  exitFace = exitFaceY
-                  dt       = 0.0
-                  return
-              end if
-
-          else if ( AFace .eq. 0d0 ) then 
-              ! If A is zero, then the equation is linear
-              ! At this point, it is important to note
-              ! that dInterface is non zero, but could be really small
-              if ( BFace .ne. 0d0 ) then 
-                  dtxyz(2) = ( dInterface/BFace )**2
-                  ! If computed dt is zero, then 
-                  ! particle is at the interface
-                  if ( dtxyz(2) .eq. 0d0 ) then
-                      exitFace = exitFaceY
-                      dt = 0.0 
-                      return
-                  end if
-              end if 
-          end if
-
-          ! If computed dt is higher than current
-          ! is not valid, set to zero
-          if ( dtxyz(2) .gt. dt ) dtxyz(2) = 0d0
-
+      ! Exactly at interface, force new cell
+      if ( dInterface .eq. 0d0 ) then
+        exitFace = exitFaceX
+        dt = 0.0 
+        return
       end if
 
-      ! Leaving through z face
-      dInterface = 0d0
-      AFace      = 0d0
-      BFace      = 0d0
-      z1         = 0d0
-      z2         = 0d0
-      zsqrt      = 0d0 
-      zsqrtarg   = 0d0 
-      if ( ( nz .gt. 1.0d0 ) .or. ( nz .lt. 0d0 )  ) then
+      ! Coefficients
+      AFace = vx + divDx
+      BFace = dBx
 
-          ! Compute dInterface
-          if ( nz .gt. 1.0d0 ) then
-              dInterface = dz*( 1.0d0 - z )
-              exitFaceZ  = 6
-          else
-              dInterface = -dz*z
-              exitFaceZ  = 5
+      ! Given dInterface, compute new dt
+      zsqrtarg = BFace**2 + 4*dInterface*AFace
+
+      if ( ( zsqrtarg .ge. 0d0 ) .and. ( AFace .ne. 0d0 ) ) then 
+        zsqrt = sqrt( zsqrtarg )
+        z1    = (-BFace + zsqrt )/( 2*AFace )
+        z2    = (-BFace - zsqrt )/( 2*AFace )
+
+        if ( any( (/ z1, z2 /) .gt. 0d0) ) then 
+          ! Compute new dt
+          dtxyz(1) = minval( (/z1, z2/), mask=(/z1, z2/)>0d0 )**2
+          ! If computed dt is zero, then 
+          ! particle is at the interface
+          if ( dtxyz(1) .eq. 0d0 ) then
+            exitFace = exitFaceX
+            dt = 0.0 
+            return
           end if
-
-          ! Exactly at interface, force new cell
-          if ( dInterface .eq. 0.0 ) then
-              exitFace = exitFaceZ
-              dt = 0.0
-              return
-          end if
-
-          ! Coefficients
-          AFace = vz + divDz
-          BFace = dBz
-        
-          ! Given dInterface, compute new dt
-          zsqrtarg = BFace**2 + 4*dInterface*AFace
-
-          if ( ( zsqrtarg .ge. 0d0 ) .and. ( AFace .ne. 0d0 ) )  then
-              zsqrt = sqrt( zsqrtarg )
-              z1    = (-BFace + zsqrt )/( 2*AFace )
-              z2    = (-BFace - zsqrt )/( 2*AFace )
-
-              if ( any( (/ z1, z2 /) .gt. 0d0 ) ) then 
-                  ! Compute new dt
-                  dtxyz(3) = minval( (/z1, z2/), mask=(/z1, z2/)>0d0 )**2
-                  ! If computed dt is zero, then 
-                  ! particle is at the interface
-                  if ( dtxyz(3) .eq. 0d0 ) then
-                      exitFace = exitFaceZ
-                      dt = 0.0 
-                      return
-                  end if
-              else if ( any( (/ z1, z2 /) .eq. 0d0) ) then 
-                  ! This is equivalent to being at the interface, 
-                  ! It didn't detected any solution gt 0, but one zero,
-                  ! which means interface
-                  exitFace = exitFaceZ
-                  dt       = 0.0
-                  return
-              end if
-
-          else if ( AFace .eq. 0d0 ) then 
-              ! If A is zero, then the equation is linear
-              ! At this point, it is important to note
-              ! that dInterface is non zero
-              if ( BFace .ne. 0d0 ) then 
-                  dtxyz(3) = ( dInterface/BFace )**2
-                  ! If computed dt is zero, then 
-                  ! particle is at the interface
-                  if ( dtxyz(3) .eq. 0d0 ) then
-                      exitFace = exitFaceZ
-                      dt = 0.0 
-                      return
-                  end if
-              end if 
-          end if
-
-          ! If computed dt is higher than current
-          ! is not valid, set to zero
-          if ( dtxyz(3) .gt. dt ) dtxyz(3) = 0d0 
-
-      end if
-
-
-      ! If all dts where zero, restore t + dt
-      ! and leave
-      if ( all( dtxyz .eq. 0d0 ) ) then 
-          t = t + dt
-          return
-      end if
-
-
-      ! Find minimum dt and 
-      ! assign values accordingly
-      imindt = minloc( dtxyz, dim=1, mask=(dtxyz > 0d0) )
-      dt     = dtxyz(imindt)
-
-      if ( imindt .eq. 1 ) then
+        else if ( any( (/ z1, z2 /) .eq. 0d0) ) then 
+          ! This is equivalent to being at the interface, 
+          ! It didn't detected any solution gt 0, but one zero,
+          ! which means interface
           exitFace = exitFaceX
-      else if ( imindt .eq. 2 ) then
-          exitFace = exitFaceY
-      else if ( imindt .eq. 3 ) then
-          exitFace = exitFaceZ
+          dt       = 0.0
+          return
+        end if
+
+      else if ( AFace .eq. 0d0 ) then 
+        ! If A is zero, then the equation is linear
+        ! At this point, it is important to note
+        ! that dInterface is non zero, but could be really small
+        if ( BFace .ne. 0d0 ) then 
+          dtxyz(1) = ( dInterface/BFace )**2
+          ! If computed dt is zero, then 
+          ! particle is at the interface
+          if ( dtxyz(1) .eq. 0d0 ) then
+            exitFace = exitFaceX
+            dt = 0.0 
+            return
+          end if
+        end if 
       end if
 
+      ! If computed dt is higher than current
+      ! is not valid, set to zero
+      if ( dtxyz(1) .gt. dt ) dtxyz(1) = 0d0
 
-      ! Update time
+    end if
+
+    ! Leaving through y face
+    dInterface = 0d0
+    AFace      = 0d0
+    BFace      = 0d0
+    z1         = 0d0
+    z2         = 0d0
+    zsqrt      = 0d0 
+    zsqrtarg   = 0d0 
+    if ( ( ny .gt. 1.0d0 ) .or. ( ny .lt. 0d0 )  ) then
+
+      ! Compute dInterface
+      if ( ny .gt. 1.0d0 ) then 
+        dInterface = dy*( 1.0d0 - y )
+        exitFaceY  = 4
+      else 
+        dInterface = -dy*y
+        exitFaceY  = 3
+      end if
+
+      ! Exactly at interface, force new cell
+      if ( dInterface .eq. 0.0 ) then
+        exitFace = exitFaceY
+        dt = 0.0
+        return
+      end if
+
+      ! Coefficients
+      AFace = vy + divDy
+      BFace = dBy
+
+      ! Given dInterface, compute new dt
+      zsqrtarg = BFace**2 + 4*dInterface*AFace
+
+      if ( ( zsqrtarg .ge. 0d0 ) .and. ( AFace .ne. 0d0 ) ) then
+        zsqrt = sqrt( zsqrtarg )
+        z1    = (-BFace + zsqrt )/( 2*AFace )
+        z2    = (-BFace - zsqrt )/( 2*AFace )
+
+        if ( any( (/ z1, z2 /) .gt. 0d0) ) then 
+          ! Compute new dt
+          dtxyz(2) = minval( (/z1, z2/), mask=(/z1, z2/)>0d0 )**2
+          ! If computed dt is zero, then 
+          ! particle is at the interface
+          if ( dtxyz(2) .eq. 0d0 ) then
+            exitFace = exitFaceY
+            dt = 0.0 
+            return
+          end if
+        else if ( any( (/ z1, z2 /) .eq. 0d0) ) then 
+          ! This is equivalent to being at the interface, 
+          ! It didn't detected any solution gt 0, but one zero,
+          ! which means interface
+          exitFace = exitFaceY
+          dt       = 0.0
+          return
+        end if
+
+      else if ( AFace .eq. 0d0 ) then 
+        ! If A is zero, then the equation is linear
+        ! At this point, it is important to note
+        ! that dInterface is non zero, but could be really small
+        if ( BFace .ne. 0d0 ) then 
+          dtxyz(2) = ( dInterface/BFace )**2
+          ! If computed dt is zero, then 
+          ! particle is at the interface
+          if ( dtxyz(2) .eq. 0d0 ) then
+            exitFace = exitFaceY
+            dt = 0.0 
+            return
+          end if
+        end if 
+      end if
+
+      ! If computed dt is higher than current
+      ! is not valid, set to zero
+      if ( dtxyz(2) .gt. dt ) dtxyz(2) = 0d0
+
+    end if
+
+    ! Leaving through z face
+    dInterface = 0d0
+    AFace      = 0d0
+    BFace      = 0d0
+    z1         = 0d0
+    z2         = 0d0
+    zsqrt      = 0d0 
+    zsqrtarg   = 0d0 
+    if ( ( nz .gt. 1.0d0 ) .or. ( nz .lt. 0d0 )  ) then
+
+      ! Compute dInterface
+      if ( nz .gt. 1.0d0 ) then
+        dInterface = dz*( 1.0d0 - z )
+        exitFaceZ  = 6
+      else
+        dInterface = -dz*z
+        exitFaceZ  = 5
+      end if
+
+      ! Exactly at interface, force new cell
+      if ( dInterface .eq. 0.0 ) then
+        exitFace = exitFaceZ
+        dt = 0.0
+        return
+      end if
+
+      ! Coefficients
+      AFace = vz + divDz
+      BFace = dBz
+      
+      ! Given dInterface, compute new dt
+      zsqrtarg = BFace**2 + 4*dInterface*AFace
+
+      if ( ( zsqrtarg .ge. 0d0 ) .and. ( AFace .ne. 0d0 ) )  then
+        zsqrt = sqrt( zsqrtarg )
+        z1    = (-BFace + zsqrt )/( 2*AFace )
+        z2    = (-BFace - zsqrt )/( 2*AFace )
+
+        if ( any( (/ z1, z2 /) .gt. 0d0 ) ) then 
+          ! Compute new dt
+          dtxyz(3) = minval( (/z1, z2/), mask=(/z1, z2/)>0d0 )**2
+          ! If computed dt is zero, then 
+          ! particle is at the interface
+          if ( dtxyz(3) .eq. 0d0 ) then
+            exitFace = exitFaceZ
+            dt = 0.0 
+            return
+          end if
+        else if ( any( (/ z1, z2 /) .eq. 0d0) ) then 
+          ! This is equivalent to being at the interface, 
+          ! It didn't detected any solution gt 0, but one zero,
+          ! which means interface
+          exitFace = exitFaceZ
+          dt       = 0.0
+          return
+        end if
+
+      else if ( AFace .eq. 0d0 ) then 
+        ! If A is zero, then the equation is linear
+        ! At this point, it is important to note
+        ! that dInterface is non zero
+        if ( BFace .ne. 0d0 ) then 
+          dtxyz(3) = ( dInterface/BFace )**2
+          ! If computed dt is zero, then 
+          ! particle is at the interface
+          if ( dtxyz(3) .eq. 0d0 ) then
+            exitFace = exitFaceZ
+            dt = 0.0 
+            return
+          end if
+        end if 
+      end if
+
+      ! If computed dt is higher than current
+      ! is not valid, set to zero
+      if ( dtxyz(3) .gt. dt ) dtxyz(3) = 0d0 
+
+    end if
+
+    ! If all dts where zero, restore t + dt
+    ! and leave
+    if ( all( dtxyz .eq. 0d0 ) ) then 
       t = t + dt
+      return
+    end if
+
+    ! Find minimum dt and 
+    ! assign values accordingly
+    imindt = minloc( dtxyz, dim=1, mask=(dtxyz > 0d0) )
+    dt     = dtxyz(imindt)
+
+    if ( imindt .eq. 1 ) then
+      exitFace = exitFaceX
+    else if ( imindt .eq. 2 ) then
+      exitFace = exitFaceY
+    else if ( imindt .eq. 3 ) then
+      exitFace = exitFaceZ
+    end if
+
+    ! Update time
+    t = t + dt
 
 
   end subroutine pr_DetectExitFaceAndUpdateTimeStepQuadratic
@@ -1830,187 +1781,187 @@ contains
 
   subroutine pr_DetectExitFaceAndUpdateTimeStepNewton( this, x, y, z, nx, ny, nz, & 
             vx, vy, vz, divDx, divDy, divDz, dBx, dBy, dBz, t, dt, dtxyz, exitFace )
-      !----------------------------------------------------------------
-      ! Detects exit face and computes time step to force particle
-      ! into the interface, using newton raphson method. 
-      ! Related to exponential advection model 
-      ! 
-      ! Params:
-      !     - x, y, z             : local cell coordinates
-      !     - nx, ny, nz          : updated coordinates after RWPT
-      !     - vx, vy, vz          : interpolated velocities
-      !     - divDx, divDy, divDz : dispersion divergence
-      !     - dBx, dBy, dBz       : random dispersion displacements
-      !     - t                   : current time
-      !     - dt                  : time step
-      !     - dtxyz               : array for saving each dt
-      !     - exitFace            : holder for exit face
-      !  
-      ! Interface:
-      !     - ExitFaceAndTimeStep
-      !----------------------------------------------------------------
-      ! Specifications
-      !----------------------------------------------------------------
-      implicit none
-      class (TrackSubCellType) :: this
-      ! input
-      doubleprecision, intent(in) :: x, y, z
-      doubleprecision, intent(in) :: nx, ny, nz
-      doubleprecision, intent(in) :: vx, vy, vz
-      doubleprecision, intent(in) :: divDx, divDy, divDz
-      doubleprecision, intent(in) :: dBx, dBy, dBz
-      ! output
-      doubleprecision, intent(inout) :: t, dt
-      integer, intent(inout)         :: exitFace
-      doubleprecision, dimension(3), intent(inout) :: dtxyz
-      ! local
-      integer :: exitFaceX, exitFaceY, exitFaceZ
-      integer :: imindt
-      doubleprecision :: dx, dy, dz
-      doubleprecision :: dInterface
-      !----------------------------------------------------------------
+  !----------------------------------------------------------------
+  ! Detects exit face and computes time step to force particle
+  ! into the interface, using newton raphson method. 
+  ! Related to exponential advection model 
+  ! 
+  ! Params:
+  !     - x, y, z             : local cell coordinates
+  !     - nx, ny, nz          : updated coordinates after RWPT
+  !     - vx, vy, vz          : interpolated velocities
+  !     - divDx, divDy, divDz : dispersion divergence
+  !     - dBx, dBy, dBz       : random dispersion displacements
+  !     - t                   : current time
+  !     - dt                  : time step
+  !     - dtxyz               : array for saving each dt
+  !     - exitFace            : holder for exit face
+  !  
+  ! Interface:
+  !     - ExitFaceAndTimeStep
+  !----------------------------------------------------------------
+  ! Specifications
+  !----------------------------------------------------------------
+  implicit none
+  class (TrackSubCellType) :: this
+  ! input
+  doubleprecision, intent(in) :: x, y, z
+  doubleprecision, intent(in) :: nx, ny, nz
+  doubleprecision, intent(in) :: vx, vy, vz
+  doubleprecision, intent(in) :: divDx, divDy, divDz
+  doubleprecision, intent(in) :: dBx, dBy, dBz
+  ! output
+  doubleprecision, intent(inout) :: t, dt
+  integer, intent(inout)         :: exitFace
+  doubleprecision, dimension(3), intent(inout) :: dtxyz
+  ! local
+  integer :: exitFaceX, exitFaceY, exitFaceZ
+  integer :: imindt
+  doubleprecision :: dx, dy, dz
+  doubleprecision :: dInterface
+  !----------------------------------------------------------------
 
-      ! Initialize
-      exitFaceX  = 0
-      exitFaceY  = 0
-      exitFaceZ  = 0
+    ! Initialize
+    exitFaceX  = 0
+    exitFaceY  = 0
+    exitFaceZ  = 0
 
-      ! Local copies of cell size 
-      dx = this%SubCellData%DX
-      dy = this%SubCellData%DY
-      dz = this%SubCellData%DZ
+    ! Local copies of cell size 
+    dx = this%SubCellData%DX
+    dy = this%SubCellData%DY
+    dz = this%SubCellData%DZ
 
-      !Reset t, dt will be replaced
-      t = t - dt
+    !Reset t, dt will be replaced
+    t = t - dt
 
-      ! Leaving through x face
-      dInterface = 0d0
-      if ( ( nx .gt. 1.0d0 ) .or. ( nx .lt. 0d0 )  ) then
+    ! Leaving through x face
+    dInterface = 0d0
+    if ( ( nx .gt. 1.0d0 ) .or. ( nx .lt. 0d0 )  ) then
 
-          ! Compute dInterface
-          if ( nx .gt. 1.0d0 ) then 
-              dInterface = dx*( 1.0d0 - x )
-              exitFaceX  = 2
-          else 
-              dInterface = -dx*x
-              exitFaceX  = 1
-          end if
-
-          ! Exactly at interface, force new cell
-          if ( dInterface .eq. 0d0 ) then
-              exitFace = exitFaceX
-              dt = 0d0
-              return
-          end if
-
-          ! Solve
-          call this%NewtonRaphsonTimeStep( dt, vx,              &
-                                           this%SubCellData%vx1,&
-                                           this%SubCellData%vx2,&
-                                           this%SubCellData%dx, &
-                                           dInterface, divDx,   & 
-                                           dBx, dtxyz(1) )
-
-          ! If computed dt is higher than current
-          ! is not valid, set to zero
-          if ( dtxyz(1) .gt. dt ) dtxyz(1) = 0d0
-
+      ! Compute dInterface
+      if ( nx .gt. 1.0d0 ) then 
+        dInterface = dx*( 1.0d0 - x )
+        exitFaceX  = 2
+      else 
+        dInterface = -dx*x
+        exitFaceX  = 1
       end if
 
-
-      ! Leaving through y face
-      dInterface = 0d0
-      if ( ( ny .gt. 1.0d0 ) .or. ( ny .lt. 0d0 )  ) then
-
-          ! Compute dInterface
-          if ( ny .gt. 1.0d0 ) then 
-              dInterface = dy*( 1.0d0 - y )
-              exitFaceY  = 4
-          else 
-              dInterface = -dy*y
-              exitFaceY  = 3
-          end if
-
-          ! Exactly at interface, force new cell
-          if ( dInterface .eq. 0d0 ) then
-              exitFace = exitFaceY
-              dt = 0d0
-              return
-          end if
-
-          ! Solve
-          call this%NewtonRaphsonTimeStep( dt, vy,              &
-                                           this%SubCellData%vy1,&
-                                           this%SubCellData%vy2,&
-                                           this%SubCellData%dy, &
-                                           dInterface, divDy,   & 
-                                           dBy, dtxyz(2) )
-
-          ! If computed dt is higher than current
-          ! is not valid, set to zero
-          if ( dtxyz(2) .gt. dt ) dtxyz(2) = 0d0
-
+      ! Exactly at interface, force new cell
+      if ( dInterface .eq. 0d0 ) then
+        exitFace = exitFaceX
+        dt = 0d0
+        return
       end if
 
+      ! Solve
+      call this%NewtonRaphsonTimeStep( dt, vx,&
+                         this%SubCellData%vx1,&
+                         this%SubCellData%vx2,&
+                         this%SubCellData%dx, &
+                         dInterface, divDx,   & 
+                         dBx, dtxyz(1) )
 
-      ! Leaving through z face
-      dInterface = 0d0
-      if ( ( nz .gt. 1.0d0 ) .or. ( nz .lt. 0d0 )  ) then
+      ! If computed dt is higher than current
+      ! is not valid, set to zero
+      if ( dtxyz(1) .gt. dt ) dtxyz(1) = 0d0
 
-          ! Compute dInterface
-          if ( nz .gt. 1.0d0 ) then
-              dInterface = dz*( 1.0d0 - z )
-              exitFaceZ  = 6
-          else
-              dInterface = -dz*z
-              exitFaceZ  = 5
-          end if
+    end if
 
-          ! Exactly at interface, force new cell
-          if ( dInterface .eq. 0d0 ) then
-              exitFace = exitFaceZ
-              dt = 0d0
-              return
-          end if
 
-          ! Solve
-          call this%NewtonRaphsonTimeStep( dt, vz,              &
-                                           this%SubCellData%vz1,&
-                                           this%SubCellData%vz2,&
-                                           this%SubCellData%dz, &
-                                           dInterface, divDz,   & 
-                                           dBz, dtxyz(3) )
+    ! Leaving through y face
+    dInterface = 0d0
+    if ( ( ny .gt. 1.0d0 ) .or. ( ny .lt. 0d0 )  ) then
 
-          ! If computed dt is higher than current
-          ! is not valid, set to zero
-          if ( dtxyz(3) .gt. dt ) dtxyz(3) = 0d0
-
+      ! Compute dInterface
+      if ( ny .gt. 1.0d0 ) then 
+        dInterface = dy*( 1.0d0 - y )
+        exitFaceY  = 4
+      else 
+        dInterface = -dy*y
+        exitFaceY  = 3
       end if
 
-
-      ! If all dts where zero, restore t + dt
-      ! and leave
-      if ( all( dtxyz .eq. 0d0 ) ) then 
-          t = t + dt
-          return
+      ! Exactly at interface, force new cell
+      if ( dInterface .eq. 0d0 ) then
+        exitFace = exitFaceY
+        dt = 0d0
+        return
       end if
 
+      ! Solve
+      call this%NewtonRaphsonTimeStep( dt, vy,&
+                         this%SubCellData%vy1,&
+                         this%SubCellData%vy2,&
+                         this%SubCellData%dy, &
+                         dInterface, divDy,   & 
+                         dBy, dtxyz(2) )
 
-      ! Find minimum dt and 
-      ! assign values accordingly
-      imindt = minloc( dtxyz, dim=1, mask=(dtxyz > 0d0) )
-      dt     = dtxyz(imindt)
-      if ( imindt .eq. 1 ) then
-          exitFace = exitFaceX
-      else if ( imindt .eq. 2 ) then
-          exitFace = exitFaceY
-      else if ( imindt .eq. 3 ) then
-          exitFace = exitFaceZ
+      ! If computed dt is higher than current
+      ! is not valid, set to zero
+      if ( dtxyz(2) .gt. dt ) dtxyz(2) = 0d0
+
+    end if
+
+
+    ! Leaving through z face
+    dInterface = 0d0
+    if ( ( nz .gt. 1.0d0 ) .or. ( nz .lt. 0d0 )  ) then
+
+      ! Compute dInterface
+      if ( nz .gt. 1.0d0 ) then
+        dInterface = dz*( 1.0d0 - z )
+        exitFaceZ  = 6
+      else
+        dInterface = -dz*z
+        exitFaceZ  = 5
       end if
 
+      ! Exactly at interface, force new cell
+      if ( dInterface .eq. 0d0 ) then
+        exitFace = exitFaceZ
+        dt = 0d0
+        return
+      end if
 
-      ! Update time
+      ! Solve
+      call this%NewtonRaphsonTimeStep( dt, vz,&
+                         this%SubCellData%vz1,&
+                         this%SubCellData%vz2,&
+                         this%SubCellData%dz, &
+                         dInterface, divDz,   & 
+                         dBz, dtxyz(3) )
+
+      ! If computed dt is higher than current
+      ! is not valid, set to zero
+      if ( dtxyz(3) .gt. dt ) dtxyz(3) = 0d0
+
+    end if
+
+
+    ! If all dts where zero, restore t + dt
+    ! and leave
+    if ( all( dtxyz .eq. 0d0 ) ) then 
       t = t + dt
+      return
+    end if
+
+
+    ! Find minimum dt and 
+    ! assign values accordingly
+    imindt = minloc( dtxyz, dim=1, mask=(dtxyz > 0d0) )
+    dt     = dtxyz(imindt)
+    if ( imindt .eq. 1 ) then
+      exitFace = exitFaceX
+    else if ( imindt .eq. 2 ) then
+      exitFace = exitFaceY
+    else if ( imindt .eq. 3 ) then
+      exitFace = exitFaceZ
+    end if
+
+
+    ! Update time
+    t = t + dt
 
 
   end subroutine pr_DetectExitFaceAndUpdateTimeStepNewton
