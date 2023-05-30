@@ -498,7 +498,7 @@ contains
       end if
     end if
     if ( this%reportToOutUnit ) then 
-      write( this%outFileUnit, *) '  Histogram determines dimensions to be analyzed based on binSize.'
+      write( this%outFileUnit, *) '  Histogram determines dimensions to be analyzed based on bin sizes.'
       write( this%outFileUnit, *) '  Will compute Histogram considering ', this%histogram%nDim, ' dimensions.'
     end if  
     
@@ -3794,7 +3794,7 @@ subroutine prComputeDensityOptimization( this, densityEstimateGrid, nOptimizatio
     ! For those special cases where nOptLoops .eq. 0
     if ( nOptLoops .eq. 0 ) then
 
-      ! Export variables 
+      ! Export optimization variables 
       if ( (exportVariables) ) then
         write( unit=loopId, fmt=* )0
         write( unit=varsOutputFileName, fmt='(a)' )trim(adjustl(this%outputFileName))//trim(adjustl(loopId))
@@ -5976,9 +5976,9 @@ subroutine prComputeDensityOptimization( this, densityEstimateGrid, nOptimizatio
     real(fp), dimension(:,:),intent(in) :: curvatureBandwidth
     real(fp), dimension(:)  ,intent(in) :: nEstimate
     real(fp), dimension(:)  ,intent(in) :: netRoughness
-    real(fp), dimension(:)  ,intent(in) :: roughnessXXArray   
-    real(fp), dimension(:)  ,intent(in) :: roughnessYYArray
-    real(fp), dimension(:)  ,intent(in) :: roughnessZZArray
+    real(fp), dimension(:) ,intent(in), allocatable :: roughnessXXArray   
+    real(fp), dimension(:) ,intent(in), allocatable :: roughnessYYArray
+    real(fp), dimension(:) ,intent(in), allocatable :: roughnessZZArray
     integer :: ix, iy, iz, n
     integer :: outputUnit = 555
     !---------------------------------------------------------------------
@@ -5997,12 +5997,15 @@ subroutine prComputeDensityOptimization( this, densityEstimateGrid, nOptimizatio
         kernelSmoothingShape(1,n), kernelSmoothingShape(2,n), kernelSmoothingShape(3,n),& 
         kernelSmoothingScale(n), kernelSigmaSupportScale(n), &
         curvatureBandwidth(1,n), curvatureBandwidth(2,n), curvatureBandwidth(3,n), &
-        nEstimate(n), roughnessXXArray(n), roughnessYYArray(n), &
-        roughnessZZArray(n), netRoughness(n)
+        !nEstimate(n), roughnessXXArray(n), roughnessYYArray(n), &
+        !roughnessZZArray(n), netRoughness(n)
+        nEstimate(n), roughnessXXArray(n), 0d0, 0d0 , &
+         netRoughness(n)
     end do
 
     ! Finished
     close(outputUnit)
+
 
   end subroutine prExportOptimizationVariablesExtended
 

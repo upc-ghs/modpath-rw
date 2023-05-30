@@ -29,7 +29,6 @@ module KernelMultiGaussianModule
     integer , dimension(3) :: matrixPositiveShape = 0 
     logical                :: shouldIntegrateOne 
     real(fp), dimension(:,:,:), allocatable :: matrix
-    real(fp), dimension(:,:,:), allocatable :: bmatrix
 
   contains 
       
@@ -40,8 +39,6 @@ module KernelMultiGaussianModule
     procedure, non_overridable :: ResetMatrixOld               => prResetMatrixOld
     procedure, non_overridable :: ComputeSpansBounded          => prComputeSpansBounded
     procedure, non_overridable :: ComputeSpansBoundedTranspose => prComputeSpansBoundedTranspose
-    procedure, non_overridable :: ComputeGridSpans             => prComputeGridSpans
-    procedure, non_overridable :: ComputeGridSpansTranspose    => prComputeGridSpansTranspose
     procedure, non_overridable :: GenerateZeroPositiveGrid     => prGenerateZeroPositiveGrid
     procedure, non_overridable :: UnfoldZeroPositiveMatrix     => prUnfoldZeroPositiveMatrix
     procedure, non_overridable :: SetupMatrix                  => prSetupMatrix
@@ -151,7 +148,6 @@ contains
     this%matrixRange = defaultKernelRange ! Set to zero ?
 
     if ( allocated( this%matrix ) ) deallocate( this%matrix )
-    if ( allocated( this%bmatrix ) ) deallocate( this%bmatrix )
 
   end subroutine prReset
 
@@ -184,7 +180,6 @@ contains
     !------------------------------------------------------------------------------
 
     if ( allocated( this%matrix ) ) deallocate( this%matrix )
-    if ( allocated( this%bmatrix ) ) deallocate( this%bmatrix )
 
     this%bandwidth = fZERO
     this%matrixPositiveShape = 0
@@ -456,342 +451,6 @@ contains
 
 
 
-  subroutine prComputeGridSpans( this, gridIndexes, gridShape, &
-                              xGridSpan, yGridSpan, zGridSpan, &
-                        xKernelSpan, yKernelSpan, zKernelSpan, &
-                                                 dimensionMask )
-    !------------------------------------------------------------------------------
-    !  
-    !------------------------------------------------------------------------------
-    ! Specifications 
-    !------------------------------------------------------------------------------
-    implicit none
-    class( KernelType ) :: this
-    integer, dimension(3), intent(in) :: gridShape
-    integer, dimension(3), intent(in) :: gridIndexes
-    integer, dimension(2), intent(inout) :: xGridSpan, yGridSpan, zGridSpan
-    integer, dimension(2), intent(inout) :: xKernelSpan, yKernelSpan, zKernelSpan
-    integer, dimension(3), intent(in), optional :: dimensionMask
-    integer :: boundLocX, boundLocY, boundLocZ
-    logical :: isBoundaryX    
-    logical :: isBoundaryY
-    logical :: isBoundaryZ
-    integer :: boundDirX    
-    integer :: boundDirY
-    integer :: boundDirZ
-    !------------------------------------------------------------------------------
-
-    ! Spans in grid (ORIGINAL) 
-    xGridSpan(1) = max( gridIndexes(1) - this%matrixPositiveShape(1), 1)
-    xGridSpan(2) = min( gridIndexes(1) + this%matrixPositiveShape(1), gridShape(1) )
-    yGridSpan(1) = max( gridIndexes(2) - this%matrixPositiveShape(2), 1)
-    yGridSpan(2) = min( gridIndexes(2) + this%matrixPositiveShape(2), gridShape(2) )
-    zGridSpan(1) = max( gridIndexes(3) - this%matrixPositiveShape(3), 1)
-    zGridSpan(2) = min( gridIndexes(3) + this%matrixPositiveShape(3), gridShape(3) )
-
-    ! Spans in kernel matrix
-    xKernelSpan = xGridSpan + this%matrixPositiveShape(1) - gridIndexes(1) + 1
-    yKernelSpan = yGridSpan + this%matrixPositiveShape(2) - gridIndexes(2) + 1
-    zKernelSpan = zGridSpan + this%matrixPositiveShape(3) - gridIndexes(3) + 1
-
-    ! The old way
-    if ( present( dimensionMask ) ) then 
-
-      ! Identify boundary faces
-      isBoundaryX = .false.
-      isBoundaryY = .false.
-      isBoundaryZ = .false.
-      
-      boundLocX = 0
-      boundLocY = 0
-      boundLocZ = 0
-
-      ! X
-      if ( dimensionMask(1) .eq. 1 ) then 
-        if ( ( gridIndexes(1) - this%matrixPositiveShape(1) ) .lt. 1 ) then 
-          isBoundaryX  = .true.
-          boundLocX    = 1 - gridIndexes(1) + this%matrixPositiveShape(1)
-          boundDirX    = 1
-        else if ( ( gridIndexes(1) + this%matrixPositiveShape(1) ) .gt. gridShape(1) ) then 
-          isBoundaryX  = .true.
-          boundLocX    = 2*this%matrixPositiveShape(1) + 1 &
-            - ( gridIndexes(1) + this%matrixPositiveShape(1) - gridShape(1) ) + 1 
-          boundDirX    = 2
-        end if 
-      end if 
-
-      ! Y
-      if ( dimensionMask(2) .eq. 1 ) then 
-        if ( ( gridIndexes(2) - this%matrixPositiveShape(2) ) .lt. 1 ) then 
-          isBoundaryY  = .true.
-          boundLocY    = 1 - gridIndexes(2) + this%matrixPositiveShape(2)
-          boundDirY    = 1
-        else if ( ( gridIndexes(2) + this%matrixPositiveShape(2) ) .gt. gridShape(2) ) then 
-          isBoundaryY  = .true.
-          boundLocY    = 2*this%matrixPositiveShape(2) + 1 &
-            - ( gridIndexes(2) + this%matrixPositiveShape(2) - gridShape(2) ) + 1 
-          boundDirY    = 2
-        end if 
-      end if 
-
-      ! Z
-      if ( dimensionMask(3) .eq. 1 ) then 
-        if ( ( gridIndexes(3) - this%matrixPositiveShape(3) ) .lt. 1 ) then 
-          isBoundaryZ  = .true.
-          boundLocZ    = 1 - gridIndexes(3) + this%matrixPositiveShape(3)
-          boundDirZ    = 1
-        else if ( ( gridIndexes(3) + this%matrixPositiveShape(3) ) .gt. gridShape(3) ) then 
-          isBoundaryZ  = .true.
-          boundLocZ    = 2*this%matrixPositiveShape(3) + 1 &
-            - ( gridIndexes(3) + this%matrixPositiveShape(3) - gridShape(3) ) + 1
-          boundDirZ    = 2
-        end if 
-      end if 
-
-      ! Writes corrected kernel matrix in 
-      ! this%bmatrix in order to avoid rewriting
-      ! matrix at databases
-
-      ! Notice that now with the CopyFrom method, bmatrix becomes
-      ! unnecessary
-      this%bmatrix = this%matrix
-      call prVerifyBoundary( this, gridIndexes, gridShape, &
-                          xGridSpan, yGridSpan, zGridSpan, &
-                    xKernelSpan, yKernelSpan, zKernelSpan, &
-                          boundLocX, boundLocY, boundLocZ, &
-                    isBoundaryX, isBoundaryY, isBoundaryZ, & 
-                          boundDirX, boundDirY, boundDirZ  )
-   end if  
-
-
-  end subroutine prComputeGridSpans
-
-
-  ! OUTDATED, POSSIBLY DEPRECATED
-  subroutine prVerifyBoundary( this, gridIndexes, gridShape,    &
-                              xGridSpan, yGridSpan, zGridSpan,  &
-                         xKernelSpan, yKernelSpan, zKernelSpan, & 
-                               boundLocX, boundLocY, boundLocZ, &
-                         isBoundaryX, isBoundaryY, isBoundaryZ, & 
-                               boundDirX, boundDirY, boundDirZ  ) 
-    !------------------------------------------------------------------------------
-    !  
-    !------------------------------------------------------------------------------
-    ! Specifications 
-    !------------------------------------------------------------------------------
-    implicit none
-    class( KernelType ) :: this
-    integer, dimension(3), intent(in) :: gridShape
-    integer, dimension(3), intent(in) :: gridIndexes
-    integer, dimension(2), intent(inout) :: xGridSpan, yGridSpan, zGridSpan
-    integer, dimension(2), intent(inout) :: xKernelSpan, yKernelSpan, zKernelSpan
-    integer, intent(in) :: boundLocX, boundLocY, boundLocZ
-    logical, intent(in) :: isBoundaryX    
-    logical, intent(in) :: isBoundaryY
-    logical, intent(in) :: isBoundaryZ
-    integer, intent(in) :: boundDirX    
-    integer, intent(in) :: boundDirY
-    integer, intent(in) :: boundDirZ
-    integer, dimension(:), allocatable :: kernelShape
-    integer :: lenb
-    !------------------------------------------------------------------------------
-
-    ! This was done outside
-    !this%bmatrix = this%matrix
-
-    ! If no boundary, leave       
-    if ( .not. ( isBoundaryX .or. isBoundaryY .or. isBoundaryZ ) ) return
-
-    ! If boundary
-    kernelShape  = shape(this%bmatrix)
-
-    ! Kernel reflection ! 
-
-    ! X
-    if ( isBoundaryX ) then 
-      ! Do the process 
-      select case( boundDirX ) 
-        case(1)
-          ! WEST
-          lenb = boundLocX
-          this%bmatrix( boundLocX + 1: boundLocX + lenb, :, :) = &
-          this%bmatrix( boundLocX + 1: boundLocX + lenb, :, :) + &
-          this%bmatrix( boundLocX:1:-1, :, :)
-          this%bmatrix( :boundLocX, :, :) = 0
-        case(2)
-          ! EAST 
-          lenb = kernelShape(1) - boundLocX + 1 
-          this%bmatrix( boundLocX - lenb: boundLocX - 1, :, :) = &
-          this%bmatrix( boundLocX - lenb: boundLocX - 1, :, :) + &
-          this%bmatrix( kernelShape(1): boundLocX :-1, :, :)
-          this%bmatrix( boundLocX:, :, :) = 0
-      end select    
-    end if 
-
-    ! Y
-    if ( isBoundaryY ) then 
-      ! Do the process 
-      select case( boundDirY ) 
-        case(1)
-          ! SOUTH
-          lenb = boundLocY
-          this%bmatrix( :, boundLocY + 1: boundLocY + lenb, :) = &
-          this%bmatrix( :, boundLocY + 1: boundLocY + lenb, :) + &
-          this%bmatrix( :, boundLocY:1:-1, :)
-          this%bmatrix( :, :boundLocY, :) = 0
-        case(2)
-          ! NORTH
-          lenb = kernelShape(2) - boundLocY + 1 
-          this%bmatrix( :, boundLocY - lenb: boundLocY - 1, :) = &
-          this%bmatrix( :, boundLocY - lenb: boundLocY - 1, :) + &
-          this%bmatrix( :, kernelShape(2): boundLocY :-1, :)
-          this%bmatrix( :, boundLocY:, :) = 0
-      end select    
-    end if
-
-    ! Z 
-    if ( isBoundaryZ ) then 
-      ! Do the process 
-      select case( boundDirZ ) 
-        case(1)
-          ! BOTTOM
-          lenb = boundLocZ
-          this%bmatrix( :, :, boundLocZ + 1: boundLocZ + lenb) = &
-          this%bmatrix( :, :, boundLocZ + 1: boundLocZ + lenb) + &
-          this%bmatrix( :, :, boundLocZ:1:-1)
-          this%bmatrix( :, :, :boundLocZ) = 0
-        case(2)
-          ! TOP
-          lenb = kernelShape(3) - boundLocZ + 1 
-          this%bmatrix( :, :, boundLocZ - lenb: boundLocZ - 1) = &
-          this%bmatrix( :, :, boundLocZ - lenb: boundLocZ - 1) + &
-          this%bmatrix( :, :, kernelShape(3): boundLocZ :-1)
-          this%bmatrix( :, :, boundLocZ:) = 0
-      end select
-    end if 
-
-
-    !if ( this%shouldIntegrateOne ) then 
-    !  if ( ( abs( sum(this%bmatrix) ) .lt. 0.99 ) ) then  
-    !    write(*,*) 'Kernel does not integrate one and it should. Integral: ', sum(this%bmatrix)
-    !    stop
-    !  end if
-    !end if 
-
-
-  end subroutine prVerifyBoundary 
-
-
-  subroutine prComputeGridSpansTranspose( this, gridIndexes, gridShape, &
-                                       xGridSpan, yGridSpan, zGridSpan, &
-                                 xKernelSpan, yKernelSpan, zKernelSpan, & 
-                                                          dimensionMask )
-    !------------------------------------------------------------------------------
-    !  
-    !------------------------------------------------------------------------------
-    ! Specifications 
-    !------------------------------------------------------------------------------
-    implicit none
-    class( KernelType ) :: this
-    integer, dimension(3), intent(in) :: gridShape
-    integer, dimension(3), intent(in) :: gridIndexes
-    integer, dimension(2), intent(inout) :: xGridSpan, yGridSpan, zGridSpan
-    integer, dimension(2), intent(inout) :: xKernelSpan, yKernelSpan, zKernelSpan
-    integer, dimension(3), intent(in), optional :: dimensionMask
-    integer :: boundLocX, boundLocY, boundLocZ
-    logical :: isBoundaryX    
-    logical :: isBoundaryY
-    logical :: isBoundaryZ
-    integer :: boundDirX    
-    integer :: boundDirY
-    integer :: boundDirZ
-    !------------------------------------------------------------------------------
-
-    ! Spans in grid
-    !( notice the switch in matrixPositiveShape indexes,
-    !  compare against ComputeGridSpans )
-    xGridSpan(1) = max( gridIndexes(1) - this%matrixPositiveShape(2), 1)
-    xGridSpan(2) = min( gridIndexes(1) + this%matrixPositiveShape(2), gridShape(1) )
-    yGridSpan(1) = max( gridIndexes(2) - this%matrixPositiveShape(1), 1)
-    yGridSpan(2) = min( gridIndexes(2) + this%matrixPositiveShape(1), gridShape(2) )
-    zGridSpan(1) = max( gridIndexes(3) - this%matrixPositiveShape(3), 1)
-    zGridSpan(2) = min( gridIndexes(3) + this%matrixPositiveShape(3), gridShape(3) )
-
-    ! Spans in transposed kernel matrix
-    xKernelSpan = xGridSpan + this%matrixPositiveShape(2) - gridIndexes(1) + 1
-    yKernelSpan = yGridSpan + this%matrixPositiveShape(1) - gridIndexes(2) + 1
-    zKernelSpan = zGridSpan + this%matrixPositiveShape(3) - gridIndexes(3) + 1
-
-    if ( present( dimensionMask ) ) then 
-
-      ! Identify boundary faces
-      isBoundaryX = .false.
-      isBoundaryY = .false.
-      isBoundaryZ = .false.
-      
-      boundLocX = 0
-      boundLocY = 0
-      boundLocZ = 0
-
-      ! X
-      if ( dimensionMask(1) .eq. 1 ) then 
-        if ( ( gridIndexes(1) - this%matrixPositiveShape(2) ) .lt. 1 ) then 
-          isBoundaryX  = .true.
-          boundLocX    = 1 - gridIndexes(1) + this%matrixPositiveShape(2)
-          boundDirX    = 1
-        else if ( ( gridIndexes(1) + this%matrixPositiveShape(2) ) .gt. gridShape(1) ) then 
-          isBoundaryX  = .true.
-          boundLocX    = 2*this%matrixPositiveShape(2) + 1 &
-              - ( gridIndexes(1) + this%matrixPositiveShape(2) - gridShape(1) )
-          boundDirX    = 2
-        end if 
-      end if 
-
-      ! Y
-      if ( dimensionMask(2) .eq. 1 ) then 
-        if ( ( gridIndexes(2) - this%matrixPositiveShape(1) ) .lt. 1 ) then 
-          isBoundaryY  = .true.
-          boundLocY    = 1 - gridIndexes(2) + this%matrixPositiveShape(1)
-          boundDirY    = 1
-        else if ( ( gridIndexes(2) + this%matrixPositiveShape(1) ) .gt. gridShape(2) ) then 
-          isBoundaryY  = .true.
-          boundLocY    = 2*this%matrixPositiveShape(1) + 1 &
-              - ( gridIndexes(2) + this%matrixPositiveShape(1) - gridShape(2) )
-          boundDirY    = 2
-        end if 
-      end if 
-
-      ! Z
-      if ( dimensionMask(3) .eq. 1 ) then 
-        if ( ( gridIndexes(3) - this%matrixPositiveShape(3) ) .lt. 1 ) then 
-          isBoundaryZ  = .true.
-          boundLocZ    = 1 - gridIndexes(3) + this%matrixPositiveShape(3)
-          boundDirZ    = 1
-        else if ( ( gridIndexes(3) + this%matrixPositiveShape(3) ) .gt. gridShape(3) ) then 
-          isBoundaryZ  = .true.
-          boundLocZ    = 2*this%matrixPositiveShape(3) + 1 &
-              - ( gridIndexes(3) + this%matrixPositiveShape(3) - gridShape(3) )
-          boundDirZ    = 2
-        end if 
-      end if 
-
-      ! Writes corrected kernel matrix in 
-      ! this%bmatrix in order to avoid rewriting
-      ! matrix at databases. 
-      ! Transpose and correct by boundaries if any.
-      this%bmatrix = prComputeXYTranspose( this%matrix )
-      call prVerifyBoundary( this, gridIndexes, gridShape, &
-                          xGridSpan, yGridSpan, zGridSpan, &
-                    xKernelSpan, yKernelSpan, zKernelSpan, &
-                          boundLocX, boundLocY, boundLocZ, &
-                    isBoundaryX, isBoundaryY, isBoundaryZ, & 
-                          boundDirX, boundDirY, boundDirZ  )
-    end if 
-
-
-  end subroutine prComputeGridSpansTranspose
-
-
   subroutine prGenerateZeroPositiveGrid( this, zPXGrid, zPYGrid, zPZGrid  )
     !------------------------------------------------------------------------------
     !
@@ -1057,9 +716,6 @@ contains
     if ( allocated( this%matrix ) ) deallocate( this%matrix )
     allocate( this%matrix( 2*nx + 1, 2*ny + 1, 2*nz + 1 ) )
 
-    if ( allocated( this%bmatrix ) ) deallocate( this%bmatrix )
-    allocate( this%bmatrix( 2*nx + 1, 2*ny + 1, 2*nz + 1 ) )
-
     if ( all( this%bandwidth .eq. fZERO ) ) then 
       this%matrix = fZERO
       return
@@ -1138,8 +794,6 @@ contains
     ! Kernel%matrix allocation ( consider doing this only if grid size changed )
     if ( allocated( this%matrix ) ) deallocate( this%matrix )
     allocate( this%matrix( 2*nx + 1, 2*ny + 1, 2*nz + 1 ) )
-    if ( allocated( this%bmatrix ) ) deallocate( this%bmatrix )
-    allocate( this%bmatrix( 2*nx + 1, 2*ny + 1, 2*nz + 1 ) )
 
     if ( all( this%bandwidth .eq. fZERO ) ) then 
       this%matrix = fZERO
@@ -1190,7 +844,9 @@ contains
       return
     end if
 
-    ! Correct kernel
+    ! Kernel correction
+    ! Note: the cell volume is implicit in the non-dimensional bandwidhts,
+    ! further considering that this kernel is lambda_i**2*V^i
     do nd=1,3
       if ( hLambda(nd) .le. fZERO ) cycle
       select case(nd)
@@ -1239,8 +895,6 @@ contains
     ! Kernel%matrix allocation ( consider doing this only if grid size changed )
     if ( allocated( this%matrix ) ) deallocate( this%matrix )
     allocate( this%matrix( 2*nx + 1, 2*ny + 1, 2*nz + 1 ) )
-    if ( allocated( this%bmatrix ) ) deallocate( this%bmatrix )
-    allocate( this%bmatrix( 2*nx + 1, 2*ny + 1, 2*nz + 1 ) )
 
     if ( all( this%bandwidth .eq. fZERO ) ) then 
       this%matrix = fZERO
@@ -1291,7 +945,9 @@ contains
       return
     end if
 
-    ! Correct kernel
+    ! Kernel correction
+    ! Note: the cell volume is implicit in the non-dimensional bandwidhts,
+    ! further considering that this kernel is lambda_i**2*V^i
     do nd=1,3
       if ( hLambda(nd) .le. fZERO ) cycle
       select case(nd)
@@ -1339,9 +995,6 @@ contains
     ! Kernel%matrix allocation ( consider doing this only if grid size changed )
     if ( allocated( this%matrix ) ) deallocate( this%matrix )
     allocate( this%matrix( 2*nx + 1, 2*ny + 1, 2*nz + 1 ) )
-
-    if ( allocated( this%bmatrix ) ) deallocate( this%bmatrix )
-    allocate( this%bmatrix( 2*nx + 1, 2*ny + 1, 2*nz + 1 ) )
 
     if ( all( this%bandwidth .eq. fZERO ) ) then 
       this%matrix = fZERO
@@ -1391,7 +1044,9 @@ contains
       return
     end if
 
-    ! Correct kernel
+    ! Kernel correction
+    ! Note: the cell volume is implicit in the non-dimensional bandwidhts,
+    ! further considering that this kernel is lambda_i**2*V^i
     do nd=1,3
       if ( hLambda(nd) .le. fZERO ) cycle
       select case(nd)

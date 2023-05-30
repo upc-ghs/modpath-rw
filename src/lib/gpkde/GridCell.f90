@@ -73,13 +73,6 @@ module GridCellModule
     integer, dimension(2) :: kernelSD2YMSpan = 0
     integer, dimension(2) :: kernelSD2ZMSpan = 0
 
-    integer, dimension(2) :: kernelSD3XGSpan = 0
-    integer, dimension(2) :: kernelSD3YGSpan = 0
-    integer, dimension(2) :: kernelSD3ZGSpan = 0
-    integer, dimension(2) :: kernelSD3XMSpan = 0
-    integer, dimension(2) :: kernelSD3YMSpan = 0
-    integer, dimension(2) :: kernelSD3ZMSpan = 0
-
   contains
 
     procedure :: Initialize => prInitialize
