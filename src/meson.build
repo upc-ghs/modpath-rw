@@ -5,7 +5,7 @@ external_sources = files(
   'lib' / 'gpkde' / 'Histogram.f90',
   'lib' / 'gpkde' / 'KernelMultiGaussian.f90',
   'lib' / 'gpkde' / 'GridCell.f90', 
-  'lib' / 'gpkde' / 'GridProjectedKDE.f90',
+  'lib' / 'gpkde' / 'GridProjectedKDE.F90',
   # finterp
   'lib' / 'finterp' / 'linear_interpolation_module.F90',
   # ziggurat random number
