@@ -1727,6 +1727,7 @@ contains
     integer :: validCellCounter, cellCounter, cellNumber
     integer, allocatable, dimension(:,:) :: subDivisions
     integer, allocatable, dimension(:)   :: validCellNumbers
+    doubleprecision, allocatable, dimension(:) :: activeCellTotalMass
     logical :: saveValidCellNumbers = .false.
     character(len=24),dimension(1) :: aname
     data aname(1) /'            IC'/
@@ -1801,10 +1802,10 @@ contains
       select case ( initialConditionFormat )
       ! Read initial condition as resident concentration (ML^-3)
       case (0) 
-        ! Given a value for the mass of particles, 
-        ! use flowModelData to compute cellvolume
-        ! and a shape factor from which the number 
-        ! of particles per cell is estimated
+        ! Given a value for the mass of particles, use flowModelData to compute cellvolume
+        ! and a shape factor from which the number of particles per cell is estimated.
+        ! Establishes mass consistency at the domain level and all particles remain
+        ! with the same mass.
 
         if(allocated(densityDistribution)) deallocate(densityDistribution)
         allocate(densityDistribution(grid%CellCount))
@@ -2061,6 +2062,297 @@ contains
           end do
 
         end if 
+
+        ! Assign for each particle of this group
+        !  - id
+        !  - group
+        !  - sequence number
+        !  - layer 
+        idmax = 0
+        do m = 1, totalParticleCount
+          seqNumber = seqNumber + 1
+          if(particleGroups(nic)%Particles(m)%Id .gt. idmax) idmax = particleGroups(nic)%Particles(m)%Id
+          particleGroups(nic)%Particles(m)%Group = particleGroups(nic)%Group
+          particleGroups(nic)%Particles(m)%SequenceNumber = seqNumber
+          particleGroups(nic)%Particles(m)%InitialLayer =                                   &
+            grid%GetLayer(particleGroups(nic)%Particles(m)%InitialCellNumber)
+          particleGroups(nic)%Particles(m)%Layer =                                          &
+            grid%GetLayer(particleGroups(nic)%Particles(m)%CellNumber)
+        end do
+
+        ! Done with this IC kind
+
+      ! Read initial condition as resident concentration (ML^-3)
+      case(1)
+        ! Similar to the previous case, but now enforces consistency at a cell level. 
+        ! Given a magnitude for particles' mass, determines a number of particles 
+        ! inside each cell. From here, establish a per-cell value for the mass, 
+        ! obtained from the total mass inside the cell. Particles with non-uniform mass. :O 
+
+        if(allocated(densityDistribution)) deallocate(densityDistribution)
+        allocate(densityDistribution(grid%CellCount))
+
+        ! Read particles mass
+        read(icUnit, '(a)') line
+        icol = 1
+        call urword(line,icol,istart,istop,3,n,r,0,0)
+        if ( r.lt.0d0 ) then 
+          write(outUnit,'(A)') 'Given particle mass is negative. Should be positive. Stop.'
+          call ustop('Given particle mass is negative. Should be positive. Stop.')
+        end if
+        particleMass = r 
+
+        if ( ( this%ParticlesMassOption .eq. 2 ) ) then 
+          ! Read solute id
+          read(icUnit, '(a)') line
+          icol = 1
+          call urword(line,icol,istart,istop,2,n,r,0,0)
+          if ( n.lt.1 ) then 
+            write(outUnit,'(A)')'Given SpeciesID is less than 1. Minimum is 1. Stop.'
+            call ustop('Given SpeciesID is less than 1. Minimum is 1. Stop.')
+          end if
+          soluteId = n
+        end if
+
+        ! Read concentration
+        if((grid%GridType .eq. 1) .or. (grid%GridType .eq. 3)) then
+          call u3ddblmp(icUnit, outUnit, grid%LayerCount, grid%RowCount,      &
+            grid%ColumnCount, grid%CellCount, densityDistribution, aname(1))
+        else if((grid%GridType .eq. 2) .or. (grid%GridType .eq. 4)) then
+          call u3ddblmpusg(icUnit, outUnit, grid%CellCount, grid%LayerCount,  &
+            densityDistribution, aname(1), cellsPerLayer)
+        else
+          write(outUnit,*) 'Invalid grid type specified when reading IC array ', & 
+              particleGroups(nic)%Name, ' name. Stop.'
+          call ustop('Invalid grid type specified when reading IC array') 
+        end if
+
+        ! Validity of initial condition
+        ! Used to allocate subdivisions 
+        validCellCounter = count( densityDistribution /= 0d0 )
+        if( validCellCounter .eq.0 ) then
+          write(outUnit,'(a,a,a)') 'Warning: initial condition ',&
+            trim(adjustl(particleGroups(nic)%Name)),' has a distribution only with zeros'
+          write(outUnit,'(a)') 'It will not create a particle group. Continue to the next.'
+          ! Process the next one
+          cycle
+        end if 
+
+        ! Allocate subdivisions
+        if (allocated(subDivisions)) deallocate(subDivisions)
+        allocate( subDivisions(validCellCounter,3) )
+        subDivisions(:,:) = 0
+
+        ! If validCellCounter is not equal to the 
+        ! size of the initial concentration array, 
+        ! and somehow much smaller,  then it could 
+        ! be of benefit to save the valid cell ids  
+        ! and deallocate densityDistribution 
+        saveValidCellNumbers = .false. 
+        if ( validCellCounter .lt. 0.5*grid%CellCount ) then
+          if ( allocated( validCellNumbers ) ) deallocate( validCellNumbers ) 
+          allocate( validCellNumbers(validCellCounter) ) 
+          saveValidCellNumbers = .true. 
+        end if 
+
+        ! Active cell total mass holder
+        if ( allocated( activeCellTotalMass ) ) deallocate( activeCellTotalMass ) 
+        allocate( activeCellTotalMass(validCellCounter) ) 
+
+
+        ! Loop over densityDistribution and compute:
+        !  - totalDissolvedMass
+        !  - totalAccumulatedMass: considers retardation factor
+        !  - totalParticleCount
+        totalDissolvedMass   = 0d0
+        totalAccumulatedMass = 0d0
+        totalParticleCount   = 0
+        cellCounter          = 0
+        do nc = 1, grid%CellCount
+          ! If no concentration, next
+          if ( densityDistribution(nc) .eq. 0d0 ) cycle
+
+          ! Increase cellCounter
+          cellCounter = cellCounter + 1
+
+          ! Compute cell volume
+          cellVolume = 1d0
+          do nd=1,3
+            if( dimensionMask(nd).eq.0 ) cycle
+            select case(nd)
+            case(1)
+              cellVolume = cellVolume*grid%DelX(nc)
+            case(2)
+              cellVolume = cellVolume*grid%DelY(nc)
+            case(3)
+              ! simple dZ
+              cellVolume = cellVolume*(grid%Top(nc)-grid%Bottom(nc))
+            end select
+          end do
+          cellDissolvedMass = 0d0
+          cellTotalMass = 0d0
+          ! Absolute value is required for the weird case that 
+          ! densityDistribution contains negative values
+          cellDissolvedMass = abs(densityDistribution(nc))*porosity(nc)*cellVolume
+          totalDissolvedMass = totalDissolvedMass + cellDissolvedMass 
+          cellTotalMass = cellDissolvedMass*this%Retardation(nc)
+          totalAccumulatedMass = totalAccumulatedMass + cellTotalMass
+         
+          ! Save cell total mass
+          activeCellTotalMass(cellCounter) = cellTotalMass
+
+          ! nParticlesCell: estimate the number of particles 
+          ! for the cell using the specified mass 
+          nParticlesCell = cellTotalMass/particleMass
+
+          ! If less than 0.5 particle, cycle to the next cell
+          if ( nParticlesCell .lt. 0.5 ) cycle
+
+          ! Compute shapeFactors only if dimension is active
+          ! If not, will remain as zero
+          sX = 0
+          sY = 0
+          sZ = 0
+          do nd=1,3
+            if( dimensionMask(nd).eq.0 ) cycle
+            select case(nd)
+            case(1)
+              sX = grid%DelX(nc)/(cellVolume**(1d0/nDim))
+            case(2)
+              sY = grid%DelY(nc)/(cellVolume**(1d0/nDim))
+            case(3)
+              ! simple dZ
+              sZ = (grid%Top(nc)-grid%Bottom(nc))/(cellVolume**(1d0/nDim))
+            end select
+          end do
+
+          ! Estimate subdivisions
+          nPX    = sX*( (nParticlesCell)**(1d0/nDim) ) 
+          nPY    = sY*( (nParticlesCell)**(1d0/nDim) )
+          nPZ    = sZ*( (nParticlesCell)**(1d0/nDim) )
+          iNPX   = int( nPX ) + 1
+          iNPY   = int( nPY ) + 1
+          iNPZ   = int( nPZ ) + 1
+          NPCELL = iNPX*iNPY*iNPZ
+          totalParticleCount = totalParticleCount + NPCELL
+
+          ! Save in subdivisions
+          subDivisions(cellCounter,1) = iNPX
+          subDivisions(cellCounter,2) = iNPY
+          subDivisions(cellCounter,3) = iNPZ
+
+          ! Save valid cell numbers
+          if ( saveValidCellNumbers ) then
+            validCellNumbers(cellCounter) = nc
+          end if 
+
+
+        end do ! end loop over densityDistribution
+
+        ! Assign totalParticleCount and continue to the next IC if no particles
+        particleGroups(nic)%TotalParticleCount = totalParticleCount
+        if ( totalParticleCount .eq. 0 ) then 
+          write(outUnit,*) ' Warning: initial condition ',&
+              particleGroups(nic)%Name,' has zero particles, it will skip this group.'
+          ! Process the next one
+          cycle
+        end if 
+
+        !! effective particles mass
+        !effParticleMass = totalAccumulatedMass/totalParticleCount 
+        !write(outUnit,'(A,es18.9e3)') 'Original particle mass for initial condition = ', particleMass
+        !write(outUnit,'(A,es18.9e3)') 'Effective particle mass for initial condition = ', effParticleMass
+
+        !! Both the total number of particles and the effective mass are known
+
+        !if ( saveValidCellNumbers ) then
+        !  ! If valid cell numbers were saved...
+
+        !  ! Deallocate densityDistribution
+        !  deallocate( densityDistribution ) 
+
+        !  ! Allocate particles for this IC 
+        !  if(allocated(particleGroups(nic)%Particles)) deallocate(particleGroups(nic)%Particles)
+        !  allocate(particleGroups(nic)%Particles(totalParticleCount))
+
+        !  ! Assign to the particle group 
+        !  particleGroups(nic)%Mass = effParticleMass 
+
+        !  ! Create particles
+        !  m = 0
+        !  cellCounter = 0
+        !  do nc=1,validCellCounter
+
+        !    cellCounter = cellCounter + 1
+
+        !    ! Skip this cell if all subDivisions remained as zero
+        !    if ( all( subDivisions( cellCounter, : ) .eq. 0 ) ) cycle
+
+        !    !! For the weird requirement where density
+        !    !! might be negative...
+        !    !if ( densityDistribution(nc) .gt. 0d0 ) then 
+        !    !  particleMass = effParticleMass
+        !    !else ! If zero already cycled 
+        !    !  particleMass = -1*effParticleMass
+        !    !end if
+
+        !    cellNumber = validCellNumbers(cellCounter)
+
+        !    ! 0: is for drape. TEMPORARY
+        !    ! Drape = 0: particle placed in the cell. If dry, status to unreleased
+        !    ! Drape = 1: particle placed in the uppermost active cell
+        !    call CreateMassParticlesAsInternalArray(& 
+        !      particleGroups(nic), cellNumber, m, &
+        !      subDivisions(cellCounter,1),&
+        !      subDivisions(cellCounter,2),&
+        !      subDivisions(cellCounter,3),& 
+        !      0, particleMass, particleGroups(nic)%GetReleaseTime(1) )
+        !  end do
+
+        !else
+          ! Allocate particles without deallocating density
+          ! distribution, might be memory demanding for large models
+
+          ! Allocate particles for this IC 
+          if(allocated(particleGroups(nic)%Particles)) deallocate(particleGroups(nic)%Particles)
+          allocate(particleGroups(nic)%Particles(totalParticleCount))
+
+          ! Assign to the particle group 
+          !particleGroups(nic)%Mass = effParticleMass 
+
+          ! Create particles
+          m = 0
+          cellCounter = 0
+          do nc=1,grid%CellCount
+
+            ! If no concentration, next
+            if ( densityDistribution(nc) .eq. 0d0 ) cycle
+
+            cellCounter = cellCounter + 1
+
+            ! Skip this cell if all subDivisions remained as zero
+            if ( all( subDivisions( cellCounter, : ) .eq. 0 ) ) cycle
+
+            ! For the weird requirement where density
+            ! might be negative...
+            !if ( densityDistribution(nc) .gt. 0d0 ) then 
+              particleMass = activeCellTotalMass(cellCounter)/dble(product(subDivisions(cellCounter,:)))
+            !else ! If zero already cycled 
+            !  particleMass = -1*effParticleMass
+            !end if
+
+            ! 0: is for drape. TEMPORARY
+            ! Drape = 0: particle placed in the cell. If dry, status to unreleased
+            ! Drape = 1: particle placed in the uppermost active cell
+            call CreateMassParticlesAsInternalArray(& 
+              particleGroups(nic), nc, m, &
+              subDivisions(cellCounter,1),&
+              subDivisions(cellCounter,2),&
+              subDivisions(cellCounter,3),& 
+              0, particleMass, particleGroups(nic)%GetReleaseTime(1) )
+          end do
+
+        !end if 
 
         ! Assign for each particle of this group
         !  - id
