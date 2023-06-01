@@ -555,9 +555,9 @@ program MPathRW
      borderFraction=simulationData%TrackingOptions%gpkdeGridBorderFraction,               &
      nOptimizationLoops=simulationData%TrackingOptions%gpkdeNOptLoops,                    &
      databaseOptimization=simulationData%TrackingOptions%gpkdeKernelDatabase,             &
-     minHOverLambda=simulationData%TrackingOptions%gpkdeKDBParams(1),                     &
-     deltaHOverLambda=simulationData%TrackingOptions%gpkdeKDBParams(2),                   &
-     maxHOverLambda=simulationData%TrackingOptions%gpkdeKDBParams(3),                     &
+     minHOverDelta=simulationData%TrackingOptions%gpkdeKDBParams(1),                      &
+     deltaHOverDelta=simulationData%TrackingOptions%gpkdeKDBParams(2),                    &
+     maxHOverDelta=simulationData%TrackingOptions%gpkdeKDBParams(3),                      &
      initialSmoothingSelection=simulationData%TrackingOptions%gpkdeInitialSmoothingFormat,&
      initialSmoothingFactor=simulationData%TrackingOptions%gpkdeBinSizeFactor,            &
      effectiveWeightFormat=simulationData%TrackingOptions%gpkdeEffectiveWeightFormat,     & 
@@ -1034,6 +1034,7 @@ program MPathRW
     end if ! simulationData%TrackingOptions%GPKDEReconstruction
 
   end if
+
 
   ! TRACKING_INTERVAL_LOOP: 
   ! Loop through all the required time points that fall within the

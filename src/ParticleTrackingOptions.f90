@@ -42,7 +42,7 @@ module ParticleTrackingOptionsModule
     logical                       :: gpkdeAsConcentration = .false.
     doubleprecision               :: gpkdeBinVolume
     doubleprecision               :: gpkdeScalingFactor
-    doubleprecision, dimension(3) :: gpkdeKDBParams    ! minHLambda, deltaHLambda, maxHLambda
+    doubleprecision, dimension(3) :: gpkdeKDBParams    ! minHDelta, deltaHDelta, maxHDelta
     integer                       :: gpkdeOutColFormat 
     integer                       :: gpkdeOutFileFormat 
     integer                       :: gpkdeGridAllocFormat

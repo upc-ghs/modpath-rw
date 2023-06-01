@@ -76,13 +76,13 @@ contains
 
     ! Stop if all bin sizes are wrong
     if ( all( binSize .lt. fZERO ) ) then 
-      write(*,*)'Error while initializing Histogram, all binSizes are .lt. 0. Stop.'
+      write(*,*)'Error: while initializing Histogram, all binSizes are .lt. 0. Stop.'
       stop 
     end if 
 
     ! Stop if any nBins .lt. 1
     if ( any( domainGridSize .lt. 1 ) ) then 
-      write(*,*)'Error while initializing Histogram, some domainGridSize .lt. 1. Stop.'
+      write(*,*)'Error: while initializing Histogram, some domainGridSize .lt. 1. Stop.'
       stop
     end if
 
@@ -103,7 +103,7 @@ contains
     ! Assign dim properties
     this%nDim = sum((/1,1,1/), mask=(binSize.gt.fZERO))
     if ( this%nDim .le. 0 ) then 
-      write(*,*)'Error while initializing Histogram, nDim .le. 0. Stop.'
+      write(*,*)'Error: while initializing Histogram, nDim .le. 0. Stop.'
       stop
     end if 
 

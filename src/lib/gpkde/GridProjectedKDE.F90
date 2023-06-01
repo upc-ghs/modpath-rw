@@ -23,9 +23,9 @@ module GridProjectedKDEModule
   integer  , parameter :: defaultNOptLoops                       = 10
   logical  , parameter :: defaultDatabaseOptimization            = .true.
   logical  , parameter :: defaultLogKernelDatabase               = .true.
-  real(fp) , parameter :: defaultMaxHOverLambda                  = 15.0_fp
-  real(fp) , parameter :: defaultMinHOverLambda                  = 0.3_fp
-  real(fp) , parameter :: defaultDeltaHOverLambda                = 0.3_fp
+  real(fp) , parameter :: defaultMaxHOverDelta                   = 15.0_fp
+  real(fp) , parameter :: defaultMinHOverDelta                   = 0.3_fp
+  real(fp) , parameter :: defaultDeltaHOverDelta                 = 0.3_fp
   real(fp) , parameter :: defaultRelativeErrorConvergence        = 0.02_fp
   real(fp) , parameter :: defaultRelaxedRelativeErrorConvergence = 0.05_fp
   integer  , parameter :: defaultInitialSmoothingSelection       = 0
@@ -106,10 +106,10 @@ module GridProjectedKDEModule
     real(fp), dimension(:,:,:), pointer :: densityEstimateGrid
     
     ! Kernel database params 
-    real(fp), dimension(3) :: deltaHOverLambda
-    real(fp), dimension(3) :: minHOverLambda
-    real(fp), dimension(3) :: maxHOverLambda
-    integer , dimension(3) :: nDeltaHOverLambda ! Computed at kernel databases
+    real(fp), dimension(3) :: deltaHOverDelta
+    real(fp), dimension(3) :: minHOverDelta
+    real(fp), dimension(3) :: maxHOverDelta
+    integer , dimension(3) :: nDeltaHOverDelta ! Computed at kernel databases
     logical                :: logKernelDatabase 
     logical                :: databaseOptimization 
     logical                :: flatKernelDatabase ! Deprecate ?
@@ -336,7 +336,7 @@ contains
      domainSize, binSize, domainOrigin, adaptGridToCoords, borderFraction, &
       initialSmoothing, initialSmoothingFactor, initialSmoothingSelection, & 
                                  nOptimizationLoops, databaseOptimization, &
-                         minHOverLambda, maxHOverLambda, deltaHOverLambda, &
+                            minHOverDelta, maxHOverDelta, deltaHOverDelta, &
                                                         logKernelDatabase, &
                                                   interpretAdvancedParams, &
                                          minRoughnessFormat, minRoughness, & 
@@ -370,9 +370,9 @@ contains
     integer               , intent(in), optional :: nOptimizationLoops 
     ! Kernel database parameters
     logical               , intent(in), optional :: databaseOptimization
-    real(fp)              , intent(in), optional :: minHOverLambda
-    real(fp)              , intent(in), optional :: maxHOverLambda
-    real(fp)              , intent(in), optional :: deltaHOverLambda
+    real(fp)              , intent(in), optional :: minHOverDelta
+    real(fp)              , intent(in), optional :: maxHOverDelta
+    real(fp)              , intent(in), optional :: deltaHOverDelta
     logical               , intent(in), optional :: logKernelDatabase    ! Deprecate ? 
     ! Advanced parameters
     logical , intent(in), optional :: interpretAdvancedParams
@@ -391,6 +391,7 @@ contains
     ! local
     integer :: isThisFileOpen
     logical :: advancedOptions
+    character(len=30) :: outfmt
     !---------------------------------------------------------------------------
 
     ! Enable reporting to outUnit if given 
@@ -426,7 +427,7 @@ contains
     end if 
     ! Stop if all bin sizes are zero
     if ( all( binSize .lt. fZERO ) ) then 
-      write(*,*) 'Error while initializing GPKDE, all binSizes are .lt. 0. Stop.'
+      write(*,*) 'Error: while initializing GPKDE, all binSizes are .lt. 0. Stop.'
       stop 
     end if 
     ! Initialize reconstruction grid parameters 
@@ -437,7 +438,7 @@ contains
     end where
     ! Stop if any the domainGridSize .lt. 1
     if ( any( this%domainGridSize .lt. 1 ) ) then 
-      write(*,*) 'Error while initializing GPKDE, some domainGridSize  .lt. 1. Stop.'
+      write(*,*) 'Error: while initializing GPKDE, some domainGridSize  .lt. 1. Stop.'
       stop 
     end if
     this%binSize    = binSize
@@ -466,7 +467,7 @@ contains
     call this%InitializeModuleConstants()
 
     if ( this%reportToOutUnit ) then 
-      write( this%outFileUnit, '(A)' ) ' GPKDE initializing Histogram '
+      write( this%outFileUnit, '(2X,A)' ) 'Initializing Histogram'
     end if
 
     ! Initialize histogram, requires dimension mask !
@@ -479,7 +480,7 @@ contains
           domainOrigin=this%domainOrigin, &
                  adaptGridToCoords=.true. )
       if ( this%reportToOutUnit ) then 
-        write( this%outFileUnit, '(A)' ) '   Histogram grid will not follow domain limits, will adapt to data points.'
+        write( this%outFileUnit, '(3X,A)' ) 'Histogram grid will not follow domain limits, will adapt to data points.'
       end if
     else
       ! Allocate grid according to nBins
@@ -494,12 +495,13 @@ contains
       if ( allocated( densityGrid ) ) deallocate( densityGrid )
       allocate( densityGrid(this%nBins(1), this%nBins(2), this%nBins(3)) )
       if ( this%reportToOutUnit ) then 
-        write( this%outFileUnit, '(A)' ) '   Histogram grid will follow domain grid size.'
+        write( this%outFileUnit, '(3X,A)' ) 'Histogram grid will follow domain grid size.'
       end if
     end if
     if ( this%reportToOutUnit ) then 
-      write( this%outFileUnit, *) '  Histogram determines dimensions to be analyzed based on bin sizes.'
-      write( this%outFileUnit, *) '  Will compute Histogram considering ', this%histogram%nDim, ' dimensions.'
+      write( this%outFileUnit, '(3X,A)' ) 'Histogram determines dimensions to be analyzed based on bin sizes.'
+      write( this%outFileUnit, '(3X,A,I1,A)')&
+              'Will compute Histogram considering ', this%histogram%nDim, ' dimensions.'
     end if  
     
     ! Process further arguments !
@@ -528,10 +530,10 @@ contains
         this%initialSmoothing = defaultInitialSmoothingFactor*this%histogram%binDistance
       end if 
     case default
-      write(*,*) '  Initial smoothing selection method not implemented. Stop.'
+      write(*,*) 'Error: Initial smoothing selection method not implemented. Stop.'
       stop
     end select
-    ! Fix to be consistent with dimensions 
+    !HARACTER(LEN=30) :: rowfmt
     do nd=1,3
       if ( dimensionMask(nd) .eq. 0 ) then 
         this%initialSmoothing(nd) = fZERO
@@ -564,72 +566,72 @@ contains
       (this%boundKernelSizeFormat.eq.1) ) then 
 
      ! Process database discretization parameters 
-     if ( present( minHOverLambda ) ) then
-       if ( minHOverLambda.gt.fZERO )then 
-         this%minHOverLambda = minHOverLambda
+     if ( present( minHOverDelta ) ) then
+       if ( minHOverDelta.gt.fZERO )then 
+         this%minHOverDelta = minHOverDelta
        else
-         write(*,*) 'Error: Invalid value for minHOverLambda: should be greater than zero. Stop.'
+         write(*,*) 'Error: Invalid value for minHOverDelta: should be greater than zero. Stop.'
          stop
        end if
      else 
-       this%minHOverLambda = defaultMinHOverLambda
+       this%minHOverDelta = defaultMinHOverDelta
      end if
 
-     if ( present( maxHOverLambda ) ) then
-      if ( maxHOverLambda.gt.fZERO ) then 
-       if ( maxHOverLambda.le.this%minHOverLambda(1) ) then ! minhoverlambda is an array in memory
+     if ( present( maxHOverDelta ) ) then
+      if ( maxHOverDelta.gt.fZERO ) then 
+       if ( maxHOverDelta.le.this%minHOverDelta(1) ) then ! minhoverdelta is an array in memory
         if ( this%reportToOutUnit ) then 
-        write( this%outFileUnit, *) 'Error: Invalid value for maxHOverLambda: should be greater than minHOverLambda.'
-        write( this%outFileUnit, *) '  Value of minHOverLambda: ', this%minHOverLambda(1)
-        write( this%outFileUnit, *) '  Value of maxHOverLamnda: ', maxHOverLambda
+        write( this%outFileUnit, *) 'Error: Invalid value for maxHOverDelta: should be greater than minHOverDelta.'
+        write( this%outFileUnit, *) '  Value of minHOverDelta: ', this%minHOverDelta(1)
+        write( this%outFileUnit, *) '  Value of maxHOverDelta: ', maxHOverDelta
         end if  
-        write(*,*) 'Error: Invalid value for maxHOverLambda: should be greater than minHOverLambda. Stop.'
+        write(*,*) 'Error: Invalid value for maxHOverDelta: should be greater than minHOverDelta. Stop.'
         stop
        end if
-       this%maxHOverLambda = maxHOverLambda
+       this%maxHOverDelta = maxHOverDelta
       else
-       write(*,*) 'Error: Invalid value for maxHOverLambda: should be greater than zero. Stop.'
+       write(*,*) 'Error: Invalid value for maxHOverDelta: should be greater than zero. Stop.'
        stop
       end if
      else 
-      this%maxHOverLambda = defaultMaxHOverLambda
-      if ( this%maxHOverLambda(1).le.this%minHOverLambda(1) ) then 
+      this%maxHOverDelta = defaultMaxHOverDelta
+      if ( this%maxHOverDelta(1).le.this%minHOverDelta(1) ) then 
        if ( this%reportToOutUnit ) then 
-       write( this%outFileUnit, *) 'Error: Invalid value for maxHOverLambda: should be greater than minHOverLambda.'
-       write( this%outFileUnit, *) '  Value of minHOverLambda: ', this%minHOverLambda(1) 
-       write( this%outFileUnit, *) '  Value of maxHOverLamnda: ', this%maxHOverLambda(1)
+       write( this%outFileUnit, *) 'Error: Invalid value for maxHOverDelta: should be greater than minHOverDelta.'
+       write( this%outFileUnit, *) '  Value of minHOverDelta: ', this%minHOverDelta(1) 
+       write( this%outFileUnit, *) '  Value of maxHOverDelta: ', this%maxHOverDelta(1)
        end if  
-       write(*,*) 'Error: Invalid value for maxHOverLambda: should be greater than minHOverLambda. Stop.'
+       write(*,*) 'Error: Invalid value for maxHOverDelta: should be greater than minHOverDelta. Stop.'
        stop
       end if
      end if
      
      if ( this%databaseOptimization ) then 
-      if ( present( deltaHOverLambda ) ) then 
-       if ( deltaHOverLambda.gt.fZERO ) then 
-        if ( deltaHOverLambda.ge.this%maxHOverLambda(1) ) then ! maxhoverlambda is an array in memory
+      if ( present( deltaHOverDelta ) ) then 
+       if ( deltaHOverDelta.gt.fZERO ) then 
+        if ( deltaHOverDelta.ge.this%maxHOverDelta(1) ) then ! maxhoverdelta is an array in memory
          if ( this%reportToOutUnit ) then 
-         write( this%outFileUnit, *) 'Error: Invalid value for deltaHOverLambda: should be less than maxHOverLambda.'
-         write( this%outFileUnit, *) '  Value of maxHOverLambda  : ', this%maxHOverLambda(1)
-         write( this%outFileUnit, *) '  Value of deltaHOverLamnda: ', deltaHOverLambda
+         write( this%outFileUnit, *) 'Error: Invalid value for deltaHOverDelta: should be less than maxHOverDelta.'
+         write( this%outFileUnit, *) '  Value of maxHOverDelta  : ', this%maxHOverDelta(1)
+         write( this%outFileUnit, *) '  Value of deltaHOverDelta: ', deltaHOverDelta
          end if  
-         write(*,*) 'Error: Invalid value for deltaHOverLambda: should be less than maxHOverLambda. Stop.'
+         write(*,*) 'Error: Invalid value for deltaHOverDelta: should be less than maxHOverDelta. Stop.'
          stop
         end if
-        this%deltaHOverLambda = deltaHOverLambda
+        this%deltaHOverDelta = deltaHOverDelta
        else
-        write(*,*) 'Error: Invalid value for deltaHOverLambda: should be greater than zero. Stop.'
+        write(*,*) 'Error: Invalid value for deltaHOverDelta: should be greater than zero. Stop.'
         stop
        end if
       else 
-        this%deltaHOverLambda = defaultDeltaHOverLambda
-        if ( this%deltaHOverLambda(1).ge.this%maxHOverLambda(1) ) then 
+        this%deltaHOverDelta = defaultDeltaHOverDelta
+        if ( this%deltaHOverDelta(1).ge.this%maxHOverDelta(1) ) then 
          if ( this%reportToOutUnit ) then 
-         write( this%outFileUnit, *) 'Error: Invalid value for deltaHOverLambda: should be less than maxHOverLambda.'
-         write( this%outFileUnit, *) '  Value of maxHOverLambda  : ', this%maxHOverLambda(1)
-         write( this%outFileUnit, *) '  Value of deltaHOverLamnda: ', this%deltaHOverLambda(1)
+         write( this%outFileUnit, *) 'Error: Invalid value for deltaHOverDelta: should be less than maxHOverDelta.'
+         write( this%outFileUnit, *) '  Value of maxHOverDelta  : ', this%maxHOverDelta(1)
+         write( this%outFileUnit, *) '  Value of deltaHOverDelta: ', this%deltaHOverDelta(1)
          end if  
-         write(*,*) 'Error: Invalid value for deltaHOverLambda: should be less than maxHOverLambda. Stop.'
+         write(*,*) 'Error: Invalid value for deltaHOverDelta: should be less than maxHOverDelta. Stop.'
          stop
         end if
       end if
@@ -637,9 +639,9 @@ contains
 
     else
      ! initialize with defaults
-     this%minHOverLambda   = defaultMinHOverLambda
-     this%maxHOverLambda   = defaultMaxHOverLambda
-     this%deltaHOverLambda = defaultDeltaHOverLambda
+     this%minHOverDelta   = defaultMinHOverDelta
+     this%maxHOverDelta   = defaultMaxHOverDelta
+     this%deltaHOverDelta = defaultDeltaHOverDelta
     end if
 
     if ( present( logKernelDatabase ) ) then ! Deprecate ? 
@@ -660,31 +662,31 @@ contains
     select case(this%boundKernelSizeFormat)
     ! 1: Bounding values given by user
     case(1)
-     ! Assign max kernel sizes based on provided values of maxHOverLambda
+     ! Assign max kernel sizes based on provided values of maxHOverDelta
      this%maxKernelSize(:) = fZERO
      do nd=1,3
       if ( this%dimensionMask(nd).eq.0 ) cycle
-      this%maxKernelSize(nd) = this%binSize(nd)*maxHOverLambda
+      this%maxKernelSize(nd) = this%binSize(nd)*maxHOverDelta
      end do
      ! As the sigma kernel is isotropic, maxSizeDimId is given by the more restrictive dimension. 
      this%maxSizeDimId = minloc( this%maxKernelSize, dim=1, mask=(this%maxKernelSize.gt.fZERO) )
      this%maxKernelSDSize(:) = fZERO
      do nd=1,3
       if ( this%dimensionMask(nd).eq.0 ) cycle
-      this%maxKernelSDSize(nd) = this%binSize(nd)*maxHOverLambda
+      this%maxKernelSDSize(nd) = this%binSize(nd)*maxHOverDelta
      end do
-     ! Assign min kernel sizes based on provided values of minHOverLambda
+     ! Assign min kernel sizes based on provided values of minHOverDelta
      this%minKernelSize(:) = fZERO
      do nd=1,3
       if ( this%dimensionMask(nd).eq.0 ) cycle
-      this%minKernelSize(nd) = this%binSize(nd)*minHOverLambda
+      this%minKernelSize(nd) = this%binSize(nd)*minHOverDelta
      end do
      ! As the sigma kernel is isotropic, maxSizeDimId is given by the more restrictive dimension. 
      this%minSizeDimId = maxloc( this%minKernelSize, dim=1, mask=(this%minKernelSize.gt.fZERO) )
      this%minKernelSDSize(:) = fZERO
      do nd=1,3
       if ( this%dimensionMask(nd).eq.0 ) cycle
-      this%minKernelSDSize(nd) = this%binSize(nd)*minHOverLambda
+      this%minKernelSDSize(nd) = this%binSize(nd)*minHOverDelta
      end do
     ! 2: Unbounded 
     case(2)
@@ -787,22 +789,28 @@ contains
 
     ! Logging
     if ( this%reportToOutUnit ) then 
-      write( this%outFileUnit, *) '  binSize            :', this%binSize
-      write( this%outFileUnit, *) '  domainSize         :', this%domainSize
-      write( this%outFileUnit, *) '  domainOrigin       :', this%domainOrigin
-      write( this%outFileUnit, *) '  domainGridSize     :', this%domainGridSize
-      write( this%outFileUnit, *) '  Dimensionality for reconstruction is determined from domainGridSize.'
-      write( this%outFileUnit, *) '  Will perform reconstruction in ', nDim, ' dimensions.'
+      write( this%outFileUnit, '(3X,A)') 'Grid parameters'
+      write( this%outFileUnit, '(3X,A)') '---------------'
+      outfmt = '(3X,A,3(1X,es18.9e3))'
+      write( this%outFileUnit, outfmt) '- binSize            :', this%binSize
+      write( this%outFileUnit, outfmt) '- domainSize         :', this%domainSize
+      write( this%outFileUnit, outfmt) '- domainOrigin       :', this%domainOrigin
+      outfmt = '(3X,A,3(1X,I9))'
+      write( this%outFileUnit, outfmt) '- domainGridSize     :', this%domainGridSize
+      write( this%outFileUnit, '(3X,A)') '---------------'
+      write( this%outFileUnit, '(3X,A)')      'Dimensionality for reconstruction is determined from domain grid size.'
+      write( this%outFileUnit, '(3X,A,I2,A)') 'Will perform reconstruction in ', nDim, ' dimensions.'
       if ( this%initialSmoothingSelection.ge.1 ) then 
-      write( this%outFileUnit, *) '  initialSmoothing   :', this%initialSmoothing
+      outfmt = '(3X,A,3(1X,es18.9e3))'
+      write( this%outFileUnit, outfmt) '- initialSmoothing   :', this%initialSmoothing
       end if 
     end if  
 
     ! Initialize kernel database
     if ( this%databaseOptimization ) then
-      call this%InitializeKernelDatabaseFlat( this%minHOverLambda(1), &
-                                              this%maxHOverLambda(1), &
-                                            this%deltaHOverLambda(1), &
+      call this%InitializeKernelDatabaseFlat( this%minHOverDelta(1), &
+                                              this%maxHOverDelta(1), &
+                                            this%deltaHOverDelta(1), &
                                               this%logKernelDatabase  )
       ! Pointers for SetKernel
       this%SetKernel => prSetKernelFromDatabase
@@ -1308,7 +1316,7 @@ contains
     call kernelSDZ%ResetMatrix()
 
     curvature1 = curvature1/this%histogram%binVolume
-    ! Matrix from curvature kernels is lambda**2*KernelVMatrix
+    ! Matrix from curvature kernels is delta**2*KernelVMatrix
     curvature1 = curvature1/( this%binSize(this%idDim1)**fTWO )
 
     ! Product curvature
@@ -1608,7 +1616,7 @@ contains
 
     curvature1 = curvature1/this%histogram%binVolume
     curvature2 = curvature2/this%histogram%binVolume
-    ! Matrix from curvature kernels is lambda**2*KernelVMatrix
+    ! Matrix from curvature kernels is delta**2*KernelVMatrix
     curvature1 = curvature1/( this%binSize(this%idDim1)**fTWO )
     curvature2 = curvature2/( this%binSize(this%idDim2)**fTWO )
 
@@ -1934,7 +1942,7 @@ contains
     curvatureX = curvatureX/this%histogram%binVolume
     curvatureY = curvatureY/this%histogram%binVolume
     curvatureZ = curvatureZ/this%histogram%binVolume
-    ! Matrix from curvature kernels is lambda**2*KernelVMatrix
+    ! Matrix from curvature kernels is delta**2*KernelVMatrix
     curvatureX = curvatureX/( this%binSize(1)**fTWO )
     curvatureY = curvatureY/( this%binSize(2)**fTWO )
     curvatureZ = curvatureZ/( this%binSize(3)**fTWO )
@@ -2359,7 +2367,7 @@ contains
     curvatureX = curvatureX/this%histogram%binVolume
     curvatureY = curvatureY/this%histogram%binVolume
     curvatureZ = curvatureZ/this%histogram%binVolume
-    ! Matrix from curvature kernels is lambda**2*KernelVMatrix
+    ! Matrix from curvature kernels is delta**2*KernelVMatrix
     curvatureX = curvatureX/( this%binSize(1)**fTWO )
     curvatureY = curvatureY/( this%binSize(2)**fTWO )
     curvatureZ = curvatureZ/( this%binSize(3)**fTWO )
@@ -2616,8 +2624,8 @@ contains
 
 
   subroutine prInitializeKernelDatabaseFlat( this,  &
-                    minHOverLambda, maxHOverLambda, &
-               deltaHOverLambda, logKernelDatabase, &
+                    minHOverDelta, maxHOverDelta, &
+               deltaHOverDelta, logKernelDatabase, &
                          kernelRange, kernelSDRange )
     !------------------------------------------------------------------------------
     ! 
@@ -2627,15 +2635,15 @@ contains
     implicit none
     class( GridProjectedKDEType ), target :: this
     ! input
-    real(fp), intent(in) :: minHOverLambda
-    real(fp), intent(in) :: maxHOverLambda
-    real(fp), intent(in) :: deltaHOverLambda
+    real(fp), intent(in) :: minHOverDelta
+    real(fp), intent(in) :: maxHOverDelta
+    real(fp), intent(in) :: deltaHOverDelta
     logical , intent(in), optional :: logKernelDatabase
     integer , intent(in), optional :: kernelRange
     integer , intent(in), optional :: kernelSDRange
     ! local
     real(fp), dimension(3) :: inputSmoothing
-    real(fp), dimension(:), allocatable :: hOverLambda
+    real(fp), dimension(:), allocatable :: hOverDelta
     integer :: nDelta
     integer :: i, n, m, o, dbi
     logical :: localLogDatabase
@@ -2648,11 +2656,12 @@ contains
     ! Time control 
     integer  :: clockCountStart, clockCountStop, clockCountRate, clockCountMax
     real(fp) :: elapsedTime
+    character(len=30) :: outfmt
     !------------------------------------------------------------------------------
 
     ! Needs sanity check for input parameters !
     if ( this%reportToOutUnit ) then 
-      write( this%outFileUnit, '(A)' ) ' Initializing kernels database with parameters: '
+      write( this%outFileUnit, '(2X,A)' ) 'Initializing Kernels Database'
     end if 
 
     ! Default parameters
@@ -2677,32 +2686,36 @@ contains
     ! it could be any discretization
     if ( localLogDatabase ) then
       ! LOG FORM
-      nDelta      = ceiling( log10( maxHOverLambda/minHOverLambda )/log10( 1 + deltaHOverLambda ) ) + 1
-      allocate( hOverLambda( nDelta ) )
-      hOverLambda = prGenerateLogSpaceData( minHOverLambda, maxHOverLambda, nDelta )
+      nDelta      = ceiling( log10( maxHOverDelta/minHOverDelta )/log10( 1 + deltaHOverDelta ) ) + 1
+      allocate( hOverDelta( nDelta ) )
+      hOverDelta = prGenerateLogSpaceData( minHOverDelta, maxHOverDelta, nDelta )
       ! Assign indexes interfaces
       this%ComputeKernelDatabaseFlatIndexes => prComputeKernelDatabaseFlatIndexesLog
       this%ComputeKernelDatabaseIndexes     => prComputeKernelDatabaseIndexesLog ! meanwhile for SD's
-      this%deltaHOverLambda = log( hOverLambda(2)/hOverLambda(1) ) ! Fix this inconsistency, is overwritten
+      this%deltaHOverDelta = log( hOverDelta(2)/hOverDelta(1) ) ! Fix this inconsistency, is overwritten
     else 
       ! LINEAR FORM
-      nDelta      = floor( ( maxHOverLambda - minHOverLambda )/deltaHOverLambda )
-      allocate( hOverLambda( nDelta ) )
-      hOverLambda = [ (minHOverLambda + i*deltaHOverLambda, i=0, nDelta ) ]
+      nDelta      = floor( ( maxHOverDelta - minHOverDelta )/deltaHOverDelta )
+      allocate( hOverDelta( nDelta ) )
+      hOverDelta = [ (minHOverDelta + i*deltaHOverDelta, i=0, nDelta ) ]
       ! Assign indexes interface
       this%ComputeKernelDatabaseFlatIndexes => prComputeKernelDatabaseFlatIndexesLinear
       this%ComputeKernelDatabaseIndexes     => prComputeKernelDatabaseIndexesLinear ! meanwhile for SD's
     end if
 
     if ( this%reportToOutUnit ) then 
-      write( this%outFileUnit, * ) ' minHOverLambda         :', minHOverLambda
-      write( this%outFileUnit, * ) ' maxHOverLambda         :', maxHOverLambda
-      write( this%outFileUnit, * ) ' deltaHOverLambda       :', deltaHOverLambda
+      write( this%outFileUnit, '(3X,A)') 'Database parameters'
+      write( this%outFileUnit, '(3X,A)') '-------------------'
+      outfmt = '(3X,A,(1X,es18.9e3))'
+      write( this%outFileUnit, outfmt ) '- minHOverDelta         :', minHOverDelta
+      write( this%outFileUnit, outfmt ) '- maxHOverDelta         :', maxHOverDelta
+      write( this%outFileUnit, outfmt ) '- deltaHOverDelta       :', deltaHOverDelta
+      write( this%outFileUnit, '(3X,A)') '-------------------'
     end if 
 
     ! Assign to the object
     ! Temporarilly the same value for each axis
-    this%nDeltaHOverLambda   = nDelta
+    this%nDeltaHOverDelta   = nDelta
 
     ! Depending on the number of dimensions
     ! is the required kernel database.
@@ -2713,7 +2726,7 @@ contains
       allocate( this%kernelDatabaseFlat( nDelta, 1 ) )
       
       if ( this%reportToOutUnit ) then 
-        write( this%outFileUnit, '(A)' ) ' Database is for kernels 1D '
+        write( this%outFileUnit, '(3X,A)' ) 'Database is for kernels 1D '
       end if 
 
       ! Assign kernelSD db pointer according 
@@ -2738,7 +2751,7 @@ contains
       !$omp parallel do schedule( dynamic, 1 ) &
       !$omp default( none )                    &
       !$omp shared( this )                     &
-      !$omp shared( hOverLambda )              &
+      !$omp shared( hOverDelta )              &
       !$omp shared( nDelta )                   &
       !$omp shared( localKernelRange )         &
       !$omp reduction( +:kernelDBMemory )      &
@@ -2747,7 +2760,7 @@ contains
       !$omp private( inputSmoothing )
       do n = 1, nDelta
         inputSmoothing(:) = 0
-        inputSmoothing( this%idDim1 ) = hOverLambda(n)
+        inputSmoothing( this%idDim1 ) = hOverDelta(n)
         call this%kernelDatabaseFlat( n, 1 )%Initialize( &
           this%binSize, matrixRange=localKernelRange )
         call this%kernelDatabaseFlat( n, 1 )%SetupMatrix( inputSmoothing*this%binSize )
@@ -2767,7 +2780,7 @@ contains
       !$omp parallel do schedule( dynamic, 1 ) &
       !$omp default( none )                    &
       !$omp shared( this )                     &
-      !$omp shared( hOverLambda )              &
+      !$omp shared( hOverDelta )              &
       !$omp shared( nDelta )                   &
       !$omp shared( localKernelSDRange )       &
       !$omp reduction( +:kernelSDDBMemory )    &
@@ -2776,7 +2789,7 @@ contains
       !$omp private( inputSmoothing )
       do n = 1, nDelta
         inputSmoothing(:) = 0
-        inputSmoothing( this%idDim1 ) = hOverLambda(n)
+        inputSmoothing( this%idDim1 ) = hOverDelta(n)
         ! 1 
         call this%kernelSDDatabase1( n )%Initialize(& 
           this%binSize, matrixRange=localKernelSDRange )
@@ -2794,7 +2807,7 @@ contains
       allocate( this%kernelDatabaseFlat( nDelta*( nDelta + 1 )/2, 1 ) )
 
       if ( this%reportToOutUnit ) then 
-        write( this%outFileUnit, '(A)' ) ' Database is for kernels 2D '
+        write( this%outFileUnit, '(3X,A)' ) 'Database is for kernels 2D '
       end if
 
       ! Assign kernelSD db pointers according 
@@ -2831,7 +2844,7 @@ contains
       !$omp parallel do schedule( dynamic, 1 ) &
       !$omp default( none )                    &
       !$omp shared( this )                     &
-      !$omp shared( hOverLambda )              &
+      !$omp shared( hOverDelta )              &
       !$omp shared( nDelta )                   &
       !$omp shared( localKernelRange )         &
       !$omp private( m, dbi )                  &
@@ -2843,8 +2856,8 @@ contains
         do m = 1, min( n, nDelta )
           dbi = n*( n - 1 )/2 + m
           inputSmoothing(:) = fZERO
-          inputSmoothing( this%idDim1 ) =  hOverLambda(n)
-          inputSmoothing( this%idDim2 ) =  hOverLambda(m)
+          inputSmoothing( this%idDim1 ) =  hOverDelta(n)
+          inputSmoothing( this%idDim2 ) =  hOverDelta(m)
           call this%kernelDatabaseFlat( dbi, 1 )%Initialize( & 
             this%binSize, matrixRange=localKernelRange )
           call this%kernelDatabaseFlat( dbi, 1 )%SetupMatrix( inputSmoothing*this%binSize )
@@ -2865,7 +2878,7 @@ contains
       !$omp parallel do schedule( dynamic, 1 ) &
       !$omp default( none )                    &
       !$omp shared( this )                     &
-      !$omp shared( hOverLambda )              &
+      !$omp shared( hOverDelta )              &
       !$omp shared( nDelta )                   &
       !$omp shared( localKernelSDRange )       &
       !$omp reduction( +:kernelSDDBMemory )    &
@@ -2874,8 +2887,8 @@ contains
       !$omp private( inputSmoothing )
       do n = 1, nDelta
         inputSmoothing(:) = 0
-        inputSmoothing( this%idDim1 ) = hOverLambda(n)
-        inputSmoothing( this%idDim2 ) = hOverLambda(n)
+        inputSmoothing( this%idDim1 ) = hOverDelta(n)
+        inputSmoothing( this%idDim2 ) = hOverDelta(n)
         ! 1 
         call this%kernelSDDatabase1( n )%Initialize(& 
             this%binSize, matrixRange=localKernelSDRange )
@@ -2904,7 +2917,7 @@ contains
       allocate( this%kernelSDZDatabase( nDelta ) )
 
       if ( this%reportToOutUnit ) then 
-        write( this%outFileUnit, '(A)' ) ' Database is for kernels 3D '
+        write( this%outFileUnit, '(3X,A)' ) 'Database is for kernels 3D '
       end if
 
       ! TIC
@@ -2915,7 +2928,7 @@ contains
       !$omp parallel do schedule( dynamic, 1 ) &
       !$omp default( none )                    &
       !$omp shared( this )                     &
-      !$omp shared( hOverLambda )              &
+      !$omp shared( hOverDelta )              &
       !$omp shared( nDelta )                   &
       !$omp shared( localKernelRange )         &
       !$omp private( n, m, dbi )               &
@@ -2927,7 +2940,7 @@ contains
         do n = 1, nDelta
           do m = 1, min( n, nDelta )
             dbi = n*( n - 1 )/2 + m
-            inputSmoothing = (/ hOverLambda(n), hOverLambda(m), hOverLambda(o) /) 
+            inputSmoothing = (/ hOverDelta(n), hOverDelta(m), hOverDelta(o) /) 
             call this%kernelDatabaseFlat( dbi, o )%Initialize( & 
               this%binSize, matrixRange=localKernelRange )
             call this%kernelDatabaseFlat( dbi, o )%SetupMatrix( inputSmoothing*this%binSize )
@@ -2949,7 +2962,7 @@ contains
       !$omp parallel do schedule( dynamic, 1 ) &
       !$omp default( none )                    &
       !$omp shared( this )                     &
-      !$omp shared( hOverLambda )              &
+      !$omp shared( hOverDelta )              &
       !$omp shared( nDelta )                   &
       !$omp shared( localKernelSDRange )       &
       !$omp reduction( +:kernelSDDBMemory )    &
@@ -2957,7 +2970,7 @@ contains
       !$omp private( n )                       &
       !$omp private( inputSmoothing )
       do n = 1, nDelta
-        inputSmoothing = (/ hOverLambda(n), hOverLambda(n), hOverLambda(n) /)
+        inputSmoothing = (/ hOverDelta(n), hOverDelta(n), hOverDelta(n) /)
         ! X 
         call this%kernelSDXDatabase( n )%Initialize(& 
           this%binSize, matrixRange=localKernelSDRange )
@@ -2986,13 +2999,13 @@ contains
 
     ! Report db sizes
     if ( this%reportToOutUnit ) then 
-      write(this%outFileUnit, '(1X,A,E15.1,A)')& 
-        '  - Allocated memory Kernel DB    : ', kernelDBMemory, ' MB'
-      write(this%outFileUnit, '(1X,A,E15.1,A)')& 
-        '  - Allocated memory Kernel SD DB : ', kernelSDDBMemory, ' MB'
+      write(this%outFileUnit, '(3X,A,E15.1,A)')& 
+        ' - Allocated memory Kernel DB    : ', kernelDBMemory, ' MB'
+      write(this%outFileUnit, '(3X,A,E15.1,A)')& 
+        ' - Allocated memory Kernel SD DB : ', kernelSDDBMemory, ' MB'
     end if 
 
-    deallocate( hOverLambda )
+    deallocate( hOverDelta )
 
     ! Done
     return
@@ -3176,24 +3189,24 @@ contains
       end if 
     end if
     if ( (locWeightedHistogram).and.(.not.present(weights)) ) then 
-      write(*,*) 'ERROR: weightedHistogram requires weights and were not given. Stop.'
+      write(*,*) 'Error: weightedHistogram requires weights and were not given. Stop.'
       stop
     end if
     ! Verify weights size for weighted reconstruction
     dataPointsShape = shape(dataPoints)
     if ( locWeightedHistogram ) then
      if ( size(weights).ne.dataPointsShape(1) ) then 
-      write(*,*) 'ERROR: given weights are not the same length than datapoints. Stop.'
+      write(*,*) 'Error: given weights are not the same length than datapoints. Stop.'
       stop
      end if
     end if
     if ( dataPointsShape(1).lt.1 ) then 
-     write(*,*) 'ERROR: data points is empty. Stop.'
+     write(*,*) 'Error: data points is empty. Stop.'
      stop
     end if
     if ( this%reportToOutUnit ) then
      write(this%outFileUnit, *  )
-     write(this%outFileUnit, '(A)' ) 'GPKDE histogram info '
+     write(this%outFileUnit, '(1X,A)' ) 'Histogram info '
     end if 
 
     ! Compute sub grid parameters if grids
@@ -3256,7 +3269,7 @@ contains
       allocate( densityGrid(this%nBins(1), this%nBins(2), this%nBins(3)) )
 
       if ( this%reportToOutUnit ) then
-       write(this%outFileUnit, * ) '  Allocated size    :', this%nBins
+       write(this%outFileUnit, '(3X,A,3(1X,I9))') 'Allocated size    :', this%nBins
        flush( this%outFileUnit ) 
       end if
 
@@ -3290,10 +3303,10 @@ contains
 
     ! More info about the histogram data
     if ( this%reportToOutUnit ) then
-     write(this%outFileUnit, *     ) '  Max count         :', maxval(this%histogram%counts)
-     write(this%outFileUnit, *     ) '  Max raw density   :', maxval(this%histogram%counts)/this%histogram%binVolume
-     write(this%outFileUnit, *     ) '  Min count         :', minval(this%histogram%counts)
-     write(this%outFileUnit, *     ) '  Min raw density   :', minval(this%histogram%counts)/this%histogram%binVolume
+     write(this%outFileUnit, '(3X,A,es18.9e3)') 'Max count         :', maxval(this%histogram%counts)
+     write(this%outFileUnit, '(3X,A,es18.9e3)') 'Max raw density   :', maxval(this%histogram%counts)/this%histogram%binVolume
+     write(this%outFileUnit, '(3X,A,es18.9e3)') 'Min count         :', minval(this%histogram%counts)
+     write(this%outFileUnit, '(3X,A,es18.9e3)') 'Min raw density   :', minval(this%histogram%counts)/this%histogram%binVolume
     end if
 
     ! If only histogram, leave
@@ -3316,7 +3329,7 @@ contains
      ! No bins to compute 
      if ( this%reportToOutUnit ) then
       write(this%outFileUnit, *  )
-      write(this%outFileUnit, '(A)' ) 'WARNING: GPKDE module  '
+      write(this%outFileUnit, '(A)' ) 'Warning: GPKDE module  '
       write(this%outFileUnit, '(A)' ) 'NO bins to compute. Check origin coordinates or particles. Leaving ComputeDensity.'
       write(this%outFileUnit, *  )
      end if
@@ -3324,12 +3337,11 @@ contains
      return
     else
      if ( this%reportToOutUnit ) then
-       write(this%outFileUnit, *     ) '  Mean raw density  :',& 
+       write(this%outFileUnit, '(3X,A,es18.9e3)' ) 'Mean raw density  :',& 
          sum(this%histogram%counts)/this%histogram%binVolume/this%nComputeBins
-       write(this%outFileUnit, *     ) '  Active bins       :', this%nComputeBins
-       write(this%outFileUnit, *     ) '  NPoints           :', this%histogram%nPoints
-       write(this%outFileUnit, *     ) '  NEffective        :', this%histogram%nEffective
-       write(this%outFileUnit, *  )
+       write(this%outFileUnit, '(3X,A,I9)'       ) 'Active bins       :', this%nComputeBins
+       write(this%outFileUnit, '(3X,A,I9)'       ) 'NPoints           :', this%histogram%nPoints
+       write(this%outFileUnit, '(3X,A,es18.9e3)' ) 'NEffective        :', this%histogram%nEffective
      end if 
     end if 
 
@@ -3347,19 +3359,18 @@ contains
     if( this%stdSigmaScale .eq. fZERO ) then 
      if ( this%reportToOutUnit ) then
       write(this%outFileUnit, *  )
-      write(this%outFileUnit, '(A)' ) 'WARNING: GPKDE module  '
+      write(this%outFileUnit, '(A)' ) 'Warning: GPKDE module  '
       write(this%outFileUnit, '(A)' ) 'Standard deviation is zero. Will continue and lets see what happens.'
       write(this%outFileUnit, *  )
      end if
     else
      if ( this%reportToOutUnit ) then
       write(this%outFileUnit, *  )
-      write(this%outFileUnit, '(A)' ) 'GPKDE data points statistics '
-      write(this%outFileUnit, *     ) '  Mean coordinates                 :', this%meanCoords
-      write(this%outFileUnit, *     ) '  Std. dev. coordinates            :', this%stdCoords
-      write(this%outFileUnit, *     ) '  Std. sigma scale                 :', this%stdSigmaScale
-      write(this%outFileUnit, *     ) '  Global smoothing scale Silverman :', this%hSigmaScale
-      write(this%outFileUnit, *  )
+      write(this%outFileUnit, '(1X,A)' ) 'Data points info'
+      write(this%outFileUnit, '(3X,A,3(1X,es18.9e3))'     ) 'Mean coordinates                 :', this%meanCoords
+      write(this%outFileUnit, '(3X,A,3(1X,es18.9e3))'     ) 'Std. dev. coordinates            :', this%stdCoords
+      write(this%outFileUnit, '(3X,A,1(1X,es18.9e3))'     ) 'Std. sigma scale                 :', this%stdSigmaScale
+      write(this%outFileUnit, '(3X,A,1(1X,es18.9e3))'     ) 'Global smoothing scale Silverman :', this%hSigmaScale
      end if
     end if
 
@@ -3405,8 +3416,9 @@ contains
       end do 
     end if 
     if ( this%reportToOutUnit ) then
-      write( this%outFileUnit, '(A)' ) ' GPKDE compute density '
-      write( this%outFileUnit, *) '  initialSmoothing   :', this%initialSmoothing
+      write(this%outFileUnit, *  )
+      write( this%outFileUnit, '(1X,A)' ) 'Kernels info'
+      write( this%outFileUnit, '(3X,A,3(1X,es18.9e3))') 'initialSmoothing   :', this%initialSmoothing
     end if
    
     ! Logging
@@ -3429,9 +3441,9 @@ contains
     if ( this%databaseOptimization ) then
       ! Initialize database if not allocated
       if ( .not. allocated( this%kernelDatabaseFlat ) ) then 
-          call this%InitializeKernelDatabaseFlat( this%minHOverLambda(1), &
-                                                  this%maxHOverLambda(1), &
-                                                this%deltaHOverLambda(1), &
+          call this%InitializeKernelDatabaseFlat( this%minHOverDelta(1), &
+                                                  this%maxHOverDelta(1), &
+                                                this%deltaHOverDelta(1), &
                                                   this%logKernelDatabase  )
       end if
       ! Compute density
@@ -3447,7 +3459,7 @@ contains
         elapsedTime = dble(clockCountStop - clockCountStart) / dble(clockCountRate)
         write( this%outFileUnit, '(A)' )'|-----------------------------------------------------------|'
         write(this%outFileUnit, '(1X,A,E15.5,A)')& 
-          '  Optimization time = ', elapsedTime, ' seconds'
+          '  Optimization time : ', elapsedTime, ' seconds'
         write( this%outFileUnit, '(A)' )'|-----------------------------------------------------------|'
       end if 
       ! Drop database ?
@@ -3468,7 +3480,7 @@ contains
         elapsedTime = dble(clockCountStop - clockCountStart) / dble(clockCountRate)
         write( this%outFileUnit, '(A)' )'|-----------------------------------------------------------|'
         write(this%outFileUnit, '(1X,A,E15.5,A)')& 
-          '  Optimization time = ', elapsedTime, ' seconds'
+          '  Optimization time : ', elapsedTime, ' seconds'
         write( this%outFileUnit, '(A)' )'|-----------------------------------------------------------|'
       end if 
     end if 
@@ -3784,7 +3796,7 @@ subroutine prComputeDensityOptimization( this, densityEstimateGrid, nOptimizatio
 
     if ( this%reportToOutUnit ) then 
       write( this%outFileUnit, "(a)" )       '|-----------------------------------------------------------|'
-      write( this%outFileUnit, "(a,a,a,a)" ) '| Loop |', '  hHatOverLambda |', '     ALMISE      |', '      RMSE      |'
+      write( this%outFileUnit, "(a,a,a,a)" ) '| Loop |', '  hHatOverDelta  |', '     ALMISE      |', '      RMSE      |'
       write( this%outFileUnit, "(a)" )       '|-----------------------------------------------------------|'
       write( this%outFileUnit, "(I6,3es18.9e3)" ) 0, & 
         sum(kernelSmoothingScale)/this%nComputeBins/this%histogram%binDistance,errorALMISEProxy, errorRMSE
@@ -4087,7 +4099,8 @@ subroutine prComputeDensityOptimization( this, densityEstimateGrid, nOptimizatio
         if ( errorALMISEProxyOld.gt.fZERO ) then 
           if ( abs(errorALMISEProxy - errorALMISEProxyOld)/errorALMISEProxyOld .lt. errorMetricConvergence ) then  
             if ( this%reportToOutUnit ) then 
-              write( this%outFileUnit, '(A,es13.4e2)' ) '    - ALMISE convergence ', errorALMISEProxy
+              write( this%outFileUnit, '(A,es13.4e2)' ) '    - ALMISE convergence :',&
+                      abs(errorALMISEProxy - errorALMISEProxyOld)/errorALMISEProxyOld
             end if 
             ! Break
             exit
@@ -4096,7 +4109,7 @@ subroutine prComputeDensityOptimization( this, densityEstimateGrid, nOptimizatio
         ! Density convergence
         if ( errorMetricDensity .lt. errorMetricConvergence ) then  
           if ( this%reportToOutUnit ) then 
-            write( this%outFileUnit, '(A,es13.4e2)' ) '    - Density convergence ', errorMetricDensity
+            write( this%outFileUnit, '(A,es13.4e2)' ) '    - Density convergence :', errorMetricDensity
           end if 
           ! Break
           exit
@@ -4104,7 +4117,7 @@ subroutine prComputeDensityOptimization( this, densityEstimateGrid, nOptimizatio
         ! Smoothing convergence
         if ( ( errorMetricSmoothing .lt. errorMetricConvergence ) ) then 
           if ( this%reportToOutUnit ) then 
-            write( this%outFileUnit, '(A,es13.4e2)' ) '    - Bandwidth convergence ', errorMetricSmoothing
+            write( this%outFileUnit, '(A,es13.4e2)' ) '    - Bandwidth convergence :', errorMetricSmoothing
           end if
           ! Break
           exit
@@ -4505,6 +4518,7 @@ subroutine prComputeDensityOptimization( this, densityEstimateGrid, nOptimizatio
     integer  :: n, nd
     logical  :: updateScale
     real(fp) :: normShape
+    real(fp), parameter :: isoRoughnessFactor = 0.5
     !----------------------------------------------------------------------------
 
     ! Initialize smoothing scale
@@ -4566,7 +4580,7 @@ subroutine prComputeDensityOptimization( this, densityEstimateGrid, nOptimizatio
         where(& 
           ((roughness11Array/sumMainRoughnesses).gt.this%isotropicThreshold) .or.& 
           ((roughness22Array/sumMainRoughnesses).gt.this%isotropicThreshold) )
-          netRoughness = 0.666*netRoughness +  0.333*sumMainRoughnesses
+          netRoughness = (1.0_fp-isoRoughnessFactor)*netRoughness +  isoRoughnessFactor*sumMainRoughnesses
         end where
       case(3)
         ! It should also verify if this guys are zero, to avoid fpe
@@ -4580,7 +4594,7 @@ subroutine prComputeDensityOptimization( this, densityEstimateGrid, nOptimizatio
           ((roughnessXXArray/sumMainRoughnesses).gt.this%isotropicThreshold) .or.& 
           ((roughnessYYArray/sumMainRoughnesses).gt.this%isotropicThreshold) .or.&
           ((roughnessZZArray/sumMainRoughnesses).gt.this%isotropicThreshold) )
-          netRoughness = 0.666*netRoughness +  0.333*sumMainRoughnesses
+          netRoughness = (1.0_fp-isoRoughnessFactor)*netRoughness +  isoRoughnessFactor*sumMainRoughnesses
         end where
       end select 
     end if 
@@ -4822,10 +4836,10 @@ subroutine prComputeDensityOptimization( this, densityEstimateGrid, nOptimizatio
       indexes(did) = min(&
         max(&
           floor(&
-            log( smoothing(did)/this%binSize(did)/this%minHOverLambda(did) )/this%deltaHOverLambda(did)&
+            log( smoothing(did)/this%binSize(did)/this%minHOverDelta(did) )/this%deltaHOverDelta(did)&
           ) + 1, 1 &
         ), &
-      this%nDeltaHOverLambda(did)  )
+      this%nDeltaHOverDelta(did)  )
     end do 
     
     ! 1D
@@ -4837,7 +4851,7 @@ subroutine prComputeDensityOptimization( this, densityEstimateGrid, nOptimizatio
     end if 
 
     ! 2D
-    ! Will work properly as long nDeltaHOverLambda
+    ! Will work properly as long nDeltaHOverDelta
     ! has the same value for each axis. 
     ! This is linked to database initialization function.
     if ( nDim .eq. 2 ) then
@@ -4855,7 +4869,7 @@ subroutine prComputeDensityOptimization( this, densityEstimateGrid, nOptimizatio
     end if 
 
     ! 3D 
-    ! Will work properly as long nDeltaHOverLambda
+    ! Will work properly as long nDeltaHOverDelta
     ! has the same value for each axis. 
     ! This is linked to database initialization function.
     if ( indexes(1) .lt. indexes(2) ) then
@@ -4898,10 +4912,10 @@ subroutine prComputeDensityOptimization( this, densityEstimateGrid, nOptimizatio
       indexes(nd) = min(&
         max(&
           floor(&
-            (smoothing(nd)/this%binSize(nd) - this%minHOverLambda(nd))/this%deltaHOverLambda(nd)&
+            (smoothing(nd)/this%binSize(nd) - this%minHOverDelta(nd))/this%deltaHOverDelta(nd)&
           ) + 1, 1 &
         ), &
-      this%nDeltaHOverLambda(nd)  )
+      this%nDeltaHOverDelta(nd)  )
     end do 
     
 
@@ -4913,7 +4927,7 @@ subroutine prComputeDensityOptimization( this, densityEstimateGrid, nOptimizatio
       return
     end if 
 
-    ! Will work properly as long nDeltaHOverLambda
+    ! Will work properly as long nDeltaHOverDelta
     ! has the same value for each axis. 
     ! This is linked to database initialization function.
     if ( indexes(1) < indexes(2) ) then
@@ -4953,10 +4967,10 @@ subroutine prComputeDensityOptimization( this, densityEstimateGrid, nOptimizatio
       indexes(nd) = min(&
         max(&
           floor(&
-            (smoothing(nd)/this%binSize(nd) - this%minHOverLambda(nd))/this%deltaHOverLambda(nd)&
+            (smoothing(nd)/this%binSize(nd) - this%minHOverDelta(nd))/this%deltaHOverDelta(nd)&
           ) + 1, 1 &
         ), &
-      this%nDeltaHOverLambda(nd)  )
+      this%nDeltaHOverDelta(nd)  )
     end do 
 
     ! Done
@@ -4988,10 +5002,10 @@ subroutine prComputeDensityOptimization( this, densityEstimateGrid, nOptimizatio
       indexes(nd) = min(&
         max(&
           floor(&
-            log( smoothing(nd)/this%binSize(nd)/this%minHOverLambda(nd) )/this%deltaHOverLambda(nd)&
+            log( smoothing(nd)/this%binSize(nd)/this%minHOverDelta(nd) )/this%deltaHOverDelta(nd)&
           ) + 1, 1 &
         ), &
-      this%nDeltaHOverLambda(nd)  )
+      this%nDeltaHOverDelta(nd)  )
     end do 
 
     ! Done
@@ -5021,10 +5035,10 @@ subroutine prComputeDensityOptimization( this, densityEstimateGrid, nOptimizatio
     dbindex = min(&
       max(&
         floor(&
-          log( smoothing/this%binSize(dimId)/this%minHOverLambda(dimId) )/this%deltaHOverLambda(dimId)&
+          log( smoothing/this%binSize(dimId)/this%minHOverDelta(dimId) )/this%deltaHOverDelta(dimId)&
         ) + 1, 1 &
       ), &
-    this%nDeltaHOverLambda(dimId)  )
+    this%nDeltaHOverDelta(dimId)  )
 
     ! Done
     return
