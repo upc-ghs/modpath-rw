@@ -2,6 +2,7 @@ module StartingLocationReaderModule
   use ParticleGroupModule,only : ParticleGroupType
   use ModflowRectangularGridModule,only : ModflowRectangularGridType
   use ParticleModule,only : ParticleType
+  use UTL8MODULE,only : ustop
   implicit none
   !-----------------------------------------------------------------
   
@@ -11,12 +12,32 @@ module StartingLocationReaderModule
   public ReadAndPrepareLocations
   ! RWPT
   public pr_CreateParticlesAsInternalArray
+  public MassParticlesArray
   public CreateMassParticlesAsInternalArray
+  public CreateMassParticlesAsQuasiRandomInternalArray
+  public CreateMassParticlesAsRandomInternalArray
   public CreateMassParticlesOnFaces
   
+  ! Interfaces
+  abstract interface
+    ! MassParticlesArray
+    subroutine MassParticlesArray(pGroup, cellNumber, currentParticleCount,& 
+                             nx, ny, nz, drape, particlesMass, releaseTime )
+      !---------------------------------------------------------------------------
+      import ParticleGroupType
+      !---------------------------------------------------------------------------
+      type(ParticleGroupType),intent(inout) :: pGroup
+      integer,intent(inout) :: currentParticleCount
+      integer,intent(in) :: nx, ny, nz, cellNumber, drape
+      doubleprecision,intent(in) :: particlesMass
+      doubleprecision,intent(in) :: releaseTime
+      !---------------------------------------------------------------------------
+    end subroutine MassParticlesArray
+  end interface
+
 contains
   
-  subroutine ReadAndPrepareLocations(inUnit, outUnit, particleGroup, ibound,      &
+  subroutine ReadAndPrepareLocations(inUnit, outUnit, particleGroup, ibound,&
     cellCount, grid, seqNumber)
     !------------------------------------------------------------------------------------------------
     !
@@ -745,7 +766,6 @@ contains
     !-------------------------------------------------------------------------------------
     ! Specifications
     !-------------------------------------------------------------------------------------
-    use UTL8MODULE,only : ustop
     implicit none
     type(ParticleGroupType),intent(inout) :: pGroup
     integer,intent(inout) :: currentParticleCount
@@ -794,7 +814,123 @@ contains
     
     
   end subroutine CreateMassParticlesAsInternalArray
-  
+ 
+
+  subroutine CreateMassParticlesAsQuasiRandomInternalArray(pGroup, cellNumber, &
+           currentParticleCount, nx, ny, nz, drape, particlesMass, releaseTime )
+    !-------------------------------------------------------------------------------------
+    ! Same as CreateMassParticlesAsInternalArray, but uniform array is perturbated
+    ! 0.5*dx*rdmx, with rdmx \sim U(-1,1)
+    !-------------------------------------------------------------------------------------
+    ! Specifications
+    !-------------------------------------------------------------------------------------
+    implicit none
+    type(ParticleGroupType),intent(inout) :: pGroup
+    integer,intent(inout) :: currentParticleCount
+    integer,intent(in) :: nx, ny, nz, cellNumber, drape
+    doubleprecision,intent(in) :: particlesMass
+    doubleprecision,intent(in) :: releaseTime
+    integer :: m,i,j,k
+    doubleprecision :: dx,dy,dz,x,y,z
+    doubleprecision, dimension(3) :: rdm
+    !-------------------------------------------------------------------------------------
+      
+    m = currentParticleCount
+    ! pGroup%Particles(n)%InitialFace = 0
+    dx = 1.0d0 / dble(nx)
+    dy = 1.0d0 / dble(ny)
+    dz = 1.0d0 / dble(nz)
+    do k = 1, nz
+      z = (k - 1)*dz + (dz/2.0d0)
+      do i = 1, ny
+        y = (i - 1)*dy + (dy/2.0d0)
+        do j = 1, nx
+          m = m + 1
+          x = (j - 1)*dx + (dx/2.0d0)
+          call random_number(rdm)
+          pGroup%Particles(m)%InitialLocalX = x + dx*(rdm(1)-0.5d0)
+          pGroup%Particles(m)%InitialLocalY = y + dy*(rdm(2)-0.5d0)
+          pGroup%Particles(m)%InitialLocalZ = z + dz*(rdm(3)-0.5d0)
+          pGroup%Particles(m)%InitialGlobalZ = 0.0d0
+          pGroup%Particles(m)%Id = m
+          pGroup%Particles(m)%Drape = drape
+          pGroup%Particles(m)%Status = 0
+          pGroup%Particles(m)%InitialCellNumber = cellNumber
+          pGroup%Particles(m)%InitialTrackingTime = releaseTime
+          pGroup%Particles(m)%CellNumber = pGroup%Particles(m)%InitialCellNumber
+          pGroup%Particles(m)%InitialFace = 0
+          pGroup%Particles(m)%Face = 0
+          pGroup%Particles(m)%LocalX = pGroup%Particles(m)%InitialLocalX
+          pGroup%Particles(m)%LocalY = pGroup%Particles(m)%InitialLocalY
+          pGroup%Particles(m)%LocalZ = pGroup%Particles(m)%InitialLocalZ
+          pGroup%Particles(m)%GlobalZ = pGroup%Particles(m)%InitialGlobalZ
+          pGroup%Particles(m)%TrackingTime = pGroup%Particles(m)%InitialTrackingTime
+          pGroup%Particles(m)%Mass = particlesMass
+        end do
+      end do
+    end do
+      
+    currentParticleCount = m
+    
+    
+  end subroutine CreateMassParticlesAsQuasiRandomInternalArray
+
+
+  subroutine CreateMassParticlesAsRandomInternalArray(pGroup, cellNumber, &
+      currentParticleCount, nx, ny, nz, drape, particlesMass, releaseTime )
+    !-------------------------------------------------------------------------------------
+    ! Same as CreateMassParticlesAsInternalArray, but particles are created 
+    ! randomly. 
+    ! 
+    ! Note: it uses only nx for iteration
+    ! 
+    !-------------------------------------------------------------------------------------
+    ! Specifications
+    !-------------------------------------------------------------------------------------
+    implicit none
+    type(ParticleGroupType),intent(inout) :: pGroup
+    integer,intent(inout) :: currentParticleCount
+    integer,intent(in) :: nx, ny, nz, cellNumber, drape
+    doubleprecision,intent(in) :: particlesMass
+    doubleprecision,intent(in) :: releaseTime
+    integer :: m,i,j,k
+    !doubleprecision :: dx,dy,dz,x,y,z
+    doubleprecision, dimension(3) :: rdm
+    !-------------------------------------------------------------------------------------
+      
+    m = currentParticleCount
+    do k = 1, 1
+      do i = 1, 1 
+        do j = 1, nx
+          m = m + 1
+          call random_number(rdm)
+          pGroup%Particles(m)%InitialLocalX  = rdm(1)
+          pGroup%Particles(m)%InitialLocalY  = rdm(2)
+          pGroup%Particles(m)%InitialLocalZ  = rdm(3)
+          pGroup%Particles(m)%InitialGlobalZ = 0.0d0
+          pGroup%Particles(m)%Id = m
+          pGroup%Particles(m)%Drape = drape
+          pGroup%Particles(m)%Status = 0
+          pGroup%Particles(m)%InitialCellNumber = cellNumber
+          pGroup%Particles(m)%InitialTrackingTime = releaseTime
+          pGroup%Particles(m)%CellNumber = pGroup%Particles(m)%InitialCellNumber
+          pGroup%Particles(m)%InitialFace = 0
+          pGroup%Particles(m)%Face = 0
+          pGroup%Particles(m)%LocalX = pGroup%Particles(m)%InitialLocalX
+          pGroup%Particles(m)%LocalY = pGroup%Particles(m)%InitialLocalY
+          pGroup%Particles(m)%LocalZ = pGroup%Particles(m)%InitialLocalZ
+          pGroup%Particles(m)%GlobalZ = pGroup%Particles(m)%InitialGlobalZ
+          pGroup%Particles(m)%TrackingTime = pGroup%Particles(m)%InitialTrackingTime
+          pGroup%Particles(m)%Mass = particlesMass
+        end do
+      end do
+    end do
+      
+    currentParticleCount = m
+    
+    
+  end subroutine CreateMassParticlesAsRandomInternalArray
+
   
   subroutine CreateMassParticlesOnFaces(pGroup, cellNumber, currentParticleCount, &
                                         subDiv, drape, particlesMass, releaseTime )
