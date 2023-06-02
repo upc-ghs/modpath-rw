@@ -3603,10 +3603,14 @@ subroutine prComputeDensityOptimization( this, densityEstimateGrid, nOptimizatio
     real(fp) :: errorRMSEOld
     real(fp) :: errorALMISEProxy 
     real(fp) :: errorALMISEProxyOld
+    real(fp) :: errorALMISECumsum
+    real(fp) :: errorALMISECumsumOld
     real(fp) :: errorMetricDensity
     real(fp) :: errorMetricDensityOld
+    !real(fp) :: errorMetricDensityCumsum
     real(fp) :: errorMetricSmoothing
     real(fp) :: errorMetricSmoothingOld
+    !real(fp) :: errorMetricSmoothingCumsum
     real(fp) :: errorMetricConvergence
     real(fp), dimension(3) :: smoothingCarrier
     ! loop n estimate
@@ -3784,7 +3788,8 @@ subroutine prComputeDensityOptimization( this, densityEstimateGrid, nOptimizatio
       errorMetricArray = (nEstimateArray/( (kernelSmoothingScale**fNDim)*(fFOUR*pi)**(0.5*fNDim)) + &
       0.25*netRoughnessArray*kernelSmoothingScale**fFOUR)/(real(this%histogram%nPoints,fp)**fTWO)
     end where
-    errorALMISEProxy = sqrt(sum(errorMetricArray**fTWO)/real(this%nComputeBins,fp))
+    errorALMISEProxy  = sqrt(sum(errorMetricArray**fTWO)/real(this%nComputeBins,fp))
+    errorALMISECumsum = errorALMISEProxy 
 
     ! Initialize smoothing error trackers
     errorMetricArray = fZERO
@@ -3904,6 +3909,7 @@ subroutine prComputeDensityOptimization( this, densityEstimateGrid, nOptimizatio
 
     ! Initialize old error trackers
     errorALMISEProxyOld     = errorALMISEProxy
+    errorALMISECumsumOld    = errorALMISECumsum
     errorRMSEOld            = errorRMSE
     errorMetricDensityOld   = fZERO
     errorMetricSmoothingOld = errorMetricSmoothing
@@ -4089,9 +4095,11 @@ subroutine prComputeDensityOptimization( this, densityEstimateGrid, nOptimizatio
         0.25*netRoughnessArray*kernelSmoothingScale**fFOUR)/(real(this%histogram%nPoints,fp)**fTWO)
       end where
       errorALMISEProxy = sqrt(sum(errorMetricArray**fTWO)/real(this%nComputeBins,fp))
+      errorALMISECumsum = errorALMISECumsum + errorALMISEProxy
 
       ! A proxy to error: RMSE versus histogram density
-      errorRMSE = sqrt(sum(((densityEstimateArray - rawDensity)/real(this%histogram%nPoints,fp))**fTWO)/real(this%nComputeBins,fp))
+      errorRMSE = &
+        sqrt(sum(((densityEstimateArray - rawDensity)/real(this%histogram%nPoints,fp))**fTWO)/real(this%nComputeBins,fp))
 
       ! Error analysis:
       if ( .not. skipErrorBreak ) then
@@ -4121,11 +4129,26 @@ subroutine prComputeDensityOptimization( this, densityEstimateGrid, nOptimizatio
           end if
           ! Break
           exit
+        end if
+        ! Relative change in averaged ALMISE convergence
+        if ( ( m.gt.1 ) ) then
+          if (&
+            abs( errorALMISECumsumOld/real(m-1,fp) - errorALMISECumsum/real(m,fp) )/&
+                 errorALMISECumsumOld/real(m-1,fp) .lt. errorMetricConvergence ) then 
+            if ( this%reportToOutUnit ) then
+              write( this%outFileUnit, '(A,es13.4e2)' ) '    - ALMISE convergence :',&
+               abs( errorALMISECumsumOld/real(m-1,fp) - errorALMISECumsum/real(m,fp) )/&
+                    errorALMISECumsumOld/real(m-1,fp)
+            end if 
+            ! Break
+            exit
+          end if                   
         end if 
       end if
 
       ! Continue to next loop !
       errorALMISEProxyOld      = errorALMISEProxy
+      errorALMISECumsumOld     = errorALMISECumsum
       errorRMSEOld             = errorRMSE
       errorMetricDensityOld    = errorMetricDensity
       densityEstimateArrayOld  = densityEstimateArray
