@@ -682,6 +682,53 @@ contains
   end subroutine pr_RWPTDisplacementsNonlinear
 
 
+  subroutine pr_RWPTDisplacementsAxisymmetric(this, x, y, z, vx, vy, vz, &
+                                                    dt, trackingOptions, &
+                                                    dAdvx, dAdvy, dAdvz, &
+                                                          dBx, dBy, dBz, &
+                                                    divDx, divDy, divDz  )
+      !------------------------------------------------------------
+      ! The dispersion model from Lichtner et al. 2002
+      !------------------------------------------------------------
+      implicit none
+      class(TrackSubCellType) :: this
+      type(ParticleTrackingOptionsType),intent(in) :: trackingOptions
+      doubleprecision, intent(in)    :: x, y, z, dt
+      doubleprecision, intent(inout) :: vx, vy, vz 
+      doubleprecision, intent(inout) :: dAdvx, dAdvy, dAdvz 
+      doubleprecision, intent(inout) :: dBx, dBy, dBz 
+      doubleprecision, intent(inout) :: divDx, divDy, divDz  
+      ! local
+      doubleprecision :: alphaL, alphaT, dMEff
+      doubleprecision :: cosinesq, vnorm
+      !------------------------------------------------------------
+      ! Specifications
+      !------------------------------------------------------------
+
+      dMEff  = this%SubCellData%dMEff 
+      
+      ! velocities and dispersivities  
+      call this%LinearInterpolationVelocities( x, y, z, vx, vy, vz )
+      vnorm    = sqrt(vx**2d0+vy**2d0+vz**2d0)
+      cosinesq = 0d0
+      if ( vnorm .gt. 0d0 ) cosinesq = vz**2d0/vnorm 
+      alphaL = &
+        this%SubCellData%alphaLH + cosinesq*(this%SubCellData%alphaLV-this%SubCellData%alphaLH)
+      alphaT = &
+        this%SubCellData%alphaTV + cosinesq*(this%SubCellData%alphaTH-this%SubCellData%alphaTV)
+
+      call pr_DispersionDivergenceDischargeAxisymmetric( this, x, y, z, & 
+              alphaL, alphaT, this%SubCellData%alphaTH, dMEff, divDx, divDy, divDz )
+      call pr_DisplacementRandomDischargeAxisymmetric( this, x, y, z, & 
+              alphaL, alphaT, this%SubCellData%alphaTH, dMEff, dBx, dBy, dBz )
+      call this%AdvectionDisplacement( x, y, z, dt, vx, vy, vz, dAdvx, dAdvy, dAdvz )
+
+      return
+
+
+  end subroutine pr_RWPTDisplacementsAxisymmetric
+
+
 
 !-------------------------------------------------------------------
   subroutine pr_ExecuteRandomWalkParticleTracking(this,stopIfNoExit, &
@@ -3128,6 +3175,596 @@ contains
   end subroutine pr_DisplacementRandomDischarge1D
 
 
+  ! Axisymmetric dispersion model 
+  subroutine pr_DispersionDivergenceDischargeAxisymmetric( this, x, y, z, & 
+                      alphaL, alphaT, alphaTH, dMEff, divDx, divDy, divDz )
+  !----------------------------------------------------------------
+  ! Compute dispersion divergence terms 
+  !
+  ! Params:
+  !   - x, y, z             : local cell coordinates
+  !   - alphaL              : longidutinal dispersivity
+  !   - alphaT              : transverse dispersivity
+  !   - alphaTH             : transverse dispersivity horizontal
+  !   - dMEff               : effective molecular diffusion (corrected by tortuosity)
+  !   - divDx, divDy, divDz : dispersion divergence, output
+  !
+  ! Follows axisymmetric dispersion model in Lichtner et al. 2002 
+  ! 
+  !----------------------------------------------------------------
+  ! Specifications
+  !----------------------------------------------------------------
+  implicit none
+  class (TrackSubCellType)    :: this
+  ! input
+  doubleprecision, intent(in) :: x, y, z
+  doubleprecision, intent(in) :: alphaL, alphaT, alphaTH, dMEff
+  ! output
+  doubleprecision, intent(out) :: divDx, divDy, divDz
+  ! local
+  doubleprecision, dimension(4) :: q000
+  doubleprecision, dimension(4) :: q100
+  doubleprecision, dimension(4) :: q010
+  doubleprecision, dimension(4) :: q110
+  doubleprecision, dimension(4) :: q001
+  doubleprecision, dimension(4) :: q101
+  doubleprecision, dimension(4) :: q011
+  doubleprecision, dimension(4) :: q111
+  doubleprecision, dimension(3) :: qsq
+
+  doubleprecision :: dDxxdx, dDxydy, dDxzdz, &
+                     dDxydx, dDyydy, dDyzdz, &
+                     dDxzdx, dDyzdy, dDzzdz
+
+  doubleprecision :: aLMinusaT
+  doubleprecision :: qnormxysq
+  doubleprecision :: qzsqdivqnormxysq
+
+  doubleprecision :: pDmeff000
+  doubleprecision :: pDmeff100
+  doubleprecision :: pDmeff010
+  doubleprecision :: pDmeff110
+  doubleprecision :: pDmeff001
+  doubleprecision :: pDmeff101
+  doubleprecision :: pDmeff011
+  doubleprecision :: pDmeff111
+
+  doubleprecision :: Dxxx000, Dyyy000, Dzzz000 
+  doubleprecision :: Dxxx100, Dyyy100, Dzzz100
+  doubleprecision :: Dxxx010, Dyyy010, Dzzz010
+  doubleprecision :: Dxxx110, Dyyy110, Dzzz110
+  doubleprecision :: Dxxx001, Dyyy001, Dzzz001
+  doubleprecision :: Dxxx101, Dyyy101, Dzzz101
+  doubleprecision :: Dxxx011, Dyyy011, Dzzz011
+  doubleprecision :: Dxxx111, Dyyy111, Dzzz111
+
+  doubleprecision :: Dxyx000, Dxzx000, Dxyy000 
+  doubleprecision :: Dxyx100, Dxzx100, Dxyy100
+  doubleprecision :: Dxyx010, Dxzx010, Dxyy010
+  doubleprecision :: Dxyx110, Dxzx110, Dxyy110
+  doubleprecision :: Dxyx001, Dxzx001, Dxyy001
+  doubleprecision :: Dxyx101, Dxzx101, Dxyy101
+  doubleprecision :: Dxyx011, Dxzx011, Dxyy011
+  doubleprecision :: Dxyx111, Dxzx111, Dxyy111
+
+  doubleprecision :: Dyzy000, Dxzz000, Dyzz000 
+  doubleprecision :: Dyzy100, Dxzz100, Dyzz100
+  doubleprecision :: Dyzy010, Dxzz010, Dyzz010
+  doubleprecision :: Dyzy110, Dxzz110, Dyzz110
+  doubleprecision :: Dyzy001, Dxzz001, Dyzz001
+  doubleprecision :: Dyzy101, Dxzz101, Dyzz101
+  doubleprecision :: Dyzy011, Dxzz011, Dyzz011
+  doubleprecision :: Dyzy111, Dxzz111, Dyzz111
+  !---------------------------------------------------------------- 
+
+    ! Initialize output !
+    divDx = 0d0 
+    divDy = 0d0
+    divDz = 0d0
+      
+    ! qx, qy, qz, norm(q)
+    q000 = this%qCorner000 
+    q100 = this%qCorner100
+    q010 = this%qCorner010
+    q110 = this%qCorner110
+    q001 = this%qCorner001
+    q101 = this%qCorner101
+    q011 = this%qCorner011
+    q111 = this%qCorner111
+ 
+    ! alphaL - alphaT
+    aLMinusaT = alphaL - alphaT
+
+    ! Product between porosities and effecfive molecular diffusion 
+    pDMeff000 = this%porosity000*dMEff 
+    pDMeff100 = this%porosity100*dMEff
+    pDMeff010 = this%porosity010*dMEff
+    pDMeff110 = this%porosity110*dMEff
+    pDMeff001 = this%porosity001*dMEff
+    pDMeff101 = this%porosity101*dMEff
+    pDMeff011 = this%porosity011*dMEff
+    pDMeff111 = this%porosity111*dMEff
+
+    ! Initialize !
+    ! dDxxdx
+    Dxxx000 = pDMeff000
+    Dxxx100 = pDMeff100
+    Dxxx010 = pDMeff010
+    Dxxx110 = pDMeff110
+    Dxxx001 = pDMeff001
+    Dxxx101 = pDMeff101
+    Dxxx011 = pDMeff011
+    Dxxx111 = pDMeff111
+    ! dDyydy 
+    Dyyy000 = pDMeff000
+    Dyyy100 = pDMeff100
+    Dyyy010 = pDMeff010
+    Dyyy110 = pDMeff110
+    Dyyy001 = pDMeff001
+    Dyyy101 = pDMeff101
+    Dyyy011 = pDMeff011
+    Dyyy111 = pDMeff111
+    ! dDzzdz
+    Dzzz000 = pDMeff000
+    Dzzz100 = pDMeff100
+    Dzzz010 = pDMeff010
+    Dzzz110 = pDMeff110
+    Dzzz001 = pDMeff001
+    Dzzz101 = pDMeff101
+    Dzzz011 = pDMeff011
+    Dzzz111 = pDMeff111
+    ! dDxydx
+    Dxyx000 = 0d0
+    Dxyx100 = 0d0
+    Dxyx010 = 0d0
+    Dxyx110 = 0d0
+    Dxyx001 = 0d0
+    Dxyx101 = 0d0
+    Dxyx011 = 0d0
+    Dxyx111 = 0d0
+    ! dDxzdx
+    Dxzx000 = 0d0
+    Dxzx100 = 0d0
+    Dxzx010 = 0d0
+    Dxzx110 = 0d0
+    Dxzx001 = 0d0
+    Dxzx101 = 0d0
+    Dxzx011 = 0d0
+    Dxzx111 = 0d0
+    ! dDxydy
+    Dxyy000 = 0d0
+    Dxyy100 = 0d0
+    Dxyy010 = 0d0
+    Dxyy110 = 0d0
+    Dxyy001 = 0d0
+    Dxyy101 = 0d0
+    Dxyy011 = 0d0
+    Dxyy111 = 0d0
+    ! dDyzdy
+    Dyzy000 = 0d0
+    Dyzy100 = 0d0
+    Dyzy010 = 0d0
+    Dyzy110 = 0d0
+    Dyzy001 = 0d0
+    Dyzy101 = 0d0
+    Dyzy011 = 0d0
+    Dyzy111 = 0d0
+    ! dDxzdz
+    Dxzz000 = 0d0
+    Dxzz100 = 0d0
+    Dxzz010 = 0d0
+    Dxzz110 = 0d0
+    Dxzz001 = 0d0
+    Dxzz101 = 0d0
+    Dxzz011 = 0d0
+    Dxzz111 = 0d0
+    ! dDyzdz
+    Dyzz000 = 0d0
+    Dyzz100 = 0d0
+    Dyzz010 = 0d0
+    Dyzz110 = 0d0
+    Dyzz001 = 0d0
+    Dyzz101 = 0d0
+    Dyzz011 = 0d0
+    Dyzz111 = 0d0
+
+
+    ! 000
+    if( q000(4) .gt. 0d0 ) then
+     qsq(:)    = q000(1:3)**2d0
+     qnormxysq = qsq(1) + qsq(2)
+     if ( qnormxysq .gt. 0d0 ) then  
+       qzsqdivqnormxysq = qsq(3)/qnormxysq
+       Dxxx000 = pDMeff000 + alphaL*qsq(1)/q000(4)        + &
+        alphaTH*qsq(2)/q000(4)*( 1d0 + qzsqdivqnormxysq ) + & 
+        alphaT*qsq(3)/q000(4)*qsq(1)/qnormxysq
+       Dyyy000 = pDMeff000 + alphaTH*qsq(1)/q000(4)*( 1d0 + qzsqdivqnormxysq ) + &
+        alphaL*qsq(2)/q000(4) + alphaT*qsq(3)/q000(4)*qsq(2)/qnormxysq 
+       Dxyx000 = (alphaL - alphaTH*( 1d0 + qzsqdivqnormxysq ) + & 
+        alphaT*qzsqdivqnormxysq )*q000(1)*q000(2)/q000(4) 
+       Dxyy000 = (alphaL - alphaTH*( 1d0 + qzsqdivqnormxysq ) + &
+        alphaT*qzsqdivqnormxysq )*q000(1)*q000(2)/q000(4) 
+     end if
+     Dzzz000 = pDMeff000 + alphaT*qnormxysq/q000(4) + alphaL*q000(3)**2/q000(4)
+     Dxzx000 = ( aLMinusaT )*q000(1)*q000(3)/q000(4)
+     Dyzy000 = ( aLMinusaT )*q000(2)*q000(3)/q000(4)
+     Dxzz000 = ( aLMinusaT )*q000(1)*q000(3)/q000(4)
+     Dyzz000 = ( aLMinusaT )*q000(2)*q000(3)/q000(4)
+    end if
+
+    ! 100
+    if( q100(4) .gt. 0d0 ) then
+     qsq(:)    = q100(1:3)**2d0
+     qnormxysq = qsq(1) + qsq(2)
+     if ( qnormxysq .gt. 0d0 ) then  
+       qzsqdivqnormxysq = qsq(3)/qnormxysq
+       Dxxx100 = pDMeff100 + alphaL*qsq(1)/q100(4)        + &
+        alphaTH*qsq(2)/q100(4)*( 1d0 + qzsqdivqnormxysq ) + & 
+        alphaT*qsq(3)/q100(4)*qsq(1)/qnormxysq
+       Dyyy100 = pDMeff100 + alphaTH*qsq(1)/q100(4)*( 1d0 + qzsqdivqnormxysq ) + &
+        alphaL*qsq(2)/q100(4) + alphaT*qsq(3)/q100(4)*qsq(2)/qnormxysq 
+       Dxyx100 = (alphaL - alphaTH*( 1d0 + qzsqdivqnormxysq ) + & 
+        alphaT*qzsqdivqnormxysq )*q100(1)*q100(2)/q100(4) 
+       Dxyy100 = (alphaL - alphaTH*( 1d0 + qzsqdivqnormxysq ) + &
+        alphaT*qzsqdivqnormxysq )*q100(1)*q100(2)/q100(4) 
+     end if
+     Dzzz100 = pDMeff100 + alphaT*qnormxysq/q100(4) + alphaL*q100(3)**2/q100(4)
+     Dxzx100 = ( aLMinusaT )*q100(1)*q100(3)/q100(4)
+     Dyzy100 = ( aLMinusaT )*q100(2)*q100(3)/q100(4)
+     Dxzz100 = ( aLMinusaT )*q100(1)*q100(3)/q100(4)
+     Dyzz100 = ( aLMinusaT )*q100(2)*q100(3)/q100(4)
+    end if
+
+    ! 010
+    if( q010(4) .gt. 0d0 ) then
+     qsq(:)    = q010(1:3)**2d0
+     qnormxysq = qsq(1) + qsq(2)
+     if ( qnormxysq .gt. 0d0 ) then  
+       qzsqdivqnormxysq = qsq(3)/qnormxysq
+       Dxxx010 = pDMeff010 + alphaL*qsq(1)/q010(4)        + &
+        alphaTH*qsq(2)/q010(4)*( 1d0 + qzsqdivqnormxysq ) + & 
+        alphaT*qsq(3)/q010(4)*qsq(1)/qnormxysq
+       Dyyy010 = pDMeff010 + alphaTH*qsq(1)/q010(4)*( 1d0 + qzsqdivqnormxysq ) + &
+        alphaL*qsq(2)/q010(4) + alphaT*qsq(3)/q010(4)*qsq(2)/qnormxysq 
+       Dxyx010 = (alphaL - alphaTH*( 1d0 + qzsqdivqnormxysq ) + & 
+        alphaT*qzsqdivqnormxysq )*q010(1)*q010(2)/q010(4) 
+       Dxyy010 = (alphaL - alphaTH*( 1d0 + qzsqdivqnormxysq ) + &
+        alphaT*qzsqdivqnormxysq )*q010(1)*q010(2)/q010(4) 
+     end if
+     Dzzz010 = pDMeff010 + alphaT*qnormxysq/q010(4) + alphaL*q010(3)**2/q010(4)
+     Dxzx010 = ( aLMinusaT )*q010(1)*q010(3)/q010(4)
+     Dyzy010 = ( aLMinusaT )*q010(2)*q010(3)/q010(4)
+     Dxzz010 = ( aLMinusaT )*q010(1)*q010(3)/q010(4)
+     Dyzz010 = ( aLMinusaT )*q010(2)*q010(3)/q010(4)
+    end if
+
+    ! 110
+    if( q110(4) .gt. 0d0 ) then
+     qsq(:)    = q110(1:3)**2d0
+     qnormxysq = qsq(1) + qsq(2)
+     if ( qnormxysq .gt. 0d0 ) then  
+       qzsqdivqnormxysq = qsq(3)/qnormxysq
+       Dxxx110 = pDMeff110 + alphaL*qsq(1)/q110(4)        + &
+        alphaTH*qsq(2)/q110(4)*( 1d0 + qzsqdivqnormxysq ) + & 
+        alphaT*qsq(3)/q110(4)*qsq(1)/qnormxysq
+       Dyyy110 = pDMeff110 + alphaTH*qsq(1)/q110(4)*( 1d0 + qzsqdivqnormxysq ) + &
+        alphaL*qsq(2)/q110(4) + alphaT*qsq(3)/q110(4)*qsq(2)/qnormxysq 
+       Dxyx110 = (alphaL - alphaTH*( 1d0 + qzsqdivqnormxysq ) + & 
+        alphaT*qzsqdivqnormxysq )*q110(1)*q110(2)/q110(4) 
+       Dxyy110 = (alphaL - alphaTH*( 1d0 + qzsqdivqnormxysq ) + &
+        alphaT*qzsqdivqnormxysq )*q110(1)*q110(2)/q110(4) 
+     end if
+     Dzzz110 = pDMeff110 + alphaT*qnormxysq/q110(4) + alphaL*q110(3)**2/q110(4)
+     Dxzx110 = ( aLMinusaT )*q110(1)*q110(3)/q110(4)
+     Dyzy110 = ( aLMinusaT )*q110(2)*q110(3)/q110(4)
+     Dxzz110 = ( aLMinusaT )*q110(1)*q110(3)/q110(4)
+     Dyzz110 = ( aLMinusaT )*q110(2)*q110(3)/q110(4)
+    end if
+
+    ! 001
+    if( q001(4) .gt. 0d0 ) then
+     qsq(:)    = q001(1:3)**2d0
+     qnormxysq = qsq(1) + qsq(2)
+     if ( qnormxysq .gt. 0d0 ) then  
+       qzsqdivqnormxysq = qsq(3)/qnormxysq
+       Dxxx001 = pDMeff001 + alphaL*qsq(1)/q001(4)        + &
+        alphaTH*qsq(2)/q001(4)*( 1d0 + qzsqdivqnormxysq ) + & 
+        alphaT*qsq(3)/q001(4)*qsq(1)/qnormxysq
+       Dyyy001 = pDMeff001 + alphaTH*qsq(1)/q001(4)*( 1d0 + qzsqdivqnormxysq ) + &
+        alphaL*qsq(2)/q001(4) + alphaT*qsq(3)/q001(4)*qsq(2)/qnormxysq 
+       Dxyx001 = (alphaL - alphaTH*( 1d0 + qzsqdivqnormxysq ) + & 
+        alphaT*qzsqdivqnormxysq )*q001(1)*q001(2)/q001(4) 
+       Dxyy001 = (alphaL - alphaTH*( 1d0 + qzsqdivqnormxysq ) + &
+        alphaT*qzsqdivqnormxysq )*q001(1)*q001(2)/q001(4) 
+     end if
+     Dzzz001 = pDMeff001 + alphaT*qnormxysq/q001(4) + alphaL*q001(3)**2/q001(4)
+     Dxzx001 = ( aLMinusaT )*q001(1)*q001(3)/q001(4)
+     Dyzy001 = ( aLMinusaT )*q001(2)*q001(3)/q001(4)
+     Dxzz001 = ( aLMinusaT )*q001(1)*q001(3)/q001(4)
+     Dyzz001 = ( aLMinusaT )*q001(2)*q001(3)/q001(4)
+    end if
+
+    ! 101
+    if( q101(4) .gt. 0d0 ) then
+     qsq(:)    = q101(1:3)**2d0
+     qnormxysq = qsq(1) + qsq(2)
+     if ( qnormxysq .gt. 0d0 ) then  
+       qzsqdivqnormxysq = qsq(3)/qnormxysq
+       Dxxx101 = pDMeff101 + alphaL*qsq(1)/q101(4)        + &
+        alphaTH*qsq(2)/q101(4)*( 1d0 + qzsqdivqnormxysq ) + & 
+        alphaT*qsq(3)/q101(4)*qsq(1)/qnormxysq
+       Dyyy101 = pDMeff101 + alphaTH*qsq(1)/q101(4)*( 1d0 + qzsqdivqnormxysq ) + &
+        alphaL*qsq(2)/q101(4) + alphaT*qsq(3)/q101(4)*qsq(2)/qnormxysq 
+       Dxyx101 = (alphaL - alphaTH*( 1d0 + qzsqdivqnormxysq ) + & 
+        alphaT*qzsqdivqnormxysq )*q101(1)*q101(2)/q101(4) 
+       Dxyy101 = (alphaL - alphaTH*( 1d0 + qzsqdivqnormxysq ) + &
+        alphaT*qzsqdivqnormxysq )*q101(1)*q101(2)/q101(4) 
+     end if
+     Dzzz101 = pDMeff101 + alphaT*qnormxysq/q101(4) + alphaL*q101(3)**2/q101(4)
+     Dxzx101 = ( aLMinusaT )*q101(1)*q101(3)/q101(4)
+     Dyzy101 = ( aLMinusaT )*q101(2)*q101(3)/q101(4)
+     Dxzz101 = ( aLMinusaT )*q101(1)*q101(3)/q101(4)
+     Dyzz101 = ( aLMinusaT )*q101(2)*q101(3)/q101(4)
+    end if
+
+    ! 011
+    if( q011(4) .gt. 0d0 ) then
+     qsq(:)    = q011(1:3)**2d0
+     qnormxysq = qsq(1) + qsq(2)
+     if ( qnormxysq .gt. 0d0 ) then  
+       qzsqdivqnormxysq = qsq(3)/qnormxysq
+       Dxxx011 = pDMeff011 + alphaL*qsq(1)/q011(4)        + &
+        alphaTH*qsq(2)/q011(4)*( 1d0 + qzsqdivqnormxysq ) + & 
+        alphaT*qsq(3)/q011(4)*qsq(1)/qnormxysq
+       Dyyy011 = pDMeff011 + alphaTH*qsq(1)/q011(4)*( 1d0 + qzsqdivqnormxysq ) + &
+        alphaL*qsq(2)/q011(4) + alphaT*qsq(3)/q011(4)*qsq(2)/qnormxysq 
+       Dxyx011 = (alphaL - alphaTH*( 1d0 + qzsqdivqnormxysq ) + & 
+        alphaT*qzsqdivqnormxysq )*q011(1)*q011(2)/q011(4) 
+       Dxyy011 = (alphaL - alphaTH*( 1d0 + qzsqdivqnormxysq ) + &
+        alphaT*qzsqdivqnormxysq )*q011(1)*q011(2)/q011(4) 
+     end if
+     Dzzz011 = pDMeff011 + alphaT*qnormxysq/q011(4) + alphaL*q011(3)**2/q011(4)
+     Dxzx011 = ( aLMinusaT )*q011(1)*q011(3)/q011(4)
+     Dyzy011 = ( aLMinusaT )*q011(2)*q011(3)/q011(4)
+     Dxzz011 = ( aLMinusaT )*q011(1)*q011(3)/q011(4)
+     Dyzz011 = ( aLMinusaT )*q011(2)*q011(3)/q011(4)
+    end if
+
+    ! 111
+    if( q111(4) .gt. 0d0 ) then
+     qsq(:)    = q111(1:3)**2d0
+     qnormxysq = qsq(1) + qsq(2)
+     if ( qnormxysq .gt. 0d0 ) then  
+       qzsqdivqnormxysq = qsq(3)/qnormxysq
+       Dxxx111 = pDMeff111 + alphaL*qsq(1)/q111(4)        + &
+        alphaTH*qsq(2)/q111(4)*( 1d0 + qzsqdivqnormxysq ) + & 
+        alphaT*qsq(3)/q111(4)*qsq(1)/qnormxysq
+       Dyyy111 = pDMeff111 + alphaTH*qsq(1)/q111(4)*( 1d0 + qzsqdivqnormxysq ) + &
+        alphaL*qsq(2)/q111(4) + alphaT*qsq(3)/q111(4)*qsq(2)/qnormxysq 
+       Dxyx111 = (alphaL - alphaTH*( 1d0 + qzsqdivqnormxysq ) + & 
+        alphaT*qzsqdivqnormxysq )*q111(1)*q111(2)/q111(4) 
+       Dxyy111 = (alphaL - alphaTH*( 1d0 + qzsqdivqnormxysq ) + &
+        alphaT*qzsqdivqnormxysq )*q111(1)*q111(2)/q111(4) 
+     end if
+     Dzzz111 = pDMeff111 + alphaT*qnormxysq/q111(4) + alphaL*q111(3)**2/q111(4)
+     Dxzx111 = ( aLMinusaT )*q111(1)*q111(3)/q111(4)
+     Dyzy111 = ( aLMinusaT )*q111(2)*q111(3)/q111(4)
+     Dxzz111 = ( aLMinusaT )*q111(1)*q111(3)/q111(4)
+     Dyzz111 = ( aLMinusaT )*q111(2)*q111(3)/q111(4)
+    end if
+
+
+    ! Interpolated derivates !
+    call this%TrilinearDerivative( 1, x, y, z, &
+              Dxxx000, & 
+              Dxxx100, &
+              Dxxx010, &
+              Dxxx110, &
+              Dxxx001, &
+              Dxxx101, &
+              Dxxx011, &
+              Dxxx111, &
+              dDxxdx )
+    call this%TrilinearDerivative( 2, x, y, z, &
+              Dyyy000, &
+              Dyyy100, &
+              Dyyy010, &
+              Dyyy110, &
+              Dyyy001, &
+              Dyyy101, &
+              Dyyy011, &
+              Dyyy111, &
+              dDyydy )
+    call this%TrilinearDerivative( 3, x, y, z, &
+              Dzzz000, &
+              Dzzz100, &
+              Dzzz010, &
+              Dzzz110, &
+              Dzzz001, &
+              Dzzz101, &
+              Dzzz011, &
+              Dzzz111, &
+              dDzzdz )
+    call this%TrilinearDerivative( 1, x, y, z, & 
+              Dxyx000, & 
+              Dxyx100, &
+              Dxyx010, &
+              Dxyx110, &
+              Dxyx001, &
+              Dxyx101, &
+              Dxyx011, &
+              Dxyx111, &
+              dDxydx )
+    call this%TrilinearDerivative( 1, x, y, z, &
+              Dxzx000, &
+              Dxzx100, &
+              Dxzx010, &
+              Dxzx110, &
+              Dxzx001, &
+              Dxzx101, &
+              Dxzx011, &
+              Dxzx111, &
+              dDxzdx )
+    call this%TrilinearDerivative( 2, x, y, z, &
+              Dxyy000, &
+              Dxyy100, &
+              Dxyy010, &
+              Dxyy110, &
+              Dxyy001, &
+              Dxyy101, &
+              Dxyy011, &
+              Dxyy111, &
+              dDxydy )
+    call this%TrilinearDerivative( 2, x, y, z, &
+              Dyzy000, &
+              Dyzy100, &
+              Dyzy010, &
+              Dyzy110, &
+              Dyzy001, &
+              Dyzy101, &
+              Dyzy011, &
+              Dyzy111, &
+              dDyzdy )
+    call this%TrilinearDerivative( 3, x, y, z, &
+              Dxzz000, &
+              Dxzz100, &
+              Dxzz010, &
+              Dxzz110, &
+              Dxzz001, &
+              Dxzz101, &
+              Dxzz011, &
+              Dxzz111, &
+              dDxzdz )
+    call this%TrilinearDerivative( 3, x, y, z, &
+              Dyzz000, &
+              Dyzz100, &
+              Dyzz010, &
+              Dyzz110, &
+              Dyzz001, &
+              Dyzz101, &
+              Dyzz011, &
+              Dyzz111, &
+              dDyzdz )
+
+    ! Notice correction by porosity and retardation 
+    divDx = ( dDxxdx + dDxydy + dDxzdz )/this%SubCellData%Porosity/this%SubCellData%Retardation
+    divDy = ( dDxydx + dDyydy + dDyzdz )/this%SubCellData%Porosity/this%SubCellData%Retardation
+    divDz = ( dDxzdx + dDyzdy + dDzzdz )/this%SubCellData%Porosity/this%SubCellData%Retardation
+
+
+  end subroutine pr_DispersionDivergenceDischargeAxisymmetric
+
+
+  subroutine pr_DisplacementRandomDischargeAxisymmetric( this, x, y, z, & 
+                          alphaL, alphaT, alphaTH, dMEff, dBx, dBy, dBz ) 
+      !----------------------------------------------------------------
+      ! Computes the product between displacement matrix, computed as 
+      ! in Lichtner et al. 2002, and the random vector
+      !
+      ! Params:
+      !     - x, y, z       : local cell coordinates
+      !     - alphaL        : longidutinal dispersivity
+      !     - alphaT        : transverse dispersivity
+      !     - alphaTH       : transverse dispersivity
+      !     - dMEff         : effective molecular diffusion (corrected by tortuosity )
+      !     - dBx, dBy, dBz : random dispersion displacement, output
+      !----------------------------------------------------------------
+      ! Specifications
+      !----------------------------------------------------------------
+      implicit none
+      class (TrackSubCellType) :: this
+      ! input
+      doubleprecision, intent(in)    :: x, y, z
+      doubleprecision, intent(in)    :: alphaL, alphaT, alphaTH, dMEff
+      ! output
+      doubleprecision, intent(out) :: dBx, dBy, dBz
+      ! local
+      doubleprecision :: vBx, vBy, vBz, vBnorm, vBnormxy
+      doubleprecision :: B11, B12, B13, B21, B22, B23, B31, B32
+      doubleprecision :: rdmx, rdmy, rdmz
+      doubleprecision :: RFactor
+      doubleprecision, dimension(4) :: v000
+      doubleprecision, dimension(4) :: v100
+      doubleprecision, dimension(4) :: v010
+      doubleprecision, dimension(4) :: v110
+      doubleprecision, dimension(4) :: v001
+      doubleprecision, dimension(4) :: v101
+      doubleprecision, dimension(4) :: v011
+      doubleprecision, dimension(4) :: v111
+      !----------------------------------------------------------------
+
+      ! Initialize
+      dBx = 0d0
+      dBy = 0d0
+      dBz = 0d0
+
+      ! Local copies of corner velocities
+      ! pointers ?
+      v000 = this%qCorner000 / this%porosity000 
+      v100 = this%qCorner100 / this%porosity100 
+      v010 = this%qCorner010 / this%porosity010 
+      v110 = this%qCorner110 / this%porosity110 
+      v001 = this%qCorner001 / this%porosity001 
+      v101 = this%qCorner101 / this%porosity101 
+      v011 = this%qCorner011 / this%porosity011 
+      v111 = this%qCorner111 / this%porosity111
+
+      ! Extract R
+      RFactor = this%SubCellData%Retardation
+
+      ! Trilinear interpolation of velocities and norm
+      call this%Trilinear( x, y, z, &
+                           v000(1), v100(1), v010(1), v110(1), &
+                           v001(1), v101(1), v011(1), v111(1), &
+                           vBx )
+      call this%Trilinear( x, y, z, &
+                           v000(2), v100(2), v010(2), v110(2), &
+                           v001(2), v101(2), v011(2), v111(2), &
+                           vBy )
+      call this%Trilinear( x, y, z, &
+                           v000(3), v100(3), v010(3), v110(3), &
+                           v001(3), v101(3), v011(3), v111(3), &
+                           vBz )
+      vBnorm   = sqrt( vBx**2 + vBy**2 + vBz**2 )
+      vBnormxy = sqrt( vBx**2 + vBy**2 )
+   
+
+      ! Displacement matrix terms
+      ! Refs: Fernàndez-Garcia et al. 2005; Salamon et al. 2006
+      ! Handles the case of zero vBnorm
+      B11 = 0d0 
+      B12 = 0d0
+      B13 = 0d0
+      B21 = 0d0
+      B22 = 0d0
+      B23 = 0d0
+      B31 = 0d0
+      B32 = 0d0
+      if ( vBnorm .gt. 0d0 ) then
+        B11 =       vBx*sqrt( 2*( alphaL*vBnorm + dMEff )/RFactor )/vBnorm
+        B21 =       vBy*sqrt( 2*( alphaL*vBnorm + dMEff )/RFactor )/vBnorm
+        B31 =       vBz*sqrt( 2*( alphaL*vBnorm + dMEff )/RFactor )/vBnorm
+        B32 =  vBnormxy*sqrt( 2*( alphaT*vBnorm + dMEff )/RFactor )/vBnorm
+        if ( vBnormxy .gt. 0d0 ) then
+          B12 =  -vBx*vBz*sqrt( 2*( alphaT*vBnorm + dMEff )/RFactor )/vBnorm/vBnormxy
+          B13 =      -vBy*sqrt( 2*( alphaTH*vBnorm + dMEff )/RFactor )/vBnormxy
+          B22 =  -vBy*vBz*sqrt( 2*( alphaT*vBnorm + dMEff )/RFactor )/vBnorm/vBnormxy
+          B23 =       vBx*sqrt( 2*( alphaTH*vBnorm + dMEff )/RFactor )/vBnormxy
+        end if
+      end if 
+
+      ! Compute random numbers
+      call this%GenerateStandardNormalRandom( rdmx ) 
+      call this%GenerateStandardNormalRandom( rdmy ) 
+      call this%GenerateStandardNormalRandom( rdmz ) 
+
+      ! Compute displacement times random
+      dBx = B11*rdmx + B12*rdmy + B13*rdmz 
+      dBy = B21*rdmx + B22*rdmy + B23*rdmz 
+      dBz = B31*rdmx + B32*rdmy 
+
+
+  end subroutine pr_DisplacementRandomDischargeAxisymmetric
 
 
 
