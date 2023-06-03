@@ -39,6 +39,7 @@ module ParticleTrackingOptionsModule
     integer                       :: gpkdeOutputUnit = 125
     logical                       :: gpkdeKernelDatabase
     logical                       :: gpkdeIsotropicKernels
+    logical                       :: gpkdeIsotropicKernelsIC = .true.
     logical                       :: gpkdeAsConcentration = .false.
     doubleprecision               :: gpkdeBinVolume
     doubleprecision               :: gpkdeScalingFactor

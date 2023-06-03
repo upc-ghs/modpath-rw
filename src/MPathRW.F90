@@ -1025,15 +1025,14 @@ program MPathRW
          weights=activeParticleMasses,                                                     &
          scalingFactor=simulationData%TrackingOptions%gpkdeScalingFactor,                  & ! transform to resident
          histogramScalingFactor=simulationData%TrackingOptions%gpkdeScalingFactor,         &
-         isotropic=simulationData%TrackingOptions%gpkdeIsotropicKernels,                   &
+         isotropic=simulationData%TrackingOptions%gpkdeIsotropicKernelsIC,                 &
          skipErrorConvergence=simulationData%TrackingOptions%gpkdeSkipError,               &
          relativeErrorConvergence=simulationData%TrackingOptions%gpkdeRelErrorConvergence  &
         )
 
       end do 
     end if ! simulationData%TrackingOptions%GPKDEReconstruction
-
-  end if
+  end if ! write initial conditions for timeseries run
 
 
   ! TRACKING_INTERVAL_LOOP: 
