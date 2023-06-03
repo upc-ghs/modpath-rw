@@ -27,6 +27,18 @@ module TrackSubCellModule
     doubleprecision, dimension(4) :: qCorner011
     doubleprecision, dimension(4) :: qCorner111
 
+    ! qproducts
+    ! entries 1:7 are normalized by qnorm
+    ! xx, xy, xz, yy, yz, zz, (xx+yy), zz/(xx+yy) 
+    doubleprecision, dimension(8) :: qprod000
+    doubleprecision, dimension(8) :: qprod100
+    doubleprecision, dimension(8) :: qprod010
+    doubleprecision, dimension(8) :: qprod110
+    doubleprecision, dimension(8) :: qprod001
+    doubleprecision, dimension(8) :: qprod101
+    doubleprecision, dimension(8) :: qprod011
+    doubleprecision, dimension(8) :: qprod111
+
     ! corner porosities
     doubleprecision :: porosity000
     doubleprecision :: porosity100
@@ -51,6 +63,7 @@ module TrackSubCellModule
     procedure(ExitFaceAndTimeStep), pass, pointer :: ExitFaceAndUpdateTimeStep=>null()
     procedure(DispersionModel), pass, pointer :: ComputeRWPTDisplacements=>null()
     procedure(RandomDisplacement), pass, pointer :: DisplacementRandomDischarge=>null()
+    procedure(RandomDisplacementAxi), pass, pointer :: DisplacementRandomDischargeAxisymmetric=>null()
     procedure(RandomGenerator), pass, pointer :: GenerateStandardNormalRandom=>null()
     procedure(CornerPorosity), pass, pointer :: ComputeCornerPorosity=>null()
 
@@ -165,6 +178,20 @@ module TrackSubCellModule
       ! output
       doubleprecision, intent(out) :: dBx, dBy, dBz
     end subroutine RandomDisplacement
+
+    ! Random displacement for axisymmetric dispersion 
+    ! Determined by dimensions 
+    subroutine RandomDisplacementAxi( this, x, y, z, alphaL, alphaT, alphaTH, &
+                                                         dMEff, dBx, dBy, dBz )
+      import TrackSubCellType
+      !------------------------------------------------------------
+      class (TrackSubCellType) :: this
+      ! input
+      doubleprecision, intent(in)    :: x, y, z
+      doubleprecision, intent(in)    :: alphaL, alphaT, alphaTH, dMEff
+      ! output
+      doubleprecision, intent(out) :: dBx, dBy, dBz
+    end subroutine RandomDisplacementAxi
 
     ! Random generator function
     subroutine RandomGenerator( this, random_value )
@@ -512,6 +539,35 @@ contains
       this%ComputeCornerPorosity => pr_ComputeCornerPorosityInterpolated 
     end if 
 
+    ! Initialize random displacement flags ( to be deprecated )
+    if ( trackingOptions%dimensionMask(1) .eq. 0 ) this%moveX = .false.
+    if ( trackingOptions%dimensionMask(2) .eq. 0 ) this%moveY = .false.
+    if ( trackingOptions%dimensionMask(3) .eq. 0 ) this%moveZ = .false.
+
+    this%dimensions => trackingOptions%dimensions
+    this%nDim => trackingOptions%nDim
+    
+    ! Assign random displacement function
+    select case(this%nDim) 
+      case(1)
+        this%DisplacementRandomDischarge => pr_DisplacementRandomDischarge1D
+      case(2)
+        this%DisplacementRandomDischarge => pr_DisplacementRandomDischarge2D
+      case(3)
+        this%DisplacementRandomDischarge => pr_DisplacementRandomDischarge
+    end select
+
+    select case(this%nDim)
+      ! For 1D or 2D problems these are the same than the isotropic model, 
+      ! only for interface purposes. 
+      case(1)
+        this%DisplacementRandomDischargeAxisymmetric => pr_DisplacementRandomDischargeAxisymmetric1D
+      case(2)
+        this%DisplacementRandomDischargeAxisymmetric => pr_DisplacementRandomDischargeAxisymmetric2D
+      case(3)
+        this%DisplacementRandomDischargeAxisymmetric => pr_DisplacementRandomDischargeAxisymmetric
+    end select
+
     ! Dispersion displacement function is set in particletrackingengine
     !call this%SetDispersionDisplacement( trackingOptions%dispersionModel )
 
@@ -533,23 +589,6 @@ contains
       stop
     end select
 
-    ! Initialize random displacement flags ( to be deprecated )
-    if ( trackingOptions%dimensionMask(1) .eq. 0 ) this%moveX = .false.
-    if ( trackingOptions%dimensionMask(2) .eq. 0 ) this%moveY = .false.
-    if ( trackingOptions%dimensionMask(3) .eq. 0 ) this%moveZ = .false.
-
-    this%dimensions => trackingOptions%dimensions
-    this%nDim => trackingOptions%nDim
-    
-    ! Assign random displacement function
-    select case(this%nDim) 
-      case(1)
-        this%DisplacementRandomDischarge => pr_DisplacementRandomDischarge1D
-      case(2)
-        this%DisplacementRandomDischarge => pr_DisplacementRandomDischarge2D
-      case(3)
-        this%DisplacementRandomDischarge => pr_DisplacementRandomDischarge
-    end select
 
     ! Done
     return
@@ -559,33 +598,37 @@ contains
 
 
   subroutine pr_SetDispersionDisplacement(this, dispersionModel)
-      !------------------------------------------------------------
-      !
-      !------------------------------------------------------------
-      ! Specifications
-      !------------------------------------------------------------
-      implicit none
-      class(TrackSubCellType) :: this
-      integer :: dispersionModel 
-      !------------------------------------------------------------
+  !------------------------------------------------------------
+  !
+  !------------------------------------------------------------
+  ! Specifications
+  !------------------------------------------------------------
+  implicit none
+  class(TrackSubCellType) :: this
+  integer :: dispersionModel 
+  !------------------------------------------------------------
 
-      ! Assign displacement pointers
-      if ( dispersionModel .eq. 1 ) then 
-       !  Linear
-       this%ComputeRWPTDisplacements => pr_RWPTDisplacementsLinear 
-      !else if ( dispersionModel .eq.2 ) then
-      ! ! Non linear 
-      ! this%ComputeRWPTDisplacements => pr_RWPTDisplacementsNonlinear
-      else 
-       ! Not set !
-       ! Some kind of error handling
-       write(*,*)&
-         'TrackSubCell:SetDispersionDisplacement: dispersionModel ' , dispersionModel ,' NOT implemented. Stop.'
-       stop
-      end if
+    ! Assign displacement pointers
+    select case(dispersionModel)
+    case(0)
+      !  Linear isotropic
+      this%ComputeRWPTDisplacements => pr_RWPTDisplacementsLinear
+    case(1)
+      ! Linear axisymmetric 
+      this%ComputeRWPTDisplacements => pr_RWPTDisplacementsAxisymmetric
+    !case(2)else if ( dispersionModel .eq.2 ) then
+    ! ! Non linear 
+    ! this%ComputeRWPTDisplacements => pr_RWPTDisplacementsNonlinear
+    case default
+      ! Not set !
+      ! Some kind of error handling
+      write(*,*)&
+        'TrackSubCell:SetDispersionDisplacement: dispersionModel ' , dispersionModel ,' NOT implemented. Stop.'
+      stop
+    end select
 
-      ! Done
-      return
+    ! Done
+    return
 
 
   end subroutine pr_SetDispersionDisplacement
@@ -612,9 +655,9 @@ contains
       ! Specifications
       !------------------------------------------------------------
 
-      dMEff    = this%SubCellData%dMEff 
-      alphaL   = this%SubCellData%alphaL
-      alphaT   = this%SubCellData%alphaT
+      dMEff  = this%SubCellData%dMEff 
+      alphaL = this%SubCellData%alphaLH
+      alphaT = this%SubCellData%alphaTH
 
       call this%LinearInterpolationVelocities( x, y, z, vx, vy, vz )
       call this%DispersionDivergenceDischarge( x, y, z, alphaL, alphaT, dMEff, divDx, divDy, divDz )
@@ -718,9 +761,9 @@ contains
         this%SubCellData%alphaTV + cosinesq*(this%SubCellData%alphaTH-this%SubCellData%alphaTV)
 
       call pr_DispersionDivergenceDischargeAxisymmetric( this, x, y, z, & 
-              alphaL, alphaT, this%SubCellData%alphaTH, dMEff, divDx, divDy, divDz )
-      call pr_DisplacementRandomDischargeAxisymmetric( this, x, y, z, & 
-              alphaL, alphaT, this%SubCellData%alphaTH, dMEff, dBx, dBy, dBz )
+        alphaL, alphaT, this%SubCellData%alphaTH, dMEff, divDx, divDy, divDz )
+      call this%DisplacementRandomDischargeAxisymmetric( x, y, z, & 
+        alphaL, alphaT, this%SubCellData%alphaTH, dMEff, dBx, dBy, dBz )
       call this%AdvectionDisplacement( x, y, z, dt, vx, vy, vz, dAdvx, dAdvy, dAdvz )
 
       return
@@ -1341,9 +1384,10 @@ contains
     dy = this%SubCellData%DY
     dz = this%SubCellData%DZ
 
-    ! Local copies of dispersivities 
-    alphaL = this%SubCellData%alphaL
-    alphaT = this%SubCellData%alphaT
+    ! Local copies of dispersivities
+    ! Note: simplified form taking only H values 
+    alphaL = this%SubCellData%alphaLH
+    alphaT = this%SubCellData%alphaTH
 
     ! Compute time step
     select case (trackingOptions%timeStepKind)
@@ -2510,21 +2554,21 @@ contains
       ! Specifications
       !----------------------------------------------------------------
       implicit none
-      class (TrackSubCellType)    :: this
+      class (TrackSubCellType), target :: this
       ! input
       doubleprecision, intent(in) :: x, y, z
       doubleprecision, intent(in) :: alphaL, alphaT, dMEff
       ! output
       doubleprecision, intent(out) :: divDx, divDy, divDz
       ! local
-      doubleprecision, dimension(4) :: q000
-      doubleprecision, dimension(4) :: q100
-      doubleprecision, dimension(4) :: q010
-      doubleprecision, dimension(4) :: q110
-      doubleprecision, dimension(4) :: q001
-      doubleprecision, dimension(4) :: q101
-      doubleprecision, dimension(4) :: q011
-      doubleprecision, dimension(4) :: q111
+      doubleprecision, dimension(:), pointer :: qp000
+      doubleprecision, dimension(:), pointer :: qp100
+      doubleprecision, dimension(:), pointer :: qp010
+      doubleprecision, dimension(:), pointer :: qp110
+      doubleprecision, dimension(:), pointer :: qp001
+      doubleprecision, dimension(:), pointer :: qp101
+      doubleprecision, dimension(:), pointer :: qp011
+      doubleprecision, dimension(:), pointer :: qp111
 
       doubleprecision :: dDxxdx, dDxydy, dDxzdz, &
                          dDxydx, dDyydy, dDyzdz, &
@@ -2574,16 +2618,6 @@ contains
       divDy = 0d0
       divDz = 0d0
         
-      ! qx, qy, qz, norm(q)
-      q000 = this%qCorner000 
-      q100 = this%qCorner100
-      q010 = this%qCorner010
-      q110 = this%qCorner110
-      q001 = this%qCorner001
-      q101 = this%qCorner101
-      q011 = this%qCorner011
-      q111 = this%qCorner111
- 
       ! alphaL - alphaT
       aLMinusaT = alphaL - alphaT
 
@@ -2597,186 +2631,95 @@ contains
       pDMeff011 = this%porosity011*dMEff
       pDMeff111 = this%porosity111*dMEff
 
-      ! Initialize !
-      ! dDxxdx
-      Dxxx000 = pDMeff000
-      Dxxx100 = pDMeff100
-      Dxxx010 = pDMeff010
-      Dxxx110 = pDMeff110
-      Dxxx001 = pDMeff001
-      Dxxx101 = pDMeff101
-      Dxxx011 = pDMeff011
-      Dxxx111 = pDMeff111
-      ! dDyydy 
-      Dyyy000 = pDMeff000
-      Dyyy100 = pDMeff100
-      Dyyy010 = pDMeff010
-      Dyyy110 = pDMeff110
-      Dyyy001 = pDMeff001
-      Dyyy101 = pDMeff101
-      Dyyy011 = pDMeff011
-      Dyyy111 = pDMeff111
-      ! dDzzdz
-      Dzzz000 = pDMeff000
-      Dzzz100 = pDMeff100
-      Dzzz010 = pDMeff010
-      Dzzz110 = pDMeff110
-      Dzzz001 = pDMeff001
-      Dzzz101 = pDMeff101
-      Dzzz011 = pDMeff011
-      Dzzz111 = pDMeff111
-      ! dDxydx
-      Dxyx000 = 0d0
-      Dxyx100 = 0d0
-      Dxyx010 = 0d0
-      Dxyx110 = 0d0
-      Dxyx001 = 0d0
-      Dxyx101 = 0d0
-      Dxyx011 = 0d0
-      Dxyx111 = 0d0
-      ! dDxzdx
-      Dxzx000 = 0d0
-      Dxzx100 = 0d0
-      Dxzx010 = 0d0
-      Dxzx110 = 0d0
-      Dxzx001 = 0d0
-      Dxzx101 = 0d0
-      Dxzx011 = 0d0
-      Dxzx111 = 0d0
-      ! dDxydy
-      Dxyy000 = 0d0
-      Dxyy100 = 0d0
-      Dxyy010 = 0d0
-      Dxyy110 = 0d0
-      Dxyy001 = 0d0
-      Dxyy101 = 0d0
-      Dxyy011 = 0d0
-      Dxyy111 = 0d0
-      ! dDyzdy
-      Dyzy000 = 0d0
-      Dyzy100 = 0d0
-      Dyzy010 = 0d0
-      Dyzy110 = 0d0
-      Dyzy001 = 0d0
-      Dyzy101 = 0d0
-      Dyzy011 = 0d0
-      Dyzy111 = 0d0
-      ! dDxzdz
-      Dxzz000 = 0d0
-      Dxzz100 = 0d0
-      Dxzz010 = 0d0
-      Dxzz110 = 0d0
-      Dxzz001 = 0d0
-      Dxzz101 = 0d0
-      Dxzz011 = 0d0
-      Dxzz111 = 0d0
-      ! dDyzdz
-      Dyzz000 = 0d0
-      Dyzz100 = 0d0
-      Dyzz010 = 0d0
-      Dyzz110 = 0d0
-      Dyzz001 = 0d0
-      Dyzz101 = 0d0
-      Dyzz011 = 0d0
-      Dyzz111 = 0d0
+      qp000 => this%qprod000
+      qp100 => this%qprod100
+      qp010 => this%qprod010
+      qp110 => this%qprod110
+      qp001 => this%qprod001
+      qp101 => this%qprod101
+      qp011 => this%qprod011
+      qp111 => this%qprod111
 
-
-      if( q000(4) .gt. 0d0 ) then
-       Dxxx000 = ( alphaT*q000(4) + pDMeff000 ) + ( aLMinusaT )*q000(1)**2/q000(4)
-       Dyyy000 = ( alphaT*q000(4) + pDMeff000 ) + ( aLMinusaT )*q000(2)**2/q000(4)
-       Dzzz000 = ( alphaT*q000(4) + pDMeff000 ) + ( aLMinusaT )*q000(3)**2/q000(4)
-       Dxyx000 = ( aLMinusaT )*q000(1)*q000(2)/q000(4)
-       Dxzx000 = ( aLMinusaT )*q000(1)*q000(3)/q000(4)
-       Dxyy000 = ( aLMinusaT )*q000(1)*q000(2)/q000(4)
-       Dyzy000 = ( aLMinusaT )*q000(2)*q000(3)/q000(4)
-       Dxzz000 = ( aLMinusaT )*q000(1)*q000(3)/q000(4)
-       Dyzz000 = ( aLMinusaT )*q000(2)*q000(3)/q000(4)
-      end if
-
-      if( q100(4) .gt. 0d0 ) then
-       Dxxx100 = ( alphaT*q100(4) + pDMeff100 ) + ( aLMinusaT )*q100(1)**2/q100(4)
-       Dyyy100 = ( alphaT*q100(4) + pDMeff100 ) + ( aLMinusaT )*q100(2)**2/q100(4)
-       Dzzz100 = ( alphaT*q100(4) + pDMeff100 ) + ( aLMinusaT )*q100(3)**2/q100(4)
-       Dxyx100 = ( aLMinusaT )*q100(1)*q100(2)/q100(4)
-       Dxzx100 = ( aLMinusaT )*q100(1)*q100(3)/q100(4)
-       Dxyy100 = ( aLMinusaT )*q100(1)*q100(2)/q100(4)
-       Dyzy100 = ( aLMinusaT )*q100(2)*q100(3)/q100(4)
-       Dxzz100 = ( aLMinusaT )*q100(1)*q100(3)/q100(4)
-       Dyzz100 = ( aLMinusaT )*q100(2)*q100(3)/q100(4)
-      end if
-
-      if( q010(4) .gt. 0d0 ) then
-       Dxxx010 = ( alphaT*q010(4) + pDMeff010 ) + ( aLMinusaT )*q010(1)**2/q010(4)
-       Dyyy010 = ( alphaT*q010(4) + pDMeff010 ) + ( aLMinusaT )*q010(2)**2/q010(4)
-       Dzzz010 = ( alphaT*q010(4) + pDMeff010 ) + ( aLMinusaT )*q010(3)**2/q010(4)
-       Dxyx010 = ( aLMinusaT )*q010(1)*q010(2)/q010(4)
-       Dxzx010 = ( aLMinusaT )*q010(1)*q010(3)/q010(4)
-       Dxyy010 = ( aLMinusaT )*q010(1)*q010(2)/q010(4)
-       Dyzy010 = ( aLMinusaT )*q010(2)*q010(3)/q010(4)
-       Dxzz010 = ( aLMinusaT )*q010(1)*q010(3)/q010(4)
-       Dyzz010 = ( aLMinusaT )*q010(2)*q010(3)/q010(4)
-      end if
-
-      if( q110(4) .gt. 0d0 ) then
-       Dxxx110 = ( alphaT*q110(4) + pDMeff110 ) + ( aLMinusaT )*q110(1)**2/q110(4)
-       Dyyy110 = ( alphaT*q110(4) + pDMeff110 ) + ( aLMinusaT )*q110(2)**2/q110(4)
-       Dzzz110 = ( alphaT*q110(4) + pDMeff110 ) + ( aLMinusaT )*q110(3)**2/q110(4)
-       Dxyx110 = ( aLMinusaT )*q110(1)*q110(2)/q110(4)
-       Dxzx110 = ( aLMinusaT )*q110(1)*q110(3)/q110(4)
-       Dxyy110 = ( aLMinusaT )*q110(1)*q110(2)/q110(4)
-       Dyzy110 = ( aLMinusaT )*q110(2)*q110(3)/q110(4)
-       Dxzz110 = ( aLMinusaT )*q110(1)*q110(3)/q110(4)
-       Dyzz110 = ( aLMinusaT )*q110(2)*q110(3)/q110(4)
-      end if
-
-      if( q001(4) .gt. 0d0 ) then
-       Dxxx001 = ( alphaT*q001(4) + pDMeff001 ) + ( aLMinusaT )*q001(1)**2/q001(4)
-       Dyyy001 = ( alphaT*q001(4) + pDMeff001 ) + ( aLMinusaT )*q001(2)**2/q001(4)
-       Dzzz001 = ( alphaT*q001(4) + pDMeff001 ) + ( aLMinusaT )*q001(3)**2/q001(4)
-       Dxyx001 = ( aLMinusaT )*q001(1)*q001(2)/q001(4)
-       Dxzx001 = ( aLMinusaT )*q001(1)*q001(3)/q001(4)
-       Dxyy001 = ( aLMinusaT )*q001(1)*q001(2)/q001(4)
-       Dyzy001 = ( aLMinusaT )*q001(2)*q001(3)/q001(4)
-       Dxzz001 = ( aLMinusaT )*q001(1)*q001(3)/q001(4)
-       Dyzz001 = ( aLMinusaT )*q001(2)*q001(3)/q001(4)
-      end if
-
-      if( q101(4) .gt. 0d0 ) then
-       Dxxx101 = ( alphaT*q101(4) + pDMeff101 ) + ( aLMinusaT )*q101(1)**2/q101(4)
-       Dyyy101 = ( alphaT*q101(4) + pDMeff101 ) + ( aLMinusaT )*q101(2)**2/q101(4)
-       Dzzz101 = ( alphaT*q101(4) + pDMeff101 ) + ( aLMinusaT )*q101(3)**2/q101(4)
-       Dxyx101 = ( aLMinusaT )*q101(1)*q101(2)/q101(4)
-       Dxzx101 = ( aLMinusaT )*q101(1)*q101(3)/q101(4)
-       Dxyy101 = ( aLMinusaT )*q101(1)*q101(2)/q101(4)
-       Dyzy101 = ( aLMinusaT )*q101(2)*q101(3)/q101(4)
-       Dxzz101 = ( aLMinusaT )*q101(1)*q101(3)/q101(4)
-       Dyzz101 = ( aLMinusaT )*q101(2)*q101(3)/q101(4)
-      end if
-
-      if( q011(4) .gt. 0d0 ) then
-       Dxxx011 = ( alphaT*q011(4) + pDMeff011 ) + ( aLMinusaT )*q011(1)**2/q011(4)
-       Dyyy011 = ( alphaT*q011(4) + pDMeff011 ) + ( aLMinusaT )*q011(2)**2/q011(4)
-       Dzzz011 = ( alphaT*q011(4) + pDMeff011 ) + ( aLMinusaT )*q011(3)**2/q011(4)
-       Dxyx011 = ( aLMinusaT )*q011(1)*q011(2)/q011(4)
-       Dxzx011 = ( aLMinusaT )*q011(1)*q011(3)/q011(4)
-       Dxyy011 = ( aLMinusaT )*q011(1)*q011(2)/q011(4)
-       Dyzy011 = ( aLMinusaT )*q011(2)*q011(3)/q011(4)
-       Dxzz011 = ( aLMinusaT )*q011(1)*q011(3)/q011(4)
-       Dyzz011 = ( aLMinusaT )*q011(2)*q011(3)/q011(4)
-      end if
-
-      if( q111(4) .gt. 0d0 ) then
-       Dxxx111 = ( alphaT*q111(4) + pDMeff111 ) + ( aLMinusaT )*q111(1)**2/q111(4)
-       Dyyy111 = ( alphaT*q111(4) + pDMeff111 ) + ( aLMinusaT )*q111(2)**2/q111(4)
-       Dzzz111 = ( alphaT*q111(4) + pDMeff111 ) + ( aLMinusaT )*q111(3)**2/q111(4)
-       Dxyx111 = ( aLMinusaT )*q111(1)*q111(2)/q111(4)
-       Dxzx111 = ( aLMinusaT )*q111(1)*q111(3)/q111(4)
-       Dxyy111 = ( aLMinusaT )*q111(1)*q111(2)/q111(4)
-       Dyzy111 = ( aLMinusaT )*q111(2)*q111(3)/q111(4)
-       Dxzz111 = ( aLMinusaT )*q111(1)*q111(3)/q111(4)
-       Dyzz111 = ( aLMinusaT )*q111(2)*q111(3)/q111(4)
-      end if
-
+      ! 000
+      Dxxx000 = ( alphaT*this%qCorner000(4) + pDMeff000 ) + ( aLMinusaT )*qp000(1)
+      Dyyy000 = ( alphaT*this%qCorner000(4) + pDMeff000 ) + ( aLMinusaT )*qp000(4)
+      Dzzz000 = ( alphaT*this%qCorner000(4) + pDMeff000 ) + ( aLMinusaT )*qp000(6)
+      Dxyx000 = ( aLMinusaT )*qp000(2)
+      Dxzx000 = ( aLMinusaT )*qp000(3)
+      Dxyy000 = Dxyx000
+      Dyzy000 = ( aLMinusaT )*qp000(5)
+      Dxzz000 = Dxzx000
+      Dyzz000 = Dyzy000
+      ! 100
+      Dxxx100 = ( alphaT*this%qCorner100(4) + pDMeff100 ) + ( aLMinusaT )*qp100(1)
+      Dyyy100 = ( alphaT*this%qCorner100(4) + pDMeff100 ) + ( aLMinusaT )*qp100(4)
+      Dzzz100 = ( alphaT*this%qCorner100(4) + pDMeff100 ) + ( aLMinusaT )*qp100(6)
+      Dxyx100 = ( aLMinusaT )*qp100(2)
+      Dxzx100 = ( aLMinusaT )*qp100(3)
+      Dxyy100 = Dxyx100
+      Dyzy100 = ( aLMinusaT )*qp100(5)
+      Dxzz100 = Dxzx100
+      Dyzz100 = Dyzy100
+      ! 010
+      Dxxx010 = ( alphaT*this%qCorner010(4) + pDMeff010 ) + ( aLMinusaT )*qp010(1)
+      Dyyy010 = ( alphaT*this%qCorner010(4) + pDMeff010 ) + ( aLMinusaT )*qp010(4)
+      Dzzz010 = ( alphaT*this%qCorner010(4) + pDMeff010 ) + ( aLMinusaT )*qp010(6)
+      Dxyx010 = ( aLMinusaT )*qp010(2)
+      Dxzx010 = ( aLMinusaT )*qp010(3)
+      Dxyy010 = Dxyx010
+      Dyzy010 = ( aLMinusaT )*qp010(5)
+      Dxzz010 = Dxzx010
+      Dyzz010 = Dyzy010
+      ! 110
+      Dxxx110 = ( alphaT*this%qCorner110(4) + pDMeff110 ) + ( aLMinusaT )*qp110(1)
+      Dyyy110 = ( alphaT*this%qCorner110(4) + pDMeff110 ) + ( aLMinusaT )*qp110(4)
+      Dzzz110 = ( alphaT*this%qCorner110(4) + pDMeff110 ) + ( aLMinusaT )*qp110(6)
+      Dxyx110 = ( aLMinusaT )*qp110(2)
+      Dxzx110 = ( aLMinusaT )*qp110(3)
+      Dxyy110 = Dxyx110
+      Dyzy110 = ( aLMinusaT )*qp110(5)
+      Dxzz110 = Dxzx110
+      Dyzz110 = Dyzy110
+      ! 001
+      Dxxx001 = ( alphaT*this%qCorner001(4) + pDMeff001 ) + ( aLMinusaT )*qp001(1)
+      Dyyy001 = ( alphaT*this%qCorner001(4) + pDMeff001 ) + ( aLMinusaT )*qp001(4)
+      Dzzz001 = ( alphaT*this%qCorner001(4) + pDMeff001 ) + ( aLMinusaT )*qp001(6)
+      Dxyx001 = ( aLMinusaT )*qp001(2)
+      Dxzx001 = ( aLMinusaT )*qp001(3)
+      Dxyy001 = Dxyx001
+      Dyzy001 = ( aLMinusaT )*qp001(5)
+      Dxzz001 = Dxzx001
+      Dyzz001 = Dyzy001
+      ! 101
+      Dxxx101 = ( alphaT*this%qCorner101(4) + pDMeff101 ) + ( aLMinusaT )*qp101(1)
+      Dyyy101 = ( alphaT*this%qCorner101(4) + pDMeff101 ) + ( aLMinusaT )*qp101(4)
+      Dzzz101 = ( alphaT*this%qCorner101(4) + pDMeff101 ) + ( aLMinusaT )*qp101(6)
+      Dxyx101 = ( aLMinusaT )*qp101(2)
+      Dxzx101 = ( aLMinusaT )*qp101(3)
+      Dxyy101 = Dxyx101
+      Dyzy101 = ( aLMinusaT )*qp101(5)
+      Dxzz101 = Dxzx101
+      Dyzz101 = Dyzy101
+      ! 011
+      Dxxx011 = ( alphaT*this%qCorner011(4) + pDMeff011 ) + ( aLMinusaT )*qp011(1)
+      Dyyy011 = ( alphaT*this%qCorner011(4) + pDMeff011 ) + ( aLMinusaT )*qp011(4)
+      Dzzz011 = ( alphaT*this%qCorner011(4) + pDMeff011 ) + ( aLMinusaT )*qp011(6)
+      Dxyx011 = ( aLMinusaT )*qp011(2)
+      Dxzx011 = ( aLMinusaT )*qp011(3)
+      Dxyy011 = Dxyx011
+      Dyzy011 = ( aLMinusaT )*qp011(5)
+      Dxzz011 = Dxzx011
+      Dyzz011 = Dyzy011
+      ! 111
+      Dxxx111 = ( alphaT*this%qCorner111(4) + pDMeff111 ) + ( aLMinusaT )*qp111(1)
+      Dyyy111 = ( alphaT*this%qCorner111(4) + pDMeff111 ) + ( aLMinusaT )*qp111(4)
+      Dzzz111 = ( alphaT*this%qCorner111(4) + pDMeff111 ) + ( aLMinusaT )*qp111(6)
+      Dxyx111 = ( aLMinusaT )*qp111(2)
+      Dxzx111 = ( aLMinusaT )*qp111(3)
+      Dxyy111 = Dxyx111
+      Dyzy111 = ( aLMinusaT )*qp111(5)
+      Dxzz111 = Dxzx111
+      Dyzz111 = Dyzy111
 
       ! Interpolated derivates !
       call this%TrilinearDerivative( 1, x, y, z, &
@@ -2877,7 +2820,6 @@ contains
 
 
   end subroutine pr_DispersionDivergenceDischarge
-
 
 
   subroutine pr_DisplacementRandomDischarge( this, x, y, z, alphaL, alphaT, dMEff, dBx, dBy, dBz ) 
@@ -3195,30 +3137,27 @@ contains
   ! Specifications
   !----------------------------------------------------------------
   implicit none
-  class (TrackSubCellType)    :: this
+  class (TrackSubCellType), target :: this
   ! input
   doubleprecision, intent(in) :: x, y, z
   doubleprecision, intent(in) :: alphaL, alphaT, alphaTH, dMEff
   ! output
   doubleprecision, intent(out) :: divDx, divDy, divDz
   ! local
-  doubleprecision, dimension(4) :: q000
-  doubleprecision, dimension(4) :: q100
-  doubleprecision, dimension(4) :: q010
-  doubleprecision, dimension(4) :: q110
-  doubleprecision, dimension(4) :: q001
-  doubleprecision, dimension(4) :: q101
-  doubleprecision, dimension(4) :: q011
-  doubleprecision, dimension(4) :: q111
-  doubleprecision, dimension(3) :: qsq
+  doubleprecision, dimension(:), pointer :: qp000
+  doubleprecision, dimension(:), pointer :: qp100
+  doubleprecision, dimension(:), pointer :: qp010
+  doubleprecision, dimension(:), pointer :: qp110
+  doubleprecision, dimension(:), pointer :: qp001
+  doubleprecision, dimension(:), pointer :: qp101
+  doubleprecision, dimension(:), pointer :: qp011
+  doubleprecision, dimension(:), pointer :: qp111
 
   doubleprecision :: dDxxdx, dDxydy, dDxzdz, &
                      dDxydx, dDyydy, dDyzdz, &
                      dDxzdx, dDyzdy, dDzzdz
 
   doubleprecision :: aLMinusaT
-  doubleprecision :: qnormxysq
-  doubleprecision :: qzsqdivqnormxysq
 
   doubleprecision :: pDmeff000
   doubleprecision :: pDmeff100
@@ -3262,16 +3201,6 @@ contains
     divDy = 0d0
     divDz = 0d0
       
-    ! qx, qy, qz, norm(q)
-    q000 = this%qCorner000 
-    q100 = this%qCorner100
-    q010 = this%qCorner010
-    q110 = this%qCorner110
-    q001 = this%qCorner001
-    q101 = this%qCorner101
-    q011 = this%qCorner011
-    q111 = this%qCorner111
- 
     ! alphaL - alphaT
     aLMinusaT = alphaL - alphaT
 
@@ -3285,274 +3214,95 @@ contains
     pDMeff011 = this%porosity011*dMEff
     pDMeff111 = this%porosity111*dMEff
 
-    ! Initialize !
-    ! dDxxdx
-    Dxxx000 = pDMeff000
-    Dxxx100 = pDMeff100
-    Dxxx010 = pDMeff010
-    Dxxx110 = pDMeff110
-    Dxxx001 = pDMeff001
-    Dxxx101 = pDMeff101
-    Dxxx011 = pDMeff011
-    Dxxx111 = pDMeff111
-    ! dDyydy 
-    Dyyy000 = pDMeff000
-    Dyyy100 = pDMeff100
-    Dyyy010 = pDMeff010
-    Dyyy110 = pDMeff110
-    Dyyy001 = pDMeff001
-    Dyyy101 = pDMeff101
-    Dyyy011 = pDMeff011
-    Dyyy111 = pDMeff111
-    ! dDzzdz
-    Dzzz000 = pDMeff000
-    Dzzz100 = pDMeff100
-    Dzzz010 = pDMeff010
-    Dzzz110 = pDMeff110
-    Dzzz001 = pDMeff001
-    Dzzz101 = pDMeff101
-    Dzzz011 = pDMeff011
-    Dzzz111 = pDMeff111
-    ! dDxydx
-    Dxyx000 = 0d0
-    Dxyx100 = 0d0
-    Dxyx010 = 0d0
-    Dxyx110 = 0d0
-    Dxyx001 = 0d0
-    Dxyx101 = 0d0
-    Dxyx011 = 0d0
-    Dxyx111 = 0d0
-    ! dDxzdx
-    Dxzx000 = 0d0
-    Dxzx100 = 0d0
-    Dxzx010 = 0d0
-    Dxzx110 = 0d0
-    Dxzx001 = 0d0
-    Dxzx101 = 0d0
-    Dxzx011 = 0d0
-    Dxzx111 = 0d0
-    ! dDxydy
-    Dxyy000 = 0d0
-    Dxyy100 = 0d0
-    Dxyy010 = 0d0
-    Dxyy110 = 0d0
-    Dxyy001 = 0d0
-    Dxyy101 = 0d0
-    Dxyy011 = 0d0
-    Dxyy111 = 0d0
-    ! dDyzdy
-    Dyzy000 = 0d0
-    Dyzy100 = 0d0
-    Dyzy010 = 0d0
-    Dyzy110 = 0d0
-    Dyzy001 = 0d0
-    Dyzy101 = 0d0
-    Dyzy011 = 0d0
-    Dyzy111 = 0d0
-    ! dDxzdz
-    Dxzz000 = 0d0
-    Dxzz100 = 0d0
-    Dxzz010 = 0d0
-    Dxzz110 = 0d0
-    Dxzz001 = 0d0
-    Dxzz101 = 0d0
-    Dxzz011 = 0d0
-    Dxzz111 = 0d0
-    ! dDyzdz
-    Dyzz000 = 0d0
-    Dyzz100 = 0d0
-    Dyzz010 = 0d0
-    Dyzz110 = 0d0
-    Dyzz001 = 0d0
-    Dyzz101 = 0d0
-    Dyzz011 = 0d0
-    Dyzz111 = 0d0
-
+    qp000 => this%qprod000
+    qp100 => this%qprod100
+    qp010 => this%qprod010
+    qp110 => this%qprod110
+    qp001 => this%qprod001
+    qp101 => this%qprod101
+    qp011 => this%qprod011
+    qp111 => this%qprod111
 
     ! 000
-    if( q000(4) .gt. 0d0 ) then
-     qsq(:)    = q000(1:3)**2d0
-     qnormxysq = qsq(1) + qsq(2)
-     if ( qnormxysq .gt. 0d0 ) then  
-       qzsqdivqnormxysq = qsq(3)/qnormxysq
-       Dxxx000 = pDMeff000 + alphaL*qsq(1)/q000(4)        + &
-        alphaTH*qsq(2)/q000(4)*( 1d0 + qzsqdivqnormxysq ) + & 
-        alphaT*qsq(3)/q000(4)*qsq(1)/qnormxysq
-       Dyyy000 = pDMeff000 + alphaTH*qsq(1)/q000(4)*( 1d0 + qzsqdivqnormxysq ) + &
-        alphaL*qsq(2)/q000(4) + alphaT*qsq(3)/q000(4)*qsq(2)/qnormxysq 
-       Dxyx000 = (alphaL - alphaTH*( 1d0 + qzsqdivqnormxysq ) + & 
-        alphaT*qzsqdivqnormxysq )*q000(1)*q000(2)/q000(4) 
-       Dxyy000 = (alphaL - alphaTH*( 1d0 + qzsqdivqnormxysq ) + &
-        alphaT*qzsqdivqnormxysq )*q000(1)*q000(2)/q000(4) 
-     end if
-     Dzzz000 = pDMeff000 + alphaT*qnormxysq/q000(4) + alphaL*q000(3)**2/q000(4)
-     Dxzx000 = ( aLMinusaT )*q000(1)*q000(3)/q000(4)
-     Dyzy000 = ( aLMinusaT )*q000(2)*q000(3)/q000(4)
-     Dxzz000 = ( aLMinusaT )*q000(1)*q000(3)/q000(4)
-     Dyzz000 = ( aLMinusaT )*q000(2)*q000(3)/q000(4)
-    end if
-
+    Dxxx000 = pDMeff000 + ( alphaL + alphaT*qp000(8) )*qp000(1) + alphaTH*qp000(4)*( 1d0 + qp000(8) )
+    Dyyy000 = pDMeff000 + alphaTH*qp000(1)*( 1d0 + qp000(8) ) + qp000(4)*( alphaL + alphaT*qp000(8) )
+    Dxyx000 = ( alphaL - alphaTH*( 1d0 + qp000(8) ) + alphaT*qp000(8) )*qp000(1)
+    Dxyy000 = Dxyx000
+    Dzzz000 = pDMeff000 + alphaT*qp000(7) + alphaL*qp000(6)
+    Dxzx000 = ( aLMinusaT )*qp000(3)
+    Dyzy000 = ( aLMinusaT )*qp000(5)
+    Dxzz000 = Dxzx000
+    Dyzz000 = Dyzy000
     ! 100
-    if( q100(4) .gt. 0d0 ) then
-     qsq(:)    = q100(1:3)**2d0
-     qnormxysq = qsq(1) + qsq(2)
-     if ( qnormxysq .gt. 0d0 ) then  
-       qzsqdivqnormxysq = qsq(3)/qnormxysq
-       Dxxx100 = pDMeff100 + alphaL*qsq(1)/q100(4)        + &
-        alphaTH*qsq(2)/q100(4)*( 1d0 + qzsqdivqnormxysq ) + & 
-        alphaT*qsq(3)/q100(4)*qsq(1)/qnormxysq
-       Dyyy100 = pDMeff100 + alphaTH*qsq(1)/q100(4)*( 1d0 + qzsqdivqnormxysq ) + &
-        alphaL*qsq(2)/q100(4) + alphaT*qsq(3)/q100(4)*qsq(2)/qnormxysq 
-       Dxyx100 = (alphaL - alphaTH*( 1d0 + qzsqdivqnormxysq ) + & 
-        alphaT*qzsqdivqnormxysq )*q100(1)*q100(2)/q100(4) 
-       Dxyy100 = (alphaL - alphaTH*( 1d0 + qzsqdivqnormxysq ) + &
-        alphaT*qzsqdivqnormxysq )*q100(1)*q100(2)/q100(4) 
-     end if
-     Dzzz100 = pDMeff100 + alphaT*qnormxysq/q100(4) + alphaL*q100(3)**2/q100(4)
-     Dxzx100 = ( aLMinusaT )*q100(1)*q100(3)/q100(4)
-     Dyzy100 = ( aLMinusaT )*q100(2)*q100(3)/q100(4)
-     Dxzz100 = ( aLMinusaT )*q100(1)*q100(3)/q100(4)
-     Dyzz100 = ( aLMinusaT )*q100(2)*q100(3)/q100(4)
-    end if
-
+    Dxxx100 = pDMeff100 + ( alphaL + alphaT*qp100(8) )*qp100(1) + alphaTH*qp100(4)*( 1d0 + qp100(8) )
+    Dyyy100 = pDMeff100 + alphaTH*qp100(1)*( 1d0 + qp100(8) ) + qp100(4)*( alphaL + alphaT*qp100(8) )
+    Dxyx100 = ( alphaL - alphaTH*( 1d0 + qp100(8) ) + alphaT*qp100(8) )*qp100(1)
+    Dxyy100 = Dxyx100
+    Dzzz100 = pDMeff100 + alphaT*qp100(7) + alphaL*qp100(6)
+    Dxzx100 = ( aLMinusaT )*qp100(3)
+    Dyzy100 = ( aLMinusaT )*qp100(5)
+    Dxzz100 = Dxzx100
+    Dyzz100 = Dyzy100
     ! 010
-    if( q010(4) .gt. 0d0 ) then
-     qsq(:)    = q010(1:3)**2d0
-     qnormxysq = qsq(1) + qsq(2)
-     if ( qnormxysq .gt. 0d0 ) then  
-       qzsqdivqnormxysq = qsq(3)/qnormxysq
-       Dxxx010 = pDMeff010 + alphaL*qsq(1)/q010(4)        + &
-        alphaTH*qsq(2)/q010(4)*( 1d0 + qzsqdivqnormxysq ) + & 
-        alphaT*qsq(3)/q010(4)*qsq(1)/qnormxysq
-       Dyyy010 = pDMeff010 + alphaTH*qsq(1)/q010(4)*( 1d0 + qzsqdivqnormxysq ) + &
-        alphaL*qsq(2)/q010(4) + alphaT*qsq(3)/q010(4)*qsq(2)/qnormxysq 
-       Dxyx010 = (alphaL - alphaTH*( 1d0 + qzsqdivqnormxysq ) + & 
-        alphaT*qzsqdivqnormxysq )*q010(1)*q010(2)/q010(4) 
-       Dxyy010 = (alphaL - alphaTH*( 1d0 + qzsqdivqnormxysq ) + &
-        alphaT*qzsqdivqnormxysq )*q010(1)*q010(2)/q010(4) 
-     end if
-     Dzzz010 = pDMeff010 + alphaT*qnormxysq/q010(4) + alphaL*q010(3)**2/q010(4)
-     Dxzx010 = ( aLMinusaT )*q010(1)*q010(3)/q010(4)
-     Dyzy010 = ( aLMinusaT )*q010(2)*q010(3)/q010(4)
-     Dxzz010 = ( aLMinusaT )*q010(1)*q010(3)/q010(4)
-     Dyzz010 = ( aLMinusaT )*q010(2)*q010(3)/q010(4)
-    end if
-
+    Dxxx010 = pDMeff010 + ( alphaL + alphaT*qp010(8) )*qp010(1) + alphaTH*qp010(4)*( 1d0 + qp010(8) )
+    Dyyy010 = pDMeff010 + alphaTH*qp010(1)*( 1d0 + qp010(8) ) + qp010(4)*( alphaL + alphaT*qp010(8) )
+    Dxyx010 = ( alphaL - alphaTH*( 1d0 + qp010(8) ) + alphaT*qp010(8) )*qp010(1)
+    Dxyy010 = Dxyx010
+    Dzzz010 = pDMeff010 + alphaT*qp010(7) + alphaL*qp010(6)
+    Dxzx010 = ( aLMinusaT )*qp010(3)
+    Dyzy010 = ( aLMinusaT )*qp010(5)
+    Dxzz010 = Dxzx010
+    Dyzz010 = Dyzy010
     ! 110
-    if( q110(4) .gt. 0d0 ) then
-     qsq(:)    = q110(1:3)**2d0
-     qnormxysq = qsq(1) + qsq(2)
-     if ( qnormxysq .gt. 0d0 ) then  
-       qzsqdivqnormxysq = qsq(3)/qnormxysq
-       Dxxx110 = pDMeff110 + alphaL*qsq(1)/q110(4)        + &
-        alphaTH*qsq(2)/q110(4)*( 1d0 + qzsqdivqnormxysq ) + & 
-        alphaT*qsq(3)/q110(4)*qsq(1)/qnormxysq
-       Dyyy110 = pDMeff110 + alphaTH*qsq(1)/q110(4)*( 1d0 + qzsqdivqnormxysq ) + &
-        alphaL*qsq(2)/q110(4) + alphaT*qsq(3)/q110(4)*qsq(2)/qnormxysq 
-       Dxyx110 = (alphaL - alphaTH*( 1d0 + qzsqdivqnormxysq ) + & 
-        alphaT*qzsqdivqnormxysq )*q110(1)*q110(2)/q110(4) 
-       Dxyy110 = (alphaL - alphaTH*( 1d0 + qzsqdivqnormxysq ) + &
-        alphaT*qzsqdivqnormxysq )*q110(1)*q110(2)/q110(4) 
-     end if
-     Dzzz110 = pDMeff110 + alphaT*qnormxysq/q110(4) + alphaL*q110(3)**2/q110(4)
-     Dxzx110 = ( aLMinusaT )*q110(1)*q110(3)/q110(4)
-     Dyzy110 = ( aLMinusaT )*q110(2)*q110(3)/q110(4)
-     Dxzz110 = ( aLMinusaT )*q110(1)*q110(3)/q110(4)
-     Dyzz110 = ( aLMinusaT )*q110(2)*q110(3)/q110(4)
-    end if
-
+    Dxxx110 = pDMeff110 + ( alphaL + alphaT*qp110(8) )*qp110(1) + alphaTH*qp110(4)*( 1d0 + qp110(8) )
+    Dyyy110 = pDMeff110 + alphaTH*qp110(1)*( 1d0 + qp110(8) ) + qp110(4)*( alphaL + alphaT*qp110(8) )
+    Dxyx110 = ( alphaL - alphaTH*( 1d0 + qp110(8) ) + alphaT*qp110(8) )*qp110(1)
+    Dxyy110 = Dxyx110
+    Dzzz110 = pDMeff110 + alphaT*qp110(7) + alphaL*qp110(6)
+    Dxzx110 = ( aLMinusaT )*qp110(3)
+    Dyzy110 = ( aLMinusaT )*qp110(5)
+    Dxzz110 = Dxzx110
+    Dyzz110 = Dyzy110
     ! 001
-    if( q001(4) .gt. 0d0 ) then
-     qsq(:)    = q001(1:3)**2d0
-     qnormxysq = qsq(1) + qsq(2)
-     if ( qnormxysq .gt. 0d0 ) then  
-       qzsqdivqnormxysq = qsq(3)/qnormxysq
-       Dxxx001 = pDMeff001 + alphaL*qsq(1)/q001(4)        + &
-        alphaTH*qsq(2)/q001(4)*( 1d0 + qzsqdivqnormxysq ) + & 
-        alphaT*qsq(3)/q001(4)*qsq(1)/qnormxysq
-       Dyyy001 = pDMeff001 + alphaTH*qsq(1)/q001(4)*( 1d0 + qzsqdivqnormxysq ) + &
-        alphaL*qsq(2)/q001(4) + alphaT*qsq(3)/q001(4)*qsq(2)/qnormxysq 
-       Dxyx001 = (alphaL - alphaTH*( 1d0 + qzsqdivqnormxysq ) + & 
-        alphaT*qzsqdivqnormxysq )*q001(1)*q001(2)/q001(4) 
-       Dxyy001 = (alphaL - alphaTH*( 1d0 + qzsqdivqnormxysq ) + &
-        alphaT*qzsqdivqnormxysq )*q001(1)*q001(2)/q001(4) 
-     end if
-     Dzzz001 = pDMeff001 + alphaT*qnormxysq/q001(4) + alphaL*q001(3)**2/q001(4)
-     Dxzx001 = ( aLMinusaT )*q001(1)*q001(3)/q001(4)
-     Dyzy001 = ( aLMinusaT )*q001(2)*q001(3)/q001(4)
-     Dxzz001 = ( aLMinusaT )*q001(1)*q001(3)/q001(4)
-     Dyzz001 = ( aLMinusaT )*q001(2)*q001(3)/q001(4)
-    end if
-
+    Dxxx001 = pDMeff001 + ( alphaL + alphaT*qp001(8) )*qp001(1) + alphaTH*qp001(4)*( 1d0 + qp001(8) )
+    Dyyy001 = pDMeff001 + alphaTH*qp001(1)*( 1d0 + qp001(8) ) + qp001(4)*( alphaL + alphaT*qp001(8) )
+    Dxyx001 = ( alphaL - alphaTH*( 1d0 + qp001(8) ) + alphaT*qp001(8) )*qp001(1)
+    Dxyy001 = Dxyx001
+    Dzzz001 = pDMeff001 + alphaT*qp001(7) + alphaL*qp001(6)
+    Dxzx001 = ( aLMinusaT )*qp001(3)
+    Dyzy001 = ( aLMinusaT )*qp001(5)
+    Dxzz001 = Dxzx001
+    Dyzz001 = Dyzy001
     ! 101
-    if( q101(4) .gt. 0d0 ) then
-     qsq(:)    = q101(1:3)**2d0
-     qnormxysq = qsq(1) + qsq(2)
-     if ( qnormxysq .gt. 0d0 ) then  
-       qzsqdivqnormxysq = qsq(3)/qnormxysq
-       Dxxx101 = pDMeff101 + alphaL*qsq(1)/q101(4)        + &
-        alphaTH*qsq(2)/q101(4)*( 1d0 + qzsqdivqnormxysq ) + & 
-        alphaT*qsq(3)/q101(4)*qsq(1)/qnormxysq
-       Dyyy101 = pDMeff101 + alphaTH*qsq(1)/q101(4)*( 1d0 + qzsqdivqnormxysq ) + &
-        alphaL*qsq(2)/q101(4) + alphaT*qsq(3)/q101(4)*qsq(2)/qnormxysq 
-       Dxyx101 = (alphaL - alphaTH*( 1d0 + qzsqdivqnormxysq ) + & 
-        alphaT*qzsqdivqnormxysq )*q101(1)*q101(2)/q101(4) 
-       Dxyy101 = (alphaL - alphaTH*( 1d0 + qzsqdivqnormxysq ) + &
-        alphaT*qzsqdivqnormxysq )*q101(1)*q101(2)/q101(4) 
-     end if
-     Dzzz101 = pDMeff101 + alphaT*qnormxysq/q101(4) + alphaL*q101(3)**2/q101(4)
-     Dxzx101 = ( aLMinusaT )*q101(1)*q101(3)/q101(4)
-     Dyzy101 = ( aLMinusaT )*q101(2)*q101(3)/q101(4)
-     Dxzz101 = ( aLMinusaT )*q101(1)*q101(3)/q101(4)
-     Dyzz101 = ( aLMinusaT )*q101(2)*q101(3)/q101(4)
-    end if
-
+    Dxxx101 = pDMeff101 + ( alphaL + alphaT*qp101(8) )*qp101(1) + alphaTH*qp101(4)*( 1d0 + qp101(8) )
+    Dyyy101 = pDMeff101 + alphaTH*qp101(1)*( 1d0 + qp101(8) ) + qp101(4)*( alphaL + alphaT*qp101(8) )
+    Dxyx101 = ( alphaL - alphaTH*( 1d0 + qp101(8) ) + alphaT*qp101(8) )*qp101(1)
+    Dxyy101 = Dxyx101
+    Dzzz101 = pDMeff101 + alphaT*qp101(7) + alphaL*qp101(6)
+    Dxzx101 = ( aLMinusaT )*qp101(3)
+    Dyzy101 = ( aLMinusaT )*qp101(5)
+    Dxzz101 = Dxzx101
+    Dyzz101 = Dyzy101
     ! 011
-    if( q011(4) .gt. 0d0 ) then
-     qsq(:)    = q011(1:3)**2d0
-     qnormxysq = qsq(1) + qsq(2)
-     if ( qnormxysq .gt. 0d0 ) then  
-       qzsqdivqnormxysq = qsq(3)/qnormxysq
-       Dxxx011 = pDMeff011 + alphaL*qsq(1)/q011(4)        + &
-        alphaTH*qsq(2)/q011(4)*( 1d0 + qzsqdivqnormxysq ) + & 
-        alphaT*qsq(3)/q011(4)*qsq(1)/qnormxysq
-       Dyyy011 = pDMeff011 + alphaTH*qsq(1)/q011(4)*( 1d0 + qzsqdivqnormxysq ) + &
-        alphaL*qsq(2)/q011(4) + alphaT*qsq(3)/q011(4)*qsq(2)/qnormxysq 
-       Dxyx011 = (alphaL - alphaTH*( 1d0 + qzsqdivqnormxysq ) + & 
-        alphaT*qzsqdivqnormxysq )*q011(1)*q011(2)/q011(4) 
-       Dxyy011 = (alphaL - alphaTH*( 1d0 + qzsqdivqnormxysq ) + &
-        alphaT*qzsqdivqnormxysq )*q011(1)*q011(2)/q011(4) 
-     end if
-     Dzzz011 = pDMeff011 + alphaT*qnormxysq/q011(4) + alphaL*q011(3)**2/q011(4)
-     Dxzx011 = ( aLMinusaT )*q011(1)*q011(3)/q011(4)
-     Dyzy011 = ( aLMinusaT )*q011(2)*q011(3)/q011(4)
-     Dxzz011 = ( aLMinusaT )*q011(1)*q011(3)/q011(4)
-     Dyzz011 = ( aLMinusaT )*q011(2)*q011(3)/q011(4)
-    end if
-
+    Dxxx011 = pDMeff011 + ( alphaL + alphaT*qp011(8) )*qp011(1) + alphaTH*qp011(4)*( 1d0 + qp011(8) )
+    Dyyy011 = pDMeff011 + alphaTH*qp011(1)*( 1d0 + qp011(8) ) + qp011(4)*( alphaL + alphaT*qp011(8) )
+    Dxyx011 = ( alphaL - alphaTH*( 1d0 + qp011(8) ) + alphaT*qp011(8) )*qp011(1)
+    Dxyy011 = Dxyx011
+    Dzzz011 = pDMeff011 + alphaT*qp011(7) + alphaL*qp011(6)
+    Dxzx011 = ( aLMinusaT )*qp011(3)
+    Dyzy011 = ( aLMinusaT )*qp011(5)
+    Dxzz011 = Dxzx011
+    Dyzz011 = Dyzy011
     ! 111
-    if( q111(4) .gt. 0d0 ) then
-     qsq(:)    = q111(1:3)**2d0
-     qnormxysq = qsq(1) + qsq(2)
-     if ( qnormxysq .gt. 0d0 ) then  
-       qzsqdivqnormxysq = qsq(3)/qnormxysq
-       Dxxx111 = pDMeff111 + alphaL*qsq(1)/q111(4)        + &
-        alphaTH*qsq(2)/q111(4)*( 1d0 + qzsqdivqnormxysq ) + & 
-        alphaT*qsq(3)/q111(4)*qsq(1)/qnormxysq
-       Dyyy111 = pDMeff111 + alphaTH*qsq(1)/q111(4)*( 1d0 + qzsqdivqnormxysq ) + &
-        alphaL*qsq(2)/q111(4) + alphaT*qsq(3)/q111(4)*qsq(2)/qnormxysq 
-       Dxyx111 = (alphaL - alphaTH*( 1d0 + qzsqdivqnormxysq ) + & 
-        alphaT*qzsqdivqnormxysq )*q111(1)*q111(2)/q111(4) 
-       Dxyy111 = (alphaL - alphaTH*( 1d0 + qzsqdivqnormxysq ) + &
-        alphaT*qzsqdivqnormxysq )*q111(1)*q111(2)/q111(4) 
-     end if
-     Dzzz111 = pDMeff111 + alphaT*qnormxysq/q111(4) + alphaL*q111(3)**2/q111(4)
-     Dxzx111 = ( aLMinusaT )*q111(1)*q111(3)/q111(4)
-     Dyzy111 = ( aLMinusaT )*q111(2)*q111(3)/q111(4)
-     Dxzz111 = ( aLMinusaT )*q111(1)*q111(3)/q111(4)
-     Dyzz111 = ( aLMinusaT )*q111(2)*q111(3)/q111(4)
-    end if
-
+    Dxxx111 = pDMeff111 + ( alphaL + alphaT*qp111(8) )*qp111(1) + alphaTH*qp111(4)*( 1d0 + qp111(8) )
+    Dyyy111 = pDMeff111 + alphaTH*qp111(1)*( 1d0 + qp111(8) ) + qp111(4)*( alphaL + alphaT*qp111(8) )
+    Dxyx111 = ( alphaL - alphaTH*( 1d0 + qp111(8) ) + alphaT*qp111(8) )*qp111(1)
+    Dxyy111 = Dxyx111
+    Dzzz111 = pDMeff111 + alphaT*qp111(7) + alphaL*qp111(6)
+    Dxzx111 = ( aLMinusaT )*qp111(3)
+    Dyzy111 = ( aLMinusaT )*qp111(5)
+    Dxzz111 = Dxzx111
+    Dyzz111 = Dyzy111
 
     ! Interpolated derivates !
     call this%TrilinearDerivative( 1, x, y, z, &
@@ -3767,6 +3517,194 @@ contains
   end subroutine pr_DisplacementRandomDischargeAxisymmetric
 
 
+  subroutine pr_DisplacementRandomDischargeAxisymmetric2D( this, x, y, z, & 
+                            alphaL, alphaT, alphaTH, dMEff, dBx, dBy, dBz )
+      !----------------------------------------------------------------
+      ! Computes the product between displacement matrix and random 
+      ! vector
+      !
+      ! Params:
+      !     - x, y, z       : local cell coordinates
+      !     - alphaL        : longidutinal dispersivity ( assumed for idDim1 )
+      !     - alphaT        : transverse dispersivity  (not used) 
+      !     - alphaTH       : horizontal transverse dispersivity   
+      !     - dMEff         : effective molecular diffusion (corrected by tortuosity )
+      !     - dBx, dBy, dBz : random dispersion displacement, output
+      !----------------------------------------------------------------
+      ! Specifications
+      !----------------------------------------------------------------
+      implicit none
+      class (TrackSubCellType) :: this
+      ! input
+      doubleprecision, intent(in)    :: x, y, z
+      doubleprecision, intent(in)    :: alphaL, alphaT, alphaTH, dMEff
+      ! output
+      doubleprecision, intent(out) :: dBx, dBy, dBz
+      ! local
+      doubleprecision :: vB1, vB2, vBnorm
+      doubleprecision :: B11, B12, B21, B22
+      doubleprecision :: rdm1, rdm2
+      doubleprecision :: RFactor
+      doubleprecision, dimension(4) :: v000
+      doubleprecision, dimension(4) :: v100
+      doubleprecision, dimension(4) :: v010
+      doubleprecision, dimension(4) :: v110
+      doubleprecision, dimension(4) :: v001
+      doubleprecision, dimension(4) :: v101
+      doubleprecision, dimension(4) :: v011
+      doubleprecision, dimension(4) :: v111
+      doubleprecision, dimension(3) :: dB
+      integer :: idDim1, idDim2
+      !----------------------------------------------------------------
+
+      ! Initialize
+      dBx    = 0d0
+      dBy    = 0d0
+      dBz    = 0d0
+      dB(:)  = 0d0
+      idDim1 = this%dimensions(1)
+      idDim2 = this%dimensions(2)
+
+      ! Local copies of corner velocities
+      v000 = this%qCorner000 / this%porosity000 
+      v100 = this%qCorner100 / this%porosity100 
+      v010 = this%qCorner010 / this%porosity010 
+      v110 = this%qCorner110 / this%porosity110 
+      v001 = this%qCorner001 / this%porosity001 
+      v101 = this%qCorner101 / this%porosity101 
+      v011 = this%qCorner011 / this%porosity011 
+      v111 = this%qCorner111 / this%porosity111
+
+      ! Extract R
+      RFactor = this%SubCellData%Retardation
+
+      ! Trilinear interpolation of velocities and norm
+      call this%Trilinear( x, y, z, &
+                           v000(idDim1), v100(idDim1), v010(idDim1), v110(idDim1), &
+                           v001(idDim1), v101(idDim1), v011(idDim1), v111(idDim1), &
+                           vB1 )
+      call this%Trilinear( x, y, z, &
+                           v000(idDim2), v100(idDim2), v010(idDim2), v110(idDim2), &
+                           v001(idDim2), v101(idDim2), v011(idDim2), v111(idDim2), &
+                           vB2 )
+      vBnorm   = sqrt( vB1**2 + vB2**2 )
+
+      ! Displacement matrix terms
+      ! Refs: Fernàndez-Garcia et al. 2005; Salamon et al. 2006
+      ! Handles the case of zero vBnorm
+      B11 = 0d0 
+      B12 = 0d0
+      B21 = 0d0
+      B22 = 0d0
+      if ( vBnorm .gt. 0d0 ) then
+        B11 =  vB1*sqrt( 2*( alphaL*vBnorm + dMEff )/RFactor )/vBnorm
+        B21 =  vB2*sqrt( 2*( alphaL*vBnorm + dMEff )/RFactor )/vBnorm
+        B12 = -vB2*sqrt( 2*( alphaTH*vBnorm + dMEff )/RFactor )/vBnorm
+        B22 =  vB1*sqrt( 2*( alphaTH*vBnorm + dMEff )/RFactor )/vBnorm
+      end if 
+
+      ! Compute random numbers
+      call this%GenerateStandardNormalRandom( rdm1 ) 
+      call this%GenerateStandardNormalRandom( rdm2 )
+
+      ! Compute displacement times random
+      dB(idDim1) = B11*rdm1 + B12*rdm2
+      dB(idDim2) = B21*rdm1 + B22*rdm2
+
+      dBx = dB(1)
+      dBy = dB(2)
+      dBz = dB(3)
+
+
+  end subroutine pr_DisplacementRandomDischargeAxisymmetric2D
+
+
+  subroutine pr_DisplacementRandomDischargeAxisymmetric1D( this, x, y, z, &
+                alphaL, alphaT, alphaTH, dMEff, dBx, dBy, dBz )
+      !----------------------------------------------------------------
+      ! Computes the product between displacement matrix and random 
+      ! vector
+      !
+      ! Params:
+      !     - x, y, z       : local cell coordinates
+      !     - alphaL        : longidutinal dispersivity ( assumed for idDim1 )
+      !     - alphaT        : transverse dispersivity   ( not used )
+      !     - alphaTH       : horizontal transverse dispersivity   ( not used )
+      !     - dMEff         : effective molecular diffusion (corrected by tortuosity )
+      !     - dBx, dBy, dBz : random dispersion displacement, output
+      !----------------------------------------------------------------
+      ! Specifications
+      !----------------------------------------------------------------
+      implicit none
+      class (TrackSubCellType) :: this
+      ! input
+      doubleprecision, intent(in)    :: x, y, z
+      doubleprecision, intent(in)    :: alphaL, alphaT, alphaTH, dMEff
+      ! output
+      doubleprecision, intent(out) :: dBx, dBy, dBz
+      ! local
+      doubleprecision :: vB1, vBnorm
+      doubleprecision :: B11
+      doubleprecision :: rdm1
+      doubleprecision :: RFactor
+      doubleprecision, dimension(4) :: v000
+      doubleprecision, dimension(4) :: v100
+      doubleprecision, dimension(4) :: v010
+      doubleprecision, dimension(4) :: v110
+      doubleprecision, dimension(4) :: v001
+      doubleprecision, dimension(4) :: v101
+      doubleprecision, dimension(4) :: v011
+      doubleprecision, dimension(4) :: v111
+      doubleprecision, dimension(3) :: dB
+      integer :: idDim1
+      !----------------------------------------------------------------
+
+      ! Initialize
+      dBx    = 0d0
+      dBy    = 0d0
+      dBz    = 0d0
+      dB(:)  = 0d0
+      idDim1 = this%dimensions(1)
+
+      ! Local copies of corner velocities
+      v000 = this%qCorner000 / this%porosity000 
+      v100 = this%qCorner100 / this%porosity100 
+      v010 = this%qCorner010 / this%porosity010 
+      v110 = this%qCorner110 / this%porosity110 
+      v001 = this%qCorner001 / this%porosity001 
+      v101 = this%qCorner101 / this%porosity101 
+      v011 = this%qCorner011 / this%porosity011 
+      v111 = this%qCorner111 / this%porosity111
+
+      ! Extract R
+      RFactor = this%SubCellData%Retardation
+
+      ! Trilinear interpolation of velocities and norm
+      call this%Trilinear( x, y, z, &
+                           v000(idDim1), v100(idDim1), v010(idDim1), v110(idDim1), &
+                           v001(idDim1), v101(idDim1), v011(idDim1), v111(idDim1), &
+                           vB1 )
+      vBnorm = sqrt(vB1**2)
+
+      ! Displacement matrix terms
+      ! Refs: Fernàndez-Garcia et al. 2005; Salamon et al. 2006
+      ! Handles the case of zero vBnorm
+      B11 = 0d0 
+      if ( vBnorm .gt. 0d0 ) B11 = sqrt( 2*( alphaL*vBnorm + dMEff )/RFactor )
+
+      ! Compute random numbers
+      call this%GenerateStandardNormalRandom( rdm1 ) 
+
+      ! Compute displacement times random
+      dB(idDim1) = B11*rdm1
+
+      dBx = dB(1)
+      dBy = dB(2)
+      dBz = dB(3)
+
+
+  end subroutine pr_DisplacementRandomDischargeAxisymmetric1D
+
 
   ! RWPT
   subroutine pr_GenerateStandardNormalRandom( this, random_value )
@@ -3857,13 +3795,111 @@ contains
     call pr_ComputeCornerDischarge( this, currentCellData, & 
         neighborSubCellFaceFlows, neighborSubCellFaceAreas )
 
+    ! Calculate discharge products necessary for divergence
+    ! of local dispersion
+    ! xx, xy, xz, yy, yz, zz, (xx+yy), zz/(xx+yy)
+    ! Note: entries 1:7 are normalized by qnorm
+    ! 000 
+    this%qprod000(:) = 0d0
+    if( this%qCorner000(4) .gt. 0d0 ) then
+      this%qprod000(1) = this%qCorner000(1)**2d0
+      this%qprod000(2) = this%qCorner000(1)*this%qCorner000(2)
+      this%qprod000(3) = this%qCorner000(1)*this%qCorner000(3)
+      this%qprod000(4) = this%qCorner000(2)**2d0
+      this%qprod000(5) = this%qCorner000(2)*this%qCorner000(3)
+      this%qprod000(6) = this%qCorner000(3)**2d0
+      this%qprod000(7) = this%qprod000(1) + this%qprod000(4)
+      if ( this%qprod000(7).gt.0d0 ) this%qprod000(8) = this%qprod000(6)/this%qprod000(7)
+      this%qprod000(1:7) = this%qprod000(1:7)/this%qCorner000(4)
+    end if 
+    ! 100 
+    this%qprod100(:) = 0d0
+    if( this%qCorner100(4) .gt. 0d0 ) then
+      this%qprod100(1) = this%qCorner100(1)**2d0
+      this%qprod100(2) = this%qCorner100(1)*this%qCorner100(2)
+      this%qprod100(3) = this%qCorner100(1)*this%qCorner100(3)
+      this%qprod100(4) = this%qCorner100(2)**2d0
+      this%qprod100(5) = this%qCorner100(2)*this%qCorner100(3)
+      this%qprod100(6) = this%qCorner100(3)**2d0
+      this%qprod100(7) = this%qprod100(1) + this%qprod100(4)
+      if ( this%qprod100(7).gt.0d0 ) this%qprod100(8) = this%qprod100(6)/this%qprod100(7)
+      this%qprod100(1:7) = this%qprod100(1:7)/this%qCorner100(4)
+    end if 
+    ! 010 
+    this%qprod010(:) = 0d0
+    if( this%qCorner010(4) .gt. 0d0 ) then
+      this%qprod010(1) = this%qCorner010(1)**2d0
+      this%qprod010(2) = this%qCorner010(1)*this%qCorner010(2)
+      this%qprod010(3) = this%qCorner010(1)*this%qCorner010(3)
+      this%qprod010(4) = this%qCorner010(2)**2d0
+      this%qprod010(5) = this%qCorner010(2)*this%qCorner010(3)
+      this%qprod010(6) = this%qCorner010(3)**2d0
+      this%qprod010(7) = this%qprod010(1) + this%qprod010(4)
+      if ( this%qprod010(7).gt.0d0 ) this%qprod010(8) = this%qprod010(6)/this%qprod010(7)
+      this%qprod010(1:7) = this%qprod010(1:7)/this%qCorner010(4)
+    end if 
+    ! 110 
+    this%qprod110(:) = 0d0
+    if( this%qCorner110(4) .gt. 0d0 ) then
+      this%qprod110(1) = this%qCorner110(1)**2d0
+      this%qprod110(2) = this%qCorner110(1)*this%qCorner110(2)
+      this%qprod110(3) = this%qCorner110(1)*this%qCorner110(3)
+      this%qprod110(4) = this%qCorner110(2)**2d0
+      this%qprod110(5) = this%qCorner110(2)*this%qCorner110(3)
+      this%qprod110(6) = this%qCorner110(3)**2d0
+      this%qprod110(7) = this%qprod110(1) + this%qprod110(4)
+      if ( this%qprod110(7).gt.0d0 ) this%qprod110(8) = this%qprod110(6)/this%qprod110(7)
+      this%qprod110(1:7) = this%qprod110(1:7)/this%qCorner110(4)
+    end if 
+    ! 001
+    this%qprod001(:) = 0d0
+    if( this%qCorner001(4) .gt. 0d0 ) then
+      this%qprod001(1) = this%qCorner001(1)**2d0
+      this%qprod001(2) = this%qCorner001(1)*this%qCorner001(2)
+      this%qprod001(3) = this%qCorner001(1)*this%qCorner001(3)
+      this%qprod001(4) = this%qCorner001(2)**2d0
+      this%qprod001(5) = this%qCorner001(2)*this%qCorner001(3)
+      this%qprod001(6) = this%qCorner001(3)**2d0
+      this%qprod001(7) = this%qprod001(1) + this%qprod001(4)
+      if ( this%qprod001(7).gt.0d0 ) this%qprod001(8) = this%qprod001(6)/this%qprod001(7)
+      this%qprod001(1:7) = this%qprod001(1:7)/this%qCorner001(4)
+    end if 
+    ! 101
+    this%qprod101(:) = 0d0
+    if( this%qCorner101(4) .gt. 0d0 ) then
+      this%qprod101(1) = this%qCorner101(1)**2d0
+      this%qprod101(2) = this%qCorner101(1)*this%qCorner101(2)
+      this%qprod101(3) = this%qCorner101(1)*this%qCorner101(3)
+      this%qprod101(4) = this%qCorner101(2)**2d0
+      this%qprod101(5) = this%qCorner101(2)*this%qCorner101(3)
+      this%qprod101(6) = this%qCorner101(3)**2d0
+      this%qprod101(7) = this%qprod101(1) + this%qprod101(4)
+      if ( this%qprod101(7).gt.0d0 ) this%qprod101(8) = this%qprod101(6)/this%qprod101(7)
+      this%qprod101(1:7) = this%qprod101(1:7)/this%qCorner101(4)
+    end if 
+    ! 111
+    this%qprod111(:) = 0d0
+    if( this%qCorner111(4) .gt. 0d0 ) then
+      this%qprod111(1) = this%qCorner111(1)**2d0
+      this%qprod111(2) = this%qCorner111(1)*this%qCorner111(2)
+      this%qprod111(3) = this%qCorner111(1)*this%qCorner111(3)
+      this%qprod111(4) = this%qCorner111(2)**2d0
+      this%qprod111(5) = this%qCorner111(2)*this%qCorner111(3)
+      this%qprod111(6) = this%qCorner111(3)**2d0
+      this%qprod111(7) = this%qprod111(1) + this%qprod111(4)
+      if ( this%qprod111(7).gt.0d0 ) this%qprod111(8) = this%qprod111(6)/this%qprod111(7)
+      this%qprod111(1:7) = this%qprod111(1:7)/this%qCorner111(4)
+    end if
+
     ! Compute porosities
     call this%ComputeCornerPorosity( neighborSubCellVolume, neighborSubCellPorosity )
 
     ! Done
     return
 
+
   end subroutine pr_ComputeCornerVariables
+
 
 
   ! RWPT
@@ -4046,40 +4082,40 @@ contains
   !----------------------------------------------------------------
 
 
-      ! Fill faceFlows from current subcell
-      call currentCellData%FillSubCellFaceFlowsBuffer( &
-          this%SubCellData%Row, this%SubCellData%Column, centerSubCellFaceFlows )
+    ! Fill faceFlows from current subcell
+    call currentCellData%FillSubCellFaceFlowsBuffer( &
+        this%SubCellData%Row, this%SubCellData%Column, centerSubCellFaceFlows )
 
-      ! For each dimension
-      ! dimension mask ?
-       do n = 1, 3
-           this%qCorner000(n) = this%GetInterpolatedCornerDischarge( & 
-                centerSubCellFaceFlows, neighborSubCellFaceFlows, neighborSubCellFaceAreas, 1, n ) 
-           this%qCorner100(n) = this%GetInterpolatedCornerDischarge( & 
-                centerSubCellFaceFlows, neighborSubCellFaceFlows, neighborSubCellFaceAreas, 2, n ) 
-           this%qCorner010(n) = this%GetInterpolatedCornerDischarge( & 
-                centerSubCellFaceFlows, neighborSubCellFaceFlows, neighborSubCellFaceAreas, 3, n ) 
-           this%qCorner110(n) = this%GetInterpolatedCornerDischarge( & 
-                centerSubCellFaceFlows, neighborSubCellFaceFlows, neighborSubCellFaceAreas, 4, n ) 
-           this%qCorner001(n) = this%GetInterpolatedCornerDischarge( & 
-                centerSubCellFaceFlows, neighborSubCellFaceFlows, neighborSubCellFaceAreas, 5, n ) 
-           this%qCorner101(n) = this%GetInterpolatedCornerDischarge( & 
-                centerSubCellFaceFlows, neighborSubCellFaceFlows, neighborSubCellFaceAreas, 6, n ) 
-           this%qCorner011(n) = this%GetInterpolatedCornerDischarge( & 
-                centerSubCellFaceFlows, neighborSubCellFaceFlows, neighborSubCellFaceAreas, 7, n ) 
-           this%qCorner111(n) = this%GetInterpolatedCornerDischarge( & 
-                centerSubCellFaceFlows, neighborSubCellFaceFlows, neighborSubCellFaceAreas, 8, n ) 
-       end do 
+    ! For each dimension
+    ! dimension mask ?
+    do n = 1, 3
+      this%qCorner000(n) = this%GetInterpolatedCornerDischarge( & 
+        centerSubCellFaceFlows, neighborSubCellFaceFlows, neighborSubCellFaceAreas, 1, n ) 
+      this%qCorner100(n) = this%GetInterpolatedCornerDischarge( & 
+        centerSubCellFaceFlows, neighborSubCellFaceFlows, neighborSubCellFaceAreas, 2, n ) 
+      this%qCorner010(n) = this%GetInterpolatedCornerDischarge( & 
+        centerSubCellFaceFlows, neighborSubCellFaceFlows, neighborSubCellFaceAreas, 3, n ) 
+      this%qCorner110(n) = this%GetInterpolatedCornerDischarge( & 
+        centerSubCellFaceFlows, neighborSubCellFaceFlows, neighborSubCellFaceAreas, 4, n ) 
+      this%qCorner001(n) = this%GetInterpolatedCornerDischarge( & 
+        centerSubCellFaceFlows, neighborSubCellFaceFlows, neighborSubCellFaceAreas, 5, n ) 
+      this%qCorner101(n) = this%GetInterpolatedCornerDischarge( & 
+        centerSubCellFaceFlows, neighborSubCellFaceFlows, neighborSubCellFaceAreas, 6, n ) 
+      this%qCorner011(n) = this%GetInterpolatedCornerDischarge( & 
+        centerSubCellFaceFlows, neighborSubCellFaceFlows, neighborSubCellFaceAreas, 7, n ) 
+      this%qCorner111(n) = this%GetInterpolatedCornerDischarge( & 
+        centerSubCellFaceFlows, neighborSubCellFaceFlows, neighborSubCellFaceAreas, 8, n ) 
+    end do 
 
-      ! Norm
-      this%qCorner000(4) = sqrt( this%qCorner000(1)**2 + this%qCorner000(2)**2 + this%qCorner000(3)**2 )
-      this%qCorner100(4) = sqrt( this%qCorner100(1)**2 + this%qCorner100(2)**2 + this%qCorner100(3)**2 )
-      this%qCorner010(4) = sqrt( this%qCorner010(1)**2 + this%qCorner010(2)**2 + this%qCorner010(3)**2 )
-      this%qCorner110(4) = sqrt( this%qCorner110(1)**2 + this%qCorner110(2)**2 + this%qCorner110(3)**2 )
-      this%qCorner001(4) = sqrt( this%qCorner001(1)**2 + this%qCorner001(2)**2 + this%qCorner001(3)**2 )
-      this%qCorner101(4) = sqrt( this%qCorner101(1)**2 + this%qCorner101(2)**2 + this%qCorner101(3)**2 )
-      this%qCorner011(4) = sqrt( this%qCorner011(1)**2 + this%qCorner011(2)**2 + this%qCorner011(3)**2 )
-      this%qCorner111(4) = sqrt( this%qCorner111(1)**2 + this%qCorner111(2)**2 + this%qCorner111(3)**2 )
+    ! Norm
+    this%qCorner000(4) = sqrt( this%qCorner000(1)**2 + this%qCorner000(2)**2 + this%qCorner000(3)**2 )
+    this%qCorner100(4) = sqrt( this%qCorner100(1)**2 + this%qCorner100(2)**2 + this%qCorner100(3)**2 )
+    this%qCorner010(4) = sqrt( this%qCorner010(1)**2 + this%qCorner010(2)**2 + this%qCorner010(3)**2 )
+    this%qCorner110(4) = sqrt( this%qCorner110(1)**2 + this%qCorner110(2)**2 + this%qCorner110(3)**2 )
+    this%qCorner001(4) = sqrt( this%qCorner001(1)**2 + this%qCorner001(2)**2 + this%qCorner001(3)**2 )
+    this%qCorner101(4) = sqrt( this%qCorner101(1)**2 + this%qCorner101(2)**2 + this%qCorner101(3)**2 )
+    this%qCorner011(4) = sqrt( this%qCorner011(1)**2 + this%qCorner011(2)**2 + this%qCorner011(3)**2 )
+    this%qCorner111(4) = sqrt( this%qCorner111(1)**2 + this%qCorner111(2)**2 + this%qCorner111(3)**2 )
 
 
   end subroutine pr_ComputeCornerDischarge
@@ -4112,42 +4148,42 @@ contains
   !---------------------------------------------------------------------
   
     
-     select case( faceDirection ) 
-       case (1) 
-         sumArea     = this%SubCellData%DY*this%SubCellData%DZ
-         sumFlowRate = centerSubCellFaceFlows( this%cornerXComponentIndexes( cornerIndex, 4 ) )
-         do m = 1, 3
-           sumArea = sumArea + &
-               neighborSubCellFaceAreas( 1, this%cornerXComponentIndexes( cornerIndex, m ) )
-           sumFlowRate = sumFlowRate + & 
-               neighborSubCellFaceFlows( this%cornerXComponentIndexes( cornerIndex, 4 ) , &
-                                         this%cornerXComponentIndexes( cornerIndex, m ) )  
-         end do
-       case (2)
-         sumArea     = this%SubCellData%DX*this%SubCellData%DZ
-         sumFlowRate = centerSubCellFaceFlows( this%cornerYComponentIndexes( cornerIndex, 4 ) )
-         do m = 1, 3
-           sumArea = sumArea + &
-               neighborSubCellFaceAreas( 2, this%cornerYComponentIndexes( cornerIndex, m ) )
-           sumFlowRate = sumFlowRate + & 
-               neighborSubCellFaceFlows( this%cornerYComponentIndexes( cornerIndex, 4 ) , &
-                                         this%cornerYComponentIndexes( cornerIndex, m ) )  
-         end do
-       case (3)
-         sumArea     = this%SubCellData%DX*this%SubCellData%DY
-         sumFlowRate = centerSubCellFaceFlows( this%cornerZComponentIndexes( cornerIndex, 4 ) )
-         do m = 1, 3
-           sumArea = sumArea + &
-               neighborSubCellFaceAreas( 3, this%cornerZComponentIndexes( cornerIndex, m ) )
-           sumFlowRate = sumFlowRate + & 
-               neighborSubCellFaceFlows( this%cornerZComponentIndexes( cornerIndex, 4 ) , &
-                                         this%cornerZComponentIndexes( cornerIndex, m ) )  
-         end do
-     end select 
+    select case( faceDirection ) 
+      case (1) 
+        sumArea     = this%SubCellData%DY*this%SubCellData%DZ
+        sumFlowRate = centerSubCellFaceFlows( this%cornerXComponentIndexes( cornerIndex, 4 ) )
+        do m = 1, 3
+          sumArea = sumArea + &
+              neighborSubCellFaceAreas( 1, this%cornerXComponentIndexes( cornerIndex, m ) )
+          sumFlowRate = sumFlowRate + & 
+              neighborSubCellFaceFlows( this%cornerXComponentIndexes( cornerIndex, 4 ) , &
+                                        this%cornerXComponentIndexes( cornerIndex, m ) )  
+        end do
+      case (2)
+        sumArea     = this%SubCellData%DX*this%SubCellData%DZ
+        sumFlowRate = centerSubCellFaceFlows( this%cornerYComponentIndexes( cornerIndex, 4 ) )
+        do m = 1, 3
+          sumArea = sumArea + &
+              neighborSubCellFaceAreas( 2, this%cornerYComponentIndexes( cornerIndex, m ) )
+          sumFlowRate = sumFlowRate + & 
+              neighborSubCellFaceFlows( this%cornerYComponentIndexes( cornerIndex, 4 ) , &
+                                        this%cornerYComponentIndexes( cornerIndex, m ) )  
+        end do
+      case (3)
+        sumArea     = this%SubCellData%DX*this%SubCellData%DY
+        sumFlowRate = centerSubCellFaceFlows( this%cornerZComponentIndexes( cornerIndex, 4 ) )
+        do m = 1, 3
+          sumArea = sumArea + &
+              neighborSubCellFaceAreas( 3, this%cornerZComponentIndexes( cornerIndex, m ) )
+          sumFlowRate = sumFlowRate + & 
+              neighborSubCellFaceFlows( this%cornerZComponentIndexes( cornerIndex, 4 ) , &
+                                        this%cornerZComponentIndexes( cornerIndex, m ) )  
+        end do
+    end select 
  
 
-     ! flowContributionFactor=0.25 is cancelled implicitly    
-     qCorner = sumFlowRate/sumArea
+    ! flowContributionFactor=0.25 is cancelled implicitly    
+    qCorner = sumFlowRate/sumArea
   
   
   end function pr_GetInterpolatedCornerDischarge

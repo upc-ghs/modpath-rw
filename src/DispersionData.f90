@@ -24,8 +24,9 @@ module DispersionDataModule
     ! parameters are distributed or not 
 
     ! Dispersivities for linear dispersion model
-    doubleprecision,dimension(:),allocatable :: AlphaL
-    doubleprecision,dimension(:),allocatable :: AlphaTH ! AlphaT is pointing HERE!
+    doubleprecision,dimension(:),allocatable :: AlphaL  ! AlphaL is pointing here
+    doubleprecision,dimension(:),allocatable :: AlphaLV
+    doubleprecision,dimension(:),allocatable :: AlphaTH ! AlphaT is pointing here 
     doubleprecision,dimension(:),allocatable :: AlphaTV
     doubleprecision,dimension(:),allocatable :: DMEff   ! Effective, corrected by tortuosity
 
@@ -61,6 +62,7 @@ contains
     this%stringid    = '' 
     this%dmaqueous   = 0d0
     if(allocated(this%AlphaL)) deallocate(this%AlphaL)
+    if(allocated(this%AlphaLV)) deallocate(this%AlphaLV)
     if(allocated(this%AlphaTH)) deallocate(this%AlphaTH)
     if(allocated(this%AlphaTV)) deallocate(this%AlphaTV)
     if(allocated(this%DMEff)) deallocate(this%DMEff)
@@ -90,15 +92,24 @@ contains
 
      ! Linear isotropic 
      select case( this%modelKind )
-       case (1)
+       case (0)
          if(allocated(this%DMEff)) deallocate(this%DMEff)
          if(allocated(this%AlphaL)) deallocate(this%AlphaL)
          if(allocated(this%AlphaTH)) deallocate(this%AlphaTH)
-         !if(allocated(this%AlphaTV)) deallocate(this%AlphaTV)
          allocate(this%DMEff(1))
          allocate(this%AlphaL(1))
          allocate(this%AlphaTH(1))
-         !allocate(this%AlphaTV(cellCount))
+       case (1)
+         if(allocated(this%DMEff)) deallocate(this%DMEff)
+         if(allocated(this%AlphaL)) deallocate(this%AlphaL)
+         if(allocated(this%AlphaLV)) deallocate(this%AlphaLV)
+         if(allocated(this%AlphaTH)) deallocate(this%AlphaTH)
+         if(allocated(this%AlphaTV)) deallocate(this%AlphaTV)
+         allocate(this%DMEff(1))
+         allocate(this%AlphaL(1))
+         allocate(this%AlphaLV(1))
+         allocate(this%AlphaTH(1))
+         allocate(this%AlphaTV(1))
      end select
 
     ! distributed
@@ -108,15 +119,24 @@ contains
 
      ! Linear isotropic 
      select case( this%modelKind )
-       case (1)
+       case (0)
          if(allocated(this%DMEff)) deallocate(this%DMEff)
          if(allocated(this%AlphaL)) deallocate(this%AlphaL)
          if(allocated(this%AlphaTH)) deallocate(this%AlphaTH)
-         !if(allocated(this%AlphaTV)) deallocate(this%AlphaTV)
          allocate(this%DMEff(cellCount))
          allocate(this%AlphaL(cellCount))
          allocate(this%AlphaTH(cellCount))
-         !allocate(this%AlphaTV(cellCount))
+       case (1)
+         if(allocated(this%DMEff)) deallocate(this%DMEff)
+         if(allocated(this%AlphaL)) deallocate(this%AlphaL)
+         if(allocated(this%AlphaLV)) deallocate(this%AlphaLV)
+         if(allocated(this%AlphaTH)) deallocate(this%AlphaTH)
+         if(allocated(this%AlphaTV)) deallocate(this%AlphaTV)
+         allocate(this%DMEff(cellCount))
+         allocate(this%AlphaL(cellCount))
+         allocate(this%AlphaLV(cellCount))
+         allocate(this%AlphaTH(cellCount))
+         allocate(this%AlphaTV(cellCount))
        !case (2)
        !  if(allocated(this%DMEff)) deallocate(this%DMEff)
        !  if(allocated(this%BetaL)) deallocate(this%BetaL)

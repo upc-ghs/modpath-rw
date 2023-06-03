@@ -15,7 +15,8 @@ module ModpathSubCellDataModule
 
     !RWPT
     doubleprecision :: Porosity, Retardation
-    doubleprecision :: alphaL, alphaT, dMEff
+    doubleprecision :: alphaL, alphaT ! to be deprecated
+    doubleprecision :: dMEff
     doubleprecision :: alphaLH, alphaLV, alphaTH, alphaTV
     logical :: dry
     logical :: partiallyDry

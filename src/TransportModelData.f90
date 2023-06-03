@@ -17,6 +17,8 @@ module TransportModelDataModule
     ! Local dispersion parameters
     doubleprecision,dimension(:),pointer :: AlphaL    => null()
     doubleprecision,dimension(:),pointer :: AlphaT    => null()
+    doubleprecision,dimension(:),pointer :: AlphaLH   => null()
+    doubleprecision,dimension(:),pointer :: AlphaLV   => null()
     doubleprecision,dimension(:),pointer :: AlphaTH   => null()
     doubleprecision,dimension(:),pointer :: AlphaTV   => null()
     doubleprecision,dimension(:),pointer :: DMEff     => null()
@@ -600,11 +602,12 @@ contains
     character(len=200) :: line
     integer :: nDispersion, ndis
     integer, dimension(:), allocatable :: cellsPerLayer
-    character(len=24),dimension(4) :: anamelin
-    data anamelin(1) /'          DMEFF'/
+    character(len=24),dimension(5) :: anamelin
+    data anamelin(1) /'          DMEFF'/ 
     data anamelin(2) /'         ALPHAL'/
-    data anamelin(3) /'        ALPHATH'/
-    data anamelin(4) /'        ALPHATV'/
+    data anamelin(3) /'        ALPHALV'/
+    data anamelin(4) /'        ALPHATH'/
+    data anamelin(5) /'        ALPHATV'/
     character(len=24),dimension(6) :: anamenlin
     data anamenlin(1) /'          DMEFF'/
     data anamenlin(2) /'          BETAL'/
@@ -700,8 +703,8 @@ contains
       disp%modelKind = n 
       ! Validate dispersion model 
       select case ( disp%modelKind )
-        ! Linear, isotropic
-        case(1)
+        ! Linear, isotropic and axisymmetric
+        case(0,1)
           continue
         case default
           write(outUnit,*) 'Invalid dispersion model, not implemented. Given ', disp%modelKind
@@ -727,7 +730,7 @@ contains
       ! Read dispersion data
       select case ( disp%modelKind )
        ! Linear, isotropic
-       case(1)
+       case(0)
         write(outUnit,'(A)') 'Dispersion model is linear, isotropic: will read dmeff and dispersivities.'
 
         ! Read parameters, according to the given input format
@@ -796,28 +799,142 @@ contains
          ! Read ALPHATH
          if((grid%GridType .eq. 1) .or. (grid%GridType .eq. 3)) then
            call u3ddblmp(dspUnit, outUnit, grid%LayerCount, grid%RowCount,      &
-             grid%ColumnCount, grid%CellCount, disp%AlphaTH, anamelin(3))                      
+             grid%ColumnCount, grid%CellCount, disp%AlphaTH, anamelin(4))
          else if((grid%GridType .eq. 2) .or. (grid%GridType .eq. 4)) then
            call u3ddblmpusg(dspUnit, outUnit, grid%CellCount, grid%LayerCount,  &
-             disp%AlphaTH, anamelin(3), cellsPerLayer)
+             disp%AlphaTH, anamelin(4), cellsPerLayer)
          else
            write(outUnit,*) 'Invalid grid type specified when reading ALPHATH array data.'
            write(outUnit,*) 'Stopping.'
            call ustop(' ')          
          end if
 
-         !! Read ALPHATV
-         !if((grid%GridType .eq. 1) .or. (grid%GridType .eq. 3)) then
-         !  call u3ddblmp(dspUnit, outUnit, grid%LayerCount, grid%RowCount,      &
-         !    grid%ColumnCount, grid%CellCount, disp%AlphaTV, anamelin(4))                      
-         !else if((grid%GridType .eq. 2) .or. (grid%GridType .eq. 4)) then
-         !  call u3ddblmpusg(dspUnit, outUnit, grid%CellCount, grid%LayerCount,  &
-         !    disp%AlphaTV, anamelin(4), cellsPerLayer)
-         !else
-         !  write(outUnit,*) 'Invalid grid type specified when reading ALPHATV array data.'
-         !  write(outUnit,*) 'Stopping.'
-         !  call ustop(' ')          
-         !end if
+        end select
+
+       ! Linear, axisymmetric
+       case(1)
+        write(outUnit,'(A)') 'Dispersion model is linear, axisymmetric: will read dmeff and oriented dispersivities.'
+
+        ! Read parameters, according to the given input format
+        select case(disp%parametersFormat)
+        case (0)
+         ! The simplest uniform constant
+         write(outUnit,'(A)') 'Dispersion parameters are spatially uniform.'
+
+         ! Read DMEFF
+         read(dspUnit, '(a)') line
+         icol = 1
+         call urword(line, icol, istart, istop, 3, n, r, 0, 0)
+         if ( r.lt.0d0 ) then 
+          call ustop('Invalid value for effective molecular diffusion, is .lt. 0. Stop.')
+         end if 
+         disp%DMEff(1) = r
+
+         ! Read ALPHALH
+         read(dspUnit, '(a)') line
+         icol = 1
+         call urword(line, icol, istart, istop, 3, n, r, 0, 0)
+         if ( r.lt.0d0 ) then 
+          call ustop('Invalid value for alphaLH, is .lt. 0. Stop.')
+         end if 
+         disp%AlphaL(1) = r
+
+         ! Read ALPHALV
+         read(dspUnit, '(a)') line
+         icol = 1
+         call urword(line, icol, istart, istop, 3, n, r, 0, 0)
+         if ( r.lt.0d0 ) then 
+          call ustop('Invalid value for alphaLV, is .lt. 0. Stop.')
+         end if 
+         disp%AlphaLV(1) = r
+
+         ! Read ALPHATH
+         read(dspUnit, '(a)') line
+         icol = 1
+         call urword(line, icol, istart, istop, 3, n, r, 0, 0)
+         if ( r.lt.0d0 ) then 
+          call ustop('Invalid value for alphaTH, is .lt. 0. Stop.')
+         end if 
+         disp%AlphaTH(1) = r
+
+         ! Read ALPHATV
+         read(dspUnit, '(a)') line
+         icol = 1
+         call urword(line, icol, istart, istop, 3, n, r, 0, 0)
+         if ( r.lt.0d0 ) then 
+          call ustop('Invalid value for alphaTV, is .lt. 0. Stop.')
+         end if 
+         disp%AlphaTV(1) = r
+
+        case (1)
+         ! Distributed, u3d reader
+         write(outUnit,'(A)') 'Dispersion parameters are spatially distributed.'
+
+         ! Read DMEFF
+         if((grid%GridType .eq. 1) .or. (grid%GridType .eq. 3)) then
+           call u3ddblmp(dspUnit, outUnit, grid%LayerCount, grid%RowCount,      &
+             grid%ColumnCount, grid%CellCount, disp%DMEff, anamelin(1))                      
+         else if((grid%GridType .eq. 2) .or. (grid%GridType .eq. 4)) then
+           call u3ddblmpusg(dspUnit, outUnit, grid%CellCount, grid%LayerCount,  &
+             disp%DMEff, anamelin(1), cellsPerLayer)
+         else
+           write(outUnit,*) 'Invalid grid type specified when reading DMEFF array data.'
+           write(outUnit,*) 'Stopping.'
+           call ustop(' ')          
+         end if
+
+         ! Read ALPHAL
+         if((grid%GridType .eq. 1) .or. (grid%GridType .eq. 3)) then
+           call u3ddblmp(dspUnit, outUnit, grid%LayerCount, grid%RowCount,      &
+             grid%ColumnCount, grid%CellCount, disp%AlphaL, anamelin(2))                      
+         else if((grid%GridType .eq. 2) .or. (grid%GridType .eq. 4)) then
+           call u3ddblmpusg(dspUnit, outUnit, grid%CellCount, grid%LayerCount,  &
+             disp%AlphaL, anamelin(2), cellsPerLayer)
+         else
+           write(outUnit,*) 'Invalid grid type specified when reading ALPHAL array data.'
+           write(outUnit,*) 'Stopping.'
+           call ustop(' ')          
+         end if
+
+         ! Read ALPHALV
+         if((grid%GridType .eq. 1) .or. (grid%GridType .eq. 3)) then
+           call u3ddblmp(dspUnit, outUnit, grid%LayerCount, grid%RowCount,      &
+             grid%ColumnCount, grid%CellCount, disp%AlphaLV, anamelin(3))
+         else if((grid%GridType .eq. 2) .or. (grid%GridType .eq. 4)) then
+           call u3ddblmpusg(dspUnit, outUnit, grid%CellCount, grid%LayerCount,  &
+             disp%AlphaLV, anamelin(3), cellsPerLayer)
+         else
+           write(outUnit,*) 'Invalid grid type specified when reading ALPHALV array data.'
+           write(outUnit,*) 'Stopping.'
+           call ustop(' ')          
+         end if
+
+         ! Read ALPHATH
+         if((grid%GridType .eq. 1) .or. (grid%GridType .eq. 3)) then
+           call u3ddblmp(dspUnit, outUnit, grid%LayerCount, grid%RowCount,      &
+             grid%ColumnCount, grid%CellCount, disp%AlphaTH, anamelin(4))
+         else if((grid%GridType .eq. 2) .or. (grid%GridType .eq. 4)) then
+           call u3ddblmpusg(dspUnit, outUnit, grid%CellCount, grid%LayerCount,  &
+             disp%AlphaTH, anamelin(4), cellsPerLayer)
+         else
+           write(outUnit,*) 'Invalid grid type specified when reading ALPHATH array data.'
+           write(outUnit,*) 'Stopping.'
+           call ustop(' ')          
+         end if
+
+         ! Read ALPHATV
+         if((grid%GridType .eq. 1) .or. (grid%GridType .eq. 3)) then
+           call u3ddblmp(dspUnit, outUnit, grid%LayerCount, grid%RowCount,      &
+             grid%ColumnCount, grid%CellCount, disp%AlphaTV, anamelin(5))
+         else if((grid%GridType .eq. 2) .or. (grid%GridType .eq. 4)) then
+           call u3ddblmpusg(dspUnit, outUnit, grid%CellCount, grid%LayerCount,  &
+             disp%AlphaTV, anamelin(5), cellsPerLayer)
+         else
+           write(outUnit,*) 'Invalid grid type specified when reading ALPHATV array data.'
+           write(outUnit,*) 'Stopping.'
+           call ustop(' ')          
+         end if
+
         end select
 
        !! Nonlinear
@@ -959,10 +1076,21 @@ contains
 
      ! Pointer names may change
      this%Solutes(1)%Dispersion => this%DispersionData(1)
-     this%AlphaL => this%Solutes(1)%Dispersion%AlphaL
-     this%AlphaT => this%Solutes(1)%Dispersion%AlphaTH
-     this%DMEff  => this%Solutes(1)%Dispersion%DMEff
      this%currentDispersionModelKind = this%Solutes(1)%Dispersion%modelKind
+
+     select case(this%currentDispersionModelKind)
+     case(0)
+       this%AlphaL => this%Solutes(1)%Dispersion%AlphaL
+       this%AlphaT => this%Solutes(1)%Dispersion%AlphaTH
+       this%DMEff  => this%Solutes(1)%Dispersion%DMEff
+     case(1)
+       this%AlphaL  => this%Solutes(1)%Dispersion%AlphaL
+       this%AlphaLV => this%Solutes(1)%Dispersion%AlphaLV
+       this%AlphaTH => this%Solutes(1)%Dispersion%AlphaTH
+       this%AlphaTV => this%Solutes(1)%Dispersion%AlphaTV
+       this%DMEff   => this%Solutes(1)%Dispersion%DMEff
+     end select
+
      ! Inform if parameters are spatially uniform
      this%uniformDispersionParameters = .false.
      if ( this%Solutes(1)%Dispersion%uniformParameters ) then
@@ -1042,13 +1170,23 @@ contains
   !-----------------------------------------------------------------------------------
 
     ! Temp: only isotropic model 
-    this%AlphaL => this%Solutes(soluteId)%Dispersion%AlphaL
-    this%AlphaT => this%Solutes(soluteId)%Dispersion%AlphaTH
-    this%DMEff  => this%Solutes(soluteId)%Dispersion%DMEff
+    select case(this%Solutes(soluteId)%Dispersion%modelKind)
+    case(0)
+      this%AlphaL => this%Solutes(soluteId)%Dispersion%AlphaL
+      this%AlphaT => this%Solutes(soluteId)%Dispersion%AlphaTH
+      this%DMEff  => this%Solutes(soluteId)%Dispersion%DMEff
+    case(1)
+      this%AlphaL  => this%Solutes(soluteId)%Dispersion%AlphaL
+      this%AlphaLV => this%Solutes(soluteId)%Dispersion%AlphaLV
+      this%AlphaTH => this%Solutes(soluteId)%Dispersion%AlphaTH
+      this%AlphaTV => this%Solutes(soluteId)%Dispersion%AlphaTV
+      this%DMEff   => this%Solutes(soluteId)%Dispersion%DMEff
+    end select
     this%uniformDispersionParameters = .false.
     if ( this%Solutes(soluteId)%Dispersion%uniformParameters ) then  
       this%uniformDispersionParameters = .true.
     end if 
+
     ! TO BE DEPRECATED
     this%DMol = this%Solutes(soluteId)%Dispersion%dmaqueous 
 

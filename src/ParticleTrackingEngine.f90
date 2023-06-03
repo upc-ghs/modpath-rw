@@ -498,13 +498,25 @@ contains
     ! Assign methods for RWPT tracking in tracksubcell
     call this%TrackCell%TrackSubCell%SetDispersionDisplacement( dispersion%modelKind )
 
-    ! Set the corresponding interface for 
-    ! filling the dispersion parameters for cells
-    if ( dispersion%uniformParameters ) then 
-      this%FillDispersionParameters => pr_FillDispersionParametersUniform
-    else
-      this%FillDispersionParameters => pr_FillDispersionParametersDistributed
-    end if 
+    select case(dispersion%modelKind)
+    case(0)
+      ! Set the corresponding interface for 
+      ! filling the dispersion parameters for cells
+      if ( dispersion%uniformParameters ) then 
+        this%FillDispersionParameters => pr_FillDispersionParametersUniform
+      else
+        this%FillDispersionParameters => pr_FillDispersionParametersDistributed
+      end if 
+    case(1)
+      ! Set the corresponding interface for 
+      ! filling the dispersion parameters for cells
+      if ( dispersion%uniformParameters ) then 
+        this%FillDispersionParameters => pr_FillAxiDispersionParametersUniform
+      else
+        this%FillDispersionParameters => pr_FillAxiDispersionParametersDistributed
+      end if
+    end select 
+
 
   end subroutine pr_UpdateDispersionFunction 
  
@@ -521,9 +533,12 @@ contains
   integer, intent(in) :: cellNumber
   !---------------------------------------------------------------
 
-    cellBuffer%alphaL = this%TransportModelData%AlphaL(cellNumber)
-    cellBuffer%alphaT = this%TransportModelData%AlphaT(cellNumber)
+    cellBuffer%alphaLH = this%TransportModelData%AlphaL(cellNumber)
+    cellBuffer%alphaTH = this%TransportModelData%AlphaT(cellNumber)
+    !cellBuffer%alphaL = this%TransportModelData%AlphaL(cellNumber)
+    !cellBuffer%alphaT = this%TransportModelData%AlphaT(cellNumber)
     cellBuffer%dMEff  = this%TransportModelData%DMEff(cellNumber)
+
 
   end subroutine pr_FillDispersionParametersDistributed
 
@@ -540,11 +555,58 @@ contains
   integer, intent(in) :: cellNumber
   !---------------------------------------------------------------
 
-    cellBuffer%alphaL = this%TransportModelData%AlphaL(1)
-    cellBuffer%alphaT = this%TransportModelData%AlphaT(1)
+    !cellBuffer%alphaL = this%TransportModelData%AlphaL(1)
+    !cellBuffer%alphaT = this%TransportModelData%AlphaT(1)
+    cellBuffer%alphaLH = this%TransportModelData%AlphaL(1)
+    cellBuffer%alphaTH = this%TransportModelData%AlphaT(1)
     cellBuffer%dMEff  = this%TransportModelData%DMEff(1)
 
   end subroutine pr_FillDispersionParametersUniform
+
+
+  subroutine pr_FillAxiDispersionParametersDistributed( this, cellBuffer, cellNumber ) 
+  !---------------------------------------------------------------
+  !
+  !---------------------------------------------------------------
+  ! Specifications
+  !---------------------------------------------------------------
+  implicit none
+  class(ParticleTrackingEngineType) :: this
+  type(ModpathCellDataType),intent(inout) :: cellBuffer
+  integer, intent(in) :: cellNumber
+  !---------------------------------------------------------------
+
+    cellBuffer%alphaLH = this%TransportModelData%AlphaL(cellNumber)
+    cellBuffer%alphaLV = this%TransportModelData%AlphaLV(cellNumber)
+    cellBuffer%alphaTH = this%TransportModelData%AlphaTH(cellNumber)
+    cellBuffer%alphaTV = this%TransportModelData%AlphaTV(cellNumber)
+    cellBuffer%dMEff   = this%TransportModelData%DMEff(cellNumber)
+
+
+  end subroutine pr_FillAxiDispersionParametersDistributed
+
+
+  subroutine pr_FillAxiDispersionParametersUniform( this, cellBuffer, cellNumber ) 
+  !---------------------------------------------------------------
+  !
+  !---------------------------------------------------------------
+  ! Specifications
+  !---------------------------------------------------------------
+  implicit none
+  class(ParticleTrackingEngineType) :: this
+  type(ModpathCellDataType),intent(inout) :: cellBuffer
+  integer, intent(in) :: cellNumber
+  !---------------------------------------------------------------
+
+    cellBuffer%alphaLH = this%TransportModelData%AlphaL(1)
+    cellBuffer%alphaLV = this%TransportModelData%AlphaLV(1)
+    cellBuffer%alphaTH = this%TransportModelData%AlphaTH(1)
+    cellBuffer%alphaTV = this%TransportModelData%AlphaTV(1)
+    cellBuffer%dMEff   = this%TransportModelData%DMEff(1)
+
+
+  end subroutine pr_FillAxiDispersionParametersUniform
+
 
 
   subroutine  pr_FillFaceFlowsBuffer(this,buffer,bufferSize,count)

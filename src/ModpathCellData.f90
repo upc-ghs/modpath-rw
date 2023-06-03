@@ -42,7 +42,9 @@ module ModpathCellDataModule
     integer :: requestedFromDirection
 
     ! RWPT TRANSPORT PROPERTIES
-    doubleprecision, public :: alphaL, alphaT, dMEff
+    doubleprecision, public :: alphaL, alphaT ! to be deprecated
+    doubleprecision, public :: alphaLH, alphaLV, alphaTH, alphaTV
+    doubleprecision, public :: dMEff
 
     ! RWPT convertible cells parameters
     logical :: dry
@@ -2659,9 +2661,11 @@ contains
 
 
   ! Necessary for distributed dispersivities
-  subCellData%alphaL = this%alphaL
-  subCellData%alphaT = this%alphaT
-  subCellData%dMEff  = this%dMEff
+  subCellData%alphaLH = this%alphaLH
+  subCellData%alphaLV = this%alphaLV
+  subCellData%alphaTH = this%alphaTH
+  subCellData%alphaTV = this%alphaTV
+  subCellData%dMEff   = this%dMEff
 
 
   end subroutine pr_FillMassSubCellDataBuffer
