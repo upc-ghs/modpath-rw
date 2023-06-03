@@ -53,6 +53,7 @@ module ModpathSimulationDataModule
     character(len=200) :: DispersionFile                   ! RWPT
     integer            :: ParticlesMassOption              ! RWPT
     integer            :: SolutesOption                    ! RWPT
+    integer            :: EndpointOutputOption             ! RWPT
     logical            :: shouldUpdateDispersion = .false. ! RWPT
     logical            :: isMF6 = .false.                  ! RWPT
     integer,dimension(:),allocatable :: BudgetCells
@@ -253,6 +254,21 @@ contains
         this%SolutesOption = 0
       else
         this%SolutesOption = n
+      end if
+    end if
+
+    ! Endpoint output option
+    call urword(line, icol, istart, istop, 2, n, r, -1, 0)
+    ! If error while reading the last option (could be triggered by # comments ) 
+    if ( line(len(line):len(line)).eq.'E' ) then
+      ! Continue as zero
+      this%EndpointOutputOption = 0
+    else
+      ! Read from input
+      if (istart.eq.len(line)) then
+        this%EndpointOutputOption = 0
+      else
+        this%EndpointOutputOption = n
       end if
     end if
 
@@ -457,6 +473,16 @@ contains
         write(outUnit,'(A)') 'Solutes with specific dispersion (SolutesOption = 1)'
       case default
         call ustop('Invalid solutes option.')
+    end select
+
+    ! EndpointOutputOption
+    select case(this%EndpointOutputOption)
+      case (0)
+        write(outUnit,'(A)') 'Endpoint file will be written with MODPATH7 format (EndpointOutputOption= 0)'
+      case (1)
+        write(outUnit,'(A)') 'Endpoint file will be written with MODPATH-RW format (EndpointOutputOption= 1)'
+      case default
+        call ustop('Invalid endpoint output option.')
     end select
 
 
@@ -735,6 +761,8 @@ contains
       this%isMF6 = .true.
     end if 
 
+    ! flush
+    flush(outUnit)
 
   end subroutine pr_ReadData
 
@@ -768,6 +796,8 @@ contains
     if ( isThisFileOpen .lt. 0 ) then 
       ! No gpkde 
       write(outUnit,'(A)') 'GPKDE reconstruction is disabled'
+      ! flush
+      flush(outUnit)
       return
     end if
 
@@ -857,6 +887,8 @@ contains
         write(outUnit,'(A)') 'All the domain dimensions for GPKDE are zero, will disable spatial reconstruction.'
         write(outUnit,'(A)') 'GPKDE reconstruction is disabled'
         this%TrackingOptions%GPKDEReconstruction = .false.
+        ! flush
+        flush(outUnit)
         return
       end if 
 
@@ -913,6 +945,8 @@ contains
         write(outUnit,'(A)') 'All the bin sizes are zero, will disable spatial reconstruction.'
         write(outUnit,'(A)') 'GPKDE reconstruction is disabled'
         this%TrackingOptions%GPKDEReconstruction = .false.
+        ! flush
+        flush(outUnit)
         return
       end if 
       ! Set binVolume, cannot be zero
@@ -1122,6 +1156,9 @@ contains
       write(outUnit,'(A)') 'GPKDE reconstruction requires a timeseries. Will remain disabled.'
     end if
 
+    ! flush
+    flush(outUnit)
+
     ! Close gpkde data file
     close( gpkdeUnit )
 
@@ -1172,6 +1209,8 @@ contains
     if ( isThisFileOpen .lt. 0 ) then 
       ! No obs
       write(outUnit,'(A)') 'No observations were specified'
+      ! flush
+      flush(outUnit)
       return
     end if
 
@@ -1431,6 +1470,8 @@ contains
 
     end if  
 
+    ! flush
+    flush(outUnit)
 
   end subroutine pr_ReadOBSData
 
@@ -1680,6 +1721,8 @@ contains
       end select 
     end if 
 
+    ! flush
+    flush(outUnit)
 
     ! Close rwopts data file
     close( rwoptsUnit )
@@ -2623,6 +2666,8 @@ contains
 
     end if
 
+    ! flush
+    flush(outUnit)
 
     ! Close ic data file
     close( icUnit )
@@ -4459,6 +4504,8 @@ contains
 
     end do ! nSources/specs
        
+    ! flush
+    flush(outUnit)
 
     ! Close data file
     close( srcUnit )

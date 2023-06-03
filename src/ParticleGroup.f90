@@ -20,7 +20,7 @@ module ParticleGroupModule
     doubleprecision,dimension(:),allocatable,private :: ReleaseTimes
     ! RWPT
     doubleprecision :: Mass   = 1d0
-    integer         :: Solute = 0
+    integer         :: Solute = 1
   contains
     procedure :: GetSingleReleaseParticleCount=>pr_GetSingleReleaseParticleCount
     procedure :: GetParticleCount=>pr_GetParticleCount

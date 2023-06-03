@@ -4,6 +4,7 @@ module ParticleManagerModule
   use ParticleCoordinateModule,only : ParticleCoordinateType
   use ModpathSimulationDataModule,only : ModpathSimulationDataType
   use GeoReferenceModule,only : GeoReferenceType
+  use ModflowRectangularGridModule,only : ModflowRectangularGridType
 #ifdef _OPENMP
   use omp_lib
 #endif
@@ -63,11 +64,28 @@ module ParticleManagerModule
   end interface
 
 
+  ! Write endpoint file
+  abstract interface
+    subroutine EndpointWriter(simData, grid, geoRef, outUnit)
+      !-------------------------------------------------------------
+      import ParticleType
+      import ModflowRectangularGridType
+      import ModpathSimulationDataType
+      import GeoReferenceType
+      !-------------------------------------------------------------
+      ! input
+      type(ModpathSimulationDataType), intent(in), target :: simData
+      class(ModflowRectangularGridType), intent(in)       :: grid
+      type(GeoReferenceType), intent(in)                  :: geoRef
+      integer, intent(in)                                 :: outUnit
+      !-------------------------------------------------------------
+    end subroutine EndpointWriter
+  end interface
+
 contains
 
   
   subroutine WriteEndpoints(simData, grid, geoRef, outUnit)
-  use ModflowRectangularGridModule,only : ModflowRectangularGridType
   !--------------------------------------------------------------------------------
   ! Specifications
   !--------------------------------------------------------------------------------
@@ -142,6 +160,86 @@ contains
   
   
   end subroutine WriteEndpoints
+
+
+  subroutine WriteEndpointsMassParticles(simData, grid, geoRef, outUnit)
+  !--------------------------------------------------------------------------------
+  ! Is a modified form of WriteEndpoints which includes a solute id 
+  ! and the particle mass. It removes the local cell coordinates and the face
+  ! locations
+  !
+  !--------------------------------------------------------------------------------
+  ! Specifications
+  !--------------------------------------------------------------------------------
+  implicit none
+  integer,intent(in) :: outUnit
+  integer :: version, subversion, pgIndex, pIndex, n, zone, initialZone,  &
+    totalCount, releaseCount, maximumID
+  !integer :: face
+  doubleprecision :: initialGlobalZ, globalZ, initialModelX, initialModelY, modelX, modelY
+  integer,dimension(0:9) :: statusSums
+  type(ParticleType),pointer :: p
+  class(ModflowRectangularGridType),intent(in) :: grid
+  type(ModpathSimulationDataType),intent(in),target :: simData
+  type(GeoReferenceType),intent(in) :: geoRef
+  !--------------------------------------------------------------------------------
+  
+    version = 1
+    subversion = 0
+    
+    ! Compute status sums for all particles
+    totalCount = 0
+    releaseCount = 0
+    maximumID = 0
+    do n = 0, 9
+        statusSums(n) = 0
+    end do
+    
+    do pgIndex = 1, simData%ParticleGroupCount
+      do pIndex = 1, simData%ParticleGroups(pgIndex)%TotalParticleCount
+        totalCount = totalCount + 1
+        p => simData%ParticleGroups(pgIndex)%Particles(pIndex)
+        if((p%Status .ge. 0) .and. (p%Status .le. 9)) then
+          statusSums(p%Status) = statusSums(p%Status) + 1
+          if((p%Status .ne. 0) .and. (p%Status .ne. 8) .and. (p%ID .gt. maximumID)) maximumID = p%ID
+        end if
+      end do
+    end do
+    releaseCount = totalCount - statusSums(0) - statusSums(8)
+    
+    write(outUnit, '(a,2i10)') 'MODPATHRW_ENDPOINT_FILE', version, subversion
+    write(outUnit, '(i5,3i10,1x,4e18.10)') simData%TrackingDirection, totalCount, releaseCount, maximumID, &
+        simData%ReferenceTime, grid%OriginX, grid%OriginY, grid%RotationAngle
+    write(outUnit, '(10i8)') (statusSums(n), n = 0, 9)
+    write(outUnit, '(i10)') simData%ParticleGroupCount
+    do n = 1, simData%ParticleGroupCount
+        write(outUnit, '(a)') simData%ParticleGroups(n)%Name
+    end do
+    write(outUnit, '(a)') 'END HEADER'
+    
+    do pgIndex = 1, simData%ParticleGroupCount
+      do pIndex = 1, simData%ParticleGroups(pgIndex)%TotalParticleCount
+        p => simData%ParticleGroups(pgIndex)%Particles(pIndex)
+        if((p%Status .ne. 0) .and. (p%Status .ne. 8) ) then
+          call grid%ConvertToModelXYZ(p%InitialCellNumber,                 &
+            p%InitialLocalX, p%InitialLocalY, p%InitialLocalZ,             &
+            initialModelX, initialModelY, initialGlobalZ)
+          call grid%ConvertToModelXYZ(p%CellNumber, p%LocalX, p%LocalY,    &
+            p%LocalZ, modelX, modelY, globalZ)
+          !face = FindFace(p%LocalX, p%LocalY, p%LocalZ)
+          initialZone = simData%Zones(p%InitialCellNumber)
+          zone = simData%Zones(p%CellNumber)
+          write(outUnit, '(4i10,i5,3es18.9e3,i10,i5,3es18.9e3,1i5,i10,i5,3es18.9e3,1i5)')            &
+            p%SequenceNumber, p%Group, simData%ParticleGroups(pgIndex)%Solute, p%ID, p%Status,       &
+            p%Mass, p%InitialTrackingtime, p%TrackingTime, p%InitialCellNumber,                      &
+            p%InitialLayer, initialModelX, initialModelY, initialGlobalZ, initialZone, p%CellNumber, &
+            p%Layer, modelX, modelY, globalZ, zone
+        end if
+      end do
+    end do
+  
+  
+  end subroutine WriteEndpointsMassParticles
 
 
   subroutine WriteTimeseriesHeader(outUnit, trackingDirection, referenceTime,   &

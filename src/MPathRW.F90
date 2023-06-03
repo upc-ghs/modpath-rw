@@ -138,9 +138,10 @@ program MPathRW
   ! Test init
   logical :: testinit = .false.
   ! Interfaces 
-  procedure(TimeseriesWriter) , pointer :: WriteTimeseries  => null()
-  procedure(ResidentObsWriter), pointer :: WriteResidentObs => null()
-  procedure(SinkObsWriter)    , pointer :: WriteSinkObs     => null()
+  procedure(TimeseriesWriter) , pointer :: WriteTimeseries   => null()
+  procedure(ResidentObsWriter), pointer :: WriteResidentObs  => null()
+  procedure(SinkObsWriter)    , pointer :: WriteSinkObs      => null()
+  procedure(EndpointWriter)   , pointer :: WriteEndpointFile => null()
   !-----------------------------------------------------------------------------
   ! Assign dedicated file unit numbers
   disUnit         = 101
@@ -609,6 +610,15 @@ program MPathRW
   ! Endpoint
   open(unit=endpointUnit, file=simulationData%EndpointFile, status='replace', &
     form='formatted', access='sequential')
+  ! Select endpoint interface
+  select case(simulationData%EndpointOutputOption)
+  case(1)
+    ! The simplified modpath-rw writer with mass and solute id
+    WriteEndpointFile => WriteEndpointsMassParticles
+  case default
+    ! The classical modpath-v7 writer
+    WriteEndpointFile => WriteEndpoints
+  end select
 
   ! Pathline
   if((simulationData%SimulationType .eq. 2) .or.                              &
@@ -1579,7 +1589,7 @@ program MPathRW
   ! Write endpoint file
   if(simulationData%ParticleGroupCount .gt. 0) then
       call ulog('Write endpoint file.', logUnit)
-      call WriteEndpoints(simulationData, modelGrid, geoRef, endpointUnit)
+      call WriteEndpointFile(simulationData, modelGrid, geoRef, endpointUnit)
   end if
   
   ! Finalize and process binary pathline file if pathline format option = 1
@@ -1839,8 +1849,7 @@ program MPathRW
 
         ! Deallocate 
         if ( allocated( gpkde ) ) then
-           call gpkde%Reset()
-           !deallocate( gpkde )
+          call gpkde%Reset()
         end if
 
         ! continue to next
@@ -1945,7 +1954,8 @@ program MPathRW
             domainOrigin=(/0d0,0d0,0d0/),                                      &
             nOptimizationLoops=simulationData%TrackingOptions%gpkdeNOptLoops,  &
             databaseOptimization=.false.,                                      &
-            outFileName=mplistFile     &
+            effectiveWeightFormat = 0,  & ! CHANGE THIS
+            outFileName=mplistFile      &
         )
 
         ! Allocate according to postprocess option 
@@ -2018,7 +2028,9 @@ program MPathRW
               gpkdeDataCarrier,             &
               computeRawDensity = .true.,   &
               weightedHistogram = .true.,   &
-              weights = gpkdeWeightsCarrier )
+              weights = gpkdeWeightsCarrier,& 
+              relativeErrorConvergence=0.01d0 & ! CHANGE THIS
+            )
             BTCHistPerSolute(:,ns)  = gpkde%histogram%counts(:,1,1)
             BTCGpkdePerSolute(:,ns) = gpkde%densityEstimateGrid(:,1,1)
           end select
