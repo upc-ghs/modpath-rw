@@ -529,7 +529,7 @@ contains
           read(inUnit, *) (this%TimePoints(n), n = 1, this%TimePointCount)
         end if
       else
-          ! write an error message and stop
+        ! write an error message and stop
       end if
     else
       this%TimePointOption = 0
@@ -1723,6 +1723,7 @@ contains
     doubleprecision :: initialReleaseTime
     doubleprecision :: particleMass, effParticleMass
     doubleprecision :: cellTotalMass, totalAccumulatedMass
+    doubleprecision :: totalAccumulatedParticlesMass
     doubleprecision :: cellDissolvedMass, totalDissolvedMass
     doubleprecision :: cellVolume,sX,sY,sZ,nPX,nPY,nPZ
     doubleprecision :: nParticlesCell
@@ -2074,12 +2075,13 @@ contains
         end if 
 
         ! effective particles mass
-        effParticleMass = totalAccumulatedMass/totalParticleCount 
+        effParticleMass = totalAccumulatedMass/dble(totalParticleCount)
         write(outUnit,'(A,es18.9e3)') 'Original particle mass for initial condition = ', particleMass
         write(outUnit,'(A,es18.9e3)') 'Effective particle mass for initial condition = ', effParticleMass
 
-        ! Both the total number of particles and the effective mass are known
-
+        ! Both the total number of particles and the effective mass are known, 
+        ! The mass is uniform for all particles
+        totalAccumulatedParticlesMass = effParticleMass*dble(totalParticleCount)
         if ( saveValidCellNumbers ) then
           ! If valid cell numbers were saved...
 
@@ -2324,7 +2326,7 @@ contains
 
             ! If less than 0.5 particle, cycle to the next cell
             ! Note: might not be necessary for this initial condition format 
-            if ( nParticlesCell .lt. nParticlesCellMin ) cycle
+            !if ( nParticlesCell .lt. nParticlesCellMin ) cycle
 
             ! Compute shapeFactors only if dimension is active
             ! If not, will remain as zero
@@ -2406,7 +2408,7 @@ contains
 
             ! If less than 0.5 particle, cycle to the next cell
             ! Note: might not be necessary for this initial condition format
-            if ( nParticlesCell .lt. nParticlesCellMin ) cycle
+            !if ( nParticlesCell .lt. nParticlesCellMin ) cycle
 
             ! For random distribution, does not need to 
             ! compute subdivisions, can simply take the integer
@@ -2443,6 +2445,8 @@ contains
         write(outUnit,'(A,es18.9e3)') 'Original particle mass for initial condition = ', particleMass
         write(outUnit,'(A)') 'Particle mass is assigned on a per-cell basis.'
 
+        ! As the mass of particles is different, needs to aggregate
+        totalAccumulatedParticlesMass = 0d0
         if ( saveValidCellNumbers ) then
           ! If valid cell numbers were saved...
 
@@ -2466,9 +2470,9 @@ contains
             ! Skip this cell if all subDivisions remained as zero
             if ( all( subDivisions( cellCounter, : ) .eq. 0 ) ) cycle
 
-            effParticleMass = activeCellTotalMass(cellCounter)/&
-             dble(product(subDivisions(cellCounter,:),mask=subDivisions(cellCounter,:)>0))
-
+            nParticlesCell = dble(product(subDivisions(cellCounter,:),mask=subDivisions(cellCounter,:)>0))
+            effParticleMass = activeCellTotalMass(cellCounter)/nParticlesCell
+            totalAccumulatedParticlesMass = totalAccumulatedParticlesMass + effParticleMass*nParticlesCell
             cellNumber = validCellNumbers(cellCounter)
 
             ! 0: is for drape. TEMPORARY
@@ -2505,8 +2509,9 @@ contains
             ! Skip this cell if all subDivisions remained as zero
             if ( all( subDivisions( cellCounter, : ) .eq. 0 ) ) cycle
 
-            effParticleMass = activeCellTotalMass(cellCounter)/&
-             dble(product(subDivisions(cellCounter,:),mask=subDivisions(cellCounter,:)>0))
+            nParticlesCell = dble(product(subDivisions(cellCounter,:),mask=subDivisions(cellCounter,:)>0))
+            effParticleMass = activeCellTotalMass(cellCounter)/nParticlesCell
+            totalAccumulatedParticlesMass = totalAccumulatedParticlesMass + effParticleMass*nParticlesCell
 
             ! 0: is for drape. TEMPORARY
             ! Drape = 0: particle placed in the cell. If dry, status to unreleased
@@ -2550,9 +2555,11 @@ contains
         write(outUnit,'(A)') 'Retardation factor is considered in total accumulated mass.'
         write(outUnit,'(A,es18.9e3)') 'Total disolved mass for initial condition = ', totalDissolvedMass
         write(outUnit,'(A,es18.9e3)') 'Total accumulated mass for initial condition = ', totalAccumulatedMass
+        write(outUnit,'(A,es18.9e3)') 'Total accumulated mass with particles = ', totalAccumulatedParticlesMass
       else 
         write(outUnit,'(A)') 'Retardation factor is unitary so total dissolved mass is the total mass.'
         write(outUnit,'(A,es18.9e3)') 'Total accumulated mass for initial condition = ', totalAccumulatedMass
+        write(outUnit,'(A,es18.9e3)') 'Total accumulated mass with particles = ', totalAccumulatedParticlesMass
       end if 
       write(outUnit,'(A,I10)') 'Total number of particles for this initial condition = ', totalParticleCount 
 
