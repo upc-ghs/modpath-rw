@@ -3040,7 +3040,7 @@ contains
   subroutine prComputeDensity( this, dataPoints, nOptimizationLoops, &
                                      outputFileName, outputFileUnit, &
                                outputColumnFormat, outputDataFormat, &
-                                      outputDataId, particleGroupId, &
+                     outputDataId, outputDataIdVal, particleGroupId, &
               persistentKernelDatabase, exportOptimizationVariables, & 
                                    skipErrorConvergence, unitVolume, &
                               scalingFactor, histogramScalingFactor, &
@@ -3063,6 +3063,7 @@ contains
     integer, intent(in), optional                :: outputColumnFormat
     integer, intent(in), optional                :: outputDataFormat
     integer, intent(in), optional                :: outputDataId
+    real(fp), intent(in), optional               :: outputDataIdVal
     integer, intent(in), optional                :: particleGroupId
     logical, intent(in), optional                :: persistentKernelDatabase
     logical, intent(in), optional                :: exportOptimizationVariables
@@ -3428,7 +3429,8 @@ contains
       spcChar = ''
       write(timeChar,*)outputDataId
       write(spcChar,*)particleGroupId
-      write( this%outFileUnit, '(A,A,A,A)' )' GPKDE Optimization -- Time: ', trim(adjustl(timeChar)), &
+      write( this%outFileUnit, * )
+      write( this%outFileUnit, '(A,A,A,A)' )' Bandwidth Optimization -- Time: ', trim(adjustl(timeChar)), &
               ' -- Specie: ', trim(adjustl(spcChar))
       else
         write( this%outFileUnit, *     )
@@ -3519,9 +3521,20 @@ contains
     select case(locOutputDataFormat) 
     case (0)
       ! Text-Plain
-      if ( present( outputFileUnit ) .and. present( outputDataId ) .and. present( particleGroupId )) then
+      if ( & 
+        present( outputFileUnit )  .and. & 
+        present( outputDataId )    .and. & 
+        present( outputDataIdVal ) .and. & 
+        present( particleGroupId ) ) then
+        ! Suitable for cases idtime, time, pgroupid
+        call this%ExportDensityUnit(outputFileUnit, &
+          outputDataId=outputDataId, outputDataIdVal=outputDataIdVal,& 
+          particleGroupId=particleGroupId, outputColumnFormat=locOutputColumnFormat )
+      else if ( present( outputFileUnit ) .and. present( outputDataId ) .and. present( particleGroupId )) then
+        ! Suitable for cases idtime, pgroupid
         call this%ExportDensityUnit(&
-          outputFileUnit, outputDataId, particleGroupId, &
+          outputFileUnit, outputDataId=outputDataId, &
+                    particleGroupId=particleGroupId, &
                 outputColumnFormat=locOutputColumnFormat )
       else if ( present( outputFileUnit ) ) then
         call this%ExportDensityUnit( outputFileUnit, &
@@ -3532,9 +3545,19 @@ contains
       end if
     case(1)
       ! Binary
-      if ( present( outputFileUnit ) .and. present( outputDataId ) .and. present( particleGroupId )) then
+      if ( & 
+        present( outputFileUnit )  .and. & 
+        present( outputDataId )    .and. & 
+        present( outputDataIdVal ) .and. & 
+        present( particleGroupId ) ) then
+        ! Suitable for cases idtime, time, pgroupid
+        call this%ExportDensityUnitBinary(outputFileUnit, &
+          outputDataId=outputDataId, outputDataIdVal=outputDataIdVal,& 
+          particleGroupId=particleGroupId, outputColumnFormat=locOutputColumnFormat )
+      else if ( present( outputFileUnit ) .and. present( outputDataId ) .and. present( particleGroupId )) then
         call this%ExportDensityUnitBinary(& 
-          outputFileUnit, outputDataId, particleGroupId, &
+          outputFileUnit, outputDataId=outputDataId, &
+                    particleGroupId=particleGroupId, &
                 outputColumnFormat=locOutputColumnFormat )
       else if ( present( outputFileUnit ) ) then
         call this%ExportDensityUnitBinary( outputFileUnit, & 
@@ -5608,8 +5631,8 @@ subroutine prComputeDensityOptimization( this, densityEstimateGrid, nOptimizatio
 
   ! Utils output files !
 
-  subroutine prExportDensityUnit( this, outputUnit, outputDataId, particleGroupId, &
-                                                                outputColumnFormat )
+  subroutine prExportDensityUnit( this, outputUnit, outputDataId, outputDataIdVal, & 
+                                               particleGroupId, outputColumnFormat )
     !------------------------------------------------------------------------------
     ! Export methods reporting cell indexes with respect to domain grid 
     !------------------------------------------------------------------------------
@@ -5619,6 +5642,7 @@ subroutine prComputeDensityOptimization( this, densityEstimateGrid, nOptimizatio
     class(GridProjectedKDEType) :: this
     integer, intent(in) :: outputUnit
     integer, optional, intent(in) :: outputDataId
+    real(fp),optional, intent(in) :: outputDataIdVal
     integer, optional, intent(in) :: particleGroupId
     integer, optional, intent(in) :: outputColumnFormat
     integer :: ix, iy, iz
@@ -5642,7 +5666,60 @@ subroutine prComputeDensityOptimization( this, densityEstimateGrid, nOptimizatio
       end select
     end if  
 
-    if ( present( outputDataId ) .and. present( particleGroupId ) ) then
+    ! idtime, time, pgroup
+    if ( present( outputDataId ) .and. present( outputDataIdVal ) & 
+                               .and. present( particleGroupId ) ) then
+      ! Following column-major nesting
+      select case(columnFormat)
+      case(0)
+        do iz = 1, this%nBins(3)
+          do iy = 1, this%nBins(2)
+            do ix = 1, this%nBins(1)
+              if ( this%densityEstimateGrid( ix, iy, iz ) .le. fZERO ) cycle
+              write(outputUnit,"(I8,es18.9e3,4I8,2es18.9e3)") &
+              outputDataId, outputDataIdVal, particleGroupId, &
+              ix+this%deltaBinsOrigin(1), iy+this%deltaBinsOrigin(2), iz+this%deltaBinsOrigin(3), &
+              this%densityEstimateGrid( ix, iy, iz ), this%histogram%counts( ix, iy, iz )
+            end do
+          end do
+        end do
+      case(1)
+        do iz = 1, this%nBins(3)
+          do iy = 1, this%nBins(2)
+            do ix = 1, this%nBins(1)
+              if ( this%densityEstimateGrid( ix, iy, iz ) .le. fZERO ) cycle
+              idbinx = ix+this%deltaBinsOrigin(1)
+              idbiny = iy+this%deltaBinsOrigin(2)
+              idbinz = iz+this%deltaBinsOrigin(3)
+              write(outputUnit,"(I8,es18.9e3,4I8,3es18.9e3,2es18.9e3)")&
+                                           outputDataId, outputDataIdVal, particleGroupId, &
+                                                                   idbinx, idbiny, idbinz, & 
+                        (real(idbinx,fp) + 0.5_fp)*this%binSize(1) + this%domainOrigin(1), & 
+                        (real(idbiny,fp) + 0.5_fp)*this%binSize(2) + this%domainOrigin(2), &
+                        (real(idbinz,fp) + 0.5_fp)*this%binSize(3) + this%domainOrigin(3), &
+                 this%densityEstimateGrid( ix, iy, iz ), this%histogram%counts( ix, iy, iz )
+            end do
+          end do
+        end do
+      case(2)
+        do iz = 1, this%nBins(3)
+          do iy = 1, this%nBins(2)
+            do ix = 1, this%nBins(1)
+              if ( this%densityEstimateGrid( ix, iy, iz ) .le. fZERO ) cycle
+              idbinx = ix+this%deltaBinsOrigin(1)
+              idbiny = iy+this%deltaBinsOrigin(2)
+              idbinz = iz+this%deltaBinsOrigin(3)
+              write(outputUnit,"(I8,es18.9e3,I8,3es18.9e3,2es18.9e3)")&
+                                           outputDataId, outputDataIdVal, particleGroupId, &
+                        (real(idbinx,fp) + 0.5_fp)*this%binSize(1) + this%domainOrigin(1), & 
+                        (real(idbiny,fp) + 0.5_fp)*this%binSize(2) + this%domainOrigin(2), &
+                        (real(idbinz,fp) + 0.5_fp)*this%binSize(3) + this%domainOrigin(3), &
+                 this%densityEstimateGrid( ix, iy, iz ), this%histogram%counts( ix, iy, iz )
+            end do
+          end do
+        end do
+      end select
+    else if ( present( outputDataId ) .and. present( particleGroupId ) ) then
       ! Following column-major nesting
       select case(columnFormat)
       case(0)
@@ -5799,8 +5876,8 @@ subroutine prComputeDensityOptimization( this, densityEstimateGrid, nOptimizatio
   end subroutine prExportDensityUnit
 
 
-  subroutine prExportDensityUnitBinary( this, outputUnit, outputDataId, particleGroupId, &
-                                                                      outputColumnFormat )
+  subroutine prExportDensityUnitBinary( this, outputUnit, outputDataId, outputDataIdVal, &
+                                                     particleGroupId, outputColumnFormat )
     !------------------------------------------------------------------------------
     ! Export methods reporting cell indexes with respect to domain grid 
     !------------------------------------------------------------------------------
@@ -5810,6 +5887,7 @@ subroutine prComputeDensityOptimization( this, densityEstimateGrid, nOptimizatio
     class(GridProjectedKDEType) :: this
     integer, intent(in) :: outputUnit
     integer, optional, intent(in) :: outputDataId
+    real(fp),optional, intent(in) :: outputDataIdVal
     integer, optional, intent(in) :: particleGroupId
     integer, optional, intent(in) :: outputColumnFormat
     integer :: ix, iy, iz
@@ -5833,7 +5911,57 @@ subroutine prComputeDensityOptimization( this, densityEstimateGrid, nOptimizatio
       end select
     end if  
 
-    if ( present( outputDataId ) .and. present( particleGroupId ) ) then
+    ! idtime, time, pgroup
+    if ( present( outputDataId ) .and. present( outputDataIdVal ) & 
+                               .and. present( particleGroupId ) ) then
+      ! Following column-major nesting
+      select case(columnFormat)
+      case(0)
+        do iz = 1, this%nBins(3)
+          do iy = 1, this%nBins(2)
+            do ix = 1, this%nBins(1)
+              if ( this%densityEstimateGrid( ix, iy, iz ) .le. fZERO ) cycle
+              write(outputUnit) outputDataId, outputDataIdVal, particleGroupId, &
+              ix+this%deltaBinsOrigin(1), iy+this%deltaBinsOrigin(2), iz+this%deltaBinsOrigin(3), &
+              this%densityEstimateGrid( ix, iy, iz ), this%histogram%counts( ix, iy, iz )
+            end do
+          end do
+        end do
+      case(1)
+        do iz = 1, this%nBins(3)
+          do iy = 1, this%nBins(2)
+            do ix = 1, this%nBins(1)
+              if ( this%densityEstimateGrid( ix, iy, iz ) .le. fZERO ) cycle
+              idbinx = ix+this%deltaBinsOrigin(1)
+              idbiny = iy+this%deltaBinsOrigin(2)
+              idbinz = iz+this%deltaBinsOrigin(3)
+              write(outputUnit) outputDataId, outputDataIdVal, particleGroupId,  &
+                                                         idbinx, idbiny, idbinz, & 
+              (real(idbinx,fp) + 0.5_fp)*this%binSize(1) + this%domainOrigin(1), & 
+              (real(idbiny,fp) + 0.5_fp)*this%binSize(2) + this%domainOrigin(2), &
+              (real(idbinz,fp) + 0.5_fp)*this%binSize(3) + this%domainOrigin(3), &
+              this%densityEstimateGrid( ix, iy, iz ), this%histogram%counts( ix, iy, iz )
+            end do
+          end do
+        end do
+      case(2)
+        do iz = 1, this%nBins(3)
+          do iy = 1, this%nBins(2)
+            do ix = 1, this%nBins(1)
+              if ( this%densityEstimateGrid( ix, iy, iz ) .le. fZERO ) cycle
+              idbinx = ix+this%deltaBinsOrigin(1)
+              idbiny = iy+this%deltaBinsOrigin(2)
+              idbinz = iz+this%deltaBinsOrigin(3)
+              write(outputUnit) outputDataId, outputDataIdVal, particleGroupId,  &
+              (real(idbinx,fp) + 0.5_fp)*this%binSize(1) + this%domainOrigin(1), & 
+              (real(idbiny,fp) + 0.5_fp)*this%binSize(2) + this%domainOrigin(2), &
+              (real(idbinz,fp) + 0.5_fp)*this%binSize(3) + this%domainOrigin(3), &
+              this%densityEstimateGrid( ix, iy, iz ), this%histogram%counts( ix, iy, iz )
+            end do
+          end do
+        end do
+      end select
+    else if ( present( outputDataId ) .and. present( particleGroupId ) ) then
       ! Following column-major nesting
       select case(columnFormat)
       case(0)

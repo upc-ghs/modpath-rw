@@ -55,7 +55,11 @@ module ParticleTrackingOptionsModule
     doubleprecision               :: gpkdeBinSizeFactor
     integer                       :: gpkdeBoundKernelSize
     integer                       :: gpkdeEffectiveWeightFormat
-
+    integer                       :: gpkdeTimePointOption
+    integer                       :: gpkdeTimePointCount
+    logical                       :: gpkdeSkipInitialCondition = .false.
+    doubleprecision, dimension(:), allocatable :: gpkdeTimePoints
+     
     ! TimeseriesOutputOption
     logical                :: skipTimeseriesWriter = .false.
 
@@ -72,12 +76,12 @@ module ParticleTrackingOptionsModule
     integer, allocatable, dimension(:) :: idObservation
     type( ObservationType ), allocatable, dimension(:) :: Observations
 
-    ! DEPRECATION WARNNING
-    ! NONLINEAR DISPERSION RWPT (TEMP)
+    ! Deprecation warnning
+    ! Nonlinear dispersion rwpt (temp)
     doubleprecision :: betaTrans, betaLong
     doubleprecision :: mediumDistance, mediumDelta
     doubleprecision :: Dmol = 0d0
-    ! DEPRECATION WARNING
+    ! Deprecation warning
 
   contains
      procedure :: Reset=>pr_Reset

@@ -781,7 +781,7 @@ contains
     integer, intent(in)                      :: outUnit
     ! local
     integer :: isThisFileOpen
-    integer :: icol,istart,istop,n
+    integer :: icol,istart,istop,n,m
     doubleprecision    :: r
     character(len=200) :: line
     !--------------------------------------------------------------
@@ -1151,6 +1151,59 @@ contains
         write(outUnit,'(a)') 'Default to domain-level effective weight from effective number of points (Kish, 1965,1992).'
       end if
 
+      ! Time point option 
+      ! 0: follows the timeseries output stages
+      ! 1: populate output timepoints based on timepointcount and a timeinterval
+      ! 2: populate output timepoints by reading an array of times
+      read(gpkdeUnit, '(a)') line
+      icol = 1
+      call urword(line, icol, istart, istop, 2, n, r, 0, 0)
+      this%TrackingOptions%gpkdeTimePointOption = n
+
+      ! Skip initial condition
+      ! 0: don't skip, as usual
+      ! 1: skip initial condition
+      call urword(line, icol, istart, istop, 2, n, r, 0, 0)
+      select case(n)
+      case(1)
+        write(outUnit,'(a)') 'Reconstruction will not be performed for tracking time zero. '
+        this%TrackingOptions%gpkdeSkipInitialCondition = .true.
+      case default 
+        this%TrackingOptions%gpkdeSkipInitialCondition = .false.
+      end select
+
+      ! Read additional data according to timepointoption
+      select case(this%TrackingOptions%gpkdeTimePointOption)
+      case(1)
+        write(outUnit,'(a)') 'Reconstruction will be performed on specific time points.'
+        write(outUnit,'(a)') 'Will interpret timepointcount and a time interval.'
+        ! time interval read in the variable r
+        read(gpkdeUnit, *) this%TrackingOptions%gpkdeTimePointCount, r 
+        if(this%TrackingOptions%gpkdeTimePointCount .gt. 0) then
+          allocate(this%TrackingOptions%gpkdeTimePoints(this%TrackingOptions%gpkdeTimePointCount))
+          this%TrackingOptions%gpkdeTimePoints(1) = r 
+          do m = 2, this%TrackingOptions%gpkdeTimePointCount
+            this%TrackingOptions%gpkdeTimePoints(m) = this%TrackingOptions%gpkdeTimePoints(m-1) + r
+          end do
+        else
+          write(outUnit,'(a)') 'Given timepointcount is less than zero, will default to reconstruction following timeseries.'
+          this%TrackingOptions%gpkdeTimePointOption = 0
+        end if
+      case(2)
+        write(outUnit,'(a)') 'Reconstruction will be performed on specific time points.'
+        write(outUnit,'(a)') 'Will read an array of times.'
+        read(gpkdeUnit, *) this%TrackingOptions%gpkdeTimePointCount
+        if(this%TrackingOptions%gpkdeTimePointCount .gt. 0) then
+          allocate(this%TrackingOptions%gpkdeTimePoints(this%TrackingOptions%gpkdeTimePointCount))
+          read(gpkdeUnit, *) (this%TrackingOptions%gpkdeTimePoints(m), m = 1, this%TrackingOptions%gpkdeTimePointCount)
+        else
+          write(outUnit,'(a)') 'Given timepointcount is less than zero, will default to reconstruction following timeseries.'
+          this%TrackingOptions%gpkdeTimePointOption = 0
+        end if
+      case default
+        write(outUnit,'(a)') 'GPKDE reconstruction will be performed consistently with timeseries simulation points. '
+        this%TrackingOptions%gpkdeTimePointOption = 0
+      end select
     else
       ! If simulation is not timeseries
       write(outUnit,'(A)') 'GPKDE reconstruction requires a timeseries. Will remain disabled.'

@@ -95,11 +95,14 @@ program MPathRW
   character(len=100) terminationMessage
   character(len=90) compilerVersionText
   logical :: isTimeSeriesPoint, timeseriesRecordWritten
-  doubleprecision, dimension(:,:), allocatable :: activeParticleCoordinates ! RWPT
+  doubleprecision, dimension(:,:), allocatable :: activeParticleCoordinates ! GPKDE
   doubleprecision, dimension(:), allocatable   :: activeParticleMasses
   doubleprecision, dimension(:,:), allocatable :: gpkdeDataCarrier
   doubleprecision, dimension(:), allocatable :: gpkdeWeightsCarrier
   integer :: itcount, ns, npg, particleCounter
+  logical :: isGpkdePoint
+  integer :: ngpkde, gpkdetindex
+  doubleprecision :: maxTimeGpkde, gpkdetval
   ! Observations
   integer :: io, irow, nobs, nit, cellNumber
   integer :: timeIndex, solCount
@@ -826,6 +829,7 @@ program MPathRW
   pathlineRecordCount = 0
   time = 0.0d0
   nt = 0
+  ngpkde = 0
   if(allocated(cellData)) deallocate(cellData)
   allocate(cellData)
 
@@ -963,7 +967,8 @@ program MPathRW
 
     ! GPKDE reconstruction for initial 
     ! particles distribution, grouped by solute
-    if ( simulationData%TrackingOptions%GPKDEReconstruction ) then
+    if ( simulationData%TrackingOptions%GPKDEReconstruction .and. & 
+       ( .not. simulationData%TrackingOptions%gpkdeSkipInitialCondition ) ) then 
       call ulog('GPKDE reconstruction for the initial condition', logUnit)
 
       do ns=1,transportModelData%nSolutes
@@ -1029,6 +1034,7 @@ program MPathRW
          outputColumnFormat=simulationData%TrackingOptions%gpkdeOutColFormat,              &
          outputDataFormat=simulationData%TrackingOptions%gpkdeOutFileFormat,               & 
          outputDataId=0,                                                                   & ! timeindex
+         outputDataIdVal=0d0,                                                              & ! timevalue
          particleGroupId=solute%id,                                                        &
          unitVolume=.true.,                                                                &
          weightedHistogram=.true.,                                                         &
@@ -1041,7 +1047,7 @@ program MPathRW
         )
 
       end do 
-    end if ! simulationData%TrackingOptions%GPKDEReconstruction
+    end if ! simulationData%TrackingOptions%GPKDEReconstruction and not skip
   end if ! write initial conditions for timeseries run
 
 
@@ -1055,17 +1061,18 @@ program MPathRW
   itcount = 0
   call ulog('Begin TRACKING_INTERVAL_LOOP', logUnit)
   TRACKING_INTERVAL_LOOP: do while (itend .eq. 0)
+  !print *, '-----------------------', itcount
   itcount = itcount + 1
   itend = 1
   maxTime = tsMax
   isTimeSeriesPoint = .false.
-  ! RWPT
-  if( (simulationData%SimulationType .gt. 1) .and. (simulationData%SimulationType .lt. 7) ) then     
+  isGpkdePoint = .false.
+
+  ! If timeseries
+  if( (simulationData%SimulationType .gt. 1) .and. (simulationData%SimulationType .lt. 7) ) then
     ! For timeseries and pathline runs, find out if maxTime should be set to the value of the
     ! next time point or the time at the end of the time step
     if (nt+1 .le. simulationData%TimePointCount) then
-      !if ( simulationData%TimePoints(nt+1) - tsMax.lt.1d-12) then ! needs a better delta
-      !if (abs(simulationData%TimePoints(nt+1) - tsMax).lt.1d-12) then ! needs a better delta ! WRONG
       if (simulationData%TimePoints(nt+1) .le. tsMax) then
         nt = nt + 1
         maxTime = simulationData%TimePoints(nt)
@@ -1075,7 +1082,56 @@ program MPathRW
         isTimeSeriesPoint = .true.
       end if
     end if
-  end if
+
+    ! Compare maxtime with reconstruction times array
+    if ( simulationData%TrackingOptions%GPKDEReconstruction ) then 
+      ! If gpkde follows timeseries !
+      if ( (simulationData%TrackingOptions%gpkdeTimePointOption.eq.0) .and. &
+           isTimeSeriesPoint ) then
+        ngpkde = ngpkde + 1
+        isGpkdePoint = .true.
+      else
+        ! needs to select the minimum between the 
+        ! timeseries and the reconstruction timepoints
+        if (ngpkde+1 .le. simulationData%TrackingOptions%gpkdeTimePointCount) then
+          if (simulationData%TrackingOptions%gpkdeTimePoints(ngpkde+1) .le. tsMax) then
+            maxTimeGpkde = simulationData%TrackingOptions%gpkdeTimePoints(ngpkde+1)
+          end if
+        else
+          ! If it concluded the reconstruction times array, 
+          ! set it as zero and continue with the processing of timeseries
+          maxTimeGpkde = 0d0
+          isGpkdePoint = .false.
+        end if
+
+        ! If not finished with reconstruction times
+        if ( maxTimeGpkde.ne.0d0 ) then 
+          ! Get the minimum
+          if ( maxTime.eq.min(maxTimeGpkde, maxTime) ) then
+            ! maxtime remains as the detected previously for the timeseries
+            ! if they were equal, enable the reconstruction flags
+            if ( maxTime.eq.maxTimeGpkde ) then 
+              ngpkde = ngpkde + 1
+              isGpkdePoint = .true.
+            end if
+          else 
+            ! If the required time for gpkde was the minimum, then update
+            ! maxtime and disable timeseries
+            tPoint(1) = -1d0 ! to avoid detection of timeIndex in tracking engine
+            isTimeSeriesPoint = .false.
+            nt = nt - 1 
+            ! redefine maxTime
+            ngpkde = ngpkde + 1
+            isGpkdePoint = .true.
+            maxTime = maxTimeGpkde
+            ! recalculate itend flag
+            itend = 0
+            if(maxTime .eq. tsMax) itend = 1 
+          end if 
+        end if 
+      end if 
+    end if ! if reconstruction
+  end if ! if timeseries
 
   ! Track particles
   pendingCount = 0
@@ -1106,6 +1162,7 @@ program MPathRW
       !$omp shared( timeseriesTempFiles )              &
       !$omp shared( period, step, ktime, nt )          &
       !$omp shared( time, maxTime, isTimeSeriesPoint ) &
+      !$omp shared( isGpkdePoint )                     &
       !$omp shared( tPoint, tPointCount )              &
       !$omp shared( groupIndex )                       &
       !$omp private( particleIndex )                   &
@@ -1259,7 +1316,22 @@ program MPathRW
           else
             ! Leave status set to active (status = 1)
           end if
-          
+
+          ! If gpkde, define global coordinates for particle
+          ! based on the last position in pathline buffer.
+          ! Note: in trackingEngine, if the trackPathResult 
+          ! status is anything except Undefined, add the last 
+          ! tracking point to the trackPathResult tracking points.
+          ! Only active particles go to GPKDE reconstruction. 
+          if ( p%Status .eq. 1 ) then 
+            if (&
+              simulationData%TrackingOptions%GPKDEReconstruction .and. &
+              isGpkdePoint ) then
+              p%GlobalX = pCoordLast%GlobalX
+              p%GlobalY = pCoordLast%GlobalY
+            end if 
+          end if 
+
           ! Write particle output
           ! pathline
           if((simulationData%SimulationType .eq. 2)  .or.              &
@@ -1385,9 +1457,22 @@ program MPathRW
     ! Once it finished transporting all 
     ! particle groups, reconstruction 
     ! grouped by solute
-    if ( simulationData%TrackingOptions%GPKDEReconstruction .and. isTimeSeriesPoint ) then
+    if ( simulationData%TrackingOptions%GPKDEReconstruction .and. isGpkdePoint ) then
 
-      call ulog('GPKDE reconstruction for the time point', logUnit)
+      ! Define time id and time value according to the timepointoption for gpkde
+      if ( simulationData%TrackingOptions%gpkdeTimePointOption.eq.0) then 
+        gpkdetindex = nt
+        gpkdetval   = simulationData%TimePoints(nt)
+      else
+        gpkdetindex = ngpkde
+        gpkdetval   = simulationData%TrackingOptions%gpkdeTimePoints(ngpkde)
+      end if
+      write(mplistUnit,*) 
+      write(mplistUnit,'(a)')         '------------------------------------------------------------'
+      write(mplistUnit,'(a,es18.9e3)')' GPKDE reconstruction for tracking time: ', gpkdetval
+      write(mplistUnit,'(a)')         '------------------------------------------------------------'
+
+      call ulog('Will perform GPKDE reconstruction for the time point', logUnit)
 
       do ns=1,transportModelData%nSolutes
 
@@ -1404,6 +1489,11 @@ program MPathRW
         particleCounter = 0
         do npg=1,solute%nParticleGroups
           groupIndex = solute%pGroups(npg)
+          !!$omp parallel do                       & 
+          !!$omp default(none)                     &
+          !!$omp shared(simulationData,groupIndex) &
+          !!$omp private(particleIndex,p)          &
+          !!$omp reduction(+:particleCounter)
           do particleIndex = 1, simulationData%ParticleGroups(groupIndex)%TotalParticleCount
             p => simulationData%ParticleGroups(groupIndex)%Particles(particleIndex)
             ! If active, to the array for GPKDE
@@ -1411,6 +1501,7 @@ program MPathRW
               particleCounter = particleCounter + 1
             end if
           end do
+          !!$omp end parallel do
         end do
 
         if ( particleCounter.eq.0 ) then
@@ -1429,8 +1520,7 @@ program MPathRW
         allocate( activeParticleMasses(particleCounter) )
         activeParticleMasses = 0d0
 
-        ! Could be parallelized ?
-        ! Restart active counter and fill coordinates array
+        ! Restart particle counter and fill coordinates array
         particleCounter = 0 
         do npg=1,solute%nParticleGroups
           groupIndex = solute%pGroups(npg)
@@ -1455,7 +1545,8 @@ program MPathRW
          outputFileUnit=simulationData%TrackingOptions%gpkdeOutputUnit,                    &
          outputColumnFormat=simulationData%TrackingOptions%gpkdeOutColFormat,              &
          outputDataFormat=simulationData%TrackingOptions%gpkdeOutFileFormat,               & 
-         outputDataId=nt,                                                                  & ! timeindex
+         outputDataId=gpkdetindex,                                                         & ! timeindex
+         outputDataIdVal=gpkdetval,                                                        & ! timevalue
          particleGroupId=solute%id,                                                        &
          unitVolume=.true.,                                                                &
          weightedHistogram=.true.,                                                         &

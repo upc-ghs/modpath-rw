@@ -1117,155 +1117,154 @@ contains
     isMaximumTime = .false.
     
     do while(continueLoop)
-        ! Check to see if the particle has moved to another cell. If so, load the new cell data
-        if(loc%CellNumber .ne. this%TrackCell%CellData%CellNumber) then
-            call this%FillCellBuffer(loc%CellNumber, this%TrackCell%CellData)
-            ! RWPT: update neighbor cells
-            call this%FillNeighborCellData( neighborCellData )
-        end if
-        
-        ! Find the next stopping time value (tmax), then track the particle through the cell starting at location loc.
-        timeIndex = -1
-        if(timeseriesPointCount .gt. 0) then
-            timeIndex = pr_FindTimeIndex(timeseriesPoints, loc%TrackingTime,      &
-              maximumTrackingTime, timeseriesPointCount)
-        end if
-        stopTime = maximumTrackingTime
-        isTimeSeriesPoint = .false.
-        if(timeIndex .ne. -1) then
-            stopTime = timeseriesPoints(timeIndex)
-            isTimeSeriesPoint = .true.
-        end if
-        isMaximumTime = .false.
-        if(stopTime .eq. maximumTrackingTime) isMaximumTime = .true.
+      ! Check to see if the particle has moved to another cell. If so, load the new cell data
+      if(loc%CellNumber .ne. this%TrackCell%CellData%CellNumber) then
+        call this%FillCellBuffer(loc%CellNumber, this%TrackCell%CellData)
+        ! RWPT: update neighbor cells
+        call this%FillNeighborCellData( neighborCellData )
+      end if
+      
+      ! Find the next stopping time value (tmax), then track the particle through the cell starting at location loc.
+      timeIndex = -1
+      if(timeseriesPointCount .gt. 0) then
+        timeIndex = pr_FindTimeIndex(timeseriesPoints, loc%TrackingTime, &
+          maximumTrackingTime, timeseriesPointCount)
+      end if
+      stopTime = maximumTrackingTime
+      isTimeSeriesPoint = .false.
+      if(timeIndex .ne. -1) then
+        stopTime = timeseriesPoints(timeIndex)
+        isTimeSeriesPoint = .true.
+      end if
+      isMaximumTime = .false.
+      if(stopTime .eq. maximumTrackingTime) isMaximumTime = .true.
     
-        ! RWPT: apply tracking
-        ! Start with the particle loacion loc and track it through the cell until it reaches
-        ! an exit face or the tracking time reaches the value specified by stopTime
-        call this%TrackCell%ExecuteRandomWalkParticleTracking(loc, stopTime, this%TrackCellResult, &
-                                                                                  neighborCellData )
+      ! RWPT: apply tracking
+      ! Start with the particle loacion loc and track it through the cell until it reaches
+      ! an exit face or the tracking time reaches the value specified by stopTime
+      call this%TrackCell%ExecuteRandomWalkParticleTracking(loc, stopTime, this%TrackCellResult, &
+                                                                                neighborCellData )
+      
+      ! Check the status flag of the result to find out what to do next
+      if(this%TrackCellResult%Status .eq. this%TrackCellResult%Status_Undefined()) then
+        continueLoop = .false.
+        trackPathResult%Status = this%TrackCellResult%Status
+      else if(this%TrackCellResult%Status .eq. this%TrackCellResult%Status_ExitAtCellFace()) then
+        count = this%TrackCellResult%TrackingPoints%GetItemCount()
+        if(count .gt. 1) then
+          do n = 2, count
+            call this%LocBuffP%AddItem(this%TrackCellResult%TrackingPoints%Items(n))
+          end do 
+        end if
         
-        ! Check the status flag of the result to find out what to do next
-        if(this%TrackCellResult%Status .eq. this%TrackCellResult%Status_Undefined()) then
+        ! If NextCellNumber is > 0, it means the particle has moved to another cell. 
+        ! If so, convert loc from the current cell coordinates to the equivalent location in the new cell.
+        nextCell = this%TrackCellResult%NextCellNumber
+        if(nextCell .gt. 0) then
+          if(this%FlowModelData%IBoundTS(nextCell) .ne. 0) then
+            ! The next cell is active
+            fromLocalX = this%TrackCellResult%TrackingPoints%Items(count)%LocalX
+            fromLocalY = this%TrackCellResult%TrackingPoints%Items(count)%LocalY
+            fromLocalZ = this%TrackCellResult%TrackingPoints%Items(count)%LocalZ         
+            call this%Grid%ConvertFromNeighbor(                           &
+              this%TrackCellResult%NextCellNumber,                        &
+              this%TrackCellResult%CellNumber, fromLocalX, fromLocalY,    &
+              fromLocalZ, loc)
+            loc%TrackingTime = this%TrackCellResult%TrackingPoints%Items(count)%TrackingTime
+          else
+            ! If next cell is inactive, it implies that a boundary face has been reached. 
+            ! Set status and return.
             continueLoop = .false.
-            trackPathResult%Status = this%TrackCellResult%Status
-        else if(this%TrackCellResult%Status .eq. this%TrackCellResult%Status_ExitAtCellFace()) then
-            count = this%TrackCellResult%TrackingPoints%GetItemCount()
-            if(count .gt. 1) then
-                do n = 2, count
-                    call this%LocBuffP%AddItem(this%TrackCellResult%TrackingPoints%Items(n))
-                end do 
-            end if
-           
-            ! If NextCellNumber is > 0, it means the particle has moved to another cell. 
-            ! If so, convert loc from the current cell coordinates to the equivalent location in the new cell.
-            nextCell = this%TrackCellResult%NextCellNumber
-            if(nextCell .gt. 0) then
-                if(this%FlowModelData%IBoundTS(nextCell) .ne. 0) then
-                    ! The next cell is active
-                    fromLocalX = this%TrackCellResult%TrackingPoints%Items(count)%LocalX
-                    fromLocalY = this%TrackCellResult%TrackingPoints%Items(count)%LocalY
-                    fromLocalZ = this%TrackCellResult%TrackingPoints%Items(count)%LocalZ         
-                    call this%Grid%ConvertFromNeighbor(                           &
-                      this%TrackCellResult%NextCellNumber,                        &
-                      this%TrackCellResult%CellNumber, fromLocalX, fromLocalY,    &
-                      fromLocalZ, loc)
-                    loc%TrackingTime = this%TrackCellResult%TrackingPoints%Items(count)%TrackingTime
-                else
-                    ! If next cell is inactive, it implies that a boundary face has been reached. 
-                    ! Set status and return.
-                    continueLoop = .false.
-                    trackPathResult%Status = trackPathResult%Status_ReachedBoundaryFace()        
-                end if
-            else
-                ! If next cell number = 0, the boundary of the grid has been reached. 
-                ! Set status and return.
-                continueLoop = .false.
-                trackPathResult%Status = trackPathResult%Status_ReachedBoundaryFace()
-            end if
-            
-
-        else if(this%TrackCellResult%Status .eq. this%TrackCellResult%Status_ReachedStoppingTime()) then
-            count = this%TrackCellResult%TrackingPoints%GetItemCount()
-            if(count .gt. 1) then
-                do n = 2, count
-                    call this%LocBuffP%AddItem(this%TrackCellResult%TrackingPoints%Items(n))
-                end do 
-                if(isTimeSeriesPoint) then
-                    call this%LocBuffTS%AddItem(this%TrackCellResult%TrackingPoints%Items(count))
-                end if
-            end if
-            
-            call loc%SetData(this%TrackCellResult%TrackingPoints%Items(count))
-            if(isMaximumTime) then
-                continueLoop = .false.
-                trackPathResult%Status = trackPathResult%Status_ReachedStoppingTime()
-            end if
-            
+            trackPathResult%Status = trackPathResult%Status_ReachedBoundaryFace()        
+          end if
         else
-            continueLoop = .false.
-            if(this%TrackCellResult%Status .eq. this%TrackCellResult%Status_NoExitPossible()) then
-                trackPathResult%Status = this%TrackCellResult%Status_NoExitPossible()         
-            else if(this%TrackCellResult%Status .eq. this%TrackCellResult%Status_StopZoneCell()) then
-                trackPathResult%Status = this%TrackCellResult%Status_StopZoneCell()                  
-            else if(this%TrackCellResult%Status .eq. this%TrackCellResult%Status_StopAtWeakSink()) then
-                trackPathResult%Status = this%TrackCellResult%Status_StopAtWeakSink()                   
-            else if(this%TrackCellResult%Status .eq. this%TrackCellResult%Status_StopAtWeakSource()) then
-                trackPathResult%Status = this%TrackCellResult%Status_StopAtWeakSource()
-            else if(this%TrackCellResult%Status .eq. this%TrackCellResult%Status_InactiveCell()) then
-                trackPathResult%Status = this%TrackCellResult%Status_InactiveCell()      
-            else
-                trackPathResult%Status = this%TrackCellResult%Status_Undefined()
-            end if
-            
-            ! If the trackPathResult status is anything except Undefined, add the last tracking point to
-            ! the trackPathResult tracking points
-            if(trackPathResult%Status .ne. this%TrackCellResult%Status_Undefined()) then
-                call this%LocBuffP%AddItem(this%TrackCellResult%TrackingPoints%Items(1))              
-            end if
-            
+          ! If next cell number = 0, the boundary of the grid has been reached. 
+          ! Set status and return.
+          continueLoop = .false.
+          trackPathResult%Status = trackPathResult%Status_ReachedBoundaryFace()
         end if
+        
+      else if(this%TrackCellResult%Status .eq. this%TrackCellResult%Status_ReachedStoppingTime()) then
+        count = this%TrackCellResult%TrackingPoints%GetItemCount()
+        if(count .gt. 1) then
+          do n = 2, count
+            call this%LocBuffP%AddItem(this%TrackCellResult%TrackingPoints%Items(n))
+          end do 
+          if(isTimeSeriesPoint) then
+            call this%LocBuffTS%AddItem(this%TrackCellResult%TrackingPoints%Items(count))
+          end if
+        end if
+        
+        call loc%SetData(this%TrackCellResult%TrackingPoints%Items(count))
+        if(isMaximumTime) then
+          continueLoop = .false.
+          trackPathResult%Status = trackPathResult%Status_ReachedStoppingTime()
+        end if
+        
+      else
+        continueLoop = .false.
+        if(this%TrackCellResult%Status .eq. this%TrackCellResult%Status_NoExitPossible()) then
+          trackPathResult%Status = this%TrackCellResult%Status_NoExitPossible()         
+        else if(this%TrackCellResult%Status .eq. this%TrackCellResult%Status_StopZoneCell()) then
+          trackPathResult%Status = this%TrackCellResult%Status_StopZoneCell()                  
+        else if(this%TrackCellResult%Status .eq. this%TrackCellResult%Status_StopAtWeakSink()) then
+          trackPathResult%Status = this%TrackCellResult%Status_StopAtWeakSink()                   
+        else if(this%TrackCellResult%Status .eq. this%TrackCellResult%Status_StopAtWeakSource()) then
+          trackPathResult%Status = this%TrackCellResult%Status_StopAtWeakSource()
+        else if(this%TrackCellResult%Status .eq. this%TrackCellResult%Status_InactiveCell()) then
+          trackPathResult%Status = this%TrackCellResult%Status_InactiveCell()      
+        else
+          trackPathResult%Status = this%TrackCellResult%Status_Undefined()
+        end if
+        
+        ! If the trackPathResult status is anything except Undefined, add the last tracking point to
+        ! the trackPathResult tracking points
+        if(trackPathResult%Status .ne. this%TrackCellResult%Status_Undefined()) then
+          call this%LocBuffP%AddItem(this%TrackCellResult%TrackingPoints%Items(1))              
+        end if
+        
+      end if
     
 
-        ! Write trace mode data if the trace mode is on for this particle
-        if(traceModeOn) then
-           !$omp critical (tracedata)
-           call WriteTraceData(traceModeUnit, this%TrackCell,                   &
-             this%TrackCellResult, this%FlowModelData%GetCurrentStressPeriod(), &
-             this%FlowModelData%GetCurrentTimeStep())
-           !$omp end critical (tracedata)
-        end if
+      ! Write trace mode data if the trace mode is on for this particle
+      if(traceModeOn) then
+        !$omp critical (tracedata)
+        call WriteTraceData(traceModeUnit, this%TrackCell,                   &
+          this%TrackCellResult, this%FlowModelData%GetCurrentStressPeriod(), &
+          this%FlowModelData%GetCurrentTimeStep())
+        !$omp end critical (tracedata)
+      end if
     
-        ! If continueLoop is still set to true, go through the loop again. If set to false, exit the loop now.
+      ! If continueLoop is still set to true, go through the loop again. If set to false, exit the loop now.
 
     end do
     
     ! Generate global coordinates and finish initializing the result data
     count = this%LocBuffP%GetItemCount()
     do n = 1, count
-        pCoord%CellNumber = this%LocBuffP%Items(n)%CellNumber
-        pCoord%Layer = this%LocBuffP%Items(n)%Layer
-        pCoord%LocalX = this%LocBuffP%Items(n)%LocalX
-        pCoord%LocalY = this%LocBuffP%Items(n)%LocalY
-        pCoord%LocalZ = this%LocBuffP%Items(n)%LocalZ
-        pCoord%TrackingTime = this%LocBuffP%Items(n)%TrackingTime
-        call this%Grid%ConvertToModelXYZ(pCoord%CellNumber, pCoord%LocalX, &
-          pCoord%LocalY, pCoord%LocalZ, pCoord%GlobalX, pCoord%GlobalY,    &
-          pCoord%GlobalZ)
-        call trackPathResult%ParticlePath%Pathline%AddItem(pCoord)
+      pCoord%CellNumber = this%LocBuffP%Items(n)%CellNumber
+      pCoord%Layer = this%LocBuffP%Items(n)%Layer
+      pCoord%LocalX = this%LocBuffP%Items(n)%LocalX
+      pCoord%LocalY = this%LocBuffP%Items(n)%LocalY
+      pCoord%LocalZ = this%LocBuffP%Items(n)%LocalZ
+      pCoord%TrackingTime = this%LocBuffP%Items(n)%TrackingTime
+      call this%Grid%ConvertToModelXYZ(pCoord%CellNumber, pCoord%LocalX, &
+        pCoord%LocalY, pCoord%LocalZ, pCoord%GlobalX, pCoord%GlobalY,    &
+        pCoord%GlobalZ)
+      call trackPathResult%ParticlePath%Pathline%AddItem(pCoord)
     end do
     
     do n = 1, this%LocBuffTS%GetItemCount()
-        pCoord%CellNumber = this%LocBuffTS%Items(n)%CellNumber
-        pCoord%Layer = this%LocBuffTS%Items(n)%Layer
-        pCoord%LocalX = this%LocBuffTS%Items(n)%LocalX
-        pCoord%LocalY = this%LocBuffTS%Items(n)%LocalY
-        pCoord%LocalZ = this%LocBuffTS%Items(n)%LocalZ
-        pCoord%TrackingTime = this%LocBuffTS%Items(n)%TrackingTime
-        call this%Grid%ConvertToModelXYZ(pCoord%CellNumber, pCoord%LocalX, &
-          pCoord%LocalY, pCoord%LocalZ, pCoord%GlobalX, pCoord%GlobalY,    &
-          pCoord%GlobalZ)
-        call trackPathResult%ParticlePath%Timeseries%AddItem(pCoord)
+      pCoord%CellNumber = this%LocBuffTS%Items(n)%CellNumber
+      pCoord%Layer = this%LocBuffTS%Items(n)%Layer
+      pCoord%LocalX = this%LocBuffTS%Items(n)%LocalX
+      pCoord%LocalY = this%LocBuffTS%Items(n)%LocalY
+      pCoord%LocalZ = this%LocBuffTS%Items(n)%LocalZ
+      pCoord%TrackingTime = this%LocBuffTS%Items(n)%TrackingTime
+      call this%Grid%ConvertToModelXYZ(pCoord%CellNumber, pCoord%LocalX, &
+        pCoord%LocalY, pCoord%LocalZ, pCoord%GlobalX, pCoord%GlobalY,    &
+        pCoord%GlobalZ)
+      call trackPathResult%ParticlePath%Timeseries%AddItem(pCoord)
     end do
   
 
