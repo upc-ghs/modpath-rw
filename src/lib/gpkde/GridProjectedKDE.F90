@@ -3318,6 +3318,8 @@ contains
       end if
       if ( locComputeRawDensity ) then 
         this%histogram%counts = this%histogram%counts/this%histogram%binVolume
+        if ( allocated( this%histogram%wcounts) )&
+          this%histogram%wcounts = this%histogram%wcounts/this%histogram%binVolume
       end if 
       return
     end if 
@@ -3493,6 +3495,8 @@ contains
     if ( locComputeRawDensity ) then 
       ! Histogram as raw density: histogram/binvolume
       this%histogram%counts = this%histogram%counts/this%histogram%binVolume
+      if ( allocated( this%histogram%wcounts) )&
+        this%histogram%wcounts = this%histogram%wcounts/this%histogram%binVolume
     end if 
     if ( locUnitVolume ) then  
       ! If unit volume, modify 

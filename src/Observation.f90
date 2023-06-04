@@ -24,6 +24,12 @@ module ObservationModule
     character(len=200)                 :: recOutputFileName
     integer                            :: auxOutputUnit
     character(len=200)                 :: auxOutputFileName
+    ! Reconstruction params
+    integer :: effectiveWeightFormat    = 0
+    doubleprecision :: binSizeFactor    = 3d0
+    integer :: initialSmoothingFormat   = 0
+    integer :: nOptLoops                = 10
+    doubleprecision :: errorConvergence = 0.01d0 
   end type
 
 

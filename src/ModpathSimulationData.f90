@@ -1357,6 +1357,74 @@ contains
           obs%postprocessOption = n 
         end if 
 
+        if ( obs%doPostprocess ) then
+          ! interpret reconstruction options 
+          call urword(line, icol, istart, istop, 2, n, r, 0, 0)
+          select case(n)
+          case(1)
+            write(outUnit,'(a)') 'Interpret reconstruction parameters for the observation.'
+            ! Read opt loops
+            read(obsUnit, '(a)', iostat=ioInUnit) line
+            icol = 1
+            call urword(line, icol, istart, istop, 2, n, r, 0, 0)
+            if (n.ge.0) then
+              obs%nOptLoops = n  
+            else
+              obs%nOptLoops = 10 
+              write(outUnit,'(a,I3)') 'Invalid number of optimization loops, will default to ', obs%nOptLoops
+            end if 
+
+            ! Error convergence
+            call urword(line, icol, istart, istop, 3, n, r, 0, 0)
+            if (r.gt.0) then
+              obs%errorConvergence = r
+            else 
+              obs%errorConvergence = 0.01d0
+              write(outUnit,'(a,es18.9e3)') 'Invalid error convergence, will default to ', obs%nOptLoops
+            end if
+ 
+            ! initialsmoothingformat
+            read(obsUnit, '(a)', iostat=ioInUnit) line
+            icol = 1
+            call urword(line, icol, istart, istop, 2, n, r, 0, 0)
+            select case(n)
+            case(0)
+              obs%initialSmoothingFormat = n
+            case(1)
+              obs%initialSmoothingFormat = n
+            case default
+              obs%initialSmoothingFormat = 0
+              write(outUnit,'(a,I3)') 'Invalid smoothing format will default to ', obs%initialSmoothingFormat
+            end select
+
+            ! read bin size factor
+            if ( obs%initialSmoothingFormat.eq.1) then 
+              call urword(line, icol, istart, istop, 3, n, r, 0, 0)
+              if ( r.gt.0d0 ) then 
+                obs%binSizeFactor = r
+              else
+                obs%binSizeFactor = 3d0
+                write(outUnit,'(a,es18.9e3)') 'Bin size factor will default to ', obs%binSizeFactor
+              end if 
+            end if
+
+            ! effectiveweightformat
+            read(obsUnit, '(a)', iostat=ioInUnit) line
+            icol = 1
+            call urword(line, icol, istart, istop, 2, n, r, 0, 0)
+            select case(n)
+            case(0,1,2,3)
+              obs%effectiveWeightFormat = n
+            case default
+              write(outUnit,'(a,I3)') 'Invalid effective weight format will default to ', obs%effectiveWeightFormat
+            end select
+
+          case default
+            write(outUnit,'(A)') 'Will not interpret reconstruction parameters for observation.' 
+          end select
+
+        end if 
+
         ! Assign output units, according to 
         ! obs output option
         select case ( obs%outputOption )

@@ -1798,11 +1798,14 @@ program MPathRW
         ! Note: if spatial gpkde was given, it will preserve
         ! the number of loops given in the package
         call gpkde%Initialize(& 
-            (/simulationData%TimePoints(obs%nAuxRecords),0d0,0d0/),            &
-            (/dtObsSeries,0d0,0d0/),                                           &
-            domainOrigin=(/0d0,0d0,0d0/),                                      &
-            nOptimizationLoops=simulationData%TrackingOptions%gpkdeNOptLoops,  & 
-            databaseOptimization=.false.,                                      &
+            (/simulationData%TimePoints(obs%nAuxRecords),0d0,0d0/), &
+            (/dtObsSeries,0d0,0d0/),                                &
+            domainOrigin=(/0d0,0d0,0d0/),                           &
+            nOptimizationLoops=obs%nOptLoops,                       &
+            databaseOptimization=.false.,                           &
+            initialSmoothingSelection=obs%initialSmoothingFormat,   & 
+            initialSmoothingFactor=obs%binSizeFactor,               & 
+            effectiveWeightFormat=obs%effectiveWeightFormat,        & 
             outFileName=mplistFile &
         )
 
@@ -1868,7 +1871,13 @@ program MPathRW
               onlyHistogram     = .true.,   &
               weightedHistogram = .true.,   &
               weights = gpkdeWeightsCarrier )
-            BTCHistPerSolute(:,ns) = gpkde%histogram%counts(:,1,1)
+            ! histogram
+            select case(gpkde%histogram%effectiveWeightFormat)
+            case(2,3)
+              BTCHistPerSolute(:,ns)  = gpkde%histogram%wcounts(:,1,1)
+            case default
+              BTCHistPerSolute(:,ns)  = gpkde%histogram%counts(:,1,1)
+            end select
           case(1)
             ! Timeseries reconstruction    
             call gpkde%ComputeDensity(      &
@@ -1876,8 +1885,17 @@ program MPathRW
               exactPoint        = .true.,   & ! for res obs, time is exactly the bin boundary
               unitVolume        = .true.,   &
               weightedHistogram = .true.,   &
-              weights = gpkdeWeightsCarrier )
-            BTCHistPerSolute(:,ns)  = gpkde%histogram%counts(:,1,1)
+              weights = gpkdeWeightsCarrier,& 
+              relativeErrorConvergence=obs%errorConvergence & 
+            )
+            ! histogram
+            select case(gpkde%histogram%effectiveWeightFormat)
+            case(2,3)
+              BTCHistPerSolute(:,ns)  = gpkde%histogram%wcounts(:,1,1)
+            case default
+              BTCHistPerSolute(:,ns)  = gpkde%histogram%counts(:,1,1)
+            end select
+            ! smoothed
             BTCGpkdePerSolute(:,ns) = gpkde%densityEstimateGrid(:,1,1)
           end select
 
@@ -2040,13 +2058,15 @@ program MPathRW
 
         ! Initialize gpkde for timeseries reconstruction
         call gpkde%Initialize(& 
-            (/simulationData%TimePoints(obs%nAuxRecords),0d0,0d0/),            &
-            (/dtObsSeries,0d0,0d0/),                                           &
-            domainOrigin=(/0d0,0d0,0d0/),                                      &
-            nOptimizationLoops=simulationData%TrackingOptions%gpkdeNOptLoops,  &
-            databaseOptimization=.false.,                                      &
-            effectiveWeightFormat = 0,  & ! CHANGE THIS
-            outFileName=mplistFile      &
+            (/simulationData%TimePoints(obs%nAuxRecords),0d0,0d0/), &
+            (/dtObsSeries,0d0,0d0/),                                &
+            domainOrigin=(/0d0,0d0,0d0/),                           &
+            nOptimizationLoops=obs%nOptLoops,                       &
+            databaseOptimization=.false.,                           &
+            initialSmoothingSelection=obs%initialSmoothingFormat,   & 
+            initialSmoothingFactor=obs%binSizeFactor,               & 
+            effectiveWeightFormat=obs%effectiveWeightFormat,        & 
+            outFileName=mplistFile                                  &
         )
 
         ! Allocate according to postprocess option 
@@ -2112,7 +2132,13 @@ program MPathRW
               computeRawDensity = .true.,   &
               weightedHistogram = .true.,   &
               weights = gpkdeWeightsCarrier )
-            BTCHistPerSolute(:,ns) = gpkde%histogram%counts(:,1,1)
+            ! histogram
+            select case(gpkde%histogram%effectiveWeightFormat)
+            case(2,3)
+              BTCHistPerSolute(:,ns)  = gpkde%histogram%wcounts(:,1,1)
+            case default
+              BTCHistPerSolute(:,ns)  = gpkde%histogram%counts(:,1,1)
+            end select
           case(1)
             ! Timeseries reconstruction    
             call gpkde%ComputeDensity(      &
@@ -2120,9 +2146,16 @@ program MPathRW
               computeRawDensity = .true.,   &
               weightedHistogram = .true.,   &
               weights = gpkdeWeightsCarrier,& 
-              relativeErrorConvergence=0.01d0 & ! CHANGE THIS
+              relativeErrorConvergence=obs%errorConvergence & 
             )
-            BTCHistPerSolute(:,ns)  = gpkde%histogram%counts(:,1,1)
+            ! histogram
+            select case(gpkde%histogram%effectiveWeightFormat)
+            case(2,3)
+              BTCHistPerSolute(:,ns)  = gpkde%histogram%wcounts(:,1,1)
+            case default
+              BTCHistPerSolute(:,ns)  = gpkde%histogram%counts(:,1,1)
+            end select
+            ! smoothed
             BTCGpkdePerSolute(:,ns) = gpkde%densityEstimateGrid(:,1,1)
           end select
         end do ! ns=1, transportModelData%nSolutes 
