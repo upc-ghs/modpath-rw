@@ -49,6 +49,7 @@ module HistogramModule
     procedure :: ComputeCountsAndWeights          => prComputeCountsAndWeights
     procedure :: ComputeEffectiveCountsAndWeights => prComputeEffectiveCountsAndWeights
     procedure :: ComputeActiveBinIds              => prComputeActiveBinIds
+    procedure :: ComputeActiveBinIdsSliced        => prComputeActiveBinIdsSliced
   end type 
 
 ! HistogramModule contains
@@ -56,7 +57,7 @@ contains
 
   subroutine prInitialize( this, & 
         domainGridSize, binSize, & 
-    dimensionMask, domainOrigin, & 
+                   domainOrigin, & 
               adaptGridToCoords  )
     !------------------------------------------------------------------------------
     !
@@ -67,8 +68,8 @@ contains
     class(HistogramType), target                 :: this
     integer , dimension(3), intent(in)           :: domainGridSize
     real(fp), dimension(3), intent(in)           :: binSize
-    integer , dimension(3), intent(in), optional :: dimensionMask
-    integer , dimension(3)                       :: locDimensionMask
+    !integer , dimension(3), intent(in), optional :: dimensionMask
+    !integer , dimension(3)                       :: locDimensionMask
     real(fp), dimension(3), intent(in), optional :: domainOrigin
     logical ,               intent(in), optional :: adaptGridToCoords
     integer :: nd, dcount
@@ -87,11 +88,11 @@ contains
     end if
 
     ! dimensionMask
-    if( present(dimensionMask) ) then 
-      locDimensionMask = dimensionMask
-    else
-      locDimensionMask = (/1,1,1/)
-    end if
+    !if( present(dimensionMask) ) then 
+    !  locDimensionMask = dimensionMask
+    !else
+    !  locDimensionMask = (/1,1,1/)
+    !end if
 
     ! Allocate grid with nBins ? 
     if( present(adaptGridToCoords) ) then 
@@ -126,20 +127,20 @@ contains
     if ( present( domainOrigin ) ) then 
       this%domainOrigin = domainOrigin
     else 
-      this%domainOrigin = 0 
+      this%domainOrigin = fZERO 
     end if
 
     ! Initialize variables
     this%domainGridSize = domainGridSize
     this%binSize        = binSize
     this%binVolume      = product( binSize, mask=(binSize.gt.fZERO) ) 
-    this%binDistance    = ( this%binVolume )**(fONE/this%nDim)
+    this%binDistance    = ( this%binVolume )**(fONE/real(this%nDim,fp))
 
     ! Allocate and initialize histogram counts, 
     ! if not adapting to the particle distribution follows the domain grid. 
     if ( .not. this%adaptGridToCoords ) then 
       allocate( this%counts( domainGridSize(1), domainGridSize(2), domainGridSize(3) ) )
-      this%counts   = 0
+      this%counts   = fZERO
       this%origin   => this%domainOrigin
       this%nBins    => this%domainGridSize
       this%gridSize = this%domainGridSize
@@ -505,6 +506,79 @@ contains
 
 
   end subroutine prComputeActiveBinIds
+
+
+  subroutine prComputeActiveBinIdsSliced( this, slicedDimension, sliceIndex )
+  !------------------------------------------------------------------------------
+  !
+  !------------------------------------------------------------------------------
+  ! Specifications 
+  !------------------------------------------------------------------------------
+  implicit none 
+  class(HistogramType) :: this
+  integer, intent(in)  :: slicedDimension
+  integer, intent(in)  :: sliceIndex
+  integer              :: ix, iy, iz
+  integer              :: icount = 1 
+  !------------------------------------------------------------------------------
+
+    ! Reset icount
+    icount = 1
+
+    if ( ( slicedDimension.lt.1 ).or.( slicedDimension.gt.3 ) ) then 
+      write(*,*)'Error: while computing sliced active bins, invalid sliced dimension.'
+      stop 
+    end if
+    if ( ( sliceIndex.le.0 ).or.( sliceIndex.gt.this%nBins(slicedDimension) ) ) then 
+      write(*,*)'Error: while computing sliced active bins, invalid slice index.'
+      stop 
+    end if
+
+    ! Compute active bins on a slice
+    select case(slicedDimension)
+    case(3)
+      this%nActiveBins = count( this%counts(:,:,sliceIndex)/=fZERO )
+      ! Reallocate activeBinIds to new size 
+      if ( allocated( this%activeBinIds ) )  deallocate( this%activeBinIds )
+      allocate( this%activeBinIds( 3, this%nActiveBins ) )
+      ! Following column-major nesting
+      do iy = 1, this%nBins(2)
+        do ix = 1, this%nBins(1)
+          if ( this%counts( ix, iy, sliceIndex ) .eq. fZERO ) cycle
+          this%activeBinIds( :, icount ) = [ ix, iy, 1 ]
+          icount = icount + 1
+        end do
+      end do
+    case(2)
+      this%nActiveBins = count( this%counts(:,sliceIndex,:)/=fZERO )
+      ! Reallocate activeBinIds to new size 
+      if ( allocated( this%activeBinIds ) )  deallocate( this%activeBinIds )
+      allocate( this%activeBinIds( 3, this%nActiveBins ) )
+      ! Following column-major nesting
+      do iz = 1, this%nBins(3)
+        do ix = 1, this%nBins(1)
+          if ( this%counts( ix, sliceIndex, iz ) .eq. fZERO ) cycle
+          this%activeBinIds( :, icount ) = [ ix, 1, iz ]
+          icount = icount + 1
+        end do
+      end do
+    case(1)
+      this%nActiveBins = count( this%counts(sliceIndex,:,:)/=fZERO )
+      ! Reallocate activeBinIds to new size 
+      if ( allocated( this%activeBinIds ) )  deallocate( this%activeBinIds )
+      allocate( this%activeBinIds( 3, this%nActiveBins ) )
+      ! Following column-major nesting
+      do iz = 1, this%nBins(3)
+        do iy = 1, this%nBins(2)
+          if ( this%counts( sliceIndex, iy, iz ) .eq. fZERO ) cycle
+          this%activeBinIds( :, icount ) = [ 1, iy, iz ]
+          icount = icount + 1
+        end do
+      end do
+    end select
+
+
+  end subroutine prComputeActiveBinIdsSliced
 
 
 end module HistogramModule
