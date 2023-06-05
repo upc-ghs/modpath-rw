@@ -953,6 +953,45 @@ contains
       this%TrackingOptions%gpkdeBinVolume = product(&
           this%TrackingOptions%gpkdeBinSize, mask=this%TrackingOptions%gpkdeBinSize.ne.0d0)
 
+      ! Read if sliced reconstruction
+      read(gpkdeUnit, '(a)') line
+      icol = 1
+      call urword(line, icol, istart, istop, 2, n, r, 0, 0)
+      select case(n)
+      case(1)
+        this%TrackingOptions%gpkdeSlicedReconstruction = .true.
+      case default
+        this%TrackingOptions%gpkdeSlicedReconstruction = .false.
+      end select
+
+      ! Read the sliced dimension
+      if ( this%TrackingOptions%gpkdeSlicedReconstruction ) then
+        call urword(line, icol, istart, istop, 2, n, r, 0, 0)
+        if ( n.gt.0 ) then 
+          select case(n)
+          case(1,2,3)
+            this%TrackingOptions%gpkdeSlicedDimension = n
+          case default
+            ! disable
+            this%TrackingOptions%gpkdeSlicedDimension = 0
+            this%TrackingOptions%gpkdeSlicedReconstruction = .false.
+          end select
+        else if (n.eq.0) then
+          ! default to dimension z 
+          this%TrackingOptions%gpkdeSlicedDimension = 3
+        else
+          ! disable
+          this%TrackingOptions%gpkdeSlicedDimension = 0
+          this%TrackingOptions%gpkdeSlicedReconstruction = .false.
+        end if 
+      end if 
+      if ( this%TrackingOptions%gpkdeSlicedReconstruction ) then 
+        write(outUnit,'(A,I2,A)') 'Reconstruction is configured to be sliced in dimension ', &
+                this%TrackingOptions%gpkdeSlicedDimension, ' if possible.' 
+      else
+        write(outUnit,'(A)') 'Reconstruction is not specifically sliced.'
+      end if 
+
       ! Read nOptimizationLoops
       read(gpkdeUnit, '(a)') line
       icol = 1

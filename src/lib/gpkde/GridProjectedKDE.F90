@@ -37,7 +37,7 @@ module GridProjectedKDEModule
   integer  , parameter :: defaultMinRoughnessFormat              = 3
   integer  , parameter :: defaultEffectiveWeightFormat           = 0
   integer  , parameter :: defaultBoundKernelSizeFormat           = 0
-  real(fp) , parameter :: defaultIsotropicThreshold              = 0.9_fp
+  real(fp) , parameter :: defaultIsotropicThreshold              = 0.85_fp
   logical  , parameter :: defaultUseGlobalSmoothing              = .false.
   real(fp) , parameter :: defaultMinSizeFactor                   = 1.2_fp
   real(fp) , parameter :: defaultMaxSizeFactor                   = 0.5_fp 
@@ -3547,7 +3547,6 @@ contains
 
       ! Loop over slices
       do sliceId=1,this%histogram%nBins(this%slicedDimension)
-
         ! Active bin ids for this slice
         call this%histogram%ComputeActiveBinIdsSliced(this%slicedDimension, sliceId)
         this%computeBinIds => this%histogram%activeBinIds
@@ -3841,10 +3840,10 @@ contains
        if ( allocated( this%histogram%wcounts ) ) then
          ! Forgive and hope for the best
          this%histogramWCounts => this%histogram%wcounts
+       else
+        write(*,*)'Error: histogram weight counts pointer is not associated and wcounts not allocated. Stop.'
+        stop
        end if 
-      else
-       write(*,*)'Error: histogram weight counts pointer is not associated and wcounts not allocated. Stop.'
-       stop
       end if 
      end select
     end if 
