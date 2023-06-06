@@ -1939,7 +1939,7 @@ contains
     doubleprecision :: cellDissolvedMass, totalDissolvedMass
     doubleprecision :: cellVolume,sX,sY,sZ,nPX,nPY,nPZ
     doubleprecision :: nParticlesCell
-    doubleprecision, parameter :: nParticlesCellMin = 0.25 
+    doubleprecision, parameter :: nParticlesCellMin = 0.5 
     integer :: totalParticleCount, seqNumber, idmax, particleCount
     integer :: iNPX,iNPY,iNPZ,NPCELL
     integer :: validCellCounter, cellCounter, cellNumber

@@ -974,6 +974,11 @@ program MPathRW
        ( .not. simulationData%TrackingOptions%gpkdeSkipInitialCondition ) ) then 
       call ulog('GPKDE reconstruction for the initial condition', logUnit)
 
+      write(mplistUnit,*) 
+      write(mplistUnit,'(a)')         '------------------------------------------------------------'
+      write(mplistUnit,'(a,es18.9e3)')' GPKDE reconstruction for tracking time: ', 0d0
+      write(mplistUnit,'(a)')         '------------------------------------------------------------'
+
       do ns=1,transportModelData%nSolutes
 
         solute => transportModelData%Solutes(ns)
@@ -1070,7 +1075,6 @@ program MPathRW
   itcount = 0
   call ulog('Begin TRACKING_INTERVAL_LOOP', logUnit)
   TRACKING_INTERVAL_LOOP: do while (itend .eq. 0)
-  !print *, '-----------------------', itcount
   itcount = itcount + 1
   itend = 1
   maxTime = tsMax
