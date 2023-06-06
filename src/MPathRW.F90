@@ -474,8 +474,6 @@ program MPathRW
       if(simulationData%StopTime .lt. stoptime) stoptime = simulationData%StopTime
     end if
   end if
-  write(mplistUnit, '(1x/a,e15.7)')                       &
-    'The simulation will be run with stoptime = ', stoptime
 
   if ( simulationData%TrackingOptions%RandomWalkParticleTracking ) then 
     ! Transfer flag from basicData to indicate 
@@ -565,7 +563,9 @@ program MPathRW
      initialSmoothingSelection=simulationData%TrackingOptions%gpkdeInitialSmoothingFormat,&
      initialSmoothingFactor=simulationData%TrackingOptions%gpkdeBinSizeFactor,            &
      effectiveWeightFormat=simulationData%TrackingOptions%gpkdeEffectiveWeightFormat,     & 
-     boundKernelSizeFormat=simulationData%TrackingOptions%gpkdeBoundKernelSize,           & 
+     boundKernelSizeFormat=simulationData%TrackingOptions%gpkdeBoundKernelSize,           &
+     slicedReconstruction=simulationData%TrackingOptions%gpkdeSlicedReconstruction,       & 
+     slicedDimension=simulationData%TrackingOptions%gpkdeSlicedDimension,                 & 
      outFileName=mplistFile                                                               &
     )
 
@@ -588,12 +588,6 @@ program MPathRW
   if ( testinit ) then
     call ustop( 'Simulation successfully initialized. Stop due to --init option.')
   end if 
-
-  write(*,*)
-  write(*,'(A)') 'Run particle tracking simulation ...'    
-  write(mplistUnit, *)
-  write(mplistUnit, *)
-  write(mplistUnit,'(1X,A)') 'Run particle tracking simulation ...'
 
   ! Allocate tPoint array
   tPointCount = 0
@@ -824,6 +818,15 @@ program MPathRW
     obsRecordCounter(:) = 0
   end if 
 
+  ! Report stoptime
+  write(mplistUnit, '(1x/a,e15.7)') &
+    'The simulation will be run with stoptime = ', stoptime
+
+  write(*,*)
+  write(*,'(A)') 'Run particle tracking simulation ...'    
+  write(mplistUnit, *)
+  write(mplistUnit, *)
+  write(mplistUnit,'(1X,A)') 'Run particle tracking simulation ...'
 
   ! Begin time step loop !
   pathlineRecordCount = 0
@@ -1041,15 +1044,21 @@ program MPathRW
          weights=activeParticleMasses,                                                     &
          scalingFactor=simulationData%TrackingOptions%gpkdeScalingFactor,                  & ! transform to resident
          histogramScalingFactor=simulationData%TrackingOptions%gpkdeScalingFactor,         &
-         isotropic=simulationData%TrackingOptions%gpkdeIsotropicKernelsIC,                 &
+         isotropic=simulationData%TrackingOptions%gpkdeIsotropicKernels,                   &
+         !isotropic=simulationData%TrackingOptions%gpkdeIsotropicKernelsIC,                 &
          skipErrorConvergence=simulationData%TrackingOptions%gpkdeSkipError,               &
          relativeErrorConvergence=simulationData%TrackingOptions%gpkdeRelErrorConvergence  &
         )
-
       end do 
     end if ! simulationData%TrackingOptions%GPKDEReconstruction and not skip
   end if ! write initial conditions for timeseries run
 
+  ! If for any reason the given stoptime is .le. 0d0, then 
+  ! do not track particles. Might be useful for exploring IC's
+  if ( stoptime .le. 0d0 ) then
+    write(mplistUnit, '(1x/a)') 'Stop the simulation due to less or equal than zero stoptime.'
+    call ustop( 'Stop the simulation due to less or equal than zero stoptime.' )
+  end if 
 
   ! TRACKING_INTERVAL_LOOP: 
   ! Loop through all the required time points that fall within the
@@ -1678,9 +1687,11 @@ program MPathRW
   call system_clock(clockCountStop, clockCountRate, clockCountMax)
   
   ! Write endpoint file
-  if(simulationData%ParticleGroupCount .gt. 0) then
+  if ( simulationData%EndpointOutputOption .ne. 2 ) then 
+    if(simulationData%ParticleGroupCount .gt. 0) then
       call ulog('Write endpoint file.', logUnit)
       call WriteEndpointFile(simulationData, modelGrid, geoRef, endpointUnit)
+    end if
   end if
   
   ! Finalize and process binary pathline file if pathline format option = 1

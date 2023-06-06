@@ -58,6 +58,8 @@ module ParticleTrackingOptionsModule
     integer                       :: gpkdeTimePointOption
     integer                       :: gpkdeTimePointCount
     logical                       :: gpkdeSkipInitialCondition = .false.
+    logical                       :: gpkdeSlicedReconstruction = .false.
+    integer                       :: gpkdeSlicedDimension = 3
     doubleprecision, dimension(:), allocatable :: gpkdeTimePoints
      
     ! TimeseriesOutputOption

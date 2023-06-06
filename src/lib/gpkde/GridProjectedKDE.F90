@@ -37,7 +37,7 @@ module GridProjectedKDEModule
   integer  , parameter :: defaultMinRoughnessFormat              = 3
   integer  , parameter :: defaultEffectiveWeightFormat           = 0
   integer  , parameter :: defaultBoundKernelSizeFormat           = 0
-  real(fp) , parameter :: defaultIsotropicThreshold              = 0.9_fp
+  real(fp) , parameter :: defaultIsotropicThreshold              = 0.85_fp
   logical  , parameter :: defaultUseGlobalSmoothing              = .false.
   real(fp) , parameter :: defaultMinSizeFactor                   = 1.2_fp
   real(fp) , parameter :: defaultMaxSizeFactor                   = 0.5_fp 
@@ -69,7 +69,7 @@ module GridProjectedKDEModule
   real(fp) , dimension(:)    , allocatable, target   :: roughnessYYArray
   real(fp) , dimension(:)    , allocatable, target   :: roughnessZZArray
   real(fp) , dimension(:)    , allocatable           :: netRoughnessArray
-  type(GridCellType), dimension(:), allocatable, target   :: activeGridCellsMod
+  type(GridCellType), dimension(:), allocatable, target :: activeGridCellsMod
   
   ! Main object
   type, public :: GridProjectedKDEType
@@ -101,6 +101,8 @@ module GridProjectedKDEModule
     integer , dimension(3) :: nBins
     logical                :: adaptGridToCoords
     real(fp)               :: borderFraction
+    logical                :: slicedReconstruction 
+    integer                :: slicedDimension
 
     ! Variables
     real(fp), dimension(:,:,:), pointer :: densityEstimateGrid
@@ -169,10 +171,12 @@ module GridProjectedKDEModule
     real(fp) :: betaDimensionConstant
     
     ! Bins to compute
-    integer, dimension(:,:), pointer :: computeBinIds
-    integer                          :: nComputeBins = 0
-    character( len=300 )             :: outputFileName 
-    
+    integer, dimension(:,:), pointer    :: computeBinIds
+    integer                             :: nComputeBins = 0
+    character( len=300 )                :: outputFileName 
+    real(fp), dimension(:,:,:), pointer :: histogramCounts  => null()
+    real(fp), dimension(:,:,:), pointer :: histogramWCounts => null()
+
     ! Interfaces
     procedure( SetKernelInterface )  , pass, pointer :: SetKernel      => null()
     procedure( SetKernelInterface )  , pass, pointer :: SetKernelSigma => null()
@@ -333,19 +337,22 @@ contains
   ! Some arguments candidates to be deprecated
   ! - logKernelDatabase
   subroutine prInitialize( this,& 
-     domainSize, binSize, domainOrigin, adaptGridToCoords, borderFraction, &
-      initialSmoothing, initialSmoothingFactor, initialSmoothingSelection, & 
-                                 nOptimizationLoops, databaseOptimization, &
-                            minHOverDelta, maxHOverDelta, deltaHOverDelta, &
-                                                        logKernelDatabase, &
-                                                  interpretAdvancedParams, &
-                                         minRoughnessFormat, minRoughness, & 
-                            minRelativeRoughness, minRoughnessLengthScale, &
-                                                    effectiveWeightFormat, & 
-                                                    boundKernelSizeFormat, & 
-                                                       isotropicThreshold, & 
-                                                           maxSigmaGrowth, & 
-                                                               outFileName )
+                domainSize, binSize, domainOrigin, &
+                adaptGridToCoords, borderFraction, & 
+            slicedReconstruction, slicedDimension, &
+                        initialSmoothingSelection, & 
+         initialSmoothing, initialSmoothingFactor, &
+         nOptimizationLoops, databaseOptimization, &
+    minHOverDelta, maxHOverDelta, deltaHOverDelta, &
+                                logKernelDatabase, &
+                          interpretAdvancedParams, &
+                 minRoughnessFormat, minRoughness, & 
+    minRelativeRoughness, minRoughnessLengthScale, &
+                            effectiveWeightFormat, & 
+                            boundKernelSizeFormat, & 
+                               isotropicThreshold, & 
+                                   maxSigmaGrowth, & 
+                                       outFileName )
     !---------------------------------------------------------------------------
     ! Initialize the module, assign default parameters,
     ! configures the reconstruction grid, module dimensions and others.
@@ -362,6 +369,9 @@ contains
     real(fp), dimension(3), intent(in), optional :: domainOrigin
     logical               , intent(in), optional :: adaptGridToCoords
     real(fp)              , intent(in), optional :: borderFraction
+    ! Sliced reconstruction
+    logical               , intent(in), optional :: slicedReconstruction
+    integer               , intent(in), optional :: slicedDimension
     ! Initial smoothing
     real(fp), dimension(3), intent(in), optional :: initialSmoothing
     real(fp)              , intent(in), optional :: initialSmoothingFactor
@@ -449,6 +459,30 @@ contains
     else 
       this%domainOrigin = (/0.0_fp,0.0_fp,0.0_fp/)
     end if
+    
+    ! Save slicing parameters
+    if ( present( slicedReconstruction ) ) then 
+      this%slicedReconstruction = slicedReconstruction
+    else 
+      this%slicedReconstruction = .false.
+    end if 
+    if ( this%slicedReconstruction ) then 
+      if ( present( slicedDimension ) ) then 
+        this%slicedDimension = slicedDimension
+      else 
+        this%slicedDimension = 0
+      end if
+      if ( (this%slicedDimension.lt.0).or.(this%slicedDimension.gt.3) ) then 
+        write(*,*) 'Error: invalid value for sliced dimension. It should be a valid dimension index. Stop.'
+        stop
+      end if 
+      ! disable sliced reconstruction
+      if ( this%slicedDimension.eq.0 ) then 
+        this%slicedReconstruction = .false.
+      end if  
+    else
+      this%slicedDimension = 0 
+    end if 
 
     ! Depending on domainGridSize, is the number of dimensions of the GPDKE
     ! reconstruction process. If any nBins is 1, then that dimension
@@ -461,6 +495,7 @@ contains
     ! and compared against the origin.
 
     ! Initialize module dimensions
+    ! Will modify the number of dimensions based on slicing parameters and report.
     call this%InitializeModuleDimensions( nDim, dimensionMask ) 
 
     ! Initialize module constants, uses nDim
@@ -470,13 +505,12 @@ contains
       write( this%outFileUnit, '(2X,A)' ) 'Initializing Histogram'
     end if
 
-    ! Initialize histogram, requires dimension mask !
+    ! Initialize histogram !
     if ( this%adaptGridToCoords ) then
       ! Skip histogram grid allocation in order 
       ! to adapt to the given particle coordinates 
       call this%histogram%Initialize( &
        this%domainGridSize, this%binSize, &
-             dimensionMask=dimensionMask, & 
           domainOrigin=this%domainOrigin, &
                  adaptGridToCoords=.true. )
       if ( this%reportToOutUnit ) then 
@@ -486,7 +520,6 @@ contains
       ! Allocate grid according to nBins
       call this%histogram%Initialize( &
        this%domainGridSize, this%binSize, &
-             dimensionMask=dimensionMask, & 
            domainOrigin=this%domainOrigin )
       ! nBins as domainGridSize
       this%nBins = this%domainGridSize
@@ -503,7 +536,7 @@ contains
       write( this%outFileUnit, '(3X,A,I1,A)')&
               'Will compute Histogram considering ', this%histogram%nDim, ' dimensions.'
     end if  
-    
+
     ! Process further arguments !
 
     ! initialSmoothing
@@ -533,12 +566,12 @@ contains
       write(*,*) 'Error: Initial smoothing selection method not implemented. Stop.'
       stop
     end select
-    !HARACTER(LEN=30) :: rowfmt
     do nd=1,3
       if ( dimensionMask(nd) .eq. 0 ) then 
         this%initialSmoothing(nd) = fZERO
       end if 
     end do
+
     ! nOptimizationLoops
     if ( present( nOptimizationLoops ) ) then 
       this%nOptimizationLoops = nOptimizationLoops
@@ -891,6 +924,8 @@ contains
     this%ComputeKernelDatabaseIndexes      => null()
     this%ComputeKernelDatabaseFlatIndexes  => null()
 
+    if ( associated(this%histogramCounts)  ) this%histogramCounts  => null()
+    if ( associated(this%histogramWCounts) ) this%histogramWCounts => null()
 
   end subroutine prReset
 
@@ -1004,6 +1039,43 @@ contains
       write(*,*) 'Error while initializing GPKDE dimensions. nDim .le. 0. Stop.'
       stop
     end if 
+
+    ! Now, contrast the dimensionality information with 
+    ! parameters for sliced reconstruction 
+    if ( (nDim.eq.1).and.(this%slicedReconstruction) ) then 
+      if ( this%reportToOutUnit ) then 
+        write( this%outFileUnit, '(1X,A)' ) 'Number of dimensions is 1. Will ignore sliced reconstruction parameters.'
+      end if 
+      this%slicedReconstruction = .false.
+      this%slicedDimension = 0
+    end if 
+
+    ! If remained as true, slicedDimension was a valid index.
+    ! Verify that the dimension is active
+    if ( this%slicedReconstruction ) then
+      if ( this%dimensionMask(this%slicedDimension).eq.0 ) then 
+        if ( this%reportToOutUnit ) then 
+         write( this%outFileUnit, '(1X,A)' ) 'Sliced dimension is inactive for kernels, will ignore sliced reconstruction.'
+        end if 
+        this%slicedReconstruction = .false.
+        this%slicedDimension = 0
+      end if 
+    end if 
+
+    ! If remained as true, then the slicing dimension is 
+    ! active. Substract one to the number of dimensions 
+    ! and modify dimension mask to make it "inactive" (compress kernels).
+    if ( this%slicedReconstruction ) then
+      dimensionMask(this%slicedDimension) = 0
+      nDim  = sum(dimensionMask)
+      fNDim = real(nDim,fp)
+      this%dimensionMask = dimensionMask
+      if ( this%reportToOutUnit ) then 
+        write( this%outFileUnit, '(1X,A,I2)' ) 'Reconstruction is sliced in dimension ', this%slicedDimension 
+      end if
+    end if 
+    ! Downstream this point, the initialization of kernels, dimensions 
+    ! and constants, is consistent for the purposes of sliced reconstruction.
 
     ! Initialize dimensions in kernel module
     call InitializeKernelDimensions(dimensionMask)
@@ -1222,7 +1294,8 @@ contains
                   gc%kernelSDXGSpan(1):gc%kernelSDXGSpan(2), &
                   gc%kernelSDYGSpan(1):gc%kernelSDYGSpan(2), & 
                   gc%kernelSDZGSpan(1):gc%kernelSDZGSpan(2)  & 
-              ) + this%histogram%counts(                             &
+              ) + this%histogramCounts(                             &
+              !) + this%histogram%counts(                             &
                    gc%id(1), gc%id(2), gc%id(3) )*gc%kernelSD1Matrix(&
                           gc%kernelSDXMSpan(1):gc%kernelSDXMSpan(2), &
                           gc%kernelSDYMSpan(1):gc%kernelSDYMSpan(2), & 
@@ -1262,7 +1335,8 @@ contains
                   gc%kernelSDXGSpan(1):gc%kernelSDXGSpan(2), &
                   gc%kernelSDYGSpan(1):gc%kernelSDYGSpan(2), & 
                   gc%kernelSDZGSpan(1):gc%kernelSDZGSpan(2)  & 
-              ) + this%histogram%counts(                             &
+              ) + this%histogramCounts(                             &
+              !) + this%histogram%counts(                             &
                    gc%id(1), gc%id(2), gc%id(3) )*gc%kernelSD1Matrix(&
                           gc%kernelSDXMSpan(1):gc%kernelSDXMSpan(2), &
                           gc%kernelSDYMSpan(1):gc%kernelSDYMSpan(2), & 
@@ -1302,7 +1376,8 @@ contains
                   gc%kernelSDXGSpan(1):gc%kernelSDXGSpan(2), &
                   gc%kernelSDYGSpan(1):gc%kernelSDYGSpan(2), & 
                   gc%kernelSDZGSpan(1):gc%kernelSDZGSpan(2)  & 
-              ) + this%histogram%counts(                             &
+              ) + this%histogramCounts(                             &
+              !) + this%histogram%counts(                             &
                    gc%id(1), gc%id(2), gc%id(3) )*gc%kernelSD1Matrix(&
                           gc%kernelSDXMSpan(1):gc%kernelSDXMSpan(2), &
                           gc%kernelSDYMSpan(1):gc%kernelSDYMSpan(2), & 
@@ -1470,7 +1545,8 @@ contains
                 gc%kernelSD1XGSpan(1):gc%kernelSD1XGSpan(2), &
                 gc%kernelSD1YGSpan(1):gc%kernelSD1YGSpan(2), & 
                 gc%kernelSD1ZGSpan(1):gc%kernelSD1ZGSpan(2)  & 
-            ) + this%histogram%counts(                               &
+            ) + this%histogramCounts(                                &
+            !) + this%histogram%counts(                               &
                    gc%id(1), gc%id(2), gc%id(3) )*gc%kernelSD1Matrix(&
                         gc%kernelSD1XMSpan(1):gc%kernelSD1XMSpan(2), &
                         gc%kernelSD1YMSpan(1):gc%kernelSD1YMSpan(2), & 
@@ -1485,7 +1561,8 @@ contains
                 gc%kernelSD2XGSpan(1):gc%kernelSD2XGSpan(2), &
                 gc%kernelSD2YGSpan(1):gc%kernelSD2YGSpan(2), & 
                 gc%kernelSD2ZGSpan(1):gc%kernelSD2ZGSpan(2)  & 
-            ) + this%histogram%counts(                               &
+            ) + this%histogramCounts(                                &
+            !) + this%histogram%counts(                               &
                    gc%id(1), gc%id(2), gc%id(3) )*gc%kernelSD2Matrix(&
                         gc%kernelSD2XMSpan(1):gc%kernelSD2XMSpan(2), &
                         gc%kernelSD2YMSpan(1):gc%kernelSD2YMSpan(2), & 
@@ -1528,7 +1605,8 @@ contains
                 gc%kernelSD1XGSpan(1):gc%kernelSD1XGSpan(2), &
                 gc%kernelSD1YGSpan(1):gc%kernelSD1YGSpan(2), & 
                 gc%kernelSD1ZGSpan(1):gc%kernelSD1ZGSpan(2)  & 
-            ) + this%histogram%counts(                               &
+            ) + this%histogramCounts(                                &
+            !) + this%histogram%counts(                               &
                    gc%id(1), gc%id(2), gc%id(3) )*gc%kernelSD1Matrix(&
                         gc%kernelSD1XMSpan(1):gc%kernelSD1XMSpan(2), &
                         gc%kernelSD1YMSpan(1):gc%kernelSD1YMSpan(2), & 
@@ -1543,7 +1621,8 @@ contains
                 gc%kernelSD2XGSpan(1):gc%kernelSD2XGSpan(2), &
                 gc%kernelSD2YGSpan(1):gc%kernelSD2YGSpan(2), & 
                 gc%kernelSD2ZGSpan(1):gc%kernelSD2ZGSpan(2)  & 
-            ) + this%histogram%counts(                               &
+            ) + this%histogramCounts(                                &
+            !) + this%histogram%counts(                               &
                    gc%id(1), gc%id(2), gc%id(3) )*gc%kernelSD2Matrix(&
                         gc%kernelSD2XMSpan(1):gc%kernelSD2XMSpan(2), &
                         gc%kernelSD2YMSpan(1):gc%kernelSD2YMSpan(2), & 
@@ -1586,7 +1665,8 @@ contains
                 gc%kernelSD1XGSpan(1):gc%kernelSD1XGSpan(2), &
                 gc%kernelSD1YGSpan(1):gc%kernelSD1YGSpan(2), & 
                 gc%kernelSD1ZGSpan(1):gc%kernelSD1ZGSpan(2)  & 
-            ) + this%histogram%counts(                               &
+            ) + this%histogramCounts(                                &
+            !) + this%histogram%counts(                               &
                    gc%id(1), gc%id(2), gc%id(3) )*gc%kernelSD1Matrix(&
                         gc%kernelSD1XMSpan(1):gc%kernelSD1XMSpan(2), &
                         gc%kernelSD1YMSpan(1):gc%kernelSD1YMSpan(2), & 
@@ -1601,7 +1681,8 @@ contains
                 gc%kernelSD2XGSpan(1):gc%kernelSD2XGSpan(2), &
                 gc%kernelSD2YGSpan(1):gc%kernelSD2YGSpan(2), & 
                 gc%kernelSD2ZGSpan(1):gc%kernelSD2ZGSpan(2)  & 
-            ) + this%histogram%counts(                               &
+            ) + this%histogramCounts(                                &
+            !) + this%histogram%counts(                               &
                    gc%id(1), gc%id(2), gc%id(3) )*gc%kernelSD2Matrix(&
                         gc%kernelSD2XMSpan(1):gc%kernelSD2XMSpan(2), &
                         gc%kernelSD2YMSpan(1):gc%kernelSD2YMSpan(2), & 
@@ -2622,10 +2703,9 @@ contains
 
 
 
-
   subroutine prInitializeKernelDatabaseFlat( this,  &
-                    minHOverDelta, maxHOverDelta, &
-               deltaHOverDelta, logKernelDatabase, &
+                      minHOverDelta, maxHOverDelta, &
+                deltaHOverDelta, logKernelDatabase, &
                          kernelRange, kernelSDRange )
     !------------------------------------------------------------------------------
     ! 
@@ -2715,7 +2795,7 @@ contains
 
     ! Assign to the object
     ! Temporarilly the same value for each axis
-    this%nDeltaHOverDelta   = nDelta
+    this%nDeltaHOverDelta = nDelta
 
     ! Depending on the number of dimensions
     ! is the required kernel database.
@@ -2751,7 +2831,7 @@ contains
       !$omp parallel do schedule( dynamic, 1 ) &
       !$omp default( none )                    &
       !$omp shared( this )                     &
-      !$omp shared( hOverDelta )              &
+      !$omp shared( hOverDelta )               &
       !$omp shared( nDelta )                   &
       !$omp shared( localKernelRange )         &
       !$omp reduction( +:kernelDBMemory )      &
@@ -2780,7 +2860,7 @@ contains
       !$omp parallel do schedule( dynamic, 1 ) &
       !$omp default( none )                    &
       !$omp shared( this )                     &
-      !$omp shared( hOverDelta )              &
+      !$omp shared( hOverDelta )               &
       !$omp shared( nDelta )                   &
       !$omp shared( localKernelSDRange )       &
       !$omp reduction( +:kernelSDDBMemory )    &
@@ -2844,7 +2924,7 @@ contains
       !$omp parallel do schedule( dynamic, 1 ) &
       !$omp default( none )                    &
       !$omp shared( this )                     &
-      !$omp shared( hOverDelta )              &
+      !$omp shared( hOverDelta )               &
       !$omp shared( nDelta )                   &
       !$omp shared( localKernelRange )         &
       !$omp private( m, dbi )                  &
@@ -2878,7 +2958,7 @@ contains
       !$omp parallel do schedule( dynamic, 1 ) &
       !$omp default( none )                    &
       !$omp shared( this )                     &
-      !$omp shared( hOverDelta )              &
+      !$omp shared( hOverDelta )               &
       !$omp shared( nDelta )                   &
       !$omp shared( localKernelSDRange )       &
       !$omp reduction( +:kernelSDDBMemory )    &
@@ -2928,7 +3008,7 @@ contains
       !$omp parallel do schedule( dynamic, 1 ) &
       !$omp default( none )                    &
       !$omp shared( this )                     &
-      !$omp shared( hOverDelta )              &
+      !$omp shared( hOverDelta )               &
       !$omp shared( nDelta )                   &
       !$omp shared( localKernelRange )         &
       !$omp private( n, m, dbi )               &
@@ -2962,7 +3042,7 @@ contains
       !$omp parallel do schedule( dynamic, 1 ) &
       !$omp default( none )                    &
       !$omp shared( this )                     &
-      !$omp shared( hOverDelta )              &
+      !$omp shared( hOverDelta )               &
       !$omp shared( nDelta )                   &
       !$omp shared( localKernelSDRange )       &
       !$omp reduction( +:kernelSDDBMemory )    &
@@ -3111,6 +3191,10 @@ contains
     real(fp), dimension(3) :: subGridOrigin
     integer , dimension(3) :: subGridOriginIndexes
     integer , dimension(3) :: subGridLimitIndexes
+    ! sliced reconstruction
+    real(fp), dimension(:,:,:), pointer :: slicedDensity
+    integer                             :: sliceId
+    integer                             :: activeBins
     ! clock
     real(fp)               :: elapsedTime
     integer                :: clockCountStart, clockCountStop
@@ -3209,6 +3293,7 @@ contains
      write(this%outFileUnit, *  )
      write(this%outFileUnit, '(1X,A)' ) 'Histogram info '
     end if 
+    ! Until here, independent of sliced reconstruction
 
     ! Compute sub grid parameters if grids
     ! are to be adapted to the given coordinates 
@@ -3240,7 +3325,7 @@ contains
       where( this%binSize .gt. fZERO ) 
         subGridOriginIndexes = int((minSubGridCoords-this%domainOrigin)/this%binSize)     ! subestimate
         subGridLimitIndexes  = ceiling((maxSubGridCoords-this%domainOrigin)/this%binSize) ! overestimate
-        subGridNBins         = subGridLimitIndexes - subGridOriginIndexes
+        subGridNBins         = subGridLimitIndexes - subGridOriginIndexes ! it shall verify at least 1 ?
         subGridSize          = subGridNBins*this%binSize
       end where
       subGridOrigin = subGridOriginIndexes*this%binSize
@@ -3273,10 +3358,11 @@ contains
        write(this%outFileUnit, '(3X,A,3(1X,I9))') 'Allocated size    :', this%nBins
        flush( this%outFileUnit ) 
       end if
+    end if ! adaptGridToCoords
 
-    end if
 
     ! Compute histogram
+    ! Needs resolution of effective mass when sliced reconstruction
     if ( locWeightedHistogram ) then 
       select case (this%histogram%effectiveWeightFormat)
       case (2)
@@ -3324,11 +3410,9 @@ contains
       return
     end if 
 
-    ! Active bins: Only cells with particles
-    call this%histogram%ComputeActiveBinIds()
-    this%computeBinIds => this%histogram%activeBinIds
-    this%nComputeBins  = this%histogram%nActiveBins
-    if ( this%nComputeBins .eq. 0 ) then 
+    ! Verify the count
+    activeBins = count(this%histogram%counts/=fZERO) 
+    if ( activeBins .eq. 0 ) then 
      ! No bins to compute 
      if ( this%reportToOutUnit ) then
       write(this%outFileUnit, *  )
@@ -3341,8 +3425,8 @@ contains
     else
      if ( this%reportToOutUnit ) then
        write(this%outFileUnit, '(3X,A,es18.9e3)' ) 'Mean raw density  :',& 
-         sum(this%histogram%counts)/this%histogram%binVolume/this%nComputeBins
-       write(this%outFileUnit, '(3X,A,I9)'       ) 'Active bins       :', this%nComputeBins
+         sum(this%histogram%counts)/this%histogram%binVolume/activeBins
+       write(this%outFileUnit, '(3X,A,I9)'       ) 'Active bins       :', activeBins
        write(this%outFileUnit, '(3X,A,I9)'       ) 'NPoints           :', this%histogram%nPoints
        write(this%outFileUnit, '(3X,A,es18.9e3)' ) 'NEffective        :', this%histogram%nEffective
      end if 
@@ -3353,7 +3437,7 @@ contains
     this%stdCoords  = fZERO
     do nd=1,3
       if ( this%dimensionMask(nd) .eq. 0 ) cycle
-      this%stdCoords(nd) = sqrt( sum((dataPoints(:,nd)-this%meanCoords(nd))**2)/dataPointsShape(1) )
+      this%stdCoords(nd) = sqrt( sum((dataPoints(:,nd)-this%meanCoords(nd))**fTWO)/dataPointsShape(1) )
     end do 
     this%stdSigmaScale = product( this%stdCoords, mask=(this%dimensionMask.eq.1))
     this%stdSigmaScale = this%stdSigmaScale**(fONE/fNDim)
@@ -3408,6 +3492,15 @@ contains
       this%minLimitRoughness = fZERO
     end select
 
+    ! Initialize database if not allocated
+    if ( this%databaseOptimization ) then
+      if ( .not. allocated( this%kernelDatabaseFlat ) ) then 
+          call this%InitializeKernelDatabaseFlat( this%minHOverDelta(1), &
+                                                  this%maxHOverDelta(1), &
+                                                this%deltaHOverDelta(1), &
+                                                  this%logKernelDatabase )
+      end if
+    end if 
 
     ! Assign distribution statistics as initial smoothing, Silverman (1986)
     if ( this%initialSmoothingSelection .eq. 0 ) then 
@@ -3419,11 +3512,12 @@ contains
       end do 
     end if 
     if ( this%reportToOutUnit ) then
-      write(this%outFileUnit, *  )
+      write( this%outFileUnit, *  )
       write( this%outFileUnit, '(1X,A)' ) 'Kernels info'
       write( this%outFileUnit, '(3X,A,3(1X,es18.9e3))') 'initialSmoothing   :', this%initialSmoothing
+      flush( this%outFileUnit )
     end if
-   
+
     ! Logging
     if ( this%reportToOutUnit ) then 
       if ( present( outputDataId ) .and. present( particleGroupId ) ) then 
@@ -3441,37 +3535,100 @@ contains
       end if 
     end if 
 
-    ! Density optimization 
-    if ( this%databaseOptimization ) then
-      ! Initialize database if not allocated
-      if ( .not. allocated( this%kernelDatabaseFlat ) ) then 
-          call this%InitializeKernelDatabaseFlat( this%minHOverDelta(1), &
-                                                  this%maxHOverDelta(1), &
-                                                this%deltaHOverDelta(1), &
-                                                  this%logKernelDatabase  )
-      end if
-      ! Compute density
-      call system_clock(clockCountStart, clockCountRate, clockCountMax)
-      call this%ComputeDensityOptimization(                              &
-              densityGrid,                                               &
-              nOptimizationLoops=localNOptimizationLoops,                &
-              exportOptimizationVariables=locExportOptimizationVariables,&
-              skipErrorConvergence=locSkipErrorConvergence,              &
-              relativeErrorConvergence=locRelativeErrorConvergence ) 
-      call system_clock(clockCountStop, clockCountRate, clockCountMax)
-      if ( this%reportToOutUnit ) then 
-        elapsedTime = dble(clockCountStop - clockCountStart) / dble(clockCountRate)
-        write( this%outFileUnit, '(A)' )'|-----------------------------------------------------------|'
-        write(this%outFileUnit, '(1X,A,E15.5,A)')& 
-          '  Optimization time : ', elapsedTime, ' seconds'
-        write( this%outFileUnit, '(A)' )'|-----------------------------------------------------------|'
-      end if 
-      ! Drop database ?
-      if ( .not. persistKDB ) then
-          call this%DropKernelDatabase()
-      end if
+
+    ! Handler for sliced reconstruction
+    if ( this%slicedReconstruction ) then
+      ! If reconstruction is sliced, then nBins in 
+      ! the sliced dimension should be compressed. This 
+      ! variable is employed for allocating temporary grids
+      ! during reconstruction (e.g. roughness)
+      ! Histogram nBins remains with the original size.
+      this%nBins(this%slicedDimension) = 1
+
+      ! Loop over slices
+      do sliceId=1,this%histogram%nBins(this%slicedDimension)
+        ! Active bin ids for this slice
+        call this%histogram%ComputeActiveBinIdsSliced(this%slicedDimension, sliceId)
+        this%computeBinIds => this%histogram%activeBinIds
+        this%nComputeBins  = this%histogram%nActiveBins
+
+        if ( this%reportToOutUnit ) then 
+         if ( sliceId.eq.1 ) then 
+          write( this%outFileUnit, '(A)' )'|-----------------------------------------------------------|'
+         end if 
+        end if
+        if ( this%nComputeBins .eq. 0 ) then 
+         ! No bins to compute 
+         if ( this%reportToOutUnit ) then 
+            write( this%outFileUnit, '(1X,A,I6,A)')& 
+              '  Slice ', sliceId, ' without active bins.'
+            write( this%outFileUnit, '(A)' )'|-----------------------------------------------------------|'
+         end if
+         ! Cycle to the next slice
+         cycle
+        else
+         ! Report
+         if ( this%reportToOutUnit ) then 
+          write( this%outFileUnit, '(1X,A,I6,A,I10,A)')& 
+              '  Slice ', sliceId, ' with ', this%nComputeBins, ' active bins.'
+         end if
+        end if
+
+        ! Density optimization over a pointer to the slice
+        ! sliced given as a range to preserve matrix rank.
+        select case(this%slicedDimension) 
+        case(1)
+          slicedDensity => densityGrid(sliceId:sliceId,:,:)
+          this%histogramCounts => this%histogram%counts(sliceId:sliceId,:,:)
+          if ( allocated( this%histogram%wcounts ) )&
+            this%histogramWCounts => this%histogram%wcounts(sliceId:sliceId,:,:)
+        case(2)
+          slicedDensity => densityGrid(:,sliceId:sliceId,:)
+          this%histogramCounts => this%histogram%counts(:,sliceId:sliceId,:)
+          if ( allocated( this%histogram%wcounts ) )&
+            this%histogramWCounts => this%histogram%wcounts(:,sliceId:sliceId,:)
+        case(3)
+          slicedDensity => densityGrid(:,:,sliceId:sliceId)
+          this%histogramCounts => this%histogram%counts(:,:,sliceId:sliceId)
+          if ( allocated( this%histogram%wcounts ) )&
+            this%histogramWCounts => this%histogram%wcounts(:,:,sliceId:sliceId)
+        end select
+
+        ! Optimization
+        call system_clock(clockCountStart, clockCountRate, clockCountMax)
+        call this%ComputeDensityOptimization(                              &
+                slicedDensity,                                             &
+                nOptimizationLoops=localNOptimizationLoops,                &
+                exportOptimizationVariables=locExportOptimizationVariables,&
+                skipErrorConvergence=locSkipErrorConvergence,              & 
+                relativeErrorConvergence=locRelativeErrorConvergence ) 
+        call system_clock(clockCountStop, clockCountRate, clockCountMax)
+        if ( this%reportToOutUnit ) then 
+          elapsedTime = dble(clockCountStop - clockCountStart) / dble(clockCountRate)
+          write( this%outFileUnit, '(A)' )'|-----------------------------------------------------------|'
+          write(this%outFileUnit, '(1X,A,E15.5,A)')& 
+            '  Optimization time : ', elapsedTime, ' seconds'
+          write( this%outFileUnit, '(A)' )'|-----------------------------------------------------------|'
+        end if 
+
+      end do 
+      ! Restore nBins to its former glory
+      ! It is employed downstream in function exporting data
+      this%nBins = this%histogram%gridSize
+
     else
-      ! Brute force optimization
+      ! Normal, classical reconstruction, where all grids are coincident 
+      ! with the histogram grid
+
+      ! Active bins: Only cells with particles
+      call this%histogram%ComputeActiveBinIds()
+      this%computeBinIds => this%histogram%activeBinIds
+      this%nComputeBins  = this%histogram%nActiveBins
+      this%histogramCounts => this%histogram%counts
+      if ( allocated( this%histogram%wcounts ) )& 
+        this%histogramWCounts => this%histogram%wcounts
+
+      ! Optimization
       call system_clock(clockCountStart, clockCountRate, clockCountMax)
       call this%ComputeDensityOptimization(                              &
               densityGrid,                                               &
@@ -3487,7 +3644,21 @@ contains
           '  Optimization time : ', elapsedTime, ' seconds'
         write( this%outFileUnit, '(A)' )'|-----------------------------------------------------------|'
       end if 
-    end if 
+
+    end if ! slicedReconstruction
+
+    ! Release pointers
+    if ( associated( slicedDensity ) ) slicedDensity => null()
+    if ( associated( this%histogramCounts ) ) this%histogramCounts => null()
+    if ( associated( this%histogramWCounts ) ) this%histogramWCounts => null()
+
+    ! drop database ?
+    if ( this%databaseOptimization ) then
+      if ( .not. persistKDB ) then
+        call this%DropKernelDatabase()
+      end if
+    end if
+
     ! Point to the module density
     this%densityEstimateGrid => densityGrid
 
@@ -3495,7 +3666,7 @@ contains
     if ( locComputeRawDensity ) then 
       ! Histogram as raw density: histogram/binvolume
       this%histogram%counts = this%histogram%counts/this%histogram%binVolume
-      if ( allocated( this%histogram%wcounts) )&
+      if ( allocated( this%histogram%wcounts ) )&
         this%histogram%wcounts = this%histogram%wcounts/this%histogram%binVolume
     end if 
     if ( locUnitVolume ) then  
@@ -3581,71 +3752,121 @@ contains
   
 
   ! Density optimization
-subroutine prComputeDensityOptimization( this, densityEstimateGrid, nOptimizationLoops, &
+  subroutine prComputeDensityOptimization( this, densityEstimateGrid, nOptimizationLoops, &
                                        exportOptimizationVariables, skipErrorConvergence, &
                                                                 relativeErrorConvergence  )
-    !------------------------------------------------------------------------------
-    ! Performs the optimization loop 
-    ! 
-    !   - Section 2.5 in Sole-Mari et al.(2019) 
-    !------------------------------------------------------------------------------
-    ! Specifications 
-    !------------------------------------------------------------------------------
-    implicit none
-    ! input
-    class( GridProjectedKDEType ), target:: this
-    real(fp), dimension(:,:,:), allocatable, intent(inout) :: densityEstimateGrid
-    integer , intent(in), optional :: nOptimizationLoops
-    logical , intent(in), optional :: exportOptimizationVariables
-    logical , intent(in), optional :: skipErrorConvergence
-    real(fp), intent(in), optional :: relativeErrorConvergence
-    ! local
-    ! kernels
-    type( KernelMultiGaussianType )     :: kernel
-    type( KernelMultiGaussianType )     :: kernelSigma
-    type( KernelSecondDerivativeXType ) :: kernelSDX
-    type( KernelSecondDerivativeYType ) :: kernelSDY
-    type( KernelSecondDerivativeZType ) :: kernelSDZ
-    ! nloops
-    integer :: nOptLoops
-    ! Grid cells
-    type( GridCellType ), dimension(:), pointer :: activeGridCells => null()
-    type( GridCellType ), pointer :: gc => null()
-    ! kernelMatrix pointer
-    real(fp), dimension(:,:,:), pointer :: kernelMatrix => null()
-    real(fp), dimension(:,:,:), allocatable, target :: transposedKernelMatrix
-    ! Utils
-    integer            :: n, m, nd
-    character(len=500) :: varsOutputFileName
-    character(len=20)  :: loopId
-    logical            :: exportVariables, skipErrorBreak
-    logical            :: exportLoopError
-    integer            :: errorOutputUnit
-    ! Optimization error monitoring 
-    real(fp), dimension(:), allocatable :: rawDensity
-    real(fp), dimension(:), allocatable :: errorMetricArray
-    real(fp), dimension(:), allocatable :: kernelSmoothingScaleOld
-    real(fp), dimension(:), allocatable :: densityEstimateArrayOld
-    real(fp) :: errorRMSE
-    real(fp) :: errorRMSEOld
-    real(fp) :: errorALMISEProxy 
-    real(fp) :: errorALMISEProxyOld
-    real(fp) :: errorALMISECumsum
-    real(fp) :: errorALMISECumsumOld
-    real(fp) :: errorMetricDensity
-    real(fp) :: errorMetricDensityOld
-    !real(fp) :: errorMetricDensityCumsum
-    real(fp) :: errorMetricSmoothing
-    real(fp) :: errorMetricSmoothingOld
-    !real(fp) :: errorMetricSmoothingCumsum
-    real(fp) :: errorMetricConvergence
-    real(fp), dimension(3) :: smoothingCarrier
-    ! loop n estimate
-    real(fp)  :: nEstimate
-    real(fp)  :: kernelSigmaScale
-    real(fp)  :: kernelScale
-    real(fp)  :: density
-    !------------------------------------------------------------------------------
+  !----------------------------------------------------------------------------------------
+  ! Performs the optimization loop 
+  ! 
+  !   - Section 2.5 in Sole-Mari et al.(2019) 
+  !----------------------------------------------------------------------------------------
+  ! Specifications 
+  !----------------------------------------------------------------------------------------
+  implicit none
+  ! input
+  class( GridProjectedKDEType ), target:: this
+  real(fp), dimension(:,:,:), intent(inout) :: densityEstimateGrid
+  !real(fp), dimension(:,:,:), allocatable, intent(inout) :: densityEstimateGrid
+  integer , intent(in), optional :: nOptimizationLoops
+  logical , intent(in), optional :: exportOptimizationVariables
+  logical , intent(in), optional :: skipErrorConvergence
+  real(fp), intent(in), optional :: relativeErrorConvergence
+  ! local
+  ! kernels
+  type( KernelMultiGaussianType )     :: kernel
+  type( KernelMultiGaussianType )     :: kernelSigma
+  type( KernelSecondDerivativeXType ) :: kernelSDX
+  type( KernelSecondDerivativeYType ) :: kernelSDY
+  type( KernelSecondDerivativeZType ) :: kernelSDZ
+  ! nloops
+  integer :: nOptLoops
+  ! Grid cells
+  type( GridCellType ), dimension(:), pointer :: activeGridCells => null()
+  type( GridCellType ), pointer :: gc => null()
+  ! kernelMatrix pointer
+  real(fp), dimension(:,:,:), pointer :: kernelMatrix => null()
+  real(fp), dimension(:,:,:), allocatable, target :: transposedKernelMatrix
+  ! Utils
+  integer            :: n, m, nd
+  character(len=500) :: varsOutputFileName
+  character(len=20)  :: loopId
+  logical            :: exportVariables, skipErrorBreak
+  logical            :: exportLoopError
+  integer            :: errorOutputUnit
+  ! Optimization error monitoring 
+  real(fp), dimension(:), allocatable :: rawDensity
+  real(fp), dimension(:), allocatable :: errorMetricArray
+  real(fp), dimension(:), allocatable :: kernelSmoothingScaleOld
+  real(fp), dimension(:), allocatable :: densityEstimateArrayOld
+  real(fp) :: errorRMSE
+  real(fp) :: errorRMSEOld
+  real(fp) :: errorALMISEProxy 
+  real(fp) :: errorALMISEProxyOld
+  real(fp) :: errorALMISECumsum
+  real(fp) :: errorALMISECumsumOld
+  real(fp) :: errorMetricDensity
+  real(fp) :: errorMetricDensityOld
+  !real(fp) :: errorMetricDensityCumsum
+  real(fp) :: errorMetricSmoothing
+  real(fp) :: errorMetricSmoothingOld
+  !real(fp) :: errorMetricSmoothingCumsum
+  real(fp) :: errorMetricConvergence
+  real(fp), dimension(3) :: smoothingCarrier
+  ! loop n estimate
+  real(fp)  :: nEstimate
+  real(fp)  :: kernelSigmaScale
+  real(fp)  :: kernelScale
+  real(fp)  :: density
+  ! health
+  integer, dimension(3) :: matrixShape
+  !----------------------------------------------------------------------------------------
+
+    ! Verify that histogram matrixes were associated
+    ! counts
+    if ( .not. associated( this%histogramCounts ) ) then 
+     if ( allocated( this%histogram%counts ) ) then
+      ! Forgive and hope for the best
+      this%histogramCounts => this%histogram%counts
+     else
+      write(*,*)'Error: histogram counts pointer is not associated and counts not allocated. Stop.'
+      stop
+     end if 
+    end if
+    if ( this%histogram%isWeighted ) then 
+     ! wcounts
+     select case(this%histogram%effectiveWeightFormat)
+     case(2,3)
+      if ( .not. associated( this%histogramWCounts ) ) then 
+       if ( allocated( this%histogram%wcounts ) ) then
+         ! Forgive and hope for the best
+         this%histogramWCounts => this%histogram%wcounts
+       else
+        write(*,*)'Error: histogram weight counts pointer is not associated and wcounts not allocated. Stop.'
+        stop
+       end if 
+      end if 
+     end select
+    end if 
+    ! Verify shape consistency 
+    matrixShape = shape(this%histogramCounts)
+    do nd=1,3
+      if (this%nBins(nd).ne.matrixShape(nd)) then 
+       write(*,*)'Error: histogram counts matrix and nbins is inconsistent. Stop.'
+       stop
+      end if 
+    end do
+    if ( this%histogram%isWeighted ) then
+     select case(this%histogram%effectiveWeightFormat)
+     case(2,3) 
+      matrixShape = shape(this%histogramWCounts)
+      do nd=1,3
+        if (this%nBins(nd).ne.matrixShape(nd)) then 
+         write(*,*)'Error: histogram wcounts matrix and nbins is inconsistent. Stop.'
+         stop
+        end if 
+      end do 
+     end select
+    end if
 
     ! Initialize vars
     exportVariables  = .false.
@@ -3720,7 +3941,8 @@ subroutine prComputeDensityOptimization( this, densityEstimateGrid, nOptimizatio
     do n = 1, this%nComputeBins
       gc => activeGridCellsMod(n)
       call gc%Initialize( this%computeBinIds( :, n ) )
-      rawDensity(n) = this%histogram%counts(gc%id(1),gc%id(2),gc%id(3))
+      rawDensity(n) = this%histogramCounts(gc%id(1),gc%id(2),gc%id(3))
+      !rawDensity(n) = this%histogram%counts(gc%id(1),gc%id(2),gc%id(3))
     end do
     !$omp end parallel do
     rawDensity = rawDensity/this%histogram%binVolume
@@ -3787,7 +4009,8 @@ subroutine prComputeDensityOptimization( this, densityEstimateGrid, nOptimizatio
             gc%kernelXGSpan(1):gc%kernelXGSpan(2), &
             gc%kernelYGSpan(1):gc%kernelYGSpan(2), & 
             gc%kernelZGSpan(1):gc%kernelZGSpan(2)  & 
-        ) + this%histogram%counts(                 &
+        ) + this%histogramCounts(                  &
+        !) + this%histogram%counts(                 &
             gc%id(1), gc%id(2), gc%id(3) )*gc%kernelMatrix(&
                  gc%kernelXMSpan(1):gc%kernelXMSpan(2), &
                  gc%kernelYMSpan(1):gc%kernelYMSpan(2), & 
@@ -3854,7 +4077,8 @@ subroutine prComputeDensityOptimization( this, densityEstimateGrid, nOptimizatio
         select case(this%histogram%effectiveWeightFormat)
         case(0,1)
           ! The formats where densities are transformed scaling by a uniform weight
-          this%histogram%counts = this%histogram%counts*this%histogram%effectiveMass
+          this%histogramCounts = this%histogramCounts*this%histogram%effectiveMass
+          !this%histogram%counts = this%histogram%counts*this%histogram%effectiveMass
           densityEstimateGrid = densityEstimateGrid*this%histogram%effectiveMass
         case(2,3)
           ! The formats where histogram stored both 
@@ -3884,7 +4108,8 @@ subroutine prComputeDensityOptimization( this, densityEstimateGrid, nOptimizatio
                   gc%kernelXGSpan(1):gc%kernelXGSpan(2), &
                   gc%kernelYGSpan(1):gc%kernelYGSpan(2), & 
                   gc%kernelZGSpan(1):gc%kernelZGSpan(2)  & 
-              ) + this%histogram%wcounts(                &  ! Notice histogram%wcounts !
+              ) + this%histogramWCounts(                &  ! Notice histogram%wcounts !
+              !) + this%histogram%wcounts(                &  ! Notice histogram%wcounts !
                   gc%id(1), gc%id(2), gc%id(3) )*gc%kernelMatrix(&
                        gc%kernelXMSpan(1):gc%kernelXMSpan(2), &
                        gc%kernelYMSpan(1):gc%kernelYMSpan(2), & 
@@ -4078,7 +4303,8 @@ subroutine prComputeDensityOptimization( this, densityEstimateGrid, nOptimizatio
               gc%kernelXGSpan(1):gc%kernelXGSpan(2), &
               gc%kernelYGSpan(1):gc%kernelYGSpan(2), & 
               gc%kernelZGSpan(1):gc%kernelZGSpan(2)  & 
-          ) + this%histogram%counts(                 &
+          ) + this%histogramCounts(                  &
+          !) + this%histogram%counts(                 &
               gc%id(1), gc%id(2), gc%id(3) )*gc%kernelMatrix(&
                    gc%kernelXMSpan(1):gc%kernelXMSpan(2), &
                    gc%kernelYMSpan(1):gc%kernelYMSpan(2), & 
@@ -4211,7 +4437,8 @@ subroutine prComputeDensityOptimization( this, densityEstimateGrid, nOptimizatio
       select case(this%histogram%effectiveWeightFormat)
       case(0,1)
         ! The formats where densities are transformed scaling by a uniform weight
-        this%histogram%counts = this%histogram%counts*this%histogram%effectiveMass
+        this%histogramCounts = this%histogramCounts*this%histogram%effectiveMass
+        !this%histogram%counts = this%histogram%counts*this%histogram%effectiveMass
         densityEstimateGrid = densityEstimateGrid*this%histogram%effectiveMass
       case(2,3)
         ! The formats where histogram stored both 
@@ -4241,7 +4468,8 @@ subroutine prComputeDensityOptimization( this, densityEstimateGrid, nOptimizatio
                 gc%kernelXGSpan(1):gc%kernelXGSpan(2), &
                 gc%kernelYGSpan(1):gc%kernelYGSpan(2), & 
                 gc%kernelZGSpan(1):gc%kernelZGSpan(2)  & 
-            ) + this%histogram%wcounts(                &  ! Notice histogram%wcounts !
+            ) + this%histogramWcounts(                &  ! Notice histogram%wcounts !
+            !) + this%histogram%wcounts(                &  ! Notice histogram%wcounts !
                 gc%id(1), gc%id(2), gc%id(3) )*gc%kernelMatrix(&
                      gc%kernelXMSpan(1):gc%kernelXMSpan(2), &
                      gc%kernelYMSpan(1):gc%kernelYMSpan(2), & 
