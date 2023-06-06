@@ -227,6 +227,21 @@ contains
       end if
     end if
 
+    ! Endpoint output option
+    call urword(line, icol, istart, istop, 2, n, r, -1, 0)
+    ! If error while reading the last option (could be triggered by # comments ) 
+    if ( line(len(line):len(line)).eq.'E' ) then
+      ! Continue as zero
+      this%EndpointOutputOption = 0
+    else
+      ! Read from input
+      if (istart.eq.len(line)) then
+        this%EndpointOutputOption = 0
+      else
+        this%EndpointOutputOption = n
+      end if
+    end if
+
     ! Particles mass option
     call urword(line, icol, istart, istop, 2, n, r, -1, 0)
     ! If error while reading the last option (could be triggered by # comments ) 
@@ -254,21 +269,6 @@ contains
         this%SolutesOption = 0
       else
         this%SolutesOption = n
-      end if
-    end if
-
-    ! Endpoint output option
-    call urword(line, icol, istart, istop, 2, n, r, -1, 0)
-    ! If error while reading the last option (could be triggered by # comments ) 
-    if ( line(len(line):len(line)).eq.'E' ) then
-      ! Continue as zero
-      this%EndpointOutputOption = 0
-    else
-      ! Read from input
-      if (istart.eq.len(line)) then
-        this%EndpointOutputOption = 0
-      else
-        this%EndpointOutputOption = n
       end if
     end if
 
@@ -453,6 +453,18 @@ contains
         call ustop('Invalid timeseries output option.')
     end select
 
+    ! EndpointOutputOption
+    select case(this%EndpointOutputOption)
+      case (0)
+        write(outUnit,'(A)') 'Endpoint file will be written with MODPATH-v7 format (EndpointOutputOption= 0)'
+      case (1)
+        write(outUnit,'(A)') 'Endpoint file will be written with MODPATH-RW format (EndpointOutputOption= 1)'
+      case (2)
+        write(outUnit,'(A)') 'Endpoint file will not be written (EndpointOutputOption= 2)'
+      case default
+        call ustop('Invalid endpoint output option.')
+    end select
+
     ! Particles mass option
     select case(this%ParticlesMassOption)
       case (0)
@@ -474,17 +486,6 @@ contains
       case default
         call ustop('Invalid solutes option.')
     end select
-
-    ! EndpointOutputOption
-    select case(this%EndpointOutputOption)
-      case (0)
-        write(outUnit,'(A)') 'Endpoint file will be written with MODPATH7 format (EndpointOutputOption= 0)'
-      case (1)
-        write(outUnit,'(A)') 'Endpoint file will be written with MODPATH-RW format (EndpointOutputOption= 1)'
-      case default
-        call ustop('Invalid endpoint output option.')
-    end select
-
 
     ! Reference time option
     read(inUnit, '(a)') line

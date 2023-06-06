@@ -1687,9 +1687,11 @@ program MPathRW
   call system_clock(clockCountStop, clockCountRate, clockCountMax)
   
   ! Write endpoint file
-  if(simulationData%ParticleGroupCount .gt. 0) then
+  if ( simulationData%EndpointOutputOption .ne. 2 ) then 
+    if(simulationData%ParticleGroupCount .gt. 0) then
       call ulog('Write endpoint file.', logUnit)
       call WriteEndpointFile(simulationData, modelGrid, geoRef, endpointUnit)
+    end if
   end if
   
   ! Finalize and process binary pathline file if pathline format option = 1
