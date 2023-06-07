@@ -1931,7 +1931,7 @@ contains
     doubleprecision :: cellDissolvedMass, totalDissolvedMass
     doubleprecision :: cellVolume,sX,sY,sZ,nPX,nPY,nPZ
     doubleprecision :: nParticlesCell
-    doubleprecision, parameter :: nParticlesCellMin = 0.25 
+    doubleprecision, parameter :: nParticlesCellMin = 0.5d0 
     integer :: totalParticleCount, seqNumber, idmax, particleCount
     integer :: iNPX,iNPY,iNPZ,NPCELL
     integer :: validCellCounter, cellCounter, cellNumber
@@ -2190,12 +2190,12 @@ contains
             end do
 
             ! Estimate subdivisions
-            nPX    = sX*( (nParticlesCell)**(1d0/nDim) ) 
-            nPY    = sY*( (nParticlesCell)**(1d0/nDim) )
-            nPZ    = sZ*( (nParticlesCell)**(1d0/nDim) )
-            iNPX   = int( nPX ) + 1
-            iNPY   = int( nPY ) + 1
-            iNPZ   = int( nPZ ) + 1
+            nPX    = sX*( (nParticlesCell)**(1d0/dble(nDim)) ) 
+            nPY    = sY*( (nParticlesCell)**(1d0/dble(nDim)) )
+            nPZ    = sZ*( (nParticlesCell)**(1d0/dble(nDim)) )
+            iNPX   = max(int( nPX + 0.5d0 ),1) 
+            iNPY   = max(int( nPY + 0.5d0 ),1) 
+            iNPZ   = max(int( nPZ + 0.5d0 ),1) 
             NPCELL = iNPX*iNPY*iNPZ
             totalParticleCount = totalParticleCount + NPCELL
 
@@ -2541,22 +2541,22 @@ contains
               if( dimensionMask(nd).eq.0 ) cycle
               select case(nd)
               case(1)
-                sX = grid%DelX(nc)/(cellVolume**(1d0/nDim))
+                sX = grid%DelX(nc)/(cellVolume**(1d0/dble(nDim)))
               case(2)
-                sY = grid%DelY(nc)/(cellVolume**(1d0/nDim))
+                sY = grid%DelY(nc)/(cellVolume**(1d0/dble(nDim)))
               case(3)
                 ! simple dZ
-                sZ = (grid%Top(nc)-grid%Bottom(nc))/(cellVolume**(1d0/nDim))
+                sZ = (grid%Top(nc)-grid%Bottom(nc))/(cellVolume**(1d0/dble(nDim)))
               end select
             end do
 
             ! Estimate subdivisions
-            nPX    = sX*( (nParticlesCell)**(1d0/nDim) ) 
-            nPY    = sY*( (nParticlesCell)**(1d0/nDim) )
-            nPZ    = sZ*( (nParticlesCell)**(1d0/nDim) )
-            iNPX   = int( nPX ) + 1
-            iNPY   = int( nPY ) + 1
-            iNPZ   = int( nPZ ) + 1
+            nPX    = sX*( (nParticlesCell)**(1d0/dble(nDim)) ) 
+            nPY    = sY*( (nParticlesCell)**(1d0/dble(nDim)) )
+            nPZ    = sZ*( (nParticlesCell)**(1d0/dble(nDim)) )
+            iNPX   = max(int( nPX + 0.5d0 ),1)
+            iNPY   = max(int( nPY + 0.5d0 ),1)
+            iNPZ   = max(int( nPZ + 0.5d0 ),1)
             NPCELL = iNPX*iNPY*iNPZ
             totalParticleCount = totalParticleCount + NPCELL
 
