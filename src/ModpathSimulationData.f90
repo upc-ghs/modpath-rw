@@ -1939,6 +1939,7 @@ contains
     doubleprecision :: cellDissolvedMass, totalDissolvedMass
     doubleprecision :: cellVolume,sX,sY,sZ,nPX,nPY,nPZ
     doubleprecision :: nParticlesCell
+    doubleprecision :: avgParticleMass, varParticleMass
     doubleprecision, parameter :: nParticlesCellMin = 0.5d0 
     integer :: totalParticleCount, seqNumber, idmax, particleCount
     integer :: iNPX,iNPY,iNPZ,NPCELL
@@ -2656,9 +2657,13 @@ contains
         ! Report
         write(outUnit,'(A,es18.9e3)') 'Original particle mass for initial condition = ', particleMass
         write(outUnit,'(A)') 'Particle mass is assigned on a per-cell basis.'
+        ! With the number of particles and the total mass, the avg mass can be reported
+        avgParticleMass = totalAccumulatedMass/dble(totalParticleCount)
+        write(outUnit,'(A,es18.9e3)') 'Average particle mass for initial condition = ', avgParticleMass
 
         ! As the mass of particles is different, needs to aggregate
         totalAccumulatedParticlesMass = 0d0
+        varParticleMass = 0d0
         if ( saveValidCellNumbers ) then
           ! If valid cell numbers were saved...
 
@@ -2685,6 +2690,8 @@ contains
             nParticlesCell = dble(product(subDivisions(cellCounter,:),mask=subDivisions(cellCounter,:)>0))
             effParticleMass = activeCellTotalMass(cellCounter)/nParticlesCell
             totalAccumulatedParticlesMass = totalAccumulatedParticlesMass + effParticleMass*nParticlesCell
+            varParticleMass = varParticleMass + &
+              (nParticlesCell*( effParticleMass - avgParticleMass )**2d0)/dble(totalParticleCount)
             cellNumber = validCellNumbers(cellCounter)
 
             ! 0: is for drape. TEMPORARY
@@ -2724,6 +2731,8 @@ contains
             nParticlesCell = dble(product(subDivisions(cellCounter,:),mask=subDivisions(cellCounter,:)>0))
             effParticleMass = activeCellTotalMass(cellCounter)/nParticlesCell
             totalAccumulatedParticlesMass = totalAccumulatedParticlesMass + effParticleMass*nParticlesCell
+            varParticleMass = varParticleMass + &
+              (nParticlesCell*( effParticleMass - avgParticleMass )**2d0)/dble(totalParticleCount)
 
             ! 0: is for drape. TEMPORARY
             ! Drape = 0: particle placed in the cell. If dry, status to unreleased
@@ -2737,6 +2746,11 @@ contains
           end do
 
         end if 
+        ! Report the standard deviation of the particles mass
+        write(outUnit,'(A,es18.9e3)') 'Standard deviation of particle mass for initial condition = ', & 
+                sqrt( varParticleMass )
+        write(outUnit,'(A,es18.9e3)') 'Relative standard deviation of particle mass for initial condition = ', & 
+                sqrt( varParticleMass )/avgParticleMass
 
         ! Assign for each particle of this group
         !  - id
@@ -2763,6 +2777,7 @@ contains
       end select
 
       ! Report about total mass and number of particles
+      ! They should be the same.
       if(this%RetardationFactorOption .gt. 1) then
         write(outUnit,'(A)') 'Retardation factor is considered in total accumulated mass.'
         write(outUnit,'(A,es18.9e3)') 'Total disolved mass for initial condition = ', totalDissolvedMass
