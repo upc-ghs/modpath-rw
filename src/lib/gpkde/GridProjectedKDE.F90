@@ -105,7 +105,8 @@ module GridProjectedKDEModule
     integer                :: slicedDimension
 
     ! Variables
-    real(fp), dimension(:,:,:), pointer :: densityEstimateGrid
+    real(fp), dimension(:,:,:), pointer :: densityEstimateGrid => null()
+    real(fp), dimension(:,:,:), pointer :: histogramDensity    => null()
     
     ! Kernel database params 
     real(fp), dimension(3) :: deltaHOverDelta
@@ -3681,7 +3682,21 @@ contains
     if ( locScaleHistogram ) then
       ! Apply histogramScalingFactor to histogram
       this%histogram%counts = this%histogram%counts*locHistogramScalingFactor
+      if ( allocated( this%histogram%wcounts ) )&
+        this%histogram%wcounts = this%histogram%wcounts*locHistogramScalingFactor
     end if 
+
+    ! Assign histogram density accordingly, for exporting
+    ! data on a scale consistent with density
+    this%histogramDensity => null()
+    if ( this%histogram%isWeighted ) then 
+      select case(this%histogram%effectiveWeightFormat) 
+      case (0,1)
+        this%histogramDensity => this%histogram%counts
+      case (2,3)
+        this%histogramDensity => this%histogram%wcounts
+      end select
+    end if     
 
     ! Write output files !
     locOutputDataFormat = 0
@@ -5871,7 +5886,7 @@ contains
     ! Specifications 
     !------------------------------------------------------------------------------
     implicit none 
-    class(GridProjectedKDEType) :: this
+    class(GridProjectedKDEType), target :: this
     integer, intent(in) :: outputUnit
     integer, optional, intent(in) :: outputDataId
     real(fp),optional, intent(in) :: outputDataIdVal
@@ -5881,6 +5896,7 @@ contains
     integer :: dataId
     integer :: columnFormat
     integer :: idbinx, idbiny, idbinz
+    real(fp), dimension(:,:,:), pointer :: histogramData => null()
     !------------------------------------------------------------------------------
 
     columnFormat = 0
@@ -5898,6 +5914,21 @@ contains
       end select
     end if  
 
+    ! If the pointer is associated, it meas it was a 
+    ! weighted histogram. This is mostly for mpath, 
+    ! in order to export histogram data consistent 
+    ! with density units, scaled.
+    histogramData => null()
+    if ( this%histogram%isWeighted ) then 
+      if  ( associated( this%histogramDensity ) ) then 
+        histogramData => this%histogramDensity
+      else
+        histogramData => this%histogram%counts
+      end if 
+    else
+      histogramData => this%histogram%counts
+    end if 
+
     ! idtime, time, pgroup
     if ( present( outputDataId ) .and. present( outputDataIdVal ) & 
                                .and. present( particleGroupId ) ) then
@@ -5911,7 +5942,7 @@ contains
               write(outputUnit,"(I8,es18.9e3,4I8,2es18.9e3)") &
               outputDataId, outputDataIdVal, particleGroupId, &
               ix+this%deltaBinsOrigin(1), iy+this%deltaBinsOrigin(2), iz+this%deltaBinsOrigin(3), &
-              this%densityEstimateGrid( ix, iy, iz ), this%histogram%counts( ix, iy, iz )
+              this%densityEstimateGrid( ix, iy, iz ), histogramData( ix, iy, iz )
             end do
           end do
         end do
@@ -5929,7 +5960,7 @@ contains
                         (real(idbinx,fp) + 0.5_fp)*this%binSize(1) + this%domainOrigin(1), & 
                         (real(idbiny,fp) + 0.5_fp)*this%binSize(2) + this%domainOrigin(2), &
                         (real(idbinz,fp) + 0.5_fp)*this%binSize(3) + this%domainOrigin(3), &
-                 this%densityEstimateGrid( ix, iy, iz ), this%histogram%counts( ix, iy, iz )
+                 this%densityEstimateGrid( ix, iy, iz ), histogramData( ix, iy, iz )
             end do
           end do
         end do
@@ -5946,7 +5977,7 @@ contains
                         (real(idbinx,fp) + 0.5_fp)*this%binSize(1) + this%domainOrigin(1), & 
                         (real(idbiny,fp) + 0.5_fp)*this%binSize(2) + this%domainOrigin(2), &
                         (real(idbinz,fp) + 0.5_fp)*this%binSize(3) + this%domainOrigin(3), &
-                 this%densityEstimateGrid( ix, iy, iz ), this%histogram%counts( ix, iy, iz )
+                 this%densityEstimateGrid( ix, iy, iz ), histogramData( ix, iy, iz )
             end do
           end do
         end do
@@ -5961,7 +5992,7 @@ contains
               if ( this%densityEstimateGrid( ix, iy, iz ) .le. fZERO ) cycle
               write(outputUnit,"(5I8,2es18.9e3)") outputDataId, particleGroupId, &
               ix+this%deltaBinsOrigin(1), iy+this%deltaBinsOrigin(2), iz+this%deltaBinsOrigin(3), &
-              this%densityEstimateGrid( ix, iy, iz ), this%histogram%counts( ix, iy, iz )
+              this%densityEstimateGrid( ix, iy, iz ), histogramData( ix, iy, iz )
             end do
           end do
         end do
@@ -5978,7 +6009,7 @@ contains
                         (real(idbinx,fp) + 0.5_fp)*this%binSize(1) + this%domainOrigin(1), & 
                         (real(idbiny,fp) + 0.5_fp)*this%binSize(2) + this%domainOrigin(2), &
                         (real(idbinz,fp) + 0.5_fp)*this%binSize(3) + this%domainOrigin(3), &
-                 this%densityEstimateGrid( ix, iy, iz ), this%histogram%counts( ix, iy, iz )
+                 this%densityEstimateGrid( ix, iy, iz ), histogramData( ix, iy, iz )
             end do
           end do
         end do
@@ -5994,7 +6025,7 @@ contains
                         (real(idbinx,fp) + 0.5_fp)*this%binSize(1) + this%domainOrigin(1), & 
                         (real(idbiny,fp) + 0.5_fp)*this%binSize(2) + this%domainOrigin(2), &
                         (real(idbinz,fp) + 0.5_fp)*this%binSize(3) + this%domainOrigin(3), &
-                 this%densityEstimateGrid( ix, iy, iz ), this%histogram%counts( ix, iy, iz )
+                 this%densityEstimateGrid( ix, iy, iz ), histogramData( ix, iy, iz )
             end do
           end do
         end do
@@ -6014,7 +6045,7 @@ contains
               if ( this%densityEstimateGrid( ix, iy, iz ) .le. fZERO ) cycle
               write(outputUnit,"(4I8,2es18.9e3)") dataId, &
               ix+this%deltaBinsOrigin(1), iy+this%deltaBinsOrigin(2), iz+this%deltaBinsOrigin(3), &
-              this%densityEstimateGrid( ix, iy, iz ), this%histogram%counts( ix, iy, iz )
+              this%densityEstimateGrid( ix, iy, iz ), histogramData( ix, iy, iz )
             end do
           end do
         end do
@@ -6031,7 +6062,7 @@ contains
                          (real(idbinx,fp) + 0.5_fp)*this%binSize(1) + this%domainOrigin(1), & 
                          (real(idbiny,fp) + 0.5_fp)*this%binSize(2) + this%domainOrigin(2), &
                          (real(idbinz,fp) + 0.5_fp)*this%binSize(3) + this%domainOrigin(3), &
-                  this%densityEstimateGrid( ix, iy, iz ), this%histogram%counts( ix, iy, iz ) 
+                  this%densityEstimateGrid( ix, iy, iz ), histogramData( ix, iy, iz ) 
             end do
           end do
         end do
@@ -6048,7 +6079,7 @@ contains
               (real(idbinx,fp) + 0.5_fp)*this%binSize(1) + this%domainOrigin(1), & 
               (real(idbiny,fp) + 0.5_fp)*this%binSize(2) + this%domainOrigin(2), &
               (real(idbinz,fp) + 0.5_fp)*this%binSize(3) + this%domainOrigin(3), &
-              this%densityEstimateGrid( ix, iy, iz ), this%histogram%counts( ix, iy, iz ) 
+              this%densityEstimateGrid( ix, iy, iz ), histogramData( ix, iy, iz ) 
             end do
           end do
         end do
@@ -6063,7 +6094,7 @@ contains
               if ( this%densityEstimateGrid( ix, iy, iz ) .le. fZERO ) cycle
               write(outputUnit,"(3I8,2es18.9e3)") &
               ix+this%deltaBinsOrigin(1), iy+this%deltaBinsOrigin(2), iz+this%deltaBinsOrigin(3), &
-              this%densityEstimateGrid( ix, iy, iz ), this%histogram%counts( ix, iy, iz ) 
+              this%densityEstimateGrid( ix, iy, iz ), histogramData( ix, iy, iz ) 
             end do
           end do
         end do
@@ -6080,7 +6111,7 @@ contains
                  (real(idbinx,fp) + 0.5_fp)*this%binSize(1) + this%domainOrigin(1), & 
                  (real(idbiny,fp) + 0.5_fp)*this%binSize(2) + this%domainOrigin(2), &
                  (real(idbinz,fp) + 0.5_fp)*this%binSize(3) + this%domainOrigin(3), &
-                 this%densityEstimateGrid( ix, iy, iz ), this%histogram%counts( ix, iy, iz ) 
+                 this%densityEstimateGrid( ix, iy, iz ), histogramData( ix, iy, iz ) 
             end do
           end do
         end do
@@ -6097,7 +6128,7 @@ contains
                  (real(idbinx,fp) + 0.5_fp)*this%binSize(1) + this%domainOrigin(1), & 
                  (real(idbiny,fp) + 0.5_fp)*this%binSize(2) + this%domainOrigin(2), &
                  (real(idbinz,fp) + 0.5_fp)*this%binSize(3) + this%domainOrigin(3), &
-                 this%densityEstimateGrid( ix, iy, iz ), this%histogram%counts( ix, iy, iz ) 
+                 this%densityEstimateGrid( ix, iy, iz ), histogramData( ix, iy, iz ) 
             end do
           end do
         end do
@@ -6116,7 +6147,7 @@ contains
     ! Specifications 
     !------------------------------------------------------------------------------
     implicit none 
-    class(GridProjectedKDEType) :: this
+    class(GridProjectedKDEType), target :: this
     integer, intent(in) :: outputUnit
     integer, optional, intent(in) :: outputDataId
     real(fp),optional, intent(in) :: outputDataIdVal
@@ -6126,6 +6157,7 @@ contains
     integer :: dataId
     integer :: columnFormat
     integer :: idbinx, idbiny, idbinz
+    real(fp), dimension(:,:,:), pointer :: histogramData => null()
     !------------------------------------------------------------------------------
 
     columnFormat = 0
@@ -6143,6 +6175,22 @@ contains
       end select
     end if  
 
+
+    ! If the pointer is associated, it meas it was a 
+    ! weighted histogram. This is mostly for mpath, 
+    ! in order to export histogram data consistent 
+    ! with density units, scaled.
+    histogramData => null()
+    if ( this%histogram%isWeighted ) then 
+      if  ( associated( this%histogramDensity ) ) then 
+        histogramData => this%histogramDensity
+      else
+        histogramData => this%histogram%counts
+      end if 
+    else
+      histogramData => this%histogram%counts
+    end if 
+
     ! idtime, time, pgroup
     if ( present( outputDataId ) .and. present( outputDataIdVal ) & 
                                .and. present( particleGroupId ) ) then
@@ -6155,7 +6203,7 @@ contains
               if ( this%densityEstimateGrid( ix, iy, iz ) .le. fZERO ) cycle
               write(outputUnit) outputDataId, outputDataIdVal, particleGroupId, &
               ix+this%deltaBinsOrigin(1), iy+this%deltaBinsOrigin(2), iz+this%deltaBinsOrigin(3), &
-              this%densityEstimateGrid( ix, iy, iz ), this%histogram%counts( ix, iy, iz )
+              this%densityEstimateGrid( ix, iy, iz ), histogramData( ix, iy, iz )
             end do
           end do
         end do
@@ -6172,7 +6220,7 @@ contains
               (real(idbinx,fp) + 0.5_fp)*this%binSize(1) + this%domainOrigin(1), & 
               (real(idbiny,fp) + 0.5_fp)*this%binSize(2) + this%domainOrigin(2), &
               (real(idbinz,fp) + 0.5_fp)*this%binSize(3) + this%domainOrigin(3), &
-              this%densityEstimateGrid( ix, iy, iz ), this%histogram%counts( ix, iy, iz )
+              this%densityEstimateGrid( ix, iy, iz ), histogramData( ix, iy, iz )
             end do
           end do
         end do
@@ -6188,7 +6236,7 @@ contains
               (real(idbinx,fp) + 0.5_fp)*this%binSize(1) + this%domainOrigin(1), & 
               (real(idbiny,fp) + 0.5_fp)*this%binSize(2) + this%domainOrigin(2), &
               (real(idbinz,fp) + 0.5_fp)*this%binSize(3) + this%domainOrigin(3), &
-              this%densityEstimateGrid( ix, iy, iz ), this%histogram%counts( ix, iy, iz )
+              this%densityEstimateGrid( ix, iy, iz ), histogramData( ix, iy, iz )
             end do
           end do
         end do
@@ -6203,7 +6251,7 @@ contains
               if ( this%densityEstimateGrid( ix, iy, iz ) .le. fZERO ) cycle
               write(outputUnit) outputDataId, particleGroupId, &
               ix+this%deltaBinsOrigin(1), iy+this%deltaBinsOrigin(2), iz+this%deltaBinsOrigin(3), &
-              this%densityEstimateGrid( ix, iy, iz ), this%histogram%counts( ix, iy, iz )
+              this%densityEstimateGrid( ix, iy, iz ), histogramData( ix, iy, iz )
             end do
           end do
         end do
@@ -6220,7 +6268,7 @@ contains
                         (real(idbinx,fp) + 0.5_fp)*this%binSize(1) + this%domainOrigin(1), & 
                         (real(idbiny,fp) + 0.5_fp)*this%binSize(2) + this%domainOrigin(2), &
                         (real(idbinz,fp) + 0.5_fp)*this%binSize(3) + this%domainOrigin(3), &
-                 this%densityEstimateGrid( ix, iy, iz ), this%histogram%counts( ix, iy, iz )
+                 this%densityEstimateGrid( ix, iy, iz ), histogramData( ix, iy, iz )
             end do
           end do
         end do
@@ -6236,7 +6284,7 @@ contains
                         (real(idbinx,fp) + 0.5_fp)*this%binSize(1) + this%domainOrigin(1), & 
                         (real(idbiny,fp) + 0.5_fp)*this%binSize(2) + this%domainOrigin(2), &
                         (real(idbinz,fp) + 0.5_fp)*this%binSize(3) + this%domainOrigin(3), &
-                 this%densityEstimateGrid( ix, iy, iz ), this%histogram%counts( ix, iy, iz )
+                 this%densityEstimateGrid( ix, iy, iz ), histogramData( ix, iy, iz )
             end do
           end do
         end do
@@ -6256,7 +6304,7 @@ contains
               if ( this%densityEstimateGrid( ix, iy, iz ) .le. fZERO ) cycle
               write(outputUnit) dataId, &
               ix+this%deltaBinsOrigin(1), iy+this%deltaBinsOrigin(2), iz+this%deltaBinsOrigin(3), &
-              this%densityEstimateGrid( ix, iy, iz ), this%histogram%counts( ix, iy, iz )
+              this%densityEstimateGrid( ix, iy, iz ), histogramData( ix, iy, iz )
             end do
           end do
         end do
@@ -6273,7 +6321,7 @@ contains
                          (real(idbinx,fp) + 0.5_fp)*this%binSize(1) + this%domainOrigin(1), & 
                          (real(idbiny,fp) + 0.5_fp)*this%binSize(2) + this%domainOrigin(2), &
                          (real(idbinz,fp) + 0.5_fp)*this%binSize(3) + this%domainOrigin(3), &
-                  this%densityEstimateGrid( ix, iy, iz ), this%histogram%counts( ix, iy, iz ) 
+                  this%densityEstimateGrid( ix, iy, iz ), histogramData( ix, iy, iz ) 
             end do
           end do
         end do
@@ -6290,7 +6338,7 @@ contains
               (real(idbinx,fp) + 0.5_fp)*this%binSize(1) + this%domainOrigin(1), & 
               (real(idbiny,fp) + 0.5_fp)*this%binSize(2) + this%domainOrigin(2), &
               (real(idbinz,fp) + 0.5_fp)*this%binSize(3) + this%domainOrigin(3), &
-              this%densityEstimateGrid( ix, iy, iz ), this%histogram%counts( ix, iy, iz ) 
+              this%densityEstimateGrid( ix, iy, iz ), histogramData( ix, iy, iz ) 
             end do
           end do
         end do
@@ -6305,7 +6353,7 @@ contains
               if ( this%densityEstimateGrid( ix, iy, iz ) .le. fZERO ) cycle
               write(outputUnit) &
               ix+this%deltaBinsOrigin(1), iy+this%deltaBinsOrigin(2), iz+this%deltaBinsOrigin(3), &
-              this%densityEstimateGrid( ix, iy, iz ), this%histogram%counts( ix, iy, iz ) 
+              this%densityEstimateGrid( ix, iy, iz ), histogramData( ix, iy, iz ) 
             end do
           end do
         end do
@@ -6322,7 +6370,7 @@ contains
                  (real(idbinx,fp) + 0.5_fp)*this%binSize(1) + this%domainOrigin(1), & 
                  (real(idbiny,fp) + 0.5_fp)*this%binSize(2) + this%domainOrigin(2), &
                  (real(idbinz,fp) + 0.5_fp)*this%binSize(3) + this%domainOrigin(3), &
-                 this%densityEstimateGrid( ix, iy, iz ), this%histogram%counts( ix, iy, iz ) 
+                 this%densityEstimateGrid( ix, iy, iz ), histogramData( ix, iy, iz ) 
             end do
           end do
         end do
@@ -6339,7 +6387,7 @@ contains
                  (real(idbinx,fp) + 0.5_fp)*this%binSize(1) + this%domainOrigin(1), & 
                  (real(idbiny,fp) + 0.5_fp)*this%binSize(2) + this%domainOrigin(2), &
                  (real(idbinz,fp) + 0.5_fp)*this%binSize(3) + this%domainOrigin(3), &
-                 this%densityEstimateGrid( ix, iy, iz ), this%histogram%counts( ix, iy, iz ) 
+                 this%densityEstimateGrid( ix, iy, iz ), histogramData( ix, iy, iz ) 
             end do
           end do
         end do
