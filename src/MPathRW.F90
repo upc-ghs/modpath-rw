@@ -122,6 +122,7 @@ program MPathRW
   !integer            :: idColFormat ! To be deprecated
   !character(len=200) :: qSinkFormat
   !character(len=200) :: waterVolFormat ! To be deprecated
+  doubleprecision    :: avgTimeData, stdTimeData, varTimeData
   doubleprecision    :: dX, dY, dZ, dZC, porosity
   doubleprecision    :: modelX, modelY
   integer            :: timePointIndex, timeStep
@@ -851,7 +852,22 @@ program MPathRW
   if ( simulationData%TrackingOptions%RandomWalkParticleTracking ) then 
     call transportModelData%LoadTimeStep(period, step)
   end if 
-  
+
+  ! Needs to aggregate flow rates over all cells  
+  ! for sink observations
+  if ( simulationData%TrackingOptions%anySinkObservation ) then 
+    do nobs=1,simulationData%TrackingOptions%nObservations
+      obs =>simulationData%TrackingOptions%Observations(nobs)
+      if ( obs%style .ne. 2 ) cycle ! if no sink, try next
+      ! Cummulative flow rate is needed independently of 
+      ! postprocess option
+      obs%cummSinkFlow = 0d0
+      do n=1,obs%nCells
+        obs%cummSinkFlow = obs%cummSinkFlow + flowModelData%SinkFlows(obs%cells(n))
+      end do 
+    end do
+  end if 
+
   if(flowModelData%SteadyState) then
     write(message,'(A,I5,A,I5,A,1PE12.5,A)') 'Processing Time Step ',step,        &
       ' Period ',period,'.  Time = ',tdisData%TotalTimes(ktime), &
@@ -1305,7 +1321,8 @@ program MPathRW
                   !$omp critical (sinkobservation)
                   call WriteSinkObs(ktime, nt, p,                         &
                     simulationData%ParticleGroups(groupIndex)%Solute,     &
-                    trackingEngine%flowModelData%SinkFlows(p%CellNumber), &
+                    obs%cummSinkFlow,                                     &
+                    !trackingEngine%flowModelData%SinkFlows(p%CellNumber), &
                     obs%recOutputUnit)
                   !$omp end critical (sinkobservation)
                   ! Count record
@@ -1996,8 +2013,10 @@ program MPathRW
         end if
 
         ! This would work only for timeseries simulations
-        dTObsSeries = simulationData%TimePoints(2)-simulationData%TimePoints(1)  ! binSize
-    
+        ! For sink observations this will change
+        dtObsSeries = simulationData%TimePoints(2)-simulationData%TimePoints(1)  ! binSize
+   
+
         ! If no records, don't even try
         if ( obsRecordCounter(nobs) .eq. 0 ) then 
           write(mplistUnit, '(A)') 'No records for this observation, continue to the next'
@@ -2039,8 +2058,12 @@ program MPathRW
             ! coming further down
 
             ! A sink extracts total mass 
+            ! qSink is the cummulative over all cells related to the observation
+            ! if a record was written, a particle was removed, only occurs 
+            ! if this flow is non-zero.
             activeParticleMasses(n) = &
-            simulationData%ParticleGroups(groupIndex)%Particles(particleID)%Mass
+            simulationData%ParticleGroups(groupIndex)%Particles(particleID)%Mass/abs(qSink)
+            !simulationData%ParticleGroups(groupIndex)%Particles(particleID)%Mass
           end do 
         else
           ! Read as binary ile
@@ -2059,8 +2082,12 @@ program MPathRW
             ! coming further down
 
             ! A sink extracts total mass 
+            ! qSink is the cummulative over all cells related to the observation
+            ! if a record was written, a particle was removed, only occurs 
+            ! if this flow is non-zero.
             activeParticleMasses(n) = &
-            simulationData%ParticleGroups(groupIndex)%Particles(particleID)%Mass
+            simulationData%ParticleGroups(groupIndex)%Particles(particleID)%Mass/abs(qSink)
+            !simulationData%ParticleGroups(groupIndex)%Particles(particleID)%Mass
           end do 
         end if
 
@@ -2138,6 +2165,19 @@ program MPathRW
             gpkdeWeightsCarrier(irow) = activeParticleMasses(n)
           end do
 
+        print *, 'DT OBS', dtObsSeries, shape(simulationData%TimePoints), kfirst, klast
+        avgTimeData = sum(gpkdeDataCarrier(:,1))/dble(solCount)
+        varTimeData = 0d0
+        ! omp
+        do n=1,solCount
+          varTimeData = varTimeData + (gpkdeDataCarrier(n,1) - avgTimeData)**2d0/dble(solCount)
+        end do 
+        print *, 'SCOTTSRULE', 3.49*sqrt(varTimeData)/( (solCount)**(1d0/3d0) )
+
+
+
+
+
           select case(obs%postprocessOption)
           case(0)
             ! Only histogram
@@ -2181,14 +2221,15 @@ program MPathRW
         ! With as many columns as cells
         ! composing the observation
         allocate(obsSinkFlowInTime(obs%nAuxRecords, obs%nCells))
-        obsSinkFlowInTime(:,:) = 0d0
-        ! Fill flow-rate timeseries for each cell
-        rewind( obs%auxOutputUnit )
-        do n =1, obs%nAuxRecords
-          !read(obs%auxOutputUnit,*) timeIndex, obsSinkFlowInTime( n, : )
-          read(obs%auxOutputUnit) timeIndex, obsSinkFlowInTime( n, : ) ! binary
-        end do
-        ! Accumulate flow rates, absolute values 
+        obsSinkFlowInTime(:,:) = 0d0 ! This array needs to be filled somehow
+
+        !! Fill flow-rate timeseries for each cell
+        !rewind( obs%auxOutputUnit )
+        !do n =1, obs%nAuxRecords
+        !  !read(obs%auxOutputUnit,*) timeIndex, obsSinkFlowInTime( n, : )
+        !  read(obs%auxOutputUnit) timeIndex, obsSinkFlowInTime( n, : ) ! binary
+        !end do
+        !! Accumulate flow rates, absolute values 
         obsAccumSinkFlowInTime = sum( abs(obsSinkFlowInTime), dim=2 )
 
         ! Once flow-rates are known, can compute flux-concentration
@@ -2199,14 +2240,15 @@ program MPathRW
               2 + transportModelData%nSolutes, 'es18.9e3)'
           ! And write
           do nit = 1, obs%nAuxRecords
-             if ( obsAccumSinkFlowInTime(nit) .gt. 0d0 ) then 
+             !if ( obsAccumSinkFlowInTime(nit) .gt. 0d0 ) then 
               write(obs%outputUnit, colFormat) nit, simulationData%TimePoints(nit), &
-                obsAccumSinkFlowInTime(nit), BTCHistPerSolute(nit,:)/obsAccumSinkFlowInTime(nit)
-             else
-              ! No concentrations
-              write(obs%outputUnit, colFormat) nit, simulationData%TimePoints(nit), &
-                    0d0, spread(0d0,1,transportModelData%nSolutes) 
-             end if 
+                obsAccumSinkFlowInTime(nit), BTCHistPerSolute(nit,:)
+                !obsAccumSinkFlowInTime(nit), BTCHistPerSolute(nit,:)/obsAccumSinkFlowInTime(nit)
+             !else
+             ! ! No concentrations
+             ! write(obs%outputUnit, colFormat) nit, simulationData%TimePoints(nit), &
+             !       0d0, spread(0d0,1,transportModelData%nSolutes) 
+             !end if 
           end do 
         case (1)
           ! idTime, time, QSink, CFlux-HIST(:), CFlux-GPKDE(:)
@@ -2214,15 +2256,16 @@ program MPathRW
               2 + 2*transportModelData%nSolutes, 'es18.9e3)'
           ! And write
           do nit = 1, obs%nAuxRecords
-             if ( obsAccumSinkFlowInTime(nit) .gt. 0d0 ) then 
-              write(obs%outputUnit, colFormat) nit, simulationData%TimePoints(nit),               &
-                obsAccumSinkFlowInTime(nit), BTCHistPerSolute(nit,:)/obsAccumSinkFlowInTime(nit), &
-                                            BTCGpkdePerSolute(nit,:)/obsAccumSinkFlowInTime(nit) 
-             else
-              ! No concentrations
-              write(obs%outputUnit, colFormat) nit, simulationData%TimePoints(nit), &
-                    0d0, spread(0d0,1,2*transportModelData%nSolutes) 
-             end if 
+             !if ( obsAccumSinkFlowInTime(nit) .gt. 0d0 ) then 
+              write(obs%outputUnit, colFormat) nit, simulationData%TimePoints(nit),           &
+                obsAccumSinkFlowInTime(nit), BTCHistPerSolute(nit,:), BTCGpkdePerSolute(nit,:) 
+                !obsAccumSinkFlowInTime(nit), BTCHistPerSolute(nit,:)/obsAccumSinkFlowInTime(nit), &
+                !                            BTCGpkdePerSolute(nit,:)/obsAccumSinkFlowInTime(nit) 
+             !else
+             ! ! No concentrations
+             ! write(obs%outputUnit, colFormat) nit, simulationData%TimePoints(nit), &
+             !       0d0, spread(0d0,1,2*transportModelData%nSolutes) 
+             !end if 
           end do
         end select 
 

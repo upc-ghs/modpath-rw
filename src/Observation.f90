@@ -24,6 +24,8 @@ module ObservationModule
     character(len=200)                 :: recOutputFileName
     integer                            :: auxOutputUnit
     character(len=200)                 :: auxOutputFileName
+    doubleprecision                    :: cummSinkFlow
+    doubleprecision, dimension(:), allocatable :: cummSinkFlowSeries
     ! Reconstruction params
     integer :: effectiveWeightFormat    = 0
     doubleprecision :: binSizeFactor    = 3d0
