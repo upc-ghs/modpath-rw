@@ -32,7 +32,15 @@ module ObservationModule
     integer :: initialSmoothingFormat   = 0
     integer :: nOptLoops                = 10
     doubleprecision :: errorConvergence = 0.01d0 
-    integer :: histogramBinFormat = 1
+    integer :: histogramBinFormat       = 1
+    doubleprecision :: histogramBin     = 0d0
+    integer :: histogramOptions         = 0
+    integer :: reconstructionOptions    = 0
+    doubleprecision :: timeStepOut      = 0d0
+    logical :: adaptGridToCoords        = .false.
+    doubleprecision, dimension(:), allocatable :: obsSeries
+    doubleprecision, dimension(:), allocatable :: timeSeries
+    
   end type
 
 

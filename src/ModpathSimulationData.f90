@@ -1396,6 +1396,7 @@ contains
         call urword(line, icol, istart, istop, 2, n, r, 0, 0)
         obs%outputOption = n 
 
+
         ! Do postprocess ?
         obs%doPostprocess = .true.
         if ( obs%outputOption .eq. 0 ) obs%doPostprocess = .false.
@@ -1405,10 +1406,94 @@ contains
           obs%postprocessOption = n 
         end if 
 
+
+        ! Continue reading if do postprocess
         if ( obs%doPostprocess ) then
-          ! interpret reconstruction options 
+
+          ! Histogram option for sink observations
+          if ( obs%style.eq.2 ) then 
+            call urword(line, icol, istart, istop, 2, n, r, 0, 0)
+            select case(n)
+            case (0,1)
+              obs%histogramOptions = n
+            case default
+              write(outUnit,'(a)') 'Invalid histogram options value, will remain disabled.'
+              obs%histogramOptions = 0
+            end select 
+          end if 
+
+
+          ! Look for recontruction options
           call urword(line, icol, istart, istop, 2, n, r, 0, 0)
           select case(n)
+          case (0,1)
+            obs%reconstructionOptions = n
+          case default
+            write(outUnit,'(a)') 'Invalid reconstruction options value, will remain disabled.'
+            obs%reconstructionOptions = 0
+          end select
+
+
+          ! Process histogram options
+          select case(obs%histogramOptions)
+          case(1)
+            write(outUnit,'(a)') 'Will interpret histogram options.'
+
+            ! Histogram option for sink observations
+            ! 0: Scott's rule for bin size
+            ! 1: Freedman-Diaconis rule for bin size
+            ! 2: Given bin size
+            ! 3: Follow time step from timeseries run
+            read(obsUnit, '(a)') line
+            icol = 1
+            call urword(line, icol, istart, istop, 2, n, r, 0, 0)
+            select case(n)
+            case(0)
+              write(outUnit,'(a)') "Will estimate the histogram bin with Scott's rule."
+              obs%histogramBinFormat = n
+            case(1)
+              write(outUnit,'(a)') "Will estimate the histogram bin with Freedman-Diaconis rule."
+              obs%histogramBinFormat = n
+            case(2)
+              write(outUnit,'(a)') "Will interpret bin size for histogram bin."
+              obs%histogramBinFormat = n
+            case(3)
+              write(outUnit,'(a)') "Will employ the timeseries time step for histogram bin."
+              obs%histogramBinFormat = n
+            case default
+              write(outUnit,'(a)') 'Invalid bin option, will remain as default.'
+              obs%histogramBinFormat = 1 ! Freedman diaconis rule for bin size selection
+            end select
+             
+            ! If format is 2, look for bin size for histogram
+            if ( obs%histogramBinFormat.eq. 2 ) then 
+              call urword(line, icol, istart, istop, 3, n, r, 0, 0)
+              if ( r.gt.0d0 ) then
+                obs%histogramBin = r
+              else
+                write(outUnit,'(a)') 'Invalid value for histogram bin size, will fallback to default bin option.'
+                obs%histogramBinFormat = 1
+              end if
+            end if 
+
+            ! Look for time step out, in all cases of bin option
+            call urword(line, icol, istart, istop, 3, n, r, 0, 0)
+            if ( r.gt.0d0 ) then
+              write(outUnit,'(a,es18.9e3)') 'Will try to interpolate the observation series to the time step ', r 
+              obs%timeStepOut = r 
+            else
+              write(outUnit,'(a)') 'Time step out is zero, will not perform interpolation for observation.' 
+              obs%timeStepOut = 0d0
+            end if
+
+          case default
+            write(outUnit,'(a)') 'Will not interpret histogram options for this observation.'
+          end select
+
+          
+          ! interpret reconstruction options 
+          !call urword(line, icol, istart, istop, 2, n, r, 0, 0)
+          select case(obs%reconstructionOptions)
           case(1)
             write(outUnit,'(a)') 'Interpret reconstruction parameters for the observation.'
             ! Read opt loops
@@ -1445,7 +1530,7 @@ contains
               write(outUnit,'(a,I3)') 'Invalid smoothing format will default to ', obs%initialSmoothingFormat
             end select
 
-            ! read bin size factor
+            ! Read bin size factor
             if ( obs%initialSmoothingFormat.eq.1) then 
               call urword(line, icol, istart, istop, 3, n, r, 0, 0)
               if ( r.gt.0d0 ) then 
@@ -1472,6 +1557,7 @@ contains
           end select
 
         end if 
+
 
         ! Assign output units, according to 
         ! obs output option
@@ -1503,7 +1589,8 @@ contains
         icol = 1
         call urword(line, icol, istart, istop, 2, n, r, 0, 0)
         obs%cellOption = n 
-  
+
+
         ! Load observation cells
         select case( obs%cellOption )
           ! In case 0, a list of cell ids is specified, that 
@@ -4171,9 +4258,9 @@ contains
 
           ! For the vector of times, determine the corresponding 
           ! modflow data interval. Will be used to assign flow-rates.
-          ! Note: mfTimes, by definition, do not have blank-jumps in between intervals. 
+          ! Note: mfTimes, by definition, is without blank-jumps in between intervals. 
           ! Meaning that the end of one interval is the beggining of the next. Similarly,
-          ! mfTimes are built with the consideration that begin at ReferenceTime and 
+          ! mfTimes is built with the consideration that begins at ReferenceTime and 
           ! after intersecting with the times provided by the user, times vector 
           ! also is such that begins at ReferenceTime.
 

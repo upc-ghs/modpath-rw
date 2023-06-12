@@ -945,6 +945,20 @@ contains
     nDim          = 3
     fNDim         = 3.0_fp
     this%dimensionMask = dimensionMask
+    this%idDim1   = 0
+    this%idDim2   = 0
+    this%binSize  = fZERO
+    this%domainSize = fZERO
+    this%domainOrigin = fZERO
+    this%domainGridSize = 0
+    this%deltaBinsOrigin = 0
+    this%nBins = 0
+    this%adaptGridToCoords = .false.
+    this%borderFraction = defaultBorderFraction
+    this%slicedReconstruction = .false.
+    this%slicedDimension = 0
+
+
     if ( allocated( this%dimensions ) ) deallocate( this%dimensions  ) 
 
     if ( allocated(  densityGrid             )) deallocate(  densityGrid             )
@@ -971,8 +985,55 @@ contains
     if ( allocated( this%kernelSDYDatabase  ) )deallocate( this%kernelSDYDatabase  )
     if ( allocated( this%kernelSDZDatabase  ) )deallocate( this%kernelSDZDatabase  ) 
 
-    this%densityEstimateGrid => null()
-    this%computeBinIds       => null()
+    this%densityEstimateGrid  => null()
+    this%histogramDensity     => null()   
+    this%computeBinIds        => null()
+    this%nComputeBins         = 0
+    this%outputFileName       = ""
+    this%deltaHOverDelta      = defaultDeltaHOverDelta
+    this%minHOverDelta        = defaultMinHOverDelta
+    this%maxHOverDelta        = defaultMaxHOverDelta
+    this%databaseOptimization = .false.
+
+    this%nOptimizationLoops             = defaultNOptLoops
+    this%densityRelativeConvergence     = defaultRelativeErrorConvergence
+    this%minLimitRoughness              = fZERO
+    this%minRelativeRoughness           = defaultMinRelativeRoughness
+    this%minRoughnessLengthScale        = fZERO
+    this%minRoughnessLengthScaleAsSigma = .true.
+    this%initialSmoothing               = fZERO
+    this%isotropicThreshold             = defaultIsotropicThreshold
+    this%boundKernelSizeFormat          = defaultBoundKernelSizeFormat
+    this%boundKernels                   = .true.
+    this%useGlobalSmoothing             = .false.
+    this%isotropic                      = .false. 
+    this%initialSmoothingFactor         = defaultInitialSmoothingFactor
+    this%initialSmoothingArray          = fZERO
+
+    this%firstRun = .true.
+    this%averageKernelSmoothing = fZERO
+    this%initialSmoothingSelection = defaultInitialSmoothingSelection
+    this%minRoughnessFormat = defaultMinRoughnessFormat
+    this%meanCoords = fZERO 
+    this%stdCoords  = fZERO
+    this%stdSigmaScale = fZERO
+    this%hSigmaScale   = fZERO
+        
+    this%maxKernelSize   = fZERO 
+    this%maxKernelSDSize = fZERO
+    this%maxSizeDimId    = 0
+    this%minKernelSize   = fZERO
+    this%minKernelSDSize = fZERO
+    this%minSizeDimId    = 0
+    this%maxSigmaGrowth  = defaultMaxSigmaGrowth
+    
+    this%reportToOutUnit = .false.
+    this%outFileUnit     = 0
+    this%outFileName     = ""
+    this%supportDimensionConstant = fZERO
+    this%alphaDimensionConstant   = fZERO
+    this%betaDimensionConstant    = fZERO
+     
 
     this%SetKernel      => null()
     this%SetKernelSigma => null()
@@ -986,6 +1047,7 @@ contains
 
     if ( associated(this%histogramCounts)  ) this%histogramCounts  => null()
     if ( associated(this%histogramWCounts) ) this%histogramWCounts => null()
+
 
   end subroutine prReset
 
@@ -1056,6 +1118,7 @@ contains
     elsewhere
       this%domainGridSize = 1
     end where
+
     ! Stop if any the domainGridSize .lt. 1
     if ( any( this%domainGridSize .lt. 1 ) ) then 
       write(*,*) 'Error: while initializing GPKDE, some domainGridSize  .lt. 1. Stop.'
@@ -1576,7 +1639,7 @@ contains
     fNDim = real(nDim,fp)
     this%dimensionMask = dimensionMask
     if ( nDim .le. 0 ) then 
-      write(*,*) 'Error while initializing GPKDE dimensions. nDim .le. 0. Stop.'
+      write(*,*) 'Error: while initializing GPKDE dimensions. nDim .le. 0. Stop.'
       stop
     end if 
 

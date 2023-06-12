@@ -122,7 +122,7 @@ program MPathRW
   !integer            :: idColFormat ! To be deprecated
   !character(len=200) :: qSinkFormat
   !character(len=200) :: waterVolFormat ! To be deprecated
-  doubleprecision    :: avgTimeData, stdTimeData, varTimeData
+  !doubleprecision    :: avgTimeData, stdTimeData, varTimeData
   doubleprecision    :: dX, dY, dZ, dZC, porosity
   doubleprecision    :: modelX, modelY
   integer            :: timePointIndex, timeStep
@@ -840,6 +840,10 @@ program MPathRW
   kcount = 0
   if(allocated(cellData)) deallocate(cellData)
   allocate(cellData)
+
+print *, 'TOTAL TIMES: ', tdisData%TotalTimes
+print *, 'KLAST', klast, 'KFIRST', kfirst
+print *, 'CUMMULATIVE TIME STEP COUNT', tdisData%CumulativeTimeStepCount
 
   call ulog('Begin TIME_STEP_LOOP', logUnit)
   ! Call system_clock to get the start of the time step loop
@@ -2016,16 +2020,22 @@ program MPathRW
         call ulog('OBS of flux concentration', logUnit)
 
         ! The length of the timeseries is needed
-        if ( size(simulationData%TimePoints) .lt. 2 ) then 
-          write(mplistUnit, '(A)') 'Not enough timepoints for processing this observation, continue to the next'
-          cycle ! nobs
-        end if
+        ! only when bin size is obtained following the timeseries
+        if ( obs%histogramBinFormat .eq. 3 ) then 
+          if ( size(simulationData%TimePoints) .lt. 2 ) then 
+            write(mplistUnit, '(A)') 'Not enough timepoints for processing this observation, continue to the next'
+            cycle ! nobs
+          end if
+          ! This would work only for timeseries simulations
+          ! For sink observations this will change
+          ! Either from the timepoints, or from obs%binSize
+          dtObsSeries = simulationData%TimePoints(2)-simulationData%TimePoints(1)  ! binSize
 
-        ! This would work only for timeseries simulations
-        ! For sink observations this will change
-        ! Either from the timepoints, or from obs%binSize
-        dtObsSeries = simulationData%TimePoints(2)-simulationData%TimePoints(1)  ! binSize
-   
+        else if ( obs%histogramBinFormat.eq.2 ) then 
+          ! Extract the value from the observation
+          dtObsSeries = obs%histogramBin
+        end if  
+
         ! If no records, don't even try
         if ( obsRecordCounter(nobs) .eq. 0 ) then 
           write(mplistUnit, '(A)') 'No records for this observation, continue to the next'
@@ -2110,12 +2120,24 @@ program MPathRW
          allocate(gpkde)
         end if
 
+        ! Control the flag for adapting the grid to coordinates
+        obs%adaptGridToCoords = .false.
+        if (simulationData%StoppingTimeOption.eq.2) then
+          ! This is the case where stoptime is this very large value
+          !if (flowModelData%SteadyState) stoptime = 1.0d+30
+          if (flowModelData%SteadyState) obs%adaptGridToCoords = .true.
+        end if 
+
+        !if ( (.not. obs%adaptGridToCoords).and.( obs%timeStepOut .gt. 0d0 ) ) then 
+        !end if 
+
         ! Initialize gpkde for timeseries reconstruction
         select case( obs%histogramBinFormat ) 
-        case(2)
+        case(2,3)
           ! bin size is given by timeseries run, or by the user
           call gpkde%Initialize(& 
-              (/simulationData%TimePoints(obs%nAuxRecords),0d0,0d0/), & ! domainSize in this case should change, stoptime ?
+              (/stoptime,0d0,0d0/),                                   & 
+              !(/simulationData%TimePoints(obs%nAuxRecords),0d0,0d0/), & ! domainSize in this case should change, stoptime ?
               binSize=(/dtObsSeries,0d0,0d0/),                        & ! also binSize
               domainOrigin=(/0d0,0d0,0d0/),                           &
               nOptimizationLoops=obs%nOptLoops,                       &
@@ -2123,22 +2145,52 @@ program MPathRW
               initialSmoothingSelection=obs%initialSmoothingFormat,   & 
               initialSmoothingFactor=obs%binSizeFactor,               & 
               effectiveWeightFormat=obs%effectiveWeightFormat,        & 
+              adaptGridToCoords=obs%adaptGridToCoords,                &
               outFileName=mplistFile                                  &
           )
         case default
           ! initialize without bin size, it is estimated later
           ! based on the given data.
           call gpkde%Initialize(& 
-              (/simulationData%TimePoints(obs%nAuxRecords),0d0,0d0/), & ! domainSize in this case should change, stoptime ?
+              (/stoptime,0d0,0d0/),                                   &
+              !(/simulationData%TimePoints(obs%nAuxRecords),0d0,0d0/), & ! domainSize in this case should change, stoptime ?
               domainOrigin=(/0d0,0d0,0d0/),                           &
               nOptimizationLoops=obs%nOptLoops,                       &
               databaseOptimization=.false.,                           &
               initialSmoothingSelection=obs%initialSmoothingFormat,   & 
               initialSmoothingFactor=obs%binSizeFactor,               & 
               effectiveWeightFormat=obs%effectiveWeightFormat,        & 
+              adaptGridToCoords=obs%adaptGridToCoords,                &
               outFileName=mplistFile                                  &
           )
         end select
+
+        ! Regardless of the histogram bin selection, 
+        ! cumulative flow rates need to be interpolated 
+        ! to coincide with the number of output points
+
+        ! The following allocation should be according to the number of points 
+        ! needed for the observation. If there is any sort of interpolation, 
+        ! then the given time step determines the final number of points
+
+        !call interp1d%initialize(cummMassSeries(nti:nte),times(nti:nte), int1dstat)
+        !if ( int1dstat .gt. 0 ) then 
+        !  write(outUnit,'(A)') 'There was a problem while initializing 1d interpolator.'
+        !  call ustop('There was a problem while initializing 1d interpolator. Stop.')
+        !end if
+        !! Interpolate the release time        
+        !call interp1d%evaluate( cummEffectiveMass, releaseTimes(nr) ) ! THIS ARRAY RELEASE TIMES BYE BYE
+
+        !do ix = 1, this%nBins(1)
+        !  if ( this%densityEstimateGrid( ix, iy, iz ) .le. fZERO ) cycle
+        ! idbinx = ix+this%deltaBinsOrigin(1)
+        !(real(idbinx,fp) + 0.5_fp)*this%binSize(1) + this%domainOrigin(1)
+
+        !if ( obs%timeStepOut .gt. 0d0 ) then 
+
+        !end if 
+
+
 
         ! Allocate according to postprocess option 
         ! 0: only histogram
@@ -2194,14 +2246,8 @@ program MPathRW
             gpkdeWeightsCarrier(irow) = activeParticleMasses(n)
           end do
 
-          ! dtObsSeries is the bin size here
-          !call gpkde%histogram%EstimateBinSizeScott( gpkdeDataCarrier, dtObsSeries )
-          !call gpkde%histogram%EstimateBinSizeFD( gpkdeDataCarrier, dtObsSeries )
-          ! Or a given time step, the timeseries step or a user provided value
-
-          ! And then initialize ?
-          ! for each solute ?
-
+          ! It can be the case that the grid allocated for observations 
+          ! of different solutes have different sizes. 
 
           select case(obs%postprocessOption)
           case(0)
@@ -2240,8 +2286,20 @@ program MPathRW
             ! smoothed
             BTCGpkdePerSolute(:,ns) = gpkde%densityEstimateGrid(:,1,1)
           end select
+
+          ! Is not so easy to know in advance which series will be the longest,
+          ! the complicated case is when stoptime = \infty because in this situation 
+          ! the reconstruction grid is adapted to given coordinates.
+          ! if (obs%adaptGridToCoords) then 
+          !  ! Some verification of the length for this series
+          !  ! and reallocate if necessary, copying the already obtained values.
+          ! end if 
+
+
         end do ! ns=1, transportModelData%nSolutes 
   
+
+
 
         ! Flow rates were written to obs file
         if ( allocated(obsSinkFlowInTime) ) deallocate(obsSinkFlowInTime)
@@ -2298,7 +2356,7 @@ program MPathRW
 
         ! Reset gpkde
         if ( allocated( gpkde ) ) then
-           call gpkde%Reset()
+          call gpkde%Reset()
         end if
 
         ! continue to next

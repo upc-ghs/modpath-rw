@@ -645,10 +645,10 @@ contains
   class(HistogramType) :: this
   real(fp), dimension(:,:), intent(in) :: dataPoints ! (npoints, 3)
   real(fp), dimension(3), intent(inout) :: binSize    ! for 3D but now only use first
-  real(fp) :: avg, var
+  !real(fp) :: avg, var
   integer  :: nPoints
   integer, dimension(2) :: nPointsShape
-  integer  :: n 
+  !integer  :: n 
   real(fp), dimension(:), allocatable :: array
   integer  :: residue
   real(fp) :: residuefp
