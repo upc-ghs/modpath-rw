@@ -130,6 +130,8 @@ module GridProjectedKDEModule
     logical                :: boundKernels       = .true.
     logical                :: useGlobalSmoothing = .false.
     logical                :: isotropic          = .false. 
+    real(fp)               :: initialSmoothingFactor
+    real(fp), dimension(3) :: initialSmoothingArray
 
     ! Eventually could be used for calculating smoothing 
     ! at subsequent reconstructions
@@ -195,6 +197,7 @@ module GridProjectedKDEModule
     ! Procedures
     procedure :: Initialize                      => prInitialize 
     procedure :: Reset                           => prReset 
+    procedure :: UpdateBinSize                   => prUpdateBinSize
     procedure :: InitializeModuleDimensions      => prInitializeModuleDimensions
     procedure :: InitializeModuleConstants       => prInitializeModuleConstants
     procedure :: InitializeNetRoughnessFunction  => prInitializeNetRoughnessFunction
@@ -353,7 +356,7 @@ contains
                             boundKernelSizeFormat, & 
                                isotropicThreshold, & 
                                    maxSigmaGrowth, & 
-                                       outFileName )
+                                      outFileName  )
     !---------------------------------------------------------------------------
     ! Initialize the module, assign default parameters,
     ! configures the reconstruction grid, module dimensions and others.
@@ -366,7 +369,7 @@ contains
     class( GridProjectedKDEType ) :: this
     ! Reconstruction grid parameters
     real(fp), dimension(3), intent(in)           :: domainSize
-    real(fp), dimension(3), intent(in)           :: binSize
+    real(fp), dimension(3), intent(in), optional :: binSize
     real(fp), dimension(3), intent(in), optional :: domainOrigin
     logical               , intent(in), optional :: adaptGridToCoords
     real(fp)              , intent(in), optional :: borderFraction
@@ -435,25 +438,37 @@ contains
       this%borderFraction = borderFraction
     else
       this%borderFraction = defaultBorderFraction
-    end if 
-    ! Stop if all bin sizes are zero
-    if ( all( binSize .lt. fZERO ) ) then 
-      write(*,*) 'Error: while initializing GPKDE, all binSizes are .lt. 0. Stop.'
-      stop 
-    end if 
-    ! Initialize reconstruction grid parameters 
-    where( binSize .ne. fZERO ) 
-      this%domainGridSize = int( domainSize/binSize + 0.5 )
-    elsewhere
-      this%domainGridSize = 1
-    end where
-    ! Stop if any the domainGridSize .lt. 1
-    if ( any( this%domainGridSize .lt. 1 ) ) then 
-      write(*,*) 'Error: while initializing GPKDE, some domainGridSize  .lt. 1. Stop.'
-      stop 
     end if
-    this%binSize    = binSize
+   
+    ! BIN SIZE RELATED !
+    if ( present( binSize ) ) then 
+
+      ! Stop if all bin sizes are zero
+      if ( all( binSize .lt. fZERO ) ) then 
+        write(*,*) 'Error: while initializing GPKDE, all binSizes are .lt. 0. Stop.'
+        stop 
+      end if 
+      ! Initialize reconstruction grid parameters 
+      where( binSize .ne. fZERO ) 
+        this%domainGridSize = int( domainSize/binSize + 0.5 )
+      elsewhere
+        this%domainGridSize = 1
+      end where
+      ! Stop if any the domainGridSize .lt. 1
+      if ( any( this%domainGridSize .lt. 1 ) ) then 
+        write(*,*) 'Error: while initializing GPKDE, some domainGridSize  .lt. 1. Stop.'
+        stop 
+      end if
+      this%binSize = binSize
+
+    end if 
+    ! END BIN SIZE RELATED !
+
+
+    ! domainSize
     this%domainSize = domainSize
+
+
     ! domainOrigin
     if ( present( domainOrigin ) ) then 
       this%domainOrigin = domainOrigin
@@ -485,93 +500,113 @@ contains
       this%slicedDimension = 0 
     end if 
 
-    ! Depending on domainGridSize, is the number of dimensions of the GPDKE
-    ! reconstruction process. If any nBins is 1, then that dimension
-    ! is compressed. e.g. nBins = (10,1,20), then it is a 2D reconstruction
-    ! process where dimensions 'x' and 'z' define the 2D plane. This is not
-    ! necessarily the same for the computation of histograms, where determination 
-    ! of a particle inside the grid is related to the binSize. If a given binSize
-    ! is zero, then histogram computation does not consider this dimension.
-    ! If nBins .eq. 1 and binSize .gt. 0 then dimension is considered as valid,
-    ! and compared against the origin.
 
-    ! Initialize module dimensions
-    ! Will modify the number of dimensions based on slicing parameters and report.
-    call this%InitializeModuleDimensions( nDim, dimensionMask ) 
-
-    ! Initialize module constants, uses nDim
-    call this%InitializeModuleConstants()
-
-    if ( this%reportToOutUnit ) then 
-      write( this%outFileUnit, '(2X,A)' ) 'Initializing Histogram'
-    end if
-
-    ! Initialize histogram !
-    if ( this%adaptGridToCoords ) then
-      ! Skip histogram grid allocation in order 
-      ! to adapt to the given particle coordinates 
-      call this%histogram%Initialize( &
-       this%domainGridSize, this%binSize, &
-          domainOrigin=this%domainOrigin, &
-                 adaptGridToCoords=.true. )
-      if ( this%reportToOutUnit ) then 
-        write( this%outFileUnit, '(3X,A)' ) 'Histogram grid will not follow domain limits, will adapt to data points.'
-      end if
+    if ( present( initialSmoothingFactor ) ) then 
+      this%initialSmoothingFactor = initialSmoothingFactor
     else
-      ! Allocate grid according to nBins
-      call this%histogram%Initialize( &
-       this%domainGridSize, this%binSize, &
-           domainOrigin=this%domainOrigin )
-      ! nBins as domainGridSize
-      this%nBins = this%domainGridSize
-      this%deltaBinsOrigin = 0
-      ! Allocate matrix for density 
-      if ( allocated( densityGrid ) ) deallocate( densityGrid )
-      allocate( densityGrid(this%nBins(1), this%nBins(2), this%nBins(3)) )
-      if ( this%reportToOutUnit ) then 
-        write( this%outFileUnit, '(3X,A)' ) 'Histogram grid will follow domain grid size.'
-      end if
-    end if
-    if ( this%reportToOutUnit ) then 
-      write( this%outFileUnit, '(3X,A)' ) 'Histogram determines dimensions to be analyzed based on bin sizes.'
-      write( this%outFileUnit, '(3X,A,I1,A)')&
-              'Will compute Histogram considering ', this%histogram%nDim, ' dimensions.'
-    end if  
-
-    ! Process further arguments !
-
-    ! initialSmoothing
-    if ( present( initialSmoothingSelection ) ) then 
-      this%initialSmoothingSelection = initialSmoothingSelection
-    else
-      this%initialSmoothingSelection = defaultInitialSmoothingSelection
+      this%initialSmoothingFactor = defaultInitialSmoothingFactor
     end if 
-    this%initialSmoothing(:) = fZERO
-    select case(this%initialSmoothingSelection) 
-    case(0)
-      ! Choose from global estimate of Silverman (1986)
-      continue
-    case(1)
-      if ( present( initialSmoothingFactor ) ) then 
-        this%initialSmoothing = initialSmoothingFactor*this%histogram%binDistance
+
+    this%initialSmoothingArray = fZERO
+    if ( present( initialSmoothing ) ) then
+      this%initialSmoothingArray = initialSmoothing
+    end if 
+
+
+    ! BIN SIZE RELATED !
+    if ( present( binSize ) ) then 
+
+      ! Depending on domainGridSize, is the number of dimensions of the GPDKE
+      ! reconstruction process. If any nBins is 1, then that dimension
+      ! is compressed. e.g. nBins = (10,1,20), then it is a 2D reconstruction
+      ! process where dimensions 'x' and 'z' define the 2D plane. This is not
+      ! necessarily the same for the computation of histograms, where determination 
+      ! of a particle inside the grid is related to the binSize. If a given binSize
+      ! is zero, then histogram computation does not consider this dimension.
+      ! If nBins .eq. 1 and binSize .gt. 0 then dimension is considered as valid,
+      ! and compared against the origin.
+
+      ! Initialize module dimensions
+      ! Will modify the number of dimensions based on slicing parameters and report.
+      call this%InitializeModuleDimensions( nDim, dimensionMask ) 
+
+      ! Initialize module constants, uses nDim
+      call this%InitializeModuleConstants()
+
+      if ( this%reportToOutUnit ) then 
+        write( this%outFileUnit, '(2X,A)' ) 'Initializing Histogram'
+      end if
+
+      ! Initialize histogram !
+      if ( this%adaptGridToCoords ) then
+        ! Skip histogram grid allocation in order 
+        ! to adapt to the given particle coordinates 
+        call this%histogram%Initialize(     &
+         this%domainGridSize, this%binSize, &
+            domainOrigin=this%domainOrigin, &
+                   adaptGridToCoords=.true. )
+        if ( this%reportToOutUnit ) then 
+          write( this%outFileUnit, '(3X,A)' ) 'Histogram grid will not follow domain limits, will adapt to data points.'
+        end if
       else
-        this%initialSmoothing = defaultInitialSmoothingFactor*this%histogram%binDistance
-      end if 
-    case(2)
-      if ( present( initialSmoothing ) ) then
-        this%initialSmoothing = initialSmoothing
+        ! Allocate grid according to nBins
+        call this%histogram%Initialize(     &
+         this%domainGridSize, this%binSize, &
+             domainOrigin=this%domainOrigin )
+        ! nBins as domainGridSize
+        this%nBins = this%domainGridSize
+        this%deltaBinsOrigin = 0
+        ! Allocate matrix for density 
+        if ( allocated( densityGrid ) ) deallocate( densityGrid )
+        allocate( densityGrid(this%nBins(1), this%nBins(2), this%nBins(3)) )
+        if ( this%reportToOutUnit ) then 
+          write( this%outFileUnit, '(3X,A)' ) 'Histogram grid will follow domain grid size.'
+        end if
+      end if
+      if ( this%reportToOutUnit ) then 
+        write( this%outFileUnit, '(3X,A)' ) 'Histogram determines dimensions to be analyzed based on bin sizes.'
+        write( this%outFileUnit, '(3X,A,I1,A)')&
+                'Will compute Histogram considering ', this%histogram%nDim, ' dimensions.'
+      end if  
+
+      ! Process further arguments !
+
+      ! initialSmoothing
+      if ( present( initialSmoothingSelection ) ) then 
+        this%initialSmoothingSelection = initialSmoothingSelection
       else
-        this%initialSmoothing = defaultInitialSmoothingFactor*this%histogram%binDistance
+        this%initialSmoothingSelection = defaultInitialSmoothingSelection
       end if 
-    case default
-      write(*,*) 'Error: Initial smoothing selection method not implemented. Stop.'
-      stop
-    end select
-    do nd=1,3
-      if ( dimensionMask(nd) .eq. 0 ) then 
-        this%initialSmoothing(nd) = fZERO
-      end if 
-    end do
+      this%initialSmoothing(:) = fZERO
+      select case(this%initialSmoothingSelection) 
+      case(0)
+        ! Choose from global estimate of Silverman (1986)
+        continue
+      case(1)
+        if ( present( initialSmoothingFactor ) ) then 
+          this%initialSmoothing = initialSmoothingFactor*this%histogram%binDistance
+        else
+          this%initialSmoothing = defaultInitialSmoothingFactor*this%histogram%binDistance
+        end if 
+      case(2)
+        if ( present( initialSmoothing ) ) then
+          this%initialSmoothing = initialSmoothing
+        else
+          this%initialSmoothing = defaultInitialSmoothingFactor*this%histogram%binDistance
+        end if 
+      case default
+        write(*,*) 'Error: Initial smoothing selection method not implemented. Stop.'
+        stop
+      end select
+      do nd=1,3
+        if ( dimensionMask(nd) .eq. 0 ) then 
+          this%initialSmoothing(nd) = fZERO
+        end if 
+      end do
+
+    end if 
+    ! END BIN SIZE RELATED !
+
 
     ! nOptimizationLoops
     if ( present( nOptimizationLoops ) ) then 
@@ -692,74 +727,81 @@ contains
       this%histogram%effectiveWeightFormat = defaultEffectiveWeightFormat   
     end if 
 
-    ! Determine kernel bounding  
-    select case(this%boundKernelSizeFormat)
-    ! 1: Bounding values given by user
-    case(1)
-     ! Assign max kernel sizes based on provided values of maxHOverDelta
-     this%maxKernelSize(:) = fZERO
-     do nd=1,3
-      if ( this%dimensionMask(nd).eq.0 ) cycle
-      this%maxKernelSize(nd) = this%binSize(nd)*maxHOverDelta
-     end do
-     ! As the sigma kernel is isotropic, maxSizeDimId is given by the more restrictive dimension. 
-     this%maxSizeDimId = minloc( this%maxKernelSize, dim=1, mask=(this%maxKernelSize.gt.fZERO) )
-     this%maxKernelSDSize(:) = fZERO
-     do nd=1,3
-      if ( this%dimensionMask(nd).eq.0 ) cycle
-      this%maxKernelSDSize(nd) = this%binSize(nd)*maxHOverDelta
-     end do
-     ! Assign min kernel sizes based on provided values of minHOverDelta
-     this%minKernelSize(:) = fZERO
-     do nd=1,3
-      if ( this%dimensionMask(nd).eq.0 ) cycle
-      this%minKernelSize(nd) = this%binSize(nd)*minHOverDelta
-     end do
-     ! As the sigma kernel is isotropic, maxSizeDimId is given by the more restrictive dimension. 
-     this%minSizeDimId = maxloc( this%minKernelSize, dim=1, mask=(this%minKernelSize.gt.fZERO) )
-     this%minKernelSDSize(:) = fZERO
-     do nd=1,3
-      if ( this%dimensionMask(nd).eq.0 ) cycle
-      this%minKernelSDSize(nd) = this%binSize(nd)*minHOverDelta
-     end do
-    ! 2: Unbounded 
-    case(2)
-      this%boundKernels = .false.
-    ! 0: domain constraints
-    case default
-     ! Assign max kernel sizes, consistent with domain dimensions
-     ! kernel ranges and bin sizes.
-     this%maxKernelSize(:) = fZERO
-     do nd=1,3
-      if ( this%dimensionMask(nd).eq.0 ) cycle
-      this%maxKernelSize(nd) = &
-        this%binSize(nd)*(defaultMaxSizeFactor*this%domainGridSize(nd) - 1)/real(defaultKernelRange,fp)
-     end do
-     ! As the sigma kernel is isotropic, the maxSizeDimId 
-     ! is given by the more restrictive dimension. 
-     this%maxSizeDimId = minloc( this%maxKernelSize, dim=1, mask=(this%maxKernelSize.gt.fZERO) )
-     this%maxKernelSDSize(:) = fZERO
-     do nd=1,3
-      if ( this%dimensionMask(nd).eq.0 ) cycle
-      this%maxKernelSDSize(nd) = & 
-        this%binSize(nd)*(defaultMaxSizeFactor*this%domainGridSize(nd) - 1)/real(defaultKernelSDRange,fp)
-     end do
-     ! Assign min kernel sizes, ensuring at least 2 positive shape cells, 
-     ! Positive shape is obtained as ceiling 
-     this%minKernelSize(:) = fZERO
-     do nd=1,3
-      if ( this%dimensionMask(nd).eq.0 ) cycle
-      this%minKernelSize(nd) = defaultMinSizeFactor*this%binSize(nd)/real(defaultKernelRange,fp)
-     end do
-     ! As the sigma kernel is isotropic, the minSizeDimId 
-     ! is given by the more restrictive dimension. 
-     this%minSizeDimId = maxloc( this%minKernelSize, dim=1, mask=(this%minKernelSize.gt.fZERO) )
-     this%minKernelSDSize(:) = fZERO
-     do nd=1,3
-      if ( this%dimensionMask(nd).eq.0 ) cycle
-      this%minKernelSDSize(nd) = defaultMinSizeFactor*this%binSize(nd)/real(defaultKernelSDRange,fp)
-     end do
-    end select
+
+    ! BIN SIZE RELATED !
+    if ( present( binSize ) ) then 
+
+      ! Determine kernel bounding  
+      select case(this%boundKernelSizeFormat)
+      ! 1: Bounding values given by user
+      case(1)
+       ! Assign max kernel sizes based on provided values of maxHOverDelta
+       this%maxKernelSize(:) = fZERO
+       do nd=1,3
+        if ( this%dimensionMask(nd).eq.0 ) cycle
+        this%maxKernelSize(nd) = this%binSize(nd)*maxHOverDelta
+       end do
+       ! As the sigma kernel is isotropic, maxSizeDimId is given by the more restrictive dimension. 
+       this%maxSizeDimId = minloc( this%maxKernelSize, dim=1, mask=(this%maxKernelSize.gt.fZERO) )
+       this%maxKernelSDSize(:) = fZERO
+       do nd=1,3
+        if ( this%dimensionMask(nd).eq.0 ) cycle
+        this%maxKernelSDSize(nd) = this%binSize(nd)*maxHOverDelta
+       end do
+       ! Assign min kernel sizes based on provided values of minHOverDelta
+       this%minKernelSize(:) = fZERO
+       do nd=1,3
+        if ( this%dimensionMask(nd).eq.0 ) cycle
+        this%minKernelSize(nd) = this%binSize(nd)*minHOverDelta
+       end do
+       ! As the sigma kernel is isotropic, maxSizeDimId is given by the more restrictive dimension. 
+       this%minSizeDimId = maxloc( this%minKernelSize, dim=1, mask=(this%minKernelSize.gt.fZERO) )
+       this%minKernelSDSize(:) = fZERO
+       do nd=1,3
+        if ( this%dimensionMask(nd).eq.0 ) cycle
+        this%minKernelSDSize(nd) = this%binSize(nd)*minHOverDelta
+       end do
+      ! 2: Unbounded 
+      case(2)
+        this%boundKernels = .false.
+      ! 0: domain constraints
+      case default
+       ! Assign max kernel sizes, consistent with domain dimensions
+       ! kernel ranges and bin sizes.
+       this%maxKernelSize(:) = fZERO
+       do nd=1,3
+        if ( this%dimensionMask(nd).eq.0 ) cycle
+        this%maxKernelSize(nd) = &
+          this%binSize(nd)*(defaultMaxSizeFactor*this%domainGridSize(nd) - 1)/real(defaultKernelRange,fp)
+       end do
+       ! As the sigma kernel is isotropic, the maxSizeDimId 
+       ! is given by the more restrictive dimension. 
+       this%maxSizeDimId = minloc( this%maxKernelSize, dim=1, mask=(this%maxKernelSize.gt.fZERO) )
+       this%maxKernelSDSize(:) = fZERO
+       do nd=1,3
+        if ( this%dimensionMask(nd).eq.0 ) cycle
+        this%maxKernelSDSize(nd) = & 
+          this%binSize(nd)*(defaultMaxSizeFactor*this%domainGridSize(nd) - 1)/real(defaultKernelSDRange,fp)
+       end do
+       ! Assign min kernel sizes, ensuring at least 2 positive shape cells, 
+       ! Positive shape is obtained as ceiling 
+       this%minKernelSize(:) = fZERO
+       do nd=1,3
+        if ( this%dimensionMask(nd).eq.0 ) cycle
+        this%minKernelSize(nd) = defaultMinSizeFactor*this%binSize(nd)/real(defaultKernelRange,fp)
+       end do
+       ! As the sigma kernel is isotropic, the minSizeDimId 
+       ! is given by the more restrictive dimension. 
+       this%minSizeDimId = maxloc( this%minKernelSize, dim=1, mask=(this%minKernelSize.gt.fZERO) )
+       this%minKernelSDSize(:) = fZERO
+       do nd=1,3
+        if ( this%dimensionMask(nd).eq.0 ) cycle
+        this%minKernelSDSize(nd) = defaultMinSizeFactor*this%binSize(nd)/real(defaultKernelSDRange,fp)
+       end do
+      end select
+
+    end if 
+    ! END BIN SIZE RELATED !
 
     ! Process advanced parameters !
      
@@ -821,50 +863,67 @@ contains
 
     ! Need more reports for roughnesses and eventually min/max kernel sizes
 
-    ! Logging
-    if ( this%reportToOutUnit ) then 
-      write( this%outFileUnit, '(3X,A)') 'Grid parameters'
-      write( this%outFileUnit, '(3X,A)') '---------------'
-      outfmt = '(3X,A,3(1X,es18.9e3))'
-      write( this%outFileUnit, outfmt) '- binSize            :', this%binSize
-      write( this%outFileUnit, outfmt) '- domainSize         :', this%domainSize
-      write( this%outFileUnit, outfmt) '- domainOrigin       :', this%domainOrigin
-      outfmt = '(3X,A,3(1X,I9))'
-      write( this%outFileUnit, outfmt) '- domainGridSize     :', this%domainGridSize
-      write( this%outFileUnit, '(3X,A)') '---------------'
-      write( this%outFileUnit, '(3X,A)')      'Dimensionality for reconstruction is determined from domain grid size.'
-      write( this%outFileUnit, '(3X,A,I2,A)') 'Will perform reconstruction in ', nDim, ' dimensions.'
-      if ( this%initialSmoothingSelection.ge.1 ) then 
-      outfmt = '(3X,A,3(1X,es18.9e3))'
-      write( this%outFileUnit, outfmt) '- initialSmoothing   :', this%initialSmoothing
+    ! BIN SIZE RELATED !
+    if ( present( binSize ) ) then
+
+      ! Logging
+      if ( this%reportToOutUnit ) then 
+        write( this%outFileUnit, '(3X,A)') 'Grid parameters'
+        write( this%outFileUnit, '(3X,A)') '---------------'
+        outfmt = '(3X,A,3(1X,es18.9e3))'
+        write( this%outFileUnit, outfmt) '- binSize            :', this%binSize
+        write( this%outFileUnit, outfmt) '- domainSize         :', this%domainSize
+        write( this%outFileUnit, outfmt) '- domainOrigin       :', this%domainOrigin
+        outfmt = '(3X,A,3(1X,I9))'
+        write( this%outFileUnit, outfmt) '- domainGridSize     :', this%domainGridSize
+        write( this%outFileUnit, '(3X,A)') '---------------'
+        write( this%outFileUnit, '(3X,A)')      'Dimensionality for reconstruction is determined from domain grid size.'
+        write( this%outFileUnit, '(3X,A,I2,A)') 'Will perform reconstruction in ', nDim, ' dimensions.'
+        if ( this%initialSmoothingSelection.ge.1 ) then 
+        outfmt = '(3X,A,3(1X,es18.9e3))'
+        write( this%outFileUnit, outfmt) '- initialSmoothing   :', this%initialSmoothing
+        end if 
+      end if  
+
+      ! Initialize kernel database
+      if ( this%databaseOptimization ) then
+        call this%InitializeKernelDatabaseFlat( this%minHOverDelta(1), &
+                                                this%maxHOverDelta(1), &
+                                              this%deltaHOverDelta(1), &
+                                                this%logKernelDatabase  )
+        ! Pointers for SetKernel
+        this%SetKernel => prSetKernelFromDatabase
+        this%SetKernelSigma => prSetKernelSigmaFromDatabase
+      else
+        ! Pointers for SetKernel
+        this%SetKernel => prSetKernelBrute
+        this%SetKernelSigma => prSetKernelSigmaBrute
       end if 
-    end if  
 
-    ! Initialize kernel database
-    if ( this%databaseOptimization ) then
-      call this%InitializeKernelDatabaseFlat( this%minHOverDelta(1), &
-                                              this%maxHOverDelta(1), &
-                                            this%deltaHOverDelta(1), &
-                                              this%logKernelDatabase  )
-      ! Pointers for SetKernel
-      this%SetKernel => prSetKernelFromDatabase
-      this%SetKernelSigma => prSetKernelSigmaFromDatabase
+      ! Initialize net roughness function
+      call this%InitializeNetRoughnessFunction( nDim )
+
+      ! Report intialization
+      if ( this%reportToOutUnit ) then 
+        write( this%outFileUnit, '(A)' ) ' GPKDE is initialized  '
+        write( this%outFileUnit, '(A)' ) '-----------------------'
+        write( this%outFileUnit,  *    )
+        flush( this%outFileUnit ) 
+      end if
+    
     else
-      ! Pointers for SetKernel
-      this%SetKernel => prSetKernelBrute
-      this%SetKernelSigma => prSetKernelSigmaBrute
+
+      ! Report intialization
+      if ( this%reportToOutUnit ) then 
+        write( this%outFileUnit, '(A)' ) ' GPKDE is initialized without bin size, expected to be defined later.  '
+        write( this%outFileUnit, '(A)' ) '-----------------------------------------------------------------------'
+        write( this%outFileUnit,  *    )
+        flush( this%outFileUnit ) 
+      end if
+
     end if 
+    ! END BIN SIZE RELATED !
 
-    ! Initialize net roughness function
-    call this%InitializeNetRoughnessFunction( nDim )
-
-    ! Report intialization
-    if ( this%reportToOutUnit ) then 
-      write( this%outFileUnit, '(A)' ) ' GPKDE is initialized  '
-      write( this%outFileUnit, '(A)' ) '-----------------------'
-      write( this%outFileUnit,  *    )
-      flush( this%outFileUnit ) 
-    end if
 
     ! Done
 
@@ -929,6 +988,486 @@ contains
     if ( associated(this%histogramWCounts) ) this%histogramWCounts => null()
 
   end subroutine prReset
+
+  
+  subroutine prUpdateBinSize( this, binSize )
+    !---------------------------------------------------------------------------
+    ! Initialize the module, assign default parameters,
+    ! configures the reconstruction grid, module dimensions and others.
+    !---------------------------------------------------------------------------
+    ! Specifications 
+    !---------------------------------------------------------------------------
+    use PrecisionModule, only : fp 
+    implicit none
+    ! input
+    class( GridProjectedKDEType ) :: this
+    ! Reconstruction grid parameters
+    real(fp), dimension(3), intent(in) :: binSize
+    !integer , intent(in), optional               :: binSizeFormat
+    !real(fp), dimension(3), intent(in), optional :: domainOrigin
+    !logical               , intent(in), optional :: adaptGridToCoords
+    !real(fp)              , intent(in), optional :: borderFraction
+    !! Sliced reconstruction
+    !logical               , intent(in), optional :: slicedReconstruction
+    !integer               , intent(in), optional :: slicedDimension
+    !! Initial smoothing
+    !real(fp), dimension(3), intent(in), optional :: initialSmoothing
+    !real(fp)              , intent(in), optional :: initialSmoothingFactor
+    !integer               , intent(in), optional :: initialSmoothingSelection
+    !! Number of optimization loops
+    !integer               , intent(in), optional :: nOptimizationLoops 
+    !! Kernel database parameters
+    !logical               , intent(in), optional :: databaseOptimization
+    !real(fp)              , intent(in), optional :: minHOverDelta
+    !real(fp)              , intent(in), optional :: maxHOverDelta
+    !real(fp)              , intent(in), optional :: deltaHOverDelta
+    !logical               , intent(in), optional :: logKernelDatabase    ! Deprecate ? 
+    !! Advanced parameters
+    !logical , intent(in), optional :: interpretAdvancedParams
+    !integer , intent(in), optional :: minRoughnessFormat
+    !real(fp), intent(in), optional :: minRoughness
+    !real(fp), intent(in), optional :: minRelativeRoughness
+    !real(fp), intent(in), optional :: minRoughnessLengthScale
+    !integer , intent(in), optional :: effectiveWeightFormat
+    !integer , intent(in), optional :: boundKernelSizeFormat
+    !real(fp), intent(in), optional :: isotropicThreshold
+    !real(fp), intent(in), optional :: maxSigmaGrowth
+    ! General use, indexes
+    integer :: nd
+    !! The analog to a listUnit, reports
+    !character(len=200), intent(in), optional :: outFileName
+    !! local
+    !integer :: isThisFileOpen
+    !logical :: advancedOptions
+    character(len=30) :: outfmt
+    !---------------------------------------------------------------------------
+
+    ! BIN SIZE RELATED !
+
+    ! Stop if all bin sizes are zero
+    if ( all( binSize .le. fZERO ) ) then 
+      write(*,*) 'Error: while initializing GPKDE, all binSizes are .lt. 0. Stop.'
+      stop 
+    end if 
+    ! Initialize reconstruction grid parameters 
+    where( binSize .ne. fZERO )
+      ! domainSize expected to be already defined into the object 
+      this%domainGridSize = int( this%domainSize/binSize + 0.5 )
+    elsewhere
+      this%domainGridSize = 1
+    end where
+    ! Stop if any the domainGridSize .lt. 1
+    if ( any( this%domainGridSize .lt. 1 ) ) then 
+      write(*,*) 'Error: while initializing GPKDE, some domainGridSize  .lt. 1. Stop.'
+      stop 
+    end if
+    this%binSize = binSize
+
+    ! BIN SIZE RELATED !
+
+    ! Depending on domainGridSize, is the number of dimensions of the GPDKE
+    ! reconstruction process. If any nBins is 1, then that dimension
+    ! is compressed. e.g. nBins = (10,1,20), then it is a 2D reconstruction
+    ! process where dimensions 'x' and 'z' define the 2D plane. This is not
+    ! necessarily the same for the computation of histograms, where determination 
+    ! of a particle inside the grid is related to the binSize. If a given binSize
+    ! is zero, then histogram computation does not consider this dimension.
+    ! If nBins .eq. 1 and binSize .gt. 0 then dimension is considered as valid,
+    ! and compared against the origin.
+
+    ! Initialize module dimensions
+    ! Will modify the number of dimensions based on slicing parameters and report.
+    ! dimensionMask and nDim are defined at the module level
+    call this%InitializeModuleDimensions( nDim, dimensionMask ) 
+
+    ! Initialize module constants, uses nDim
+    call this%InitializeModuleConstants()
+
+    if ( this%reportToOutUnit ) then 
+      write( this%outFileUnit, '(2X,A)' ) 'Initializing Histogram'
+    end if
+
+    ! Initialize histogram !
+    if ( this%adaptGridToCoords ) then
+      ! Skip histogram grid allocation in order 
+      ! to adapt to the given particle coordinates 
+      call this%histogram%Initialize(     &
+       this%domainGridSize, this%binSize, &
+          domainOrigin=this%domainOrigin, &
+                 adaptGridToCoords=.true. )
+      if ( this%reportToOutUnit ) then 
+        write( this%outFileUnit, '(3X,A)' ) 'Histogram grid will not follow domain limits, will adapt to data points.'
+      end if
+    else
+      ! Allocate grid according to nBins
+      call this%histogram%Initialize(     &
+       this%domainGridSize, this%binSize, &
+           domainOrigin=this%domainOrigin )
+      ! nBins as domainGridSize
+      this%nBins = this%domainGridSize
+      this%deltaBinsOrigin = 0
+      ! Allocate matrix for density 
+      if ( allocated( densityGrid ) ) deallocate( densityGrid )
+      allocate( densityGrid(this%nBins(1), this%nBins(2), this%nBins(3)) )
+      if ( this%reportToOutUnit ) then 
+        write( this%outFileUnit, '(3X,A)' ) 'Histogram grid will follow domain grid size.'
+      end if
+    end if
+    if ( this%reportToOutUnit ) then 
+      write( this%outFileUnit, '(3X,A)' ) 'Histogram determines dimensions to be analyzed based on bin sizes.'
+      write( this%outFileUnit, '(3X,A,I1,A)')&
+              'Will compute Histogram considering ', this%histogram%nDim, ' dimensions.'
+    end if  
+
+    ! Process further arguments !
+
+    ! initialSmoothing
+    !if ( present( initialSmoothingSelection ) ) then 
+    !  this%initialSmoothingSelection = initialSmoothingSelection
+    !else
+    !  this%initialSmoothingSelection = defaultInitialSmoothingSelection
+    !end if 
+    !this%initialSmoothing(:) = fZERO
+    select case(this%initialSmoothingSelection) 
+    case(0)
+      ! Choose from global estimate of Silverman (1986)
+      continue
+    case(1)
+      !if ( present( initialSmoothingFactor ) ) then 
+        this%initialSmoothing = this%initialSmoothingFactor*this%histogram%binDistance
+      !else
+      !  this%initialSmoothing = defaultInitialSmoothingFactor*this%histogram%binDistance
+      !end if 
+    case(2)
+      if ( all( this%initialSmoothingArray .le. fZERO ) ) then 
+        this%initialSmoothing = defaultInitialSmoothingFactor*this%histogram%binDistance
+      else
+        this%initialSmoothing = this%initialSmoothingArray
+      end if 
+    case default
+      write(*,*) 'Error: Initial smoothing selection method not implemented. Stop.'
+      stop
+    end select
+    do nd=1,3
+      if ( dimensionMask(nd) .eq. 0 ) then 
+        this%initialSmoothing(nd) = fZERO
+      end if 
+    end do
+    ! END BIN SIZE RELATED !
+
+
+    !! nOptimizationLoops
+    !if ( present( nOptimizationLoops ) ) then 
+    !  this%nOptimizationLoops = nOptimizationLoops
+    !else 
+    !  this%nOptimizationLoops = defaultNOptLoops
+    !end if
+
+    !! Kernel database 
+    !if ( present( databaseOptimization ) ) then 
+    !  this%databaseOptimization = databaseOptimization
+    !else 
+    !  this%databaseOptimization = defaultDatabaseOptimization
+    !end if
+
+    !! Bound kernel size format 
+    !if ( present( boundKernelSizeFormat ) ) then 
+    !  this%boundKernelSizeFormat = boundKernelSizeFormat 
+    !else
+    !  this%boundKernelSizeFormat = defaultBoundKernelSizeFormat
+    !end if 
+
+    !! If kernel database or bound kernels by database params
+    !if (&
+    !  (this%databaseOptimization).or.   & 
+    !  (this%boundKernelSizeFormat.eq.1) ) then 
+
+    ! ! Process database discretization parameters 
+    ! if ( present( minHOverDelta ) ) then
+    !   if ( minHOverDelta.gt.fZERO )then 
+    !     this%minHOverDelta = minHOverDelta
+    !   else
+    !     write(*,*) 'Error: Invalid value for minHOverDelta: should be greater than zero. Stop.'
+    !     stop
+    !   end if
+    ! else 
+    !   this%minHOverDelta = defaultMinHOverDelta
+    ! end if
+
+    ! if ( present( maxHOverDelta ) ) then
+    !  if ( maxHOverDelta.gt.fZERO ) then 
+    !   if ( maxHOverDelta.le.this%minHOverDelta(1) ) then ! minhoverdelta is an array in memory
+    !    if ( this%reportToOutUnit ) then 
+    !    write( this%outFileUnit, *) 'Error: Invalid value for maxHOverDelta: should be greater than minHOverDelta.'
+    !    write( this%outFileUnit, *) '  Value of minHOverDelta: ', this%minHOverDelta(1)
+    !    write( this%outFileUnit, *) '  Value of maxHOverDelta: ', maxHOverDelta
+    !    end if  
+    !    write(*,*) 'Error: Invalid value for maxHOverDelta: should be greater than minHOverDelta. Stop.'
+    !    stop
+    !   end if
+    !   this%maxHOverDelta = maxHOverDelta
+    !  else
+    !   write(*,*) 'Error: Invalid value for maxHOverDelta: should be greater than zero. Stop.'
+    !   stop
+    !  end if
+    ! else 
+    !  this%maxHOverDelta = defaultMaxHOverDelta
+    !  if ( this%maxHOverDelta(1).le.this%minHOverDelta(1) ) then 
+    !   if ( this%reportToOutUnit ) then 
+    !   write( this%outFileUnit, *) 'Error: Invalid value for maxHOverDelta: should be greater than minHOverDelta.'
+    !   write( this%outFileUnit, *) '  Value of minHOverDelta: ', this%minHOverDelta(1) 
+    !   write( this%outFileUnit, *) '  Value of maxHOverDelta: ', this%maxHOverDelta(1)
+    !   end if  
+    !   write(*,*) 'Error: Invalid value for maxHOverDelta: should be greater than minHOverDelta. Stop.'
+    !   stop
+    !  end if
+    ! end if
+    ! 
+    ! if ( this%databaseOptimization ) then 
+    !  if ( present( deltaHOverDelta ) ) then 
+    !   if ( deltaHOverDelta.gt.fZERO ) then 
+    !    if ( deltaHOverDelta.ge.this%maxHOverDelta(1) ) then ! maxhoverdelta is an array in memory
+    !     if ( this%reportToOutUnit ) then 
+    !     write( this%outFileUnit, *) 'Error: Invalid value for deltaHOverDelta: should be less than maxHOverDelta.'
+    !     write( this%outFileUnit, *) '  Value of maxHOverDelta  : ', this%maxHOverDelta(1)
+    !     write( this%outFileUnit, *) '  Value of deltaHOverDelta: ', deltaHOverDelta
+    !     end if  
+    !     write(*,*) 'Error: Invalid value for deltaHOverDelta: should be less than maxHOverDelta. Stop.'
+    !     stop
+    !    end if
+    !    this%deltaHOverDelta = deltaHOverDelta
+    !   else
+    !    write(*,*) 'Error: Invalid value for deltaHOverDelta: should be greater than zero. Stop.'
+    !    stop
+    !   end if
+    !  else 
+    !    this%deltaHOverDelta = defaultDeltaHOverDelta
+    !    if ( this%deltaHOverDelta(1).ge.this%maxHOverDelta(1) ) then 
+    !     if ( this%reportToOutUnit ) then 
+    !     write( this%outFileUnit, *) 'Error: Invalid value for deltaHOverDelta: should be less than maxHOverDelta.'
+    !     write( this%outFileUnit, *) '  Value of maxHOverDelta  : ', this%maxHOverDelta(1)
+    !     write( this%outFileUnit, *) '  Value of deltaHOverDelta: ', this%deltaHOverDelta(1)
+    !     end if  
+    !     write(*,*) 'Error: Invalid value for deltaHOverDelta: should be less than maxHOverDelta. Stop.'
+    !     stop
+    !    end if
+    !  end if
+    ! end if 
+
+    !else
+    ! ! initialize with defaults
+    ! this%minHOverDelta   = defaultMinHOverDelta
+    ! this%maxHOverDelta   = defaultMaxHOverDelta
+    ! this%deltaHOverDelta = defaultDeltaHOverDelta
+    !end if
+
+    !if ( present( logKernelDatabase ) ) then ! Deprecate ? 
+    !  this%logKernelDatabase = logKernelDatabase
+    !else 
+    !  this%logKernelDatabase = defaultLogKernelDatabase
+    !end if
+
+    !! Effective weight format 
+    !! Effective weight format is defined as zero by default at histogram  
+    !if ( present(effectiveWeightFormat) ) then 
+    !  this%histogram%effectiveWeightFormat = effectiveWeightFormat   
+    !else
+    !  this%histogram%effectiveWeightFormat = defaultEffectiveWeightFormat   
+    !end if 
+
+
+    ! BIN SIZE RELATED !
+
+
+    ! Determine kernel bounding  
+    select case(this%boundKernelSizeFormat)
+    ! 1: Bounding values given by user
+    case(1)
+     ! Assign max kernel sizes based on provided values of maxHOverDelta
+     this%maxKernelSize(:) = fZERO
+     do nd=1,3
+      if ( this%dimensionMask(nd).eq.0 ) cycle
+      this%maxKernelSize(nd) = this%binSize(nd)*this%maxHOverDelta(1)
+     end do
+     ! As the sigma kernel is isotropic, maxSizeDimId is given by the more restrictive dimension. 
+     this%maxSizeDimId = minloc( this%maxKernelSize, dim=1, mask=(this%maxKernelSize.gt.fZERO) )
+     this%maxKernelSDSize(:) = fZERO
+     do nd=1,3
+      if ( this%dimensionMask(nd).eq.0 ) cycle
+      this%maxKernelSDSize(nd) = this%binSize(nd)*this%maxHOverDelta(1)
+     end do
+     ! Assign min kernel sizes based on provided values of minHOverDelta
+     this%minKernelSize(:) = fZERO
+     do nd=1,3
+      if ( this%dimensionMask(nd).eq.0 ) cycle
+      this%minKernelSize(nd) = this%binSize(nd)*this%minHOverDelta(1)
+     end do
+     ! As the sigma kernel is isotropic, maxSizeDimId is given by the more restrictive dimension. 
+     this%minSizeDimId = maxloc( this%minKernelSize, dim=1, mask=(this%minKernelSize.gt.fZERO) )
+     this%minKernelSDSize(:) = fZERO
+     do nd=1,3
+      if ( this%dimensionMask(nd).eq.0 ) cycle
+      this%minKernelSDSize(nd) = this%binSize(nd)*this%minHOverDelta(1)
+     end do
+    ! 2: Unbounded 
+    case(2)
+      this%boundKernels = .false.
+    ! 0: domain constraints
+    case default
+     ! Assign max kernel sizes, consistent with domain dimensions
+     ! kernel ranges and bin sizes.
+     this%maxKernelSize(:) = fZERO
+     do nd=1,3
+      if ( this%dimensionMask(nd).eq.0 ) cycle
+      this%maxKernelSize(nd) = &
+        this%binSize(nd)*(defaultMaxSizeFactor*this%domainGridSize(nd) - 1)/real(defaultKernelRange,fp)
+     end do
+     ! As the sigma kernel is isotropic, the maxSizeDimId 
+     ! is given by the more restrictive dimension. 
+     this%maxSizeDimId = minloc( this%maxKernelSize, dim=1, mask=(this%maxKernelSize.gt.fZERO) )
+     this%maxKernelSDSize(:) = fZERO
+     do nd=1,3
+      if ( this%dimensionMask(nd).eq.0 ) cycle
+      this%maxKernelSDSize(nd) = & 
+        this%binSize(nd)*(defaultMaxSizeFactor*this%domainGridSize(nd) - 1)/real(defaultKernelSDRange,fp)
+     end do
+     ! Assign min kernel sizes, ensuring at least 2 positive shape cells, 
+     ! Positive shape is obtained as ceiling 
+     this%minKernelSize(:) = fZERO
+     do nd=1,3
+      if ( this%dimensionMask(nd).eq.0 ) cycle
+      this%minKernelSize(nd) = defaultMinSizeFactor*this%binSize(nd)/real(defaultKernelRange,fp)
+     end do
+     ! As the sigma kernel is isotropic, the minSizeDimId 
+     ! is given by the more restrictive dimension. 
+     this%minSizeDimId = maxloc( this%minKernelSize, dim=1, mask=(this%minKernelSize.gt.fZERO) )
+     this%minKernelSDSize(:) = fZERO
+     do nd=1,3
+      if ( this%dimensionMask(nd).eq.0 ) cycle
+      this%minKernelSDSize(nd) = defaultMinSizeFactor*this%binSize(nd)/real(defaultKernelSDRange,fp)
+     end do
+    end select
+
+    ! END BIN SIZE RELATED !
+
+    !! Process advanced parameters !
+    ! 
+    !advancedOptions = .false.
+    !if ( present(interpretAdvancedParams) ) then
+    !  advancedOptions = interpretAdvancedParams
+    !end if 
+    !if ( advancedOptions ) then
+    !  ! Min roughness format 
+    !  if ( present( minRoughnessFormat ) ) then 
+    !    this%minRoughnessFormat = minRoughnessFormat
+    !  else
+    !    this%minRoughnessFormat = defaultMinRoughnessFormat
+    !  end if 
+    !  ! Isotropic threshold
+    !  if ( present(isotropicThreshold) ) then 
+    !    this%isotropicThreshold = isotropicThreshold
+    !  else
+    !    this%isotropicThreshold = defaultIsotropicThreshold
+    !  end if
+    !  ! Max sigma growth
+    !  if ( present(maxSigmaGrowth) ) then 
+    !    this%maxSigmaGrowth = maxSigmaGrowth
+    !  else
+    !    this%maxSigmaGrowth = defaultMaxSigmaGrowth
+    !  end if
+    !else
+    !  ! Should assign eveything to default values
+    !  this%minRoughnessFormat    = defaultMinRoughnessFormat
+    !  this%isotropicThreshold    = defaultIsotropicThreshold
+    !  this%maxSigmaGrowth        = defaultMaxSigmaGrowth
+    !end if 
+
+    !! Interpret roughness parameters according to format
+    !select case(this%minRoughnessFormat)
+    !! 0: Gaussian: do nothing
+    !! 1: Requires relative roughness and length scale
+    !case(1)
+    !  if ( present(minRelativeRoughness) ) then 
+    !    this%minRelativeRoughness = minRelativeRoughness
+    !  else
+    !    this%minRelativeRoughness = defaultMinRelativeRoughness
+    !  end if 
+    !  if ( present(minRoughnessLengthScale) ) then 
+    !    this%minRoughnessLengthScale = minRoughnessLengthScale
+    !    this%minRoughnessLengthScaleAsSigma = .false.
+    !  else
+    !    this%minRoughnessLengthScaleAsSigma = .true.
+    !  end if 
+    !! 2: as minRoughness
+    !case(2)
+    !  if ( present(minRoughness) ) then 
+    !    this%minLimitRoughness = minRoughness
+    !  else
+    !    this%minLimitRoughness = defaultMinLimitRoughness
+    !  end if 
+    !! 3: Do nothing
+    !end select
+
+    ! Need more reports for roughnesses and eventually min/max kernel sizes
+
+    ! BIN SIZE RELATED !
+
+    ! Logging
+    if ( this%reportToOutUnit ) then 
+      write( this%outFileUnit, '(3X,A)') 'Grid parameters'
+      write( this%outFileUnit, '(3X,A)') '---------------'
+      outfmt = '(3X,A,3(1X,es18.9e3))'
+      write( this%outFileUnit, outfmt) '- binSize            :', this%binSize
+      write( this%outFileUnit, outfmt) '- domainSize         :', this%domainSize
+      write( this%outFileUnit, outfmt) '- domainOrigin       :', this%domainOrigin
+      outfmt = '(3X,A,3(1X,I9))'
+      write( this%outFileUnit, outfmt) '- domainGridSize     :', this%domainGridSize
+      write( this%outFileUnit, '(3X,A)') '---------------'
+      write( this%outFileUnit, '(3X,A)')      'Dimensionality for reconstruction is determined from domain grid size.'
+      write( this%outFileUnit, '(3X,A,I2,A)') 'Will perform reconstruction in ', nDim, ' dimensions.'
+      if ( this%initialSmoothingSelection.ge.1 ) then 
+      outfmt = '(3X,A,3(1X,es18.9e3))'
+      write( this%outFileUnit, outfmt) '- initialSmoothing   :', this%initialSmoothing
+      end if 
+    end if  
+
+    ! Initialize kernel database
+    if ( this%databaseOptimization ) then
+      ! Related to nDim, which is obtained after binsize is given
+      ! it should avoid multiple initialization
+      if ( .not. allocated( this%kernelDatabaseFlat ) ) then 
+        call this%InitializeKernelDatabaseFlat( this%minHOverDelta(1), &
+                                                this%maxHOverDelta(1), &
+                                              this%deltaHOverDelta(1), &
+                                                this%logKernelDatabase  )
+        ! Pointers for SetKernel
+        this%SetKernel => prSetKernelFromDatabase
+        this%SetKernelSigma => prSetKernelSigmaFromDatabase
+      end if 
+    else
+      ! Pointers for SetKernel
+      this%SetKernel => prSetKernelBrute
+      this%SetKernelSigma => prSetKernelSigmaBrute
+    end if 
+
+    ! Initialize net roughness function
+    call this%InitializeNetRoughnessFunction( nDim )
+
+    ! END BIN SIZE RELATED !
+
+    !! Report intialization
+    !if ( this%reportToOutUnit ) then 
+    !  write( this%outFileUnit, '(A)' ) ' GPKDE is initialized  '
+    !  write( this%outFileUnit, '(A)' ) '-----------------------'
+    !  write( this%outFileUnit,  *    )
+    !  flush( this%outFileUnit ) 
+    !end if
+
+    ! Done
+
+
+  end subroutine prUpdateBinSize 
+
 
 
   subroutine prAllocateArrays( this, nComputeBins,      &
@@ -1018,16 +1557,16 @@ contains
 
 
   subroutine prInitializeModuleDimensions( this, nDim, dimensionMask )
-    !-----------------------------------------------------------------
-    !
-    !-----------------------------------------------------------------
-    ! Specifications 
-    !-----------------------------------------------------------------
-    class( GridProjectedKDEType ), target :: this 
-    integer, intent(inout)                :: nDim
-    integer, dimension(3), intent(inout)  :: dimensionMask
-    integer :: n, nd, currentDim, dcount
-    !-----------------------------------------------------------------
+  !-----------------------------------------------------------------
+  !
+  !-----------------------------------------------------------------
+  ! Specifications 
+  !-----------------------------------------------------------------
+  class( GridProjectedKDEType ), target :: this 
+  integer, intent(inout)                :: nDim
+  integer, dimension(3), intent(inout)  :: dimensionMask
+  integer :: n, nd, currentDim, dcount
+  !-----------------------------------------------------------------
 
     ! Determine dimensions based on number of bins
     do n = 1,3
@@ -3128,7 +3667,8 @@ contains
                                                   computeRawDensity, &
               weightedHistogram, weights, onlyHistogram, exactPoint, &
                                 relativeErrorConvergence, isotropic, &
-                                                 useGlobalSmoothing  ) 
+                                                 useGlobalSmoothing, & 
+                                                 histogramBinFormat  ) 
     !------------------------------------------------------------------------------
     ! 
     !------------------------------------------------------------------------------
@@ -3160,6 +3700,7 @@ contains
     real(fp), intent(in), optional               :: relativeErrorConvergence
     logical, intent(in), optional                :: isotropic
     logical, intent(in), optional                :: useGlobalSmoothing
+    integer, intent(in), optional                :: histogramBinFormat 
     ! local 
     logical               :: persistKDB
     logical               :: locExportOptimizationVariables
@@ -3295,6 +3836,36 @@ contains
      write(this%outFileUnit, '(1X,A)' ) 'Histogram info '
     end if 
     ! Until here, independent of sliced reconstruction
+
+    ! Now it needs to process the bin size. 
+    ! Only for 1D reconstruction !
+    if ( present( histogramBinFormat ) ) then 
+      select case( histogramBinFormat ) 
+      ! compute from data based on Scott's rule
+      case (0)
+        call this%histogram%EstimateBinSizeScott( dataPoints, this%binSize )
+        call this%UpdateBinSize( this%binSize ) 
+      ! compute from data based on Freedman-Diaconis rule
+      case (1)
+        call this%histogram%EstimateBinSizeFD( dataPoints, this%binSize )
+        call this%UpdateBinSize( this%binSize ) 
+      case default
+        ! Verify that they were defined
+        if ( all(this%binSize.le.fZERO) ) then  
+          write(*,*) 'Error: bin sizes were not defined. Stop.'
+          stop
+        end if
+      end select
+    else
+      ! Something to verify that it was set
+      ! and so on... 
+      if ( all(this%binSize.le.fZERO) ) then  
+        write(*,*) 'Error: bin sizes were not defined. Stop.'
+        stop
+      end if
+    end if 
+
+
 
     ! Compute sub grid parameters if grids
     ! are to be adapted to the given coordinates 

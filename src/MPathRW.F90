@@ -85,7 +85,7 @@ program MPathRW
   integer :: groupIndex, particleIndex, pendingCount,  &
     activeCount, tPointCount, pathlineRecordCount
   integer :: stressPeriodCount
-  integer :: n, m, ktime, kfirst, klast, kincr, period, step, nt, count,&
+  integer :: n, m, ktime, kfirst, klast, kincr, kcount, period, step, nt, count,&
     plCount, tsCount, status, itend, particleID, topActiveCellNumber
   integer :: bufferSize, cellConnectionCount
   integer,dimension(:),allocatable :: buffer
@@ -804,6 +804,9 @@ program MPathRW
                 status='scratch', form='unformatted',&
                 access='stream', action='readwrite')
         end select
+        ! Initialize the array of cummSinkFlowSeries
+        if ( allocated( obs%cummSinkFlowSeries ) ) deallocate ( obs%cummSinkFlowSeries )
+        allocate( obs%cummSinkFlowSeries(klast-kfirst) )
       end if
     end do
     ! Allocate obs records counter
@@ -834,6 +837,7 @@ program MPathRW
   time = 0.0d0
   nt = 0
   ngpkde = 0
+  kcount = 0
   if(allocated(cellData)) deallocate(cellData)
   allocate(cellData)
 
@@ -841,7 +845,10 @@ program MPathRW
   ! Call system_clock to get the start of the time step loop
   call system_clock(clockCountStart, clockCountRate, clockCountMax)
   TIME_STEP_LOOP: do ktime= kfirst,klast,kincr
-  
+ 
+  ! Counter of time step loops
+  kcount = kcount + 1 
+
   ! Get the stress period and time step from the cummulative time step
   call tdisData%GetPeriodAndStep(ktime, period, step)
   
@@ -865,6 +872,7 @@ program MPathRW
       do n=1,obs%nCells
         obs%cummSinkFlow = obs%cummSinkFlow + flowModelData%SinkFlows(obs%cells(n))
       end do 
+      obs%cummSinkFlowSeries(kcount) = obs%cummSinkFlow
     end do
   end if 
 
@@ -2002,6 +2010,7 @@ program MPathRW
 
       ! Observation cell for strong sinks
       if ( obs%style .eq. 2 ) then 
+
         write(mplistUnit, *) 
         write(mplistUnit, '(A,I3,A,I3)') 'Flux concentration OBS, nobs ', nobs ,', obs id ', obs%id
         call ulog('OBS of flux concentration', logUnit)
@@ -2014,9 +2023,9 @@ program MPathRW
 
         ! This would work only for timeseries simulations
         ! For sink observations this will change
+        ! Either from the timepoints, or from obs%binSize
         dtObsSeries = simulationData%TimePoints(2)-simulationData%TimePoints(1)  ! binSize
    
-
         ! If no records, don't even try
         if ( obsRecordCounter(nobs) .eq. 0 ) then 
           write(mplistUnit, '(A)') 'No records for this observation, continue to the next'
@@ -2024,7 +2033,10 @@ program MPathRW
         end if
 
         ! If no aux records, don't even try.
-        ! Flow-rates.
+        ! Flow-rates. 
+        ! This check will make sense only if the 
+        ! observation was recording data at timeseries time steps.
+        ! However, most likley this should be completely removed.
         if ( obs%nAuxRecords .lt. 2 ) then 
           write(mplistUnit, '(A)') 'Not enough aux records for this observation, continue to the next'
           cycle ! nobs
@@ -2073,7 +2085,7 @@ program MPathRW
               groupIndex, soluteID, cellNumber, pCoord%Layer, qSink
 
             ! Needs some kind of understanding of the particle group, and that it
-            ! means another solute ( column? )
+            ! means another solute ( column ? )
             activeParticleCoordinates(n,1) = initialTime 
             activeParticleCoordinates(n,2) = groupIndex
 
@@ -2099,17 +2111,34 @@ program MPathRW
         end if
 
         ! Initialize gpkde for timeseries reconstruction
-        call gpkde%Initialize(& 
-            (/simulationData%TimePoints(obs%nAuxRecords),0d0,0d0/), &
-            (/dtObsSeries,0d0,0d0/),                                &
-            domainOrigin=(/0d0,0d0,0d0/),                           &
-            nOptimizationLoops=obs%nOptLoops,                       &
-            databaseOptimization=.false.,                           &
-            initialSmoothingSelection=obs%initialSmoothingFormat,   & 
-            initialSmoothingFactor=obs%binSizeFactor,               & 
-            effectiveWeightFormat=obs%effectiveWeightFormat,        & 
-            outFileName=mplistFile                                  &
-        )
+        select case( obs%histogramBinFormat ) 
+        case(2)
+          ! bin size is given by timeseries run, or by the user
+          call gpkde%Initialize(& 
+              (/simulationData%TimePoints(obs%nAuxRecords),0d0,0d0/), & ! domainSize in this case should change, stoptime ?
+              binSize=(/dtObsSeries,0d0,0d0/),                        & ! also binSize
+              domainOrigin=(/0d0,0d0,0d0/),                           &
+              nOptimizationLoops=obs%nOptLoops,                       &
+              databaseOptimization=.false.,                           &
+              initialSmoothingSelection=obs%initialSmoothingFormat,   & 
+              initialSmoothingFactor=obs%binSizeFactor,               & 
+              effectiveWeightFormat=obs%effectiveWeightFormat,        & 
+              outFileName=mplistFile                                  &
+          )
+        case default
+          ! initialize without bin size, it is estimated later
+          ! based on the given data.
+          call gpkde%Initialize(& 
+              (/simulationData%TimePoints(obs%nAuxRecords),0d0,0d0/), & ! domainSize in this case should change, stoptime ?
+              domainOrigin=(/0d0,0d0,0d0/),                           &
+              nOptimizationLoops=obs%nOptLoops,                       &
+              databaseOptimization=.false.,                           &
+              initialSmoothingSelection=obs%initialSmoothingFormat,   & 
+              initialSmoothingFactor=obs%binSizeFactor,               & 
+              effectiveWeightFormat=obs%effectiveWeightFormat,        & 
+              outFileName=mplistFile                                  &
+          )
+        end select
 
         ! Allocate according to postprocess option 
         ! 0: only histogram
@@ -2165,27 +2194,24 @@ program MPathRW
             gpkdeWeightsCarrier(irow) = activeParticleMasses(n)
           end do
 
-        print *, 'DT OBS', dtObsSeries, shape(simulationData%TimePoints), kfirst, klast
-        avgTimeData = sum(gpkdeDataCarrier(:,1))/dble(solCount)
-        varTimeData = 0d0
-        ! omp
-        do n=1,solCount
-          varTimeData = varTimeData + (gpkdeDataCarrier(n,1) - avgTimeData)**2d0/dble(solCount)
-        end do 
-        print *, 'SCOTTSRULE', 3.49*sqrt(varTimeData)/( (solCount)**(1d0/3d0) )
+          ! dtObsSeries is the bin size here
+          !call gpkde%histogram%EstimateBinSizeScott( gpkdeDataCarrier, dtObsSeries )
+          !call gpkde%histogram%EstimateBinSizeFD( gpkdeDataCarrier, dtObsSeries )
+          ! Or a given time step, the timeseries step or a user provided value
 
-
-
+          ! And then initialize ?
+          ! for each solute ?
 
 
           select case(obs%postprocessOption)
           case(0)
             ! Only histogram
-            call gpkde%ComputeDensity(      &
-              gpkdeDataCarrier,             &
-              onlyHistogram     = .true.,   &
-              computeRawDensity = .true.,   &
-              weightedHistogram = .true.,   &
+            call gpkde%ComputeDensity(       &
+              gpkdeDataCarrier,              &
+              onlyHistogram      = .true.,   &
+              computeRawDensity  = .true.,   &
+              weightedHistogram  = .true.,   &
+              histogramBinFormat = obs%histogramBinFormat, &
               weights = gpkdeWeightsCarrier )
             ! histogram
             select case(gpkde%histogram%effectiveWeightFormat)
@@ -2201,6 +2227,7 @@ program MPathRW
               computeRawDensity = .true.,   &
               weightedHistogram = .true.,   &
               weights = gpkdeWeightsCarrier,& 
+              histogramBinFormat = obs%histogramBinFormat, &
               relativeErrorConvergence=obs%errorConvergence & 
             )
             ! histogram

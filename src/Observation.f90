@@ -32,6 +32,7 @@ module ObservationModule
     integer :: initialSmoothingFormat   = 0
     integer :: nOptLoops                = 10
     doubleprecision :: errorConvergence = 0.01d0 
+    integer :: histogramBinFormat = 1
   end type
 
 
