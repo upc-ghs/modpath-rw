@@ -180,6 +180,12 @@ module GridProjectedKDEModule
     real(fp), dimension(:,:,:), pointer :: histogramCounts  => null()
     real(fp), dimension(:,:,:), pointer :: histogramWCounts => null()
 
+    ! Bin vector coordinates
+    real(fp), dimension(:), allocatable :: coordinatesX
+    real(fp), dimension(:), allocatable :: coordinatesY
+    real(fp), dimension(:), allocatable :: coordinatesZ
+
+
     ! Interfaces
     procedure( SetKernelInterface )  , pass, pointer :: SetKernel      => null()
     procedure( SetKernelInterface )  , pass, pointer :: SetKernelSigma => null()
@@ -207,6 +213,7 @@ module GridProjectedKDEModule
     procedure :: ComputeDensityOptimization      => prComputeDensityOptimization
     procedure :: ComputeCurvatureKernelBandwidth => prComputeCurvatureBandwidth 
     procedure :: ComputeOptimalSmoothingAndShape => prComputeOptimalSmoothingAndShape
+    procedure :: GenerateVectorCoordinates       => prGenerateVectorCoordinates
     procedure :: ExportDensity                   => prExportDensity
     procedure :: ExportDensityUnit               => prExportDensityUnit
     procedure :: ExportDensityBinary             => prExportDensityBinary
@@ -988,6 +995,12 @@ contains
     this%densityEstimateGrid  => null()
     this%histogramDensity     => null()   
     this%computeBinIds        => null()
+  
+    if ( allocated( this%coordinatesX ) ) deallocate( this%coordinatesX )
+    if ( allocated( this%coordinatesY ) ) deallocate( this%coordinatesY )
+    if ( allocated( this%coordinatesZ ) ) deallocate( this%coordinatesZ )
+
+
     this%nComputeBins         = 0
     this%outputFileName       = ""
     this%deltaHOverDelta      = defaultDeltaHOverDelta
@@ -1054,8 +1067,7 @@ contains
   
   subroutine prUpdateBinSize( this, binSize )
     !---------------------------------------------------------------------------
-    ! Initialize the module, assign default parameters,
-    ! configures the reconstruction grid, module dimensions and others.
+    ! Performs the part of initialization related to the bin size selection. 
     !---------------------------------------------------------------------------
     ! Specifications 
     !---------------------------------------------------------------------------
@@ -1065,42 +1077,9 @@ contains
     class( GridProjectedKDEType ) :: this
     ! Reconstruction grid parameters
     real(fp), dimension(3), intent(in) :: binSize
-    !integer , intent(in), optional               :: binSizeFormat
-    !real(fp), dimension(3), intent(in), optional :: domainOrigin
-    !logical               , intent(in), optional :: adaptGridToCoords
-    !real(fp)              , intent(in), optional :: borderFraction
-    !! Sliced reconstruction
-    !logical               , intent(in), optional :: slicedReconstruction
-    !integer               , intent(in), optional :: slicedDimension
-    !! Initial smoothing
-    !real(fp), dimension(3), intent(in), optional :: initialSmoothing
-    !real(fp)              , intent(in), optional :: initialSmoothingFactor
-    !integer               , intent(in), optional :: initialSmoothingSelection
-    !! Number of optimization loops
-    !integer               , intent(in), optional :: nOptimizationLoops 
-    !! Kernel database parameters
-    !logical               , intent(in), optional :: databaseOptimization
-    !real(fp)              , intent(in), optional :: minHOverDelta
-    !real(fp)              , intent(in), optional :: maxHOverDelta
-    !real(fp)              , intent(in), optional :: deltaHOverDelta
-    !logical               , intent(in), optional :: logKernelDatabase    ! Deprecate ? 
-    !! Advanced parameters
-    !logical , intent(in), optional :: interpretAdvancedParams
-    !integer , intent(in), optional :: minRoughnessFormat
-    !real(fp), intent(in), optional :: minRoughness
-    !real(fp), intent(in), optional :: minRelativeRoughness
-    !real(fp), intent(in), optional :: minRoughnessLengthScale
-    !integer , intent(in), optional :: effectiveWeightFormat
-    !integer , intent(in), optional :: boundKernelSizeFormat
-    !real(fp), intent(in), optional :: isotropicThreshold
-    !real(fp), intent(in), optional :: maxSigmaGrowth
     ! General use, indexes
     integer :: nd
-    !! The analog to a listUnit, reports
-    !character(len=200), intent(in), optional :: outFileName
-    !! local
-    !integer :: isThisFileOpen
-    !logical :: advancedOptions
+    ! local
     character(len=30) :: outfmt
     !---------------------------------------------------------------------------
 
@@ -3719,6 +3698,52 @@ contains
   end subroutine prDropKernelDatabase
 
 
+  subroutine prGenerateVectorCoordinates( this ) 
+  !----------------------------------------------------------------------------------------
+  ! For a given grid and dimensionality, fill vectors with cell center coordinates
+  !----------------------------------------------------------------------------------------
+  ! Specifications 
+  !----------------------------------------------------------------------------------------
+  implicit none
+  ! input
+  class( GridProjectedKDEType ) :: this
+  ! local 
+  integer :: nd, m, idbin
+  !----------------------------------------------------------------------------------------
+
+
+    do nd=1,3
+      if ( this%dimensionMask(nd).eq.1 ) then
+        select case(nd)
+        case(1)
+          if ( allocated( this%coordinatesX ) ) deallocate( this%coordinatesX )
+          allocate( this%coordinatesX(this%nBins(nd)) )
+          do m = 1, this%nBins(nd)
+             idbin = m+this%deltaBinsOrigin(nd)
+             this%coordinatesX(m) = (real(idbin,fp) + 0.5_fp)*this%binSize(nd) + this%domainOrigin(nd)
+          end do 
+        case(2)
+          if ( allocated( this%coordinatesY ) ) deallocate( this%coordinatesY )
+          allocate( this%coordinatesY(this%nBins(nd)) )
+          do m = 1, this%nBins(nd)
+             idbin = m+this%deltaBinsOrigin(nd)
+             this%coordinatesY(m) = (real(idbin,fp) + 0.5_fp)*this%binSize(nd) + this%domainOrigin(nd)
+          end do 
+        case(3)
+          if ( allocated( this%coordinatesZ ) ) deallocate( this%coordinatesZ )
+          allocate( this%coordinatesZ(this%nBins(nd)) )
+          do m = 1, this%nBins(nd)
+             idbin = m+this%deltaBinsOrigin(nd)
+             this%coordinatesZ(m) = (real(idbin,fp) + 0.5_fp)*this%binSize(nd) + this%domainOrigin(nd)
+          end do 
+        end select 
+      end if 
+    end do
+
+
+  end subroutine prGenerateVectorCoordinates
+
+
   ! Density computation manager 
   subroutine prComputeDensity( this, dataPoints, nOptimizationLoops, &
                                      outputFileName, outputFileUnit, &
@@ -3731,7 +3756,9 @@ contains
               weightedHistogram, weights, onlyHistogram, exactPoint, &
                                 relativeErrorConvergence, isotropic, &
                                                  useGlobalSmoothing, & 
-                                                 histogramBinFormat  ) 
+                                                 histogramBinFormat, & 
+                                                    binSizeFraction, &
+                                           generateVectorCoordinates ) 
     !------------------------------------------------------------------------------
     ! 
     !------------------------------------------------------------------------------
@@ -3764,6 +3791,8 @@ contains
     logical, intent(in), optional                :: isotropic
     logical, intent(in), optional                :: useGlobalSmoothing
     integer, intent(in), optional                :: histogramBinFormat 
+    real(fp), intent(in), optional               :: binSizeFraction
+    logical, intent(in), optional                :: generateVectorCoordinates
     ! local 
     logical               :: persistKDB
     logical               :: locExportOptimizationVariables
@@ -3780,6 +3809,7 @@ contains
     integer               :: localNOptimizationLoops
     integer               :: locOutputColumnFormat
     integer               :: locOutputDataFormat
+    real(fp)              :: locBinSizeFraction
     integer, dimension(2) :: dataPointsShape
     real(fp)              :: locRelativeErrorConvergence
     character(len=16)     :: timeChar
@@ -3903,14 +3933,25 @@ contains
     ! Now it needs to process the bin size. 
     ! Only for 1D reconstruction !
     if ( present( histogramBinFormat ) ) then 
+      if ( present( binSizeFraction ) ) then
+        if ( (binSizeFraction.le.fZERO).or.(binSizeFraction.gt.fONE) ) then
+          write(*,*) 'Error: bin size fraction should be between 0 and 1. Stop.' 
+          stop
+        end if 
+        locBinSizeFraction = binSizeFraction 
+      else
+        locBinSizeFraction = fONE
+      end if 
       select case( histogramBinFormat ) 
       ! compute from data based on Scott's rule
       case (0)
         call this%histogram%EstimateBinSizeScott( dataPoints, this%binSize )
+        this%binSize = locBinSizeFraction*this%binSize
         call this%UpdateBinSize( this%binSize ) 
       ! compute from data based on Freedman-Diaconis rule
       case (1)
         call this%histogram%EstimateBinSizeFD( dataPoints, this%binSize )
+        this%binSize = locBinSizeFraction*this%binSize
         call this%UpdateBinSize( this%binSize ) 
       case default
         ! Verify that they were defined
@@ -4320,6 +4361,41 @@ contains
         this%histogram%wcounts = this%histogram%wcounts*locHistogramScalingFactor
     end if 
 
+    ! Generate vector coordinates if requested. 
+    if ( present( generateVectorCoordinates ) ) then 
+      if ( generateVectorCoordinates ) then
+        call this%GenerateVectorCoordinates()
+        !do nd=1,3
+        !  if ( this%dimensionMask(nd).eq.1 ) then
+        !    select case(nd)
+        !    case(1)
+        !      if ( allocated( this%coordinatesX ) ) deallocate( this%coordinatesX )
+        !      allocate( this%coordinatesX(this%nBins(nd)) )
+        !      do m = 1, this%nBins(nd)
+        !         idbin = m+this%deltaBinsOrigin(nd)
+        !         this%coordinatesX(m) = (real(idbin,fp) + 0.5_fp)*this%binSize(nd) + this%domainOrigin(nd)
+        !      end do 
+        !    case(2)
+        !      if ( allocated( this%coordinatesY ) ) deallocate( this%coordinatesY )
+        !      allocate( this%coordinatesY(this%nBins(nd)) )
+        !      do m = 1, this%nBins(nd)
+        !         idbin = m+this%deltaBinsOrigin(nd)
+        !         this%coordinatesY(m) = (real(idbin,fp) + 0.5_fp)*this%binSize(nd) + this%domainOrigin(nd)
+        !      end do 
+        !    case(3)
+        !      if ( allocated( this%coordinatesZ ) ) deallocate( this%coordinatesZ )
+        !      allocate( this%coordinatesZ(this%nBins(nd)) )
+        !      do m = 1, this%nBins(nd)
+        !         idbin = m+this%deltaBinsOrigin(nd)
+        !         this%coordinatesZ(m) = (real(idbin,fp) + 0.5_fp)*this%binSize(nd) + this%domainOrigin(nd)
+        !      end do 
+        !    end select 
+        !  end if 
+        !end do 
+      end if
+    end if 
+
+
     ! Assign histogram density accordingly, for exporting
     ! data on a scale consistent with density
     this%histogramDensity => null()
@@ -4398,7 +4474,7 @@ contains
 
 
   end subroutine prComputeDensity 
-  
+
 
   ! Density optimization
   subroutine prComputeDensityOptimization( this, densityEstimateGrid, nOptimizationLoops, &

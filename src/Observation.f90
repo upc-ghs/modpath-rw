@@ -38,11 +38,18 @@ module ObservationModule
     integer :: reconstructionOptions    = 0
     doubleprecision :: timeStepOut      = 0d0
     logical :: adaptGridToCoords        = .false.
+    logical :: doInterp                 = .false.
+    doubleprecision :: binSizeFraction  = 0.75d0 
     doubleprecision, dimension(:), allocatable :: obsSeries
     doubleprecision, dimension(:), allocatable :: timeSeries
-    
+    integer :: timePointCount
+    type(SeriesType), allocatable, dimension(:) :: series
   end type
 
+  type, public :: SeriesType
+    doubleprecision, dimension(:)  , allocatable :: timeSeries
+    doubleprecision, dimension(:,:), allocatable :: dataSeries ! for the same time may have multiple data columns
+  end type
 
 contains
 

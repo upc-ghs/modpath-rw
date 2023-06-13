@@ -1396,7 +1396,6 @@ contains
         call urword(line, icol, istart, istop, 2, n, r, 0, 0)
         obs%outputOption = n 
 
-
         ! Do postprocess ?
         obs%doPostprocess = .true.
         if ( obs%outputOption .eq. 0 ) obs%doPostprocess = .false.
@@ -1416,6 +1415,7 @@ contains
             select case(n)
             case (0,1)
               obs%histogramOptions = n
+              write(outUnit,'(a)') 'Will interpret histogram options for the observation.'
             case default
               write(outUnit,'(a)') 'Invalid histogram options value, will remain disabled.'
               obs%histogramOptions = 0
@@ -1423,11 +1423,12 @@ contains
           end if 
 
 
-          ! Look for recontruction options
+          ! Look for reconstruction options
           call urword(line, icol, istart, istop, 2, n, r, 0, 0)
           select case(n)
           case (0,1)
             obs%reconstructionOptions = n
+            write(outUnit,'(a)') 'Will interpret reconstruction options for the observation.'
           case default
             write(outUnit,'(a)') 'Invalid reconstruction options value, will remain disabled.'
             obs%reconstructionOptions = 0
@@ -1437,7 +1438,7 @@ contains
           ! Process histogram options
           select case(obs%histogramOptions)
           case(1)
-            write(outUnit,'(a)') 'Will interpret histogram options.'
+            write(outUnit,'(a)') 'Interpreting histogram options.'
 
             ! Histogram option for sink observations
             ! 0: Scott's rule for bin size
@@ -1464,17 +1465,32 @@ contains
               write(outUnit,'(a)') 'Invalid bin option, will remain as default.'
               obs%histogramBinFormat = 1 ! Freedman diaconis rule for bin size selection
             end select
-             
-            ! If format is 2, look for bin size for histogram
-            if ( obs%histogramBinFormat.eq. 2 ) then 
-              call urword(line, icol, istart, istop, 3, n, r, 0, 0)
-              if ( r.gt.0d0 ) then
-                obs%histogramBin = r
-              else
-                write(outUnit,'(a)') 'Invalid value for histogram bin size, will fallback to default bin option.'
-                obs%histogramBinFormat = 1
-              end if
-            end if 
+
+            select case(obs%histogramBinFormat)
+            case(0,1)
+             ! If format is 0,1 loof for bin size fraction
+             call urword(line, icol, istart, istop, 3, n, r, 0, 0)
+             if ( (r.gt.0d0).and.(r.le.1d0) ) then
+              obs%binSizeFraction = r
+              write(outUnit,'(a,es18.9e3)') 'Bin size fraction for automatic bin selection ', & 
+                      obs%binSizeFraction
+             else
+              write(outUnit,'(a,es18.9e3)') 'Bin size fraction for automatic bin selection will remain as default ', & 
+                      obs%binSizeFraction
+             end if
+            case(2)
+             ! If format is 2, look for bin size for histogram
+             call urword(line, icol, istart, istop, 3, n, r, 0, 0)
+             if ( r.gt.0d0 ) then
+               obs%histogramBin = r
+             else
+              write(outUnit,'(a)') 'Invalid value for histogram bin size, will fallback to default bin option.'
+              obs%histogramBinFormat = 1
+             end if
+            case(3)
+              ! do nothing
+            end select
+
 
             ! Look for time step out, in all cases of bin option
             call urword(line, icol, istart, istop, 3, n, r, 0, 0)
@@ -1509,11 +1525,11 @@ contains
 
             ! Error convergence
             call urword(line, icol, istart, istop, 3, n, r, 0, 0)
-            if (r.gt.0) then
+            if (r.gt.0d0) then
               obs%errorConvergence = r
             else 
               obs%errorConvergence = 0.01d0
-              write(outUnit,'(a,es18.9e3)') 'Invalid error convergence, will default to ', obs%nOptLoops
+              write(outUnit,'(a,es18.9e3)') 'Invalid error convergence, will default to ', obs%errorConvergence
             end if
  
             ! initialsmoothingformat
@@ -1728,6 +1744,7 @@ contains
 
     ! flush
     flush(outUnit)
+
 
   end subroutine pr_ReadOBSData
 

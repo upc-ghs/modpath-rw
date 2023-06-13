@@ -972,7 +972,7 @@ contains
       ! compute the initial and final time step indexes
       ! Note 1: TotalTimes starts from dt, not zero.
       ! Note 2: FindContainingTimeStep returns the index 
-      ! correspoding to the upper limit of the time interval 
+      ! corresponding to the upper limit of the time interval 
       ! in TotalTimes. Meaning, if on a TotalTimes vector 
       ! [dt,2dt,...] the time 1.5dt is requested, then 
       ! the function will return the index 2, corresponding to 
@@ -983,8 +983,8 @@ contains
       ! There are cases in which, depending on the stoptimeoption, 
       ! finalTime may have the value 1.0d+30. Something really 
       ! big to track particles until all of them get to a stop
-      ! conditio for steady state models. For such value, 
-      ! FindContainingTimeStep will return, assuming that this large
+      ! condition for steady state models. For such value, 
+      ! FindContainingTimeStep will return 0, assuming that this large
       ! number is higher than the length of the modflow simulation stoptime.
       ! In such case, it is enforced that kfinal adopt the value of 
       ! tdisData%CumulativeTimeStepCount, the highest possible value.

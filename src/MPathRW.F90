@@ -48,6 +48,7 @@ program MPathRW
   use SoluteModule, only : SoluteType ! RWPT
   use ObservationModule, only : ObservationType ! OBS
   use GridProjectedKDEModule, only : GridProjectedKDEType ! GPKDE
+  use linear_interpolation_module, only: linear_interp_1d ! OBS
 #ifdef _OPENMP
   use omp_lib ! OpenMP
 #endif
@@ -111,7 +112,7 @@ program MPathRW
   doubleprecision :: waterVolume, rFactor, particleMass, qSink 
   doubleprecision :: initialTime
   type( ObservationType ), pointer :: obs => null()
-  doubleprecision, allocatable, dimension(:,:) :: obsSinkFlowInTime      ! (ntimes,ncells)
+  !doubleprecision, allocatable, dimension(:,:) :: obsSinkFlowInTime      ! (ntimes,ncells)
   doubleprecision, allocatable, dimension(:)   :: obsAccumSinkFlowInTime ! (ntimes)
   doubleprecision, allocatable, dimension(:)   :: qSinkBuffer
   doubleprecision, allocatable, dimension(:,:) :: obsWaterVolumeInTime      ! (ntimes,ncells)
@@ -119,6 +120,10 @@ program MPathRW
   doubleprecision, allocatable, dimension(:)   :: waterVolBuffer
   integer, allocatable, dimension(:)           :: obsRecordCounter
   character(len=200) :: colFormat
+  ! linear interpolation 
+  type( linear_interp_1d ) :: interp1d
+  integer                  :: int1dstat
+  !doubleprecision, dimension(:), pointer :: histogramDensity => null()
   !integer            :: idColFormat ! To be deprecated
   !character(len=200) :: qSinkFormat
   !character(len=200) :: waterVolFormat ! To be deprecated
@@ -449,7 +454,7 @@ program MPathRW
   ! Set the appropriate value of stoptime. Start by setting stoptime to correspond to the start or the
   ! end of the simulation (depending on the tracking direction)
   if(simulationData%TrackingDirection .eq. 1) then
-    stoptime = tdisData%TotalTimes(tdisData%CumulativeTimeStepCount) -      &
+    stoptime = tdisData%TotalTimes(tdisData%CumulativeTimeStepCount) - &
       simulationData%ReferenceTime
     call tdisData%GetPeriodAndStep(tdisData%CumulativeTimeStepCount, period, step)
     call flowModelData%LoadTimeStep(period, step)
@@ -806,7 +811,13 @@ program MPathRW
         end select
         ! Initialize the array of cummSinkFlowSeries
         if ( allocated( obs%cummSinkFlowSeries ) ) deallocate ( obs%cummSinkFlowSeries )
-        allocate( obs%cummSinkFlowSeries(klast-kfirst) )
+        ! For steady state runs with stoptime 1E+30 klast can be zero
+        ! Also somehow influenced by the tracking direction.
+        !if ( (klast .eq. 0) ) then
+        ! klast = tdisData%CumulativeTimeStepCount
+        !end if
+        ! If they are equal, then only one element.
+        allocate( obs%cummSinkFlowSeries(abs(kfirst-klast)+1) )
       end if
     end do
     ! Allocate obs records counter
@@ -841,9 +852,6 @@ program MPathRW
   if(allocated(cellData)) deallocate(cellData)
   allocate(cellData)
 
-print *, 'TOTAL TIMES: ', tdisData%TotalTimes
-print *, 'KLAST', klast, 'KFIRST', kfirst
-print *, 'CUMMULATIVE TIME STEP COUNT', tdisData%CumulativeTimeStepCount
 
   call ulog('Begin TIME_STEP_LOOP', logUnit)
   ! Call system_clock to get the start of the time step loop
@@ -2081,14 +2089,12 @@ print *, 'CUMMULATIVE TIME STEP COUNT', tdisData%CumulativeTimeStepCount
 
             ! A sink extracts total mass 
             ! qSink is the cummulative over all cells related to the observation
-            ! if a record was written, a particle was removed, only occurs 
-            ! if this flow is non-zero.
+            ! if a record was written, a particle was removed, only occurs if this flow is non-zero.
             activeParticleMasses(n) = &
             simulationData%ParticleGroups(groupIndex)%Particles(particleID)%Mass/abs(qSink)
-            !simulationData%ParticleGroups(groupIndex)%Particles(particleID)%Mass
           end do 
         else
-          ! Read as binary ile
+          ! Read as binary file
           do n = 1, obsRecordCounter(nobs)
             read(obs%recOutputUnit,iostat=io) & 
               timePointIndex, timeStep, initialTime, particleID, particleMass, & 
@@ -2098,18 +2104,15 @@ print *, 'CUMMULATIVE TIME STEP COUNT', tdisData%CumulativeTimeStepCount
             ! means another solute ( column ? )
             activeParticleCoordinates(n,1) = initialTime 
             activeParticleCoordinates(n,2) = groupIndex
-
             ! A similar access could be used for getting soluteId from 
             ! the particle directly, avoiding the identification stage 
             ! coming further down
 
             ! A sink extracts total mass 
             ! qSink is the cummulative over all cells related to the observation
-            ! if a record was written, a particle was removed, only occurs 
-            ! if this flow is non-zero.
+            ! if a record was written, a particle was removed, only occurs if this flow is non-zero.
             activeParticleMasses(n) = &
             simulationData%ParticleGroups(groupIndex)%Particles(particleID)%Mass/abs(qSink)
-            !simulationData%ParticleGroups(groupIndex)%Particles(particleID)%Mass
           end do 
         end if
 
@@ -2123,13 +2126,10 @@ print *, 'CUMMULATIVE TIME STEP COUNT', tdisData%CumulativeTimeStepCount
         ! Control the flag for adapting the grid to coordinates
         obs%adaptGridToCoords = .false.
         if (simulationData%StoppingTimeOption.eq.2) then
-          ! This is the case where stoptime is this very large value
+          ! This is the case where stoptime is a very large value
           !if (flowModelData%SteadyState) stoptime = 1.0d+30
           if (flowModelData%SteadyState) obs%adaptGridToCoords = .true.
         end if 
-
-        !if ( (.not. obs%adaptGridToCoords).and.( obs%timeStepOut .gt. 0d0 ) ) then 
-        !end if 
 
         ! Initialize gpkde for timeseries reconstruction
         select case( obs%histogramBinFormat ) 
@@ -2137,8 +2137,7 @@ print *, 'CUMMULATIVE TIME STEP COUNT', tdisData%CumulativeTimeStepCount
           ! bin size is given by timeseries run, or by the user
           call gpkde%Initialize(& 
               (/stoptime,0d0,0d0/),                                   & 
-              !(/simulationData%TimePoints(obs%nAuxRecords),0d0,0d0/), & ! domainSize in this case should change, stoptime ?
-              binSize=(/dtObsSeries,0d0,0d0/),                        & ! also binSize
+              binSize=(/dtObsSeries,0d0,0d0/),                        & ! stoptime like this makes sense only forward
               domainOrigin=(/0d0,0d0,0d0/),                           &
               nOptimizationLoops=obs%nOptLoops,                       &
               databaseOptimization=.false.,                           &
@@ -2153,7 +2152,6 @@ print *, 'CUMMULATIVE TIME STEP COUNT', tdisData%CumulativeTimeStepCount
           ! based on the given data.
           call gpkde%Initialize(& 
               (/stoptime,0d0,0d0/),                                   &
-              !(/simulationData%TimePoints(obs%nAuxRecords),0d0,0d0/), & ! domainSize in this case should change, stoptime ?
               domainOrigin=(/0d0,0d0,0d0/),                           &
               nOptimizationLoops=obs%nOptLoops,                       &
               databaseOptimization=.false.,                           &
@@ -2173,35 +2171,86 @@ print *, 'CUMMULATIVE TIME STEP COUNT', tdisData%CumulativeTimeStepCount
         ! needed for the observation. If there is any sort of interpolation, 
         ! then the given time step determines the final number of points
 
-        !call interp1d%initialize(cummMassSeries(nti:nte),times(nti:nte), int1dstat)
-        !if ( int1dstat .gt. 0 ) then 
-        !  write(outUnit,'(A)') 'There was a problem while initializing 1d interpolator.'
-        !  call ustop('There was a problem while initializing 1d interpolator. Stop.')
-        !end if
-        !! Interpolate the release time        
-        !call interp1d%evaluate( cummEffectiveMass, releaseTimes(nr) ) ! THIS ARRAY RELEASE TIMES BYE BYE
+        ! The size of the btc array for allocation is well-known 
+        ! in case that the histogram bin is fixed, pre determined
 
-        !do ix = 1, this%nBins(1)
-        !  if ( this%densityEstimateGrid( ix, iy, iz ) .le. fZERO ) cycle
-        ! idbinx = ix+this%deltaBinsOrigin(1)
-        !(real(idbinx,fp) + 0.5_fp)*this%binSize(1) + this%domainOrigin(1)
+        ! Also more or less well-known in case that the user is 
+        ! requesting data with a given time step discretzation.
 
-        !if ( obs%timeStepOut .gt. 0d0 ) then 
+        ! MODPATH tracking time always starts at zero.
+        ! If stoptime not equal to infinite, then it can compute
+        ! the number of required times as stoptime/timeStepOut
+        if ( obs%timeStepOut .gt. 0d0 ) then
+          ! Enable the interpolation flag 
+          obs%doInterp = .true.
 
-        !end if 
+          ! The number of points
+          obs%timePointCount = ceiling( stoptime/obs%timeStepOut )
+          if ( allocated( obs%timeSeries ) ) deallocate( obs%timeSeries ) 
+          allocate( obs%timeSeries( obs%timePointCount ) ) 
 
+          ! Fill the vector of times
+          obs%timeSeries(1) = obs%timeStepOut
+          do n=2,obs%timePointCount
+            if ( n.lt.obs%TimePointCount ) obs%timeSeries(n) = obs%timeSeries(n-1)+obs%timeStepOut; cycle;
+            ! the last 
+            obs%timeSeries(n) = stoptime
+          end do  
+           
+          ! Allocate output arrays according to postprocess option 
+          ! 0: only histogram
+          ! 1: histogram + gpkde
+          if (allocated(BTCHistPerSolute)) deallocate(BTCHistPerSolute)
+          allocate(BTCHistPerSolute(obs%timePointCount, transportModelData%nSolutes))
+          BTCHistPerSolute(:,:) = 0d0
+          if ( obs%postprocessOption .eq. 1 ) then 
+            if (allocated(BTCGpkdePerSolute)) deallocate(BTCGpkdePerSolute)
+            allocate(BTCGpkdePerSolute(obs%timePointCount, transportModelData%nSolutes))
+            BTCGpkdePerSolute(:,:) = 0d0
+          end if
 
+          ! Allocate output flow rates
+          if ( allocated(obsAccumSinkFlowInTime) ) deallocate(obsAccumSinkFlowInTime)
+          allocate(obsAccumSinkFlowInTime(obs%timePointCount))
+          obsAccumSinkFlowInTime(:) = 0d0 
 
-        ! Allocate according to postprocess option 
-        ! 0: only histogram
-        ! 1: histogram + gpkde
-        if (allocated(BTCHistPerSolute)) deallocate(BTCHistPerSolute)
-        allocate(BTCHistPerSolute(obs%nAuxRecords, transportModelData%nSolutes))
-        BTCHistPerSolute(:,:) = 0d0
-        if ( obs%postprocessOption .eq. 1 ) then 
-          if (allocated(BTCGpkdePerSolute)) deallocate(BTCGpkdePerSolute)
-          allocate(BTCGpkdePerSolute(obs%nAuxRecords, transportModelData%nSolutes))
-          BTCGpkdePerSolute(:,:) = 0d0
+        else if ( (obs%histogramBinFormat.eq.2) .or. (obs%histogramBinFormat.eq.3) ) then
+          ! This format is without interpolation
+          ! If adaptGridToCoords is enabled ?=?
+
+          ! The number of points
+          obs%timePointCount = gpkde%nBins(1)
+          if ( allocated( obs%timeSeries ) ) deallocate( obs%timeSeries ) 
+          allocate( obs%timeSeries( obs%timePointCount ) ) 
+          
+          ! Generate the grid coordinates
+          call gpkde%GenerateVectorCoordinates()
+
+          ! Fill the vector of times
+          obs%timeSeries = gpkde%coordinatesX 
+
+          ! Allocate output arrays according to postprocess option 
+          ! 0: only histogram
+          ! 1: histogram + gpkde
+          if (allocated(BTCHistPerSolute)) deallocate(BTCHistPerSolute)
+          allocate(BTCHistPerSolute(obs%timePointCount, transportModelData%nSolutes))
+          BTCHistPerSolute(:,:) = 0d0
+          if ( obs%postprocessOption .eq. 1 ) then 
+            if (allocated(BTCGpkdePerSolute)) deallocate(BTCGpkdePerSolute)
+            allocate(BTCGpkdePerSolute(obs%timePointCount, transportModelData%nSolutes))
+            BTCGpkdePerSolute(:,:) = 0d0
+          end if
+
+          ! Allocate output flow rates
+          if ( allocated(obsAccumSinkFlowInTime) ) deallocate(obsAccumSinkFlowInTime)
+          allocate(obsAccumSinkFlowInTime(obs%timePointCount))
+          obsAccumSinkFlowInTime(:) = 0d0 
+
+        else if ( (obs%histogramBinFormat.eq.0) .or. (obs%histogramBinFormat.eq.1) ) then
+          ! This format is without interpolation and automatic bin size selection
+          ! Needs to allocate a series for each solute
+          if ( allocated( obs%series ) ) deallocate( obs%series ) 
+          allocate( obs%series( transportModelData%nSolutes ) ) 
         end if 
 
 
@@ -2236,8 +2285,8 @@ print *, 'CUMMULATIVE TIME STEP COUNT', tdisData%CumulativeTimeStepCount
             anyFromThisSolute = .false.
             do npg=1,solute%nParticleGroups
               if (activeParticleCoordinates(n,2).eq.solute%pGroups(npg)) then 
-                  anyFromThisSolute = .true.
-                  exit
+                anyFromThisSolute = .true.
+                exit
               end if
             end do
             if ( .not. anyFromThisSolute ) cycle
@@ -2252,107 +2301,302 @@ print *, 'CUMMULATIVE TIME STEP COUNT', tdisData%CumulativeTimeStepCount
           select case(obs%postprocessOption)
           case(0)
             ! Only histogram
-            call gpkde%ComputeDensity(       &
-              gpkdeDataCarrier,              &
-              onlyHistogram      = .true.,   &
-              computeRawDensity  = .true.,   &
-              weightedHistogram  = .true.,   &
+            call gpkde%ComputeDensity(                     &
+              gpkdeDataCarrier,                            &
+              onlyHistogram      = .true.,                 &
+              computeRawDensity  = .true.,                 &
+              weightedHistogram  = .true.,                 &
               histogramBinFormat = obs%histogramBinFormat, &
+              binSizeFraction    = obs%binSizeFraction,    & 
+              generateVectorCoordinates = .true.,          & 
               weights = gpkdeWeightsCarrier )
-            ! histogram
-            select case(gpkde%histogram%effectiveWeightFormat)
-            case(2,3)
-              BTCHistPerSolute(:,ns)  = gpkde%histogram%wcounts(:,1,1)
-            case default
-              BTCHistPerSolute(:,ns)  = gpkde%histogram%counts(:,1,1)
-            end select
           case(1)
             ! Timeseries reconstruction    
-            call gpkde%ComputeDensity(      &
-              gpkdeDataCarrier,             &
-              computeRawDensity = .true.,   &
-              weightedHistogram = .true.,   &
-              weights = gpkdeWeightsCarrier,& 
-              histogramBinFormat = obs%histogramBinFormat, &
+            call gpkde%ComputeDensity(                      &
+              gpkdeDataCarrier,                             &
+              computeRawDensity = .true.,                   &
+              weightedHistogram = .true.,                   &
+              weights = gpkdeWeightsCarrier,                & 
+              histogramBinFormat = obs%histogramBinFormat,  &
+              binSizeFraction    = obs%binSizeFraction,     & 
+              generateVectorCoordinates = .true.,           & 
               relativeErrorConvergence=obs%errorConvergence & 
             )
-            ! histogram
-            select case(gpkde%histogram%effectiveWeightFormat)
-            case(2,3)
-              BTCHistPerSolute(:,ns)  = gpkde%histogram%wcounts(:,1,1)
-            case default
-              BTCHistPerSolute(:,ns)  = gpkde%histogram%counts(:,1,1)
-            end select
-            ! smoothed
-            BTCGpkdePerSolute(:,ns) = gpkde%densityEstimateGrid(:,1,1)
           end select
 
-          ! Is not so easy to know in advance which series will be the longest,
-          ! the complicated case is when stoptime = \infty because in this situation 
-          ! the reconstruction grid is adapted to given coordinates.
-          ! if (obs%adaptGridToCoords) then 
-          !  ! Some verification of the length for this series
-          !  ! and reallocate if necessary, copying the already obtained values.
-          ! end if 
+          ! Initialize interpolator
+          if ( obs%doInterp ) then 
+            ! It generated the bin coordinates 
+
+            ! Interpolator for hist
+            select case(gpkde%histogram%effectiveWeightFormat)
+            case(2,3)
+            !  BTCHistPerSolute(:,ns)  = gpkde%histogram%wcounts(:,1,1)
+              call interp1d%initialize(         &  
+                            gpkde%coordinatesX, &
+                gpkde%histogram%wcounts(:,1,1), &
+                                      int1dstat )
+            case default
+            !  BTCHistPerSolute(:,ns)  = gpkde%histogram%counts(:,1,1)
+              call interp1d%initialize(         &  
+                            gpkde%coordinatesX, &
+                 gpkde%histogram%counts(:,1,1), &
+                                      int1dstat )
+            end select
+            if ( int1dstat .gt. 0 ) then 
+              write(mplistUnit,'(A)') 'A problem while initializing 1d interpolator.'
+              call ustop('A problem while initializing 1d interpolator. Stop.')
+            end if
+
+            ! Interpolate
+            !$omp parallel do              &
+            !$omp default(none)            &
+            !$omp shared(obs,gpkde, ns)    &  
+            !$omp shared(BTCHistPerSolute) &
+            !$omp firstprivate( interp1d ) &
+            !$omp private(n)
+            do n = 1, obs%timePointCount
+              ! If the requested time is lower than the 
+              ! lowest in coordinates, cycle
+              if ( obs%timeSeries(n).lt.gpkde%coordinatesX(1) ) cycle
+              call interp1d%evaluate(  & 
+                    obs%timeSeries(n), &
+                BTCHistPerSolute(n,ns) )
+            end do 
+            !$omp end parallel do
+            ! After interpolating, destroy
+            call interp1d%destroy()
+
+            ! For gpkde density
+            if ( obs%postprocessOption.eq.1 ) then
+
+              ! Initialize interpolator
+              call interp1d%initialize(         &  
+                            gpkde%coordinatesX, &
+              gpkde%densityEstimateGrid(:,1,1), &
+                                      int1dstat )
+              if ( int1dstat .gt. 0 ) then 
+                write(mplistUnit,'(A)') 'A problem while initializing 1d interpolator.'
+                call ustop('A problem while initializing 1d interpolator. Stop.')
+              end if
+
+              ! Interpolate
+              !$omp parallel do               &
+              !$omp default(none)             &
+              !$omp shared(obs,gpkde, ns)     &  
+              !$omp shared(BTCGpkdePerSolute) &
+              !$omp firstprivate( interp1d )  &
+              !$omp private(n)
+              do n = 1, obs%timePointCount
+                ! If the requested time is lower than the 
+                ! lowest in coordinates, cycle
+                if ( obs%timeSeries(n).lt.gpkde%coordinatesX(1) ) cycle
+                call interp1d%evaluate(  & 
+                     obs%timeSeries(n),  &
+                 BTCGpkdePerSolute(n,ns) )
+              end do 
+              !$omp end parallel do
+              ! After interpolating, destroy
+              call interp1d%destroy()
+
+            end if 
+
+          else if ( (obs%histogramBinFormat.eq.2) .or. (obs%histogramBinFormat.eq.3) ) then
+            ! Assign reconstruction data 
+            select case(gpkde%histogram%effectiveWeightFormat)
+            case(2,3)
+              BTCHistPerSolute(:,ns) = gpkde%histogram%wcounts(:,1,1)
+            case default
+              BTCHistPerSolute(:,ns) = gpkde%histogram%counts(:,1,1)
+            end select
+            ! For gpkde density
+            if ( obs%postprocessOption.eq.1 ) then
+              BTCGpkdePerSolute(:,ns) = gpkde%densityEstimateGrid(:,1,1)
+            end if 
+
+          else if ( (obs%histogramBinFormat.eq.0) .or. (obs%histogramBinFormat.eq.1) ) then
+            ! In this case will write the information for each solute appended vertically. 
+            ! Most likely the number data points statistics for each solute is different, and so the vector of times. 
+
+            if ( allocated( obs%series(ns)%timeSeries ) ) deallocate( obs%series(ns)%timeSeries )
+            allocate( obs%series(ns)%timeSeries(gpkde%nBins(1)) ) 
+            obs%series(ns)%timeSeries = gpkde%coordinatesX
+
+            if ( allocated( obs%series(ns)%dataSeries ) ) deallocate( obs%series(ns)%dataSeries )
+            select case(obs%postprocessOption)
+            case(0)
+             ! Assign reconstruction data: QSink, Hist 
+             allocate( obs%series(ns)%dataSeries(gpkde%nBins(1),2) ) 
+             select case(gpkde%histogram%effectiveWeightFormat)
+             case(2,3)
+               obs%series(ns)%dataSeries(:,2) =  gpkde%histogram%wcounts(:,1,1)
+             case default
+               obs%series(ns)%dataSeries(:,2) = gpkde%histogram%counts(:,1,1)
+             end select
+            case(1)
+             ! Assign reconstruction data: QSink, Hist, Gpkde 
+             allocate( obs%series(ns)%dataSeries(gpkde%nBins(1),3) ) 
+             select case(gpkde%histogram%effectiveWeightFormat)
+             case(2,3)
+               obs%series(ns)%dataSeries(:,2) =  gpkde%histogram%wcounts(:,1,1)
+             case default
+               obs%series(ns)%dataSeries(:,2) = gpkde%histogram%counts(:,1,1)
+             end select
+             obs%series(ns)%dataSeries(:,3) = gpkde%densityEstimateGrid(:,1,1)
+            end select
+
+          end if
 
 
         end do ! ns=1, transportModelData%nSolutes 
-  
 
 
+        ! this block verifies if all have the same time discretization
+        if (&
+          ( (obs%histogramBinFormat.eq.0) .or. (obs%histogramBinFormat.eq.1) ) .and. & 
+          ( .not. obs%doInterp ) ) then
+          ! The cases with different time vector !
 
-        ! Flow rates were written to obs file
-        if ( allocated(obsSinkFlowInTime) ) deallocate(obsSinkFlowInTime)
-        ! With as many columns as cells
-        ! composing the observation
-        allocate(obsSinkFlowInTime(obs%nAuxRecords, obs%nCells))
-        obsSinkFlowInTime(:,:) = 0d0 ! This array needs to be filled somehow
 
-        !! Fill flow-rate timeseries for each cell
-        !rewind( obs%auxOutputUnit )
-        !do n =1, obs%nAuxRecords
-        !  !read(obs%auxOutputUnit,*) timeIndex, obsSinkFlowInTime( n, : )
-        !  read(obs%auxOutputUnit) timeIndex, obsSinkFlowInTime( n, : ) ! binary
-        !end do
-        !! Accumulate flow rates, absolute values 
-        obsAccumSinkFlowInTime = sum( abs(obsSinkFlowInTime), dim=2 )
+          ! Loop over solutes again and write
+          do ns=1, transportModelData%nSolutes
+            if ( .not. allocated(obs%series(ns)%timeSeries) ) cycle
+            solute => transportModelData%Solutes(ns)
 
-        ! Once flow-rates are known, can compute flux-concentration
-        select case(obs%postprocessOption)
-        case (0)
-          ! idTime, time, QSink, C-HIST(:)
-          write (colFormat,*) '(1I8,',&
-              2 + transportModelData%nSolutes, 'es18.9e3)'
-          ! And write
-          do nit = 1, obs%nAuxRecords
-             !if ( obsAccumSinkFlowInTime(nit) .gt. 0d0 ) then 
-              write(obs%outputUnit, colFormat) nit, simulationData%TimePoints(nit), &
-                obsAccumSinkFlowInTime(nit), BTCHistPerSolute(nit,:)
-                !obsAccumSinkFlowInTime(nit), BTCHistPerSolute(nit,:)/obsAccumSinkFlowInTime(nit)
-             !else
-             ! ! No concentrations
-             ! write(obs%outputUnit, colFormat) nit, simulationData%TimePoints(nit), &
-             !       0d0, spread(0d0,1,transportModelData%nSolutes) 
-             !end if 
-          end do 
-        case (1)
-          ! idTime, time, QSink, CFlux-HIST(:), CFlux-GPKDE(:)
-          write (colFormat,*) '(1I8,',&
-              2 + 2*transportModelData%nSolutes, 'es18.9e3)'
-          ! And write
-          do nit = 1, obs%nAuxRecords
-             !if ( obsAccumSinkFlowInTime(nit) .gt. 0d0 ) then 
-              write(obs%outputUnit, colFormat) nit, simulationData%TimePoints(nit),           &
-                obsAccumSinkFlowInTime(nit), BTCHistPerSolute(nit,:), BTCGpkdePerSolute(nit,:) 
-                !obsAccumSinkFlowInTime(nit), BTCHistPerSolute(nit,:)/obsAccumSinkFlowInTime(nit), &
-                !                            BTCGpkdePerSolute(nit,:)/obsAccumSinkFlowInTime(nit) 
-             !else
-             ! ! No concentrations
-             ! write(obs%outputUnit, colFormat) nit, simulationData%TimePoints(nit), &
-             !       0d0, spread(0d0,1,2*transportModelData%nSolutes) 
-             !end if 
-          end do
-        end select 
+            ! Fill flow-rate timeseries for each solute
+            if ( kfirst.eq.klast ) then
+              obs%series(ns)%dataSeries(:,1) = obs%cummSinkFlowSeries(1)
+            else
+              ! Pass the times, flow-rates, assumes that 
+              ! the model starts with the flow-rate of the first time step   
+              ! Flow rates are known at modflow simulation times.
+              ! So these need to be transformed to MODPATH tracking times.
+              call interp1d%initialize( &
+                (/0d0,tdisData%TotalTimes(kfirst:klast) - simulationData%ReferenceTime/), &
+                          (/obs%cummSinkFlowSeries(1),obs%cummSinkFlowSeries/), int1dstat )
+              if ( int1dstat .gt. 0 ) then 
+                write(mplistUnit,'(A)') 'A problem while initializing flow rates interpolator.'
+                call ustop('A problem while initializing flow rates interpolator. Stop.')
+              end if
+
+              ! Interpolate
+              !$omp parallel do                    &
+              !$omp default(none)                  &
+              !$omp shared(obs,tdisData, ns)       &  
+              !$omp firstprivate( interp1d )       &
+              !$omp private(n)
+              do n = 1, size(obs%series(ns)%timeSeries)
+                 call interp1d%evaluate(& 
+                      obs%series(ns)%timeSeries(n), obs%series(ns)%dataSeries(n,1))
+              end do 
+              !$omp end parallel do
+              ! After interpolating, destroy
+              call interp1d%destroy()
+            end if
+
+            select case(obs%postprocessOption)
+            case (0)
+              ! speciesID, idTime, time, QSink, C-HIST
+              write (colFormat,*) '(2I8,',&
+                  2 + 1 , 'es18.9e3)'
+              ! And write
+              do nit = 1, size(obs%series(ns)%timeSeries)
+                write(obs%outputUnit, colFormat) solute%id, nit, obs%series(ns)%timeSeries(nit), &
+                  obs%series(ns)%dataSeries(nit,1), obs%series(ns)%dataSeries(nit,2)
+              end do
+            case (1)
+              ! speciesID, idTime, time, QSink, CFlux-HIST, CFlux-GPKDE
+              write (colFormat,*) '(2I8,',&
+                  2 + 2, 'es18.9e3)'
+              ! And write
+              do nit = 1, size(obs%series(ns)%timeSeries)
+                write(obs%outputUnit, colFormat) solute%id, nit, obs%series(ns)%timeSeries(nit), &
+                  obs%series(ns)%dataSeries(nit,1), obs%series(ns)%dataSeries(nit,2), obs%series(ns)%dataSeries(nit,3)
+              end do
+            end select
+
+          end do ! transportModelData%nSolutes 
+
+        else 
+          ! The cases with the same time vector !
+
+          ! Fill flow-rate timeseries
+          if ( kfirst.eq.klast ) then
+            obsAccumSinkFlowInTime(:) = obs%cummSinkFlowSeries(1)
+          else
+            ! Pass the times, flow-rates, assumes that 
+            ! the model starts with the flow-rate of the first time step   
+            ! Flow rates are known at modflow simulation times.
+            ! So these need to be transformed to MODPATH tracking times.
+            call interp1d%initialize( &
+              (/0d0,tdisData%TotalTimes(kfirst:klast) - simulationData%ReferenceTime/), &
+                        (/obs%cummSinkFlowSeries(1),obs%cummSinkFlowSeries/), int1dstat )
+            if ( int1dstat .gt. 0 ) then 
+              write(mplistUnit,'(A)') 'A problem while initializing flow rates interpolator.'
+              call ustop('A problem while initializing flow rates interpolator. Stop.')
+            end if
+
+            ! Interpolate
+            !$omp parallel do                    &
+            !$omp default(none)                  &
+            !$omp shared(obs,tdisData, ns)       &  
+            !$omp shared(obsAccumSinkFlowInTime) &
+            !$omp firstprivate( interp1d )       &
+            !$omp private(n)
+            do n = 1, obs%timePointCount
+               call interp1d%evaluate(& 
+                    obs%timeSeries(n),&
+             obsAccumSinkFlowInTime(n))
+            end do 
+            !$omp end parallel do
+            ! After interpolating, destroy
+            call interp1d%destroy()
+          end if 
+
+          ! Once flow-rates are known, can compute flux-concentration
+          select case(obs%postprocessOption)
+          case (0)
+            ! idTime, time, QSink, C-HIST(:)
+            write (colFormat,*) '(1I8,',&
+                2 + transportModelData%nSolutes, 'es18.9e3)'
+            if ( obs%doInterp ) then 
+             ! if interp, skip points outside data limits
+             do nit = 1, obs%timePointCount
+               if ( obs%timeSeries(nit).lt.gpkde%coordinatesX(1) ) cycle
+               if ( obs%timeSeries(nit).gt.gpkde%coordinatesX( size(gpkde%coordinatesX) ) ) exit
+               write(obs%outputUnit, colFormat) nit, obs%timeSeries(nit), &
+                 obsAccumSinkFlowInTime(nit), BTCHistPerSolute(nit,:)
+             end do
+            else
+             ! And write
+             do nit = 1, obs%timePointCount
+               write(obs%outputUnit, colFormat) nit, obs%timeSeries(nit), &
+                 obsAccumSinkFlowInTime(nit), BTCHistPerSolute(nit,:)
+             end do
+            end if  
+          case (1)
+            ! idTime, time, QSink, CFlux-HIST(:), CFlux-GPKDE(:)
+            write (colFormat,*) '(1I8,',&
+                2 + 2*transportModelData%nSolutes, 'es18.9e3)'
+            if ( obs%doInterp ) then 
+             ! if interp, skip points outside data limits
+             do nit = 1, obs%timePointCount
+               if ( obs%timeSeries(nit).lt.gpkde%coordinatesX(1) ) cycle
+               if ( obs%timeSeries(nit).gt.gpkde%coordinatesX( size(gpkde%coordinatesX) ) ) exit
+               write(obs%outputUnit, colFormat) nit, obs%timeSeries(nit), &
+                 obsAccumSinkFlowInTime(nit), BTCHistPerSolute(nit,:), BTCGpkdePerSolute(nit,:) 
+             end do
+            else
+             ! And write
+             do nit = 1, obs%timePointCount
+               write(obs%outputUnit, colFormat) nit, obs%timeSeries(nit), &
+                 obsAccumSinkFlowInTime(nit), BTCHistPerSolute(nit,:), BTCGpkdePerSolute(nit,:) 
+             end do
+            end if 
+          end select 
+
+        end if ! if the same time discretization for all
+
 
         ! Reset gpkde
         if ( allocated( gpkde ) ) then
