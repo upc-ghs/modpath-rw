@@ -110,7 +110,7 @@ program MPathRW
   integer :: soluteID
   doubleprecision :: dTObsSeries
   doubleprecision :: waterVolume, rFactor, particleMass, qSink 
-  doubleprecision :: initialTime
+  doubleprecision :: initialTime, maxObsTime
   type( ObservationType ), pointer :: obs => null()
   !doubleprecision, allocatable, dimension(:,:) :: obsSinkFlowInTime      ! (ntimes,ncells)
   doubleprecision, allocatable, dimension(:)   :: obsAccumSinkFlowInTime ! (ntimes)
@@ -2128,16 +2128,29 @@ program MPathRW
           ! This is the case where stoptime is a very large value
           !if (flowModelData%SteadyState) stoptime = 1.0d+30
           if (flowModelData%SteadyState) obs%adaptGridToCoords = .true.
-        end if 
+          ! The problem in this case is that if stoptime equals 1.0d+30
+          ! then is not possible to estimate a reasonable number of bins, 
+          ! for a given bin size. In practice this means that domain size
+          ! becomes also optional, same that happened with bin size.
+          ! Then if adapt grid to coords, estimate domain size from data limits.
+        end if
+
+        ! if the flag for adapting to the coordinates remained disabled
+        ! then maxObsTime can be set as stoptime (what happens in backward tracking?)
+        maxObsTime = stoptime
+        if ( obs%adaptGridToCoords ) then
+          ! A zero value plus adapt grid to coords is handled by gpkde 
+          maxObsTime = 0d0
+        end if  
 
         ! Initialize gpkde for timeseries reconstruction
         select case( obs%histogramBinFormat ) 
         case(2,3)
           ! bin size is given by timeseries run, or by the user
           call gpkde%Initialize(& 
-              (/stoptime,0d0,0d0/),                                   & 
-              binSize=(/dtObsSeries,0d0,0d0/),                        & ! stoptime like this makes sense only forward
-              domainOrigin=(/0d0,0d0,0d0/),                           &
+              domainSize=(/maxObsTime,0d0,0d0/),                      & 
+              binSize=(/dtObsSeries,0d0,0d0/),                        &
+              domainOrigin=(/0d0,0d0,0d0/),                           & ! does the origin changes for backward tracking ?
               nOptimizationLoops=obs%nOptLoops,                       &
               databaseOptimization=.false.,                           &
               initialSmoothingSelection=obs%initialSmoothingFormat,   & 
@@ -2150,7 +2163,7 @@ program MPathRW
           ! initialize without bin size, it is estimated later
           ! based on the given data.
           call gpkde%Initialize(& 
-              (/stoptime,0d0,0d0/),                                   &
+              domainSize=(/maxObsTime,0d0,0d0/),                      & 
               domainOrigin=(/0d0,0d0,0d0/),                           &
               nOptimizationLoops=obs%nOptLoops,                       &
               databaseOptimization=.false.,                           &
@@ -2183,67 +2196,80 @@ program MPathRW
           ! Enable the interpolation flag 
           obs%doInterp = .true.
 
-          ! The number of points
-          obs%timePointCount = ceiling( stoptime/obs%timeStepOut )
-          if ( allocated( obs%timeSeries ) ) deallocate( obs%timeSeries ) 
-          allocate( obs%timeSeries( obs%timePointCount ) ) 
+          ! Allocation is only possible if values are
+          ! known before hand
+          if ( .not. obs%adaptGridToCoords ) then 
+            ! The number of points
+            obs%timePointCount = ceiling( maxObsTime/obs%timeStepOut )
+            if ( allocated( obs%timeSeries ) ) deallocate( obs%timeSeries ) 
+            allocate( obs%timeSeries( obs%timePointCount ) ) 
 
-          ! Fill the vector of times
-          obs%timeSeries(1) = obs%timeStepOut
-          do n=2,obs%timePointCount
-            if ( n.lt.obs%TimePointCount ) obs%timeSeries(n) = obs%timeSeries(n-1)+obs%timeStepOut; cycle;
-            ! the last 
-            obs%timeSeries(n) = stoptime
-          end do  
-           
-          ! Allocate output arrays according to postprocess option 
-          ! 0: only histogram
-          ! 1: histogram + gpkde
-          if (allocated(BTCHistPerSolute)) deallocate(BTCHistPerSolute)
-          allocate(BTCHistPerSolute(obs%timePointCount, transportModelData%nSolutes))
-          BTCHistPerSolute(:,:) = 0d0
-          if ( obs%postprocessOption .eq. 1 ) then 
-            if (allocated(BTCGpkdePerSolute)) deallocate(BTCGpkdePerSolute)
-            allocate(BTCGpkdePerSolute(obs%timePointCount, transportModelData%nSolutes))
-            BTCGpkdePerSolute(:,:) = 0d0
-          end if
+            ! Fill the vector of times
+            obs%timeSeries(1) = obs%timeStepOut
+            do n=2,obs%timePointCount
+              if ( n.lt.obs%TimePointCount ) obs%timeSeries(n) = obs%timeSeries(n-1)+obs%timeStepOut; cycle;
+              ! the last 
+              obs%timeSeries(n) = stoptime
+            end do  
+             
+            ! Allocate output arrays according to postprocess option 
+            ! 0: only histogram
+            ! 1: histogram + gpkde
+            if (allocated(BTCHistPerSolute)) deallocate(BTCHistPerSolute)
+            allocate(BTCHistPerSolute(obs%timePointCount, transportModelData%nSolutes))
+            BTCHistPerSolute(:,:) = 0d0
+            if ( obs%postprocessOption .eq. 1 ) then 
+              if (allocated(BTCGpkdePerSolute)) deallocate(BTCGpkdePerSolute)
+              allocate(BTCGpkdePerSolute(obs%timePointCount, transportModelData%nSolutes))
+              BTCGpkdePerSolute(:,:) = 0d0
+            end if
 
-          ! Allocate output flow rates
-          if ( allocated(obsAccumSinkFlowInTime) ) deallocate(obsAccumSinkFlowInTime)
-          allocate(obsAccumSinkFlowInTime(obs%timePointCount))
-          obsAccumSinkFlowInTime(:) = 0d0 
+            ! Allocate output flow rates
+            if ( allocated(obsAccumSinkFlowInTime) ) deallocate(obsAccumSinkFlowInTime)
+            allocate(obsAccumSinkFlowInTime(obs%timePointCount))
+            obsAccumSinkFlowInTime(:) = 0d0 
+          else
+            if ( allocated( obs%series ) ) deallocate( obs%series ) 
+            allocate( obs%series( transportModelData%nSolutes ) ) 
+          end if 
 
         else if ( (obs%histogramBinFormat.eq.2) .or. (obs%histogramBinFormat.eq.3) ) then
           ! This format is without interpolation
-          ! If adaptGridToCoords is enabled ?=?
-
-          ! The number of points
-          obs%timePointCount = gpkde%nBins(1)
-          if ( allocated( obs%timeSeries ) ) deallocate( obs%timeSeries ) 
-          allocate( obs%timeSeries( obs%timePointCount ) ) 
           
-          ! Generate the grid coordinates
-          call gpkde%GenerateVectorCoordinates()
+          ! Allocation at this stage also possible only 
+          ! if not adapting to grid coords.
+          if ( .not. obs%adaptGridToCoords ) then 
+            ! The number of points
+            obs%timePointCount = gpkde%nBins(1)
+            if ( allocated( obs%timeSeries ) ) deallocate( obs%timeSeries ) 
+            allocate( obs%timeSeries( obs%timePointCount ) ) 
+            
+            ! Generate the grid coordinates
+            call gpkde%GenerateVectorCoordinates()
 
-          ! Fill the vector of times
-          obs%timeSeries = gpkde%coordinatesX 
+            ! Fill the vector of times
+            obs%timeSeries = gpkde%coordinatesX 
 
-          ! Allocate output arrays according to postprocess option 
-          ! 0: only histogram
-          ! 1: histogram + gpkde
-          if (allocated(BTCHistPerSolute)) deallocate(BTCHistPerSolute)
-          allocate(BTCHistPerSolute(obs%timePointCount, transportModelData%nSolutes))
-          BTCHistPerSolute(:,:) = 0d0
-          if ( obs%postprocessOption .eq. 1 ) then 
-            if (allocated(BTCGpkdePerSolute)) deallocate(BTCGpkdePerSolute)
-            allocate(BTCGpkdePerSolute(obs%timePointCount, transportModelData%nSolutes))
-            BTCGpkdePerSolute(:,:) = 0d0
-          end if
+            ! Allocate output arrays according to postprocess option 
+            ! 0: only histogram
+            ! 1: histogram + gpkde
+            if (allocated(BTCHistPerSolute)) deallocate(BTCHistPerSolute)
+            allocate(BTCHistPerSolute(obs%timePointCount, transportModelData%nSolutes))
+            BTCHistPerSolute(:,:) = 0d0
+            if ( obs%postprocessOption .eq. 1 ) then 
+              if (allocated(BTCGpkdePerSolute)) deallocate(BTCGpkdePerSolute)
+              allocate(BTCGpkdePerSolute(obs%timePointCount, transportModelData%nSolutes))
+              BTCGpkdePerSolute(:,:) = 0d0
+            end if
 
-          ! Allocate output flow rates
-          if ( allocated(obsAccumSinkFlowInTime) ) deallocate(obsAccumSinkFlowInTime)
-          allocate(obsAccumSinkFlowInTime(obs%timePointCount))
-          obsAccumSinkFlowInTime(:) = 0d0 
+            ! Allocate output flow rates
+            if ( allocated(obsAccumSinkFlowInTime) ) deallocate(obsAccumSinkFlowInTime)
+            allocate(obsAccumSinkFlowInTime(obs%timePointCount))
+            obsAccumSinkFlowInTime(:) = 0d0
+          else
+            if ( allocated( obs%series ) ) deallocate( obs%series ) 
+            allocate( obs%series( transportModelData%nSolutes ) ) 
+          end if 
 
         else if ( (obs%histogramBinFormat.eq.0) .or. (obs%histogramBinFormat.eq.1) ) then
           ! This format is without interpolation and automatic bin size selection
@@ -2326,17 +2352,15 @@ program MPathRW
           ! Initialize interpolator
           if ( obs%doInterp ) then 
             ! It generated the bin coordinates 
-
+                
             ! Interpolator for hist
             select case(gpkde%histogram%effectiveWeightFormat)
             case(2,3)
-            !  BTCHistPerSolute(:,ns)  = gpkde%histogram%wcounts(:,1,1)
               call interp1d%initialize(         &  
                             gpkde%coordinatesX, &
                 gpkde%histogram%wcounts(:,1,1), &
                                       int1dstat )
             case default
-            !  BTCHistPerSolute(:,ns)  = gpkde%histogram%counts(:,1,1)
               call interp1d%initialize(         &  
                             gpkde%coordinatesX, &
                  gpkde%histogram%counts(:,1,1), &
@@ -2347,56 +2371,138 @@ program MPathRW
               call ustop('A problem while initializing 1d interpolator. Stop.')
             end if
 
-            ! Interpolate
-            !$omp parallel do              &
-            !$omp default(none)            &
-            !$omp shared(obs,gpkde, ns)    &  
-            !$omp shared(BTCHistPerSolute) &
-            !$omp firstprivate( interp1d ) &
-            !$omp private(n)
-            do n = 1, obs%timePointCount
-              ! If the requested time is lower than the 
-              ! lowest in coordinates, cycle
-              if ( obs%timeSeries(n).lt.gpkde%coordinatesX(1) ) cycle
-              call interp1d%evaluate(  & 
-                    obs%timeSeries(n), &
-                BTCHistPerSolute(n,ns) )
-            end do 
-            !$omp end parallel do
-            ! After interpolating, destroy
-            call interp1d%destroy()
-
-            ! For gpkde density
-            if ( obs%postprocessOption.eq.1 ) then
-
-              ! Initialize interpolator
-              call interp1d%initialize(         &  
-                            gpkde%coordinatesX, &
-              gpkde%densityEstimateGrid(:,1,1), &
-                                      int1dstat )
-              if ( int1dstat .gt. 0 ) then 
-                write(mplistUnit,'(A)') 'A problem while initializing 1d interpolator.'
-                call ustop('A problem while initializing 1d interpolator. Stop.')
-              end if
-
+            ! Array for BTC's is allocated only if not adaptGridToCoords
+            ! same with obs%TimePointCount
+            if ( .not. obs%adaptGridToCoords ) then 
               ! Interpolate
-              !$omp parallel do               &
-              !$omp default(none)             &
-              !$omp shared(obs,gpkde, ns)     &  
-              !$omp shared(BTCGpkdePerSolute) &
-              !$omp firstprivate( interp1d )  &
+              !$omp parallel do              &
+              !$omp default(none)            &
+              !$omp shared(obs,gpkde, ns)    &  
+              !$omp shared(BTCHistPerSolute) &
+              !$omp firstprivate( interp1d ) &
               !$omp private(n)
               do n = 1, obs%timePointCount
                 ! If the requested time is lower than the 
                 ! lowest in coordinates, cycle
                 if ( obs%timeSeries(n).lt.gpkde%coordinatesX(1) ) cycle
                 call interp1d%evaluate(  & 
-                     obs%timeSeries(n),  &
-                 BTCGpkdePerSolute(n,ns) )
+                      obs%timeSeries(n), &
+                  BTCHistPerSolute(n,ns) )
               end do 
               !$omp end parallel do
               ! After interpolating, destroy
               call interp1d%destroy()
+
+              ! For gpkde density
+              if ( obs%postprocessOption.eq.1 ) then
+
+                ! Initialize interpolator
+                call interp1d%initialize(         &  
+                              gpkde%coordinatesX, &
+                gpkde%densityEstimateGrid(:,1,1), &
+                                        int1dstat )
+                if ( int1dstat .gt. 0 ) then 
+                  write(mplistUnit,'(A)') 'A problem while initializing 1d interpolator.'
+                  call ustop('A problem while initializing 1d interpolator. Stop.')
+                end if
+
+                ! Interpolate
+                !$omp parallel do               &
+                !$omp default(none)             &
+                !$omp shared(obs,gpkde, ns)     &  
+                !$omp shared(BTCGpkdePerSolute) &
+                !$omp firstprivate( interp1d )  &
+                !$omp private(n)
+                do n = 1, obs%timePointCount
+                  ! If the requested time is lower than the 
+                  ! lowest in coordinates, cycle
+                  if ( obs%timeSeries(n).lt.gpkde%coordinatesX(1) ) cycle
+                  call interp1d%evaluate(  & 
+                       obs%timeSeries(n),  &
+                   BTCGpkdePerSolute(n,ns) )
+                end do 
+                !$omp end parallel do
+                ! After interpolating, destroy
+                call interp1d%destroy()
+              end if
+
+            else
+              ! The case with adaptive grid, the final time is not known only until this point 
+              ! In this case will write the information for each solute appended vertically. 
+              ! Most likely the number data points statistics for each solute is different, and so the vector of times. 
+              maxObsTime = maxval( gpkde%coordinatesX, dim=1 ) 
+
+              ! The number of points ( for this solute ) 
+              obs%timePointCount = ceiling( maxObsTime/obs%timeStepOut )
+
+              ! Fill the vector of times
+              if ( allocated( obs%series(ns)%timeSeries ) ) deallocate( obs%series(ns)%timeSeries )
+              allocate( obs%series(ns)%timeSeries(obs%timePointCount) )
+              obs%series(ns)%timeSeries(1) = obs%timeStepOut
+              do n=2,obs%timePointCount
+                if ( n.lt.obs%TimePointCount ) obs%series(ns)%timeSeries(n) = obs%series(ns)%timeSeries(n-1)+obs%timeStepOut; cycle;
+                ! the last 
+                obs%series(ns)%timeSeries(n) = maxObsTime
+              end do  
+              
+              ! Fill the vector with data
+              if ( allocated( obs%series(ns)%dataSeries ) ) deallocate( obs%series(ns)%dataSeries )
+              select case(obs%postprocessOption)
+              case(0)
+               ! Assign reconstruction data: QSink, Hist 
+               allocate( obs%series(ns)%dataSeries(obs%timePointCount,2) ) 
+              case(1)
+               ! Assign reconstruction data: QSink, Hist, Gpkde 
+               allocate( obs%series(ns)%dataSeries(obs%timePointCount,3) ) 
+              end select
+
+              ! Interpolate histogram
+              !$omp parallel do              &
+              !$omp default(none)            &
+              !$omp shared(obs,gpkde, ns)    &  
+              !$omp firstprivate( interp1d ) &
+              !$omp private(n)
+              do n = 1, obs%timePointCount
+                ! If the requested time is lower than the 
+                ! lowest in coordinates, cycle
+                if ( obs%series(ns)%timeSeries(n).lt.gpkde%coordinatesX(1) ) cycle
+                call interp1d%evaluate(  & 
+                      obs%series(ns)%timeSeries(n), &
+                      obs%series(ns)%dataSeries(n,2) )
+              end do 
+              !$omp end parallel do
+              ! After interpolating, destroy
+              call interp1d%destroy()
+
+              ! Interpolate the reconstructed series
+              if ( obs%postprocessOption.eq.1 ) then 
+                ! Initialize interpolator
+                call interp1d%initialize(         &  
+                              gpkde%coordinatesX, &
+                gpkde%densityEstimateGrid(:,1,1), &
+                                        int1dstat )
+                if ( int1dstat .gt. 0 ) then 
+                  write(mplistUnit,'(A)') 'A problem while initializing 1d interpolator.'
+                  call ustop('A problem while initializing 1d interpolator. Stop.')
+                end if
+                ! Interpolate
+                !$omp parallel do               &
+                !$omp default(none)             &
+                !$omp shared(obs,gpkde, ns)     &  
+                !$omp firstprivate( interp1d )  &
+                !$omp private(n)
+                do n = 1, obs%timePointCount
+                  ! If the requested time is lower than the 
+                  ! lowest in coordinates, cycle
+                  if ( obs%series(ns)%timeSeries(n).lt.gpkde%coordinatesX(1) ) cycle
+                  call interp1d%evaluate(             & 
+                       obs%series(ns)%timeSeries(n),  &
+                       obs%series(ns)%dataSeries(n,3) )
+                end do 
+                !$omp end parallel do
+                ! After interpolating, destroy
+                call interp1d%destroy()
+              end if 
 
             end if 
 
@@ -2413,10 +2519,11 @@ program MPathRW
               BTCGpkdePerSolute(:,ns) = gpkde%densityEstimateGrid(:,1,1)
             end if 
 
+            ! NEEDS THE HANDLING FOR ADAPT GRID TO COORDS
+
           else if ( (obs%histogramBinFormat.eq.0) .or. (obs%histogramBinFormat.eq.1) ) then
             ! In this case will write the information for each solute appended vertically. 
             ! Most likely the number data points statistics for each solute is different, and so the vector of times. 
-
             if ( allocated( obs%series(ns)%timeSeries ) ) deallocate( obs%series(ns)%timeSeries )
             allocate( obs%series(ns)%timeSeries(gpkde%nBins(1)) ) 
             obs%series(ns)%timeSeries = gpkde%coordinatesX
@@ -2446,16 +2553,14 @@ program MPathRW
 
           end if
 
-
         end do ! ns=1, transportModelData%nSolutes 
 
 
-        ! this block verifies if all have the same time discretization
+        ! This block verifies if all substances have the same time discretization
         if (&
-          ( (obs%histogramBinFormat.eq.0) .or. (obs%histogramBinFormat.eq.1) ) .and. & 
-          ( .not. obs%doInterp ) ) then
+          ( ((obs%histogramBinFormat.eq.0).or.(obs%histogramBinFormat.eq.1)).and.(.not.obs%doInterp) ) .or. & 
+          (obs%adaptGridToCoords) ) then
           ! The cases with different time vector !
-
 
           ! Loop over solutes again and write
           do ns=1, transportModelData%nSolutes

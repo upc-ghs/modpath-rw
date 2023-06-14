@@ -99,17 +99,20 @@ contains
       stop 
     end if 
 
-    ! Stop if any nBins .lt. 1
-    if ( any( domainGridSize .lt. 1 ) ) then 
-      write(*,*)'Error: while initializing Histogram, some domainGridSize .lt. 1. Stop.'
-      stop
-    end if
-
     ! Allocate grid with nBins ? 
     if( present(adaptGridToCoords) ) then 
       this%adaptGridToCoords = adaptGridToCoords
     else
       this%adaptGridToCoords = .false.
+    end if
+
+    ! Requires domain if not adapting to grid
+    if( .not. this%adaptGridToCoords ) then 
+      ! Stop if any nBins .lt. 1
+      if ( any( domainGridSize .lt. 1 ) ) then 
+        write(*,*)'Error: while initializing Histogram, some domainGridSize .lt. 1. Stop.'
+        stop
+      end if
     end if
 
     ! Assign dim properties

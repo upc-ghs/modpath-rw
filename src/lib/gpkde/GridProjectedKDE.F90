@@ -375,7 +375,7 @@ contains
     ! input
     class( GridProjectedKDEType ) :: this
     ! Reconstruction grid parameters
-    real(fp), dimension(3), intent(in)           :: domainSize
+    real(fp), dimension(3), intent(in), optional :: domainSize
     real(fp), dimension(3), intent(in), optional :: binSize
     real(fp), dimension(3), intent(in), optional :: domainOrigin
     logical               , intent(in), optional :: adaptGridToCoords
@@ -435,20 +435,47 @@ contains
 
     ! Reconstruction grid parameters !
 
-    ! Set flag for adapting calculation grid allocation to particle coordinates
+    ! adaptGridToCoords 
     if ( present(adaptGridToCoords) ) then
       this%adaptGridToCoords = adaptGridToCoords
     else
       this%adaptGridToCoords = defaultAdaptGridToCoords
-    end if 
+    end if
+
+    ! borderFraction
     if ( present(borderFraction) ) then
       this%borderFraction = borderFraction
     else
       this%borderFraction = defaultBorderFraction
     end if
-   
-    ! BIN SIZE RELATED !
-    if ( present( binSize ) ) then 
+
+    ! domainSize 
+    if ( present( domainSize ) ) then
+      ! Some validation
+      ! Forgive this error if adaptGridToCoords and infer later
+      if ( .not. this%adaptGridToCoords ) then 
+       if ( all( domainSize.eq.fZERO ) ) then 
+        write(*,*) 'Error: all the given values for domain size are zero and grid is not adapted to coordinates.'
+        stop
+       end if 
+      end if 
+      if ( any( domainSize.lt.fZERO ) ) then 
+        write(*,*) 'Error: some values of domain size are negative. They should be positive.' 
+        stop
+      end if 
+      this%domainSize = domainSize
+    else
+      if ( this%adaptGridToCoords ) then 
+        ! Forgive as it will be infered later
+        this%domainSize = fZERO
+      else
+        write(*,*) 'Error: if adapt grid to coords is false, a domain size is needed while initializing GPKDE.'
+        stop
+      end if  
+    end if  
+
+    ! binSize 
+    if ( present( binSize ).and.(.not.all(this%domainSize.eq.fZERO)) ) then 
 
       ! Stop if all bin sizes are zero
       if ( all( binSize .lt. fZERO ) ) then 
@@ -457,7 +484,7 @@ contains
       end if 
       ! Initialize reconstruction grid parameters 
       where( binSize .ne. fZERO ) 
-        this%domainGridSize = int( domainSize/binSize + 0.5 )
+        this%domainGridSize = int( this%domainSize/binSize + 0.5 )
       elsewhere
         this%domainGridSize = 1
       end where
@@ -467,14 +494,7 @@ contains
         stop 
       end if
       this%binSize = binSize
-
     end if 
-    ! END BIN SIZE RELATED !
-
-
-    ! domainSize
-    this%domainSize = domainSize
-
 
     ! domainOrigin
     if ( present( domainOrigin ) ) then 
@@ -507,21 +527,21 @@ contains
       this%slicedDimension = 0 
     end if 
 
-
+    ! initialSmoothingFactor
     if ( present( initialSmoothingFactor ) ) then 
       this%initialSmoothingFactor = initialSmoothingFactor
     else
       this%initialSmoothingFactor = defaultInitialSmoothingFactor
     end if 
 
+    ! initialSmoothingArray
     this%initialSmoothingArray = fZERO
     if ( present( initialSmoothing ) ) then
       this%initialSmoothingArray = initialSmoothing
     end if 
 
-
-    ! BIN SIZE RELATED !
-    if ( present( binSize ) ) then 
+    ! Bin size related 
+    if ( present( binSize ).and.(.not.all(this%domainSize.eq.fZERO)) ) then 
 
       ! Depending on domainGridSize, is the number of dimensions of the GPDKE
       ! reconstruction process. If any nBins is 1, then that dimension
@@ -612,8 +632,6 @@ contains
       end do
 
     end if 
-    ! END BIN SIZE RELATED !
-
 
     ! nOptimizationLoops
     if ( present( nOptimizationLoops ) ) then 
@@ -734,9 +752,8 @@ contains
       this%histogram%effectiveWeightFormat = defaultEffectiveWeightFormat   
     end if 
 
-
-    ! BIN SIZE RELATED !
-    if ( present( binSize ) ) then 
+    ! Bin size related, and domain size 
+    if ( present( binSize ).and.(.not.all(this%domainSize.eq.fZERO)) ) then 
 
       ! Determine kernel bounding  
       select case(this%boundKernelSizeFormat)
@@ -808,7 +825,6 @@ contains
       end select
 
     end if 
-    ! END BIN SIZE RELATED !
 
     ! Process advanced parameters !
      
@@ -870,8 +886,8 @@ contains
 
     ! Need more reports for roughnesses and eventually min/max kernel sizes
 
-    ! BIN SIZE RELATED !
-    if ( present( binSize ) ) then
+    ! Related to bin and domain size 
+    if ( present( binSize ).and.(.not.all(this%domainSize.eq.fZERO)) ) then 
 
       ! Logging
       if ( this%reportToOutUnit ) then 
@@ -922,15 +938,13 @@ contains
 
       ! Report intialization
       if ( this%reportToOutUnit ) then 
-        write( this%outFileUnit, '(A)' ) ' GPKDE is initialized without bin size, expected to be defined later.  '
-        write( this%outFileUnit, '(A)' ) '-----------------------------------------------------------------------'
+        write( this%outFileUnit, '(A)' ) ' GPKDE is initialized without a predefined grid, defined later. '
+        write( this%outFileUnit, '(A)' ) '----------------------------------------------------------------'
         write( this%outFileUnit,  *    )
         flush( this%outFileUnit ) 
       end if
 
     end if 
-    ! END BIN SIZE RELATED !
-
 
     ! Done
 
@@ -1083,14 +1097,23 @@ contains
     character(len=30) :: outfmt
     !---------------------------------------------------------------------------
 
-    ! BIN SIZE RELATED !
-
-    ! Stop if all bin sizes are zero
+    ! Validate bin size 
     if ( all( binSize .le. fZERO ) ) then 
-      write(*,*) 'Error: while initializing GPKDE, all binSizes are .lt. 0. Stop.'
+      write(*,*) 'Error: while updating bin size at GPKDE, all values are .lt. 0. Stop.'
       stop 
-    end if 
-    ! Initialize reconstruction grid parameters 
+    end if
+    if ( any( binSize .lt. fZERO ) ) then 
+      write(*,*) 'Error: while updating bin size at GPKDE, some values are negative. Stop.'
+      stop 
+    end if
+    ! Validate domain size 
+    if ( all( this%domainSize .eq. fZERO ) ) then 
+      write(*,*) 'Error: while updating bin size at GPKDE. All dimensions are zero. Stop.'
+      stop 
+    end if
+
+    ! Initialize reconstruction grid parameters !
+
     where( binSize .ne. fZERO )
       ! domainSize expected to be already defined into the object 
       this%domainGridSize = int( this%domainSize/binSize + 0.5 )
@@ -1104,8 +1127,6 @@ contains
       stop 
     end if
     this%binSize = binSize
-
-    ! BIN SIZE RELATED !
 
     ! Depending on domainGridSize, is the number of dimensions of the GPDKE
     ! reconstruction process. If any nBins is 1, then that dimension
@@ -1161,25 +1182,15 @@ contains
               'Will compute Histogram considering ', this%histogram%nDim, ' dimensions.'
     end if  
 
-    ! Process further arguments !
+    ! Further processes !
 
     ! initialSmoothing
-    !if ( present( initialSmoothingSelection ) ) then 
-    !  this%initialSmoothingSelection = initialSmoothingSelection
-    !else
-    !  this%initialSmoothingSelection = defaultInitialSmoothingSelection
-    !end if 
-    !this%initialSmoothing(:) = fZERO
     select case(this%initialSmoothingSelection) 
     case(0)
       ! Choose from global estimate of Silverman (1986)
       continue
     case(1)
-      !if ( present( initialSmoothingFactor ) ) then 
-        this%initialSmoothing = this%initialSmoothingFactor*this%histogram%binDistance
-      !else
-      !  this%initialSmoothing = defaultInitialSmoothingFactor*this%histogram%binDistance
-      !end if 
+      this%initialSmoothing = this%initialSmoothingFactor*this%histogram%binDistance
     case(2)
       if ( all( this%initialSmoothingArray .le. fZERO ) ) then 
         this%initialSmoothing = defaultInitialSmoothingFactor*this%histogram%binDistance
@@ -1195,131 +1206,6 @@ contains
         this%initialSmoothing(nd) = fZERO
       end if 
     end do
-    ! END BIN SIZE RELATED !
-
-
-    !! nOptimizationLoops
-    !if ( present( nOptimizationLoops ) ) then 
-    !  this%nOptimizationLoops = nOptimizationLoops
-    !else 
-    !  this%nOptimizationLoops = defaultNOptLoops
-    !end if
-
-    !! Kernel database 
-    !if ( present( databaseOptimization ) ) then 
-    !  this%databaseOptimization = databaseOptimization
-    !else 
-    !  this%databaseOptimization = defaultDatabaseOptimization
-    !end if
-
-    !! Bound kernel size format 
-    !if ( present( boundKernelSizeFormat ) ) then 
-    !  this%boundKernelSizeFormat = boundKernelSizeFormat 
-    !else
-    !  this%boundKernelSizeFormat = defaultBoundKernelSizeFormat
-    !end if 
-
-    !! If kernel database or bound kernels by database params
-    !if (&
-    !  (this%databaseOptimization).or.   & 
-    !  (this%boundKernelSizeFormat.eq.1) ) then 
-
-    ! ! Process database discretization parameters 
-    ! if ( present( minHOverDelta ) ) then
-    !   if ( minHOverDelta.gt.fZERO )then 
-    !     this%minHOverDelta = minHOverDelta
-    !   else
-    !     write(*,*) 'Error: Invalid value for minHOverDelta: should be greater than zero. Stop.'
-    !     stop
-    !   end if
-    ! else 
-    !   this%minHOverDelta = defaultMinHOverDelta
-    ! end if
-
-    ! if ( present( maxHOverDelta ) ) then
-    !  if ( maxHOverDelta.gt.fZERO ) then 
-    !   if ( maxHOverDelta.le.this%minHOverDelta(1) ) then ! minhoverdelta is an array in memory
-    !    if ( this%reportToOutUnit ) then 
-    !    write( this%outFileUnit, *) 'Error: Invalid value for maxHOverDelta: should be greater than minHOverDelta.'
-    !    write( this%outFileUnit, *) '  Value of minHOverDelta: ', this%minHOverDelta(1)
-    !    write( this%outFileUnit, *) '  Value of maxHOverDelta: ', maxHOverDelta
-    !    end if  
-    !    write(*,*) 'Error: Invalid value for maxHOverDelta: should be greater than minHOverDelta. Stop.'
-    !    stop
-    !   end if
-    !   this%maxHOverDelta = maxHOverDelta
-    !  else
-    !   write(*,*) 'Error: Invalid value for maxHOverDelta: should be greater than zero. Stop.'
-    !   stop
-    !  end if
-    ! else 
-    !  this%maxHOverDelta = defaultMaxHOverDelta
-    !  if ( this%maxHOverDelta(1).le.this%minHOverDelta(1) ) then 
-    !   if ( this%reportToOutUnit ) then 
-    !   write( this%outFileUnit, *) 'Error: Invalid value for maxHOverDelta: should be greater than minHOverDelta.'
-    !   write( this%outFileUnit, *) '  Value of minHOverDelta: ', this%minHOverDelta(1) 
-    !   write( this%outFileUnit, *) '  Value of maxHOverDelta: ', this%maxHOverDelta(1)
-    !   end if  
-    !   write(*,*) 'Error: Invalid value for maxHOverDelta: should be greater than minHOverDelta. Stop.'
-    !   stop
-    !  end if
-    ! end if
-    ! 
-    ! if ( this%databaseOptimization ) then 
-    !  if ( present( deltaHOverDelta ) ) then 
-    !   if ( deltaHOverDelta.gt.fZERO ) then 
-    !    if ( deltaHOverDelta.ge.this%maxHOverDelta(1) ) then ! maxhoverdelta is an array in memory
-    !     if ( this%reportToOutUnit ) then 
-    !     write( this%outFileUnit, *) 'Error: Invalid value for deltaHOverDelta: should be less than maxHOverDelta.'
-    !     write( this%outFileUnit, *) '  Value of maxHOverDelta  : ', this%maxHOverDelta(1)
-    !     write( this%outFileUnit, *) '  Value of deltaHOverDelta: ', deltaHOverDelta
-    !     end if  
-    !     write(*,*) 'Error: Invalid value for deltaHOverDelta: should be less than maxHOverDelta. Stop.'
-    !     stop
-    !    end if
-    !    this%deltaHOverDelta = deltaHOverDelta
-    !   else
-    !    write(*,*) 'Error: Invalid value for deltaHOverDelta: should be greater than zero. Stop.'
-    !    stop
-    !   end if
-    !  else 
-    !    this%deltaHOverDelta = defaultDeltaHOverDelta
-    !    if ( this%deltaHOverDelta(1).ge.this%maxHOverDelta(1) ) then 
-    !     if ( this%reportToOutUnit ) then 
-    !     write( this%outFileUnit, *) 'Error: Invalid value for deltaHOverDelta: should be less than maxHOverDelta.'
-    !     write( this%outFileUnit, *) '  Value of maxHOverDelta  : ', this%maxHOverDelta(1)
-    !     write( this%outFileUnit, *) '  Value of deltaHOverDelta: ', this%deltaHOverDelta(1)
-    !     end if  
-    !     write(*,*) 'Error: Invalid value for deltaHOverDelta: should be less than maxHOverDelta. Stop.'
-    !     stop
-    !    end if
-    !  end if
-    ! end if 
-
-    !else
-    ! ! initialize with defaults
-    ! this%minHOverDelta   = defaultMinHOverDelta
-    ! this%maxHOverDelta   = defaultMaxHOverDelta
-    ! this%deltaHOverDelta = defaultDeltaHOverDelta
-    !end if
-
-    !if ( present( logKernelDatabase ) ) then ! Deprecate ? 
-    !  this%logKernelDatabase = logKernelDatabase
-    !else 
-    !  this%logKernelDatabase = defaultLogKernelDatabase
-    !end if
-
-    !! Effective weight format 
-    !! Effective weight format is defined as zero by default at histogram  
-    !if ( present(effectiveWeightFormat) ) then 
-    !  this%histogram%effectiveWeightFormat = effectiveWeightFormat   
-    !else
-    !  this%histogram%effectiveWeightFormat = defaultEffectiveWeightFormat   
-    !end if 
-
-
-    ! BIN SIZE RELATED !
-
 
     ! Determine kernel bounding  
     select case(this%boundKernelSizeFormat)
@@ -1390,69 +1276,6 @@ contains
      end do
     end select
 
-    ! END BIN SIZE RELATED !
-
-    !! Process advanced parameters !
-    ! 
-    !advancedOptions = .false.
-    !if ( present(interpretAdvancedParams) ) then
-    !  advancedOptions = interpretAdvancedParams
-    !end if 
-    !if ( advancedOptions ) then
-    !  ! Min roughness format 
-    !  if ( present( minRoughnessFormat ) ) then 
-    !    this%minRoughnessFormat = minRoughnessFormat
-    !  else
-    !    this%minRoughnessFormat = defaultMinRoughnessFormat
-    !  end if 
-    !  ! Isotropic threshold
-    !  if ( present(isotropicThreshold) ) then 
-    !    this%isotropicThreshold = isotropicThreshold
-    !  else
-    !    this%isotropicThreshold = defaultIsotropicThreshold
-    !  end if
-    !  ! Max sigma growth
-    !  if ( present(maxSigmaGrowth) ) then 
-    !    this%maxSigmaGrowth = maxSigmaGrowth
-    !  else
-    !    this%maxSigmaGrowth = defaultMaxSigmaGrowth
-    !  end if
-    !else
-    !  ! Should assign eveything to default values
-    !  this%minRoughnessFormat    = defaultMinRoughnessFormat
-    !  this%isotropicThreshold    = defaultIsotropicThreshold
-    !  this%maxSigmaGrowth        = defaultMaxSigmaGrowth
-    !end if 
-
-    !! Interpret roughness parameters according to format
-    !select case(this%minRoughnessFormat)
-    !! 0: Gaussian: do nothing
-    !! 1: Requires relative roughness and length scale
-    !case(1)
-    !  if ( present(minRelativeRoughness) ) then 
-    !    this%minRelativeRoughness = minRelativeRoughness
-    !  else
-    !    this%minRelativeRoughness = defaultMinRelativeRoughness
-    !  end if 
-    !  if ( present(minRoughnessLengthScale) ) then 
-    !    this%minRoughnessLengthScale = minRoughnessLengthScale
-    !    this%minRoughnessLengthScaleAsSigma = .false.
-    !  else
-    !    this%minRoughnessLengthScaleAsSigma = .true.
-    !  end if 
-    !! 2: as minRoughness
-    !case(2)
-    !  if ( present(minRoughness) ) then 
-    !    this%minLimitRoughness = minRoughness
-    !  else
-    !    this%minLimitRoughness = defaultMinLimitRoughness
-    !  end if 
-    !! 3: Do nothing
-    !end select
-
-    ! Need more reports for roughnesses and eventually min/max kernel sizes
-
-    ! BIN SIZE RELATED !
 
     ! Logging
     if ( this%reportToOutUnit ) then 
@@ -1495,7 +1318,6 @@ contains
     ! Initialize net roughness function
     call this%InitializeNetRoughnessFunction( nDim )
 
-    ! END BIN SIZE RELATED !
 
     !! Report intialization
     !if ( this%reportToOutUnit ) then 
@@ -3930,6 +3752,22 @@ contains
     end if 
     ! Until here, independent of sliced reconstruction
 
+    ! If adapt grid to coords and all domain sizes 
+    ! were zero, then define grid size
+    if ( this%adaptGridToCoords .and. all(this%domainSize.eq.fZERO) ) then
+      maxCoords        = maxval( dataPoints, dim=1 ) 
+      minCoords        = minval( dataPoints, dim=1 )
+      deltaCoords      = abs( maxCoords - minCoords )
+      where ( deltaCoords .ne. fZERO )
+        ! For the minimum coordinates, substract half the border fraction
+        minSubGridCoords   = minCoords - fONE*this%borderFraction*deltaCoords
+        ! For the maximum coordinates, add half the border fraction
+        maxSubGridCoords   = maxCoords + fONE*this%borderFraction*deltaCoords
+        ! Assign domain size relative to the origin 
+        this%domainSize = maxSubGridCoords - this%domainOrigin 
+      end where
+    end if
+
     ! Now it needs to process the bin size. 
     ! Only for 1D reconstruction !
     if ( present( histogramBinFormat ) ) then 
@@ -3968,8 +3806,7 @@ contains
         stop
       end if
     end if 
-
-
+    
 
     ! Compute sub grid parameters if grids
     ! are to be adapted to the given coordinates 
@@ -3985,7 +3822,7 @@ contains
         ! For the maximum coordinates, add half the border fraction
         maxSubGridCoords   = maxCoords + 0.5*this%borderFraction*deltaCoords
       end where
-      
+
       ! Limit these coordinates by domain specs
       do nd =1,3
         if ( this%dimensionMask(nd).eq.0 ) cycle
