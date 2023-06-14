@@ -114,7 +114,7 @@ program MPathRW
   type( ObservationType ), pointer :: obs => null()
   !doubleprecision, allocatable, dimension(:,:) :: obsSinkFlowInTime      ! (ntimes,ncells)
   doubleprecision, allocatable, dimension(:)   :: obsAccumSinkFlowInTime ! (ntimes)
-  doubleprecision, allocatable, dimension(:)   :: qSinkBuffer
+  !doubleprecision, allocatable, dimension(:)   :: qSinkBuffer
   doubleprecision, allocatable, dimension(:,:) :: obsWaterVolumeInTime      ! (ntimes,ncells)
   doubleprecision, allocatable, dimension(:)   :: obsAccumWaterVolumeInTime ! (ntimes)
   doubleprecision, allocatable, dimension(:)   :: waterVolBuffer
@@ -792,9 +792,9 @@ program MPathRW
                 file=obs%outputFileName,& 
                 status='replace', form='formatted', access='sequential')
           ! Temporary binary for aux data ( flow rates )
-          open( unit=obs%auxOutputUnit, &
-                status='scratch', form='unformatted',&
-                access='stream', action='readwrite')
+          !open( unit=obs%auxOutputUnit, &
+          !      status='scratch', form='unformatted',&
+          !      access='stream', action='readwrite')
         case(2)
           ! Records as temporary binary and output as text plain
           WriteSinkObs=> WriteSinkObsRecordBinary
@@ -805,9 +805,9 @@ program MPathRW
                 file=obs%outputFileName,& 
                 status='replace', form='formatted', access='sequential')
           ! Temporary binary for aux data ( flow rates )
-          open( unit=obs%auxOutputUnit, &
-                status='scratch', form='unformatted',&
-                access='stream', action='readwrite')
+          !open( unit=obs%auxOutputUnit, &
+          !      status='scratch', form='unformatted',&
+          !      access='stream', action='readwrite')
         end select
         ! Initialize the array of cummSinkFlowSeries
         if ( allocated( obs%cummSinkFlowSeries ) ) deallocate ( obs%cummSinkFlowSeries )
@@ -1619,24 +1619,24 @@ program MPathRW
   ! with flow-rates per time. Works for the 
   ! approach were timeseries points determine 
   ! the obs postprocess.
-  if( ( simulationData%TrackingOptions%anySinkObservation ) & 
-                                  .and. isTimeSeriesPoint ) then
-    ! Write sink flow rates only for obs of this kind
-    do nobs=1,simulationData%TrackingOptions%nObservations
-      obs =>simulationData%TrackingOptions%Observations(nobs)
-      if ( obs%style .ne. 2 ) cycle ! if no sink, try next
-      if ( .not. obs%doPostprocess ) cycle ! if no postprocess for this obs, try next
-      if (allocated(qSinkBuffer))deallocate(qSinkBuffer)
-      allocate(qSinkBuffer(obs%nCells))
-      do n=1,obs%nCells
-        qSinkBuffer(n) = flowModelData%SinkFlows(obs%cells(n))
-      end do
-      !write(qSinkFormat,*) '(1I10,', obs%nCells, 'es18.9e3)'
-      !write(obs%auxOutputUnit,qSinkFormat) nt, qSinkBuffer(:)
-      write(obs%auxOutputUnit) nt, qSinkBuffer(:)
-      obs%nAuxRecords = obs%nAuxRecords + 1 ! Count aux records
-    end do
-  end if
+  !if( ( simulationData%TrackingOptions%anySinkObservation ) & 
+  !                                .and. isTimeSeriesPoint ) then
+  !  ! Write sink flow rates only for obs of this kind
+  !  do nobs=1,simulationData%TrackingOptions%nObservations
+  !    obs =>simulationData%TrackingOptions%Observations(nobs)
+  !    if ( obs%style .ne. 2 ) cycle ! if no sink, try next
+  !    if ( .not. obs%doPostprocess ) cycle ! if no postprocess for this obs, try next
+  !    if (allocated(qSinkBuffer))deallocate(qSinkBuffer)
+  !    allocate(qSinkBuffer(obs%nCells))
+  !    do n=1,obs%nCells
+  !      qSinkBuffer(n) = flowModelData%SinkFlows(obs%cells(n))
+  !    end do
+  !    !write(qSinkFormat,*) '(1I10,', obs%nCells, 'es18.9e3)'
+  !    !write(obs%auxOutputUnit,qSinkFormat) nt, qSinkBuffer(:)
+  !    write(obs%auxOutputUnit) nt, qSinkBuffer(:)
+  !    obs%nAuxRecords = obs%nAuxRecords + 1 ! Count aux records
+  !  end do
+  !end if
 
 
   ! Observation cells: if any sink cell observation, 
@@ -1953,8 +1953,7 @@ program MPathRW
 
         end do
 
-        ! Similar to what occurs with sink obs,
-        ! cell water volumes were written to a temp file.
+        ! Cell water volumes were written to a temp file.
 
         ! Water volumes were written to aux obs file
         if ( allocated(obsWaterVolumeInTime) ) deallocate(obsWaterVolumeInTime)
@@ -2055,10 +2054,10 @@ program MPathRW
         ! This check will make sense only if the 
         ! observation was recording data at timeseries time steps.
         ! However, most likley this should be completely removed.
-        if ( obs%nAuxRecords .lt. 2 ) then 
-          write(mplistUnit, '(A)') 'Not enough aux records for this observation, continue to the next'
-          cycle ! nobs
-        end if
+        !if ( obs%nAuxRecords .lt. 2 ) then 
+        !  write(mplistUnit, '(A)') 'Not enough aux records for this observation, continue to the next'
+        !  cycle ! nobs
+        !end if
 
         ! Allocate data carrier (active particles coordinates, temporary)
         if ( allocated( activeParticleCoordinates ) ) deallocate( activeParticleCoordinates )

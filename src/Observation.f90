@@ -46,10 +46,12 @@ module ObservationModule
     type(SeriesType), allocatable, dimension(:) :: series
   end type
 
+
   type, public :: SeriesType
     doubleprecision, dimension(:)  , allocatable :: timeSeries
     doubleprecision, dimension(:,:), allocatable :: dataSeries ! for the same time may have multiple data columns
   end type
+
 
 contains
 
