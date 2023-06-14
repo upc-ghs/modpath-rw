@@ -88,8 +88,6 @@ contains
     class(HistogramType), target                 :: this
     integer , dimension(3), intent(in)           :: domainGridSize
     real(fp), dimension(3), intent(in)           :: binSize
-    !integer , dimension(3), intent(in), optional :: dimensionMask
-    !integer , dimension(3)                       :: locDimensionMask
     real(fp), dimension(3), intent(in), optional :: domainOrigin
     logical ,               intent(in), optional :: adaptGridToCoords
     integer :: nd, dcount
@@ -106,13 +104,6 @@ contains
       write(*,*)'Error: while initializing Histogram, some domainGridSize .lt. 1. Stop.'
       stop
     end if
-
-    ! dimensionMask
-    !if( present(dimensionMask) ) then 
-    !  locDimensionMask = dimensionMask
-    !else
-    !  locDimensionMask = (/1,1,1/)
-    !end if
 
     ! Allocate grid with nBins ? 
     if( present(adaptGridToCoords) ) then 
@@ -159,6 +150,7 @@ contains
     ! Allocate and initialize histogram counts, 
     ! if not adapting to the particle distribution follows the domain grid. 
     if ( .not. this%adaptGridToCoords ) then 
+      if ( allocated( this%counts ) ) deallocate( this%counts ) 
       allocate( this%counts( domainGridSize(1), domainGridSize(2), domainGridSize(3) ) )
       this%counts   = fZERO
       this%origin   => this%domainOrigin

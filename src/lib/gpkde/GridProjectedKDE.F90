@@ -4023,6 +4023,7 @@ contains
       this%histogram%origin     => this%histogram%gridOrigin 
 
       ! Allocate the counting grid
+      if ( allocated( this%histogram%counts ) ) deallocate( this%histogram%counts ) 
       allocate(this%histogram%counts(subGridNBins(1),subGridNBins(2),subGridNBins(3)))
       this%histogram%counts = 0
 
@@ -4044,15 +4045,13 @@ contains
       case (2)
         ! This format is mostly for analysis.
         ! In this case histogram%counts store the number of points and wcounts the weights
-        if (.not.allocated(this%histogram%wcounts)) then
-          allocate(this%histogram%wcounts, mold=this%histogram%counts)
-        end if
+        if ( allocated( this%histogram%wcounts ) ) deallocate( this%histogram%wcounts ) 
+        allocate(this%histogram%wcounts, mold=this%histogram%counts)
         call this%histogram%ComputeCountsAndWeights( dataPoints, weights, locExactPoint )
       case (3)
         ! This format is mostly for analysis.
-        if (.not.allocated(this%histogram%wcounts)) then
-          allocate(this%histogram%wcounts, mold=this%histogram%counts)
-        end if
+        if ( allocated( this%histogram%wcounts ) ) deallocate( this%histogram%wcounts ) 
+        allocate(this%histogram%wcounts, mold=this%histogram%counts)
         call this%histogram%ComputeEffectiveCountsAndWeights( dataPoints, weights, locExactPoint )
       case default
         ! This is the standard/default format
