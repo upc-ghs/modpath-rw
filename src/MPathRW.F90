@@ -2507,19 +2507,65 @@ program MPathRW
             end if 
 
           else if ( (obs%histogramBinFormat.eq.2) .or. (obs%histogramBinFormat.eq.3) ) then
-            ! Assign reconstruction data 
-            select case(gpkde%histogram%effectiveWeightFormat)
-            case(2,3)
-              BTCHistPerSolute(:,ns) = gpkde%histogram%wcounts(:,1,1)
-            case default
-              BTCHistPerSolute(:,ns) = gpkde%histogram%counts(:,1,1)
-            end select
-            ! For gpkde density
-            if ( obs%postprocessOption.eq.1 ) then
-              BTCGpkdePerSolute(:,ns) = gpkde%densityEstimateGrid(:,1,1)
-            end if 
 
-            ! NEEDS THE HANDLING FOR ADAPT GRID TO COORDS
+            if (.not.obs%adaptGridToCoords ) then 
+              ! These arrays were allocated only if not adapt grid to coords
+              ! Assign reconstruction data 
+              select case(gpkde%histogram%effectiveWeightFormat)
+              case(2,3)
+                BTCHistPerSolute(:,ns) = gpkde%histogram%wcounts(:,1,1)
+              case default
+                BTCHistPerSolute(:,ns) = gpkde%histogram%counts(:,1,1)
+              end select
+              ! For gpkde density
+              if ( obs%postprocessOption.eq.1 ) then
+                BTCGpkdePerSolute(:,ns) = gpkde%densityEstimateGrid(:,1,1)
+              end if 
+            else
+              ! The case with adaptive grid, the final time is not known only until this point 
+              ! In this case will write the information for each solute appended vertically. 
+              ! Most likely the number data points statistics for each solute is different, and so the vector of times. 
+              maxObsTime = maxval( gpkde%coordinatesX, dim=1 )
+
+              ! The number of points ( for this solute ) 
+              obs%timePointCount = gpkde%nBins(1) 
+
+              ! Fill the vector of times
+              if ( allocated( obs%series(ns)%timeSeries ) ) deallocate( obs%series(ns)%timeSeries )
+              allocate( obs%series(ns)%timeSeries(obs%timePointCount) )
+              obs%series(ns)%timeSeries = gpkde%coordinatesX
+              !obs%series(ns)%timeSeries(1) = obs%timeStepOut
+              !do n=2,obs%timePointCount
+              !  if ( n.lt.obs%TimePointCount ) obs%series(ns)%timeSeries(n) = obs%series(ns)%timeSeries(n-1)+obs%timeStepOut; cycle;
+              !  ! the last 
+              !  obs%series(ns)%timeSeries(n) = maxObsTime
+              !end do  
+              
+              ! Fill the vector with data
+              if ( allocated( obs%series(ns)%dataSeries ) ) deallocate( obs%series(ns)%dataSeries )
+              select case(obs%postprocessOption)
+              case(0)
+               ! Assign reconstruction data: QSink, Hist 
+               allocate( obs%series(ns)%dataSeries(obs%timePointCount,2) ) 
+               select case(gpkde%histogram%effectiveWeightFormat)
+               case(2,3)
+                 obs%series(ns)%dataSeries(:,2) = gpkde%histogram%wcounts(:,1,1)
+               case default
+                 obs%series(ns)%dataSeries(:,2) = gpkde%histogram%counts(:,1,1)
+               end select
+              case(1)
+               ! Assign reconstruction data: QSink, Hist, Gpkde 
+               allocate( obs%series(ns)%dataSeries(obs%timePointCount,3) ) 
+               select case(gpkde%histogram%effectiveWeightFormat)
+               case(2,3)
+                 obs%series(ns)%dataSeries(:,2) = gpkde%histogram%wcounts(:,1,1)
+               case default
+                 obs%series(ns)%dataSeries(:,2) = gpkde%histogram%counts(:,1,1)
+               end select
+               obs%series(ns)%dataSeries(:,3) = gpkde%densityEstimateGrid(:,1,1)
+              end select
+
+            end if 
 
           else if ( (obs%histogramBinFormat.eq.0) .or. (obs%histogramBinFormat.eq.1) ) then
             ! In this case will write the information for each solute appended vertically. 

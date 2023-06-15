@@ -494,6 +494,14 @@ contains
         stop 
       end if
       this%binSize = binSize
+    else if ( present( binSize ) ) then 
+      ! Assign and relay init to UpdateBinSize
+      ! Stop if all bin sizes are zero
+      if ( all( binSize .lt. fZERO ) ) then 
+        write(*,*) 'Error: while initializing GPKDE, all binSizes are .lt. 0. Stop.'
+        stop 
+      end if 
+      this%binSize = binSize
     end if 
 
     ! domainOrigin
@@ -3793,17 +3801,25 @@ contains
         call this%UpdateBinSize( this%binSize ) 
       case default
         ! Verify that they were defined
-        if ( all(this%binSize.le.fZERO) ) then  
-          write(*,*) 'Error: bin sizes were not defined. Stop.'
-          stop
+        if ( .not. this%adaptGridToCoords ) then 
+          if ( all(this%binSize.le.fZERO) ) then  
+            write(*,*) 'Error: bin sizes were not defined. Stop.'
+            stop
+          end if
+        else
+          call this%UpdateBinSize( this%binSize ) 
         end if
       end select
     else
       ! Something to verify that it was set
       ! and so on... 
-      if ( all(this%binSize.le.fZERO) ) then  
-        write(*,*) 'Error: bin sizes were not defined. Stop.'
-        stop
+      if ( .not. this%adaptGridToCoords ) then 
+        if ( all(this%binSize.le.fZERO) ) then  
+          write(*,*) 'Error: bin sizes were not defined. Stop.'
+          stop
+        end if
+      else
+        call this%UpdateBinSize( this%binSize ) 
       end if
     end if 
     
