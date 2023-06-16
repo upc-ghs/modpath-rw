@@ -1342,7 +1342,6 @@ program MPathRW
                   call WriteSinkObs(ktime, nt, p,                         &
                     simulationData%ParticleGroups(groupIndex)%Solute,     &
                     obs%cummSinkFlow,                                     &
-                    !trackingEngine%flowModelData%SinkFlows(p%CellNumber), &
                     obs%recOutputUnit)
                   !$omp end critical (sinkobservation)
                   ! Count record
@@ -1412,6 +1411,7 @@ program MPathRW
               pCoordTP => trackPathResult%ParticlePath%Timeseries%Items(1)
               p%GlobalX = pCoordTP%GlobalX ! GPKDE
               p%GlobalY = pCoordTP%GlobalY ! GPKDE
+
               if ( .not. &
                 simulationData%TrackingOptions%skipTimeseriesWriter ) then 
                   ! With interface

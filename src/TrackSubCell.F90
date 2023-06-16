@@ -969,6 +969,11 @@ contains
          
         dtold = dt
         t = t + dt
+
+        ! Disable the flag for maximum time 
+        if ( reachedMaximumTime ) then
+          reachedMaximumTime = .false.
+        end if 
       end do
 
       ! new positions
