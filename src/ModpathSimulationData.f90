@@ -404,12 +404,12 @@ contains
  
     ! RWPT 
     ! Only allow forward tracking for RWPT simulations
-    if ((( this%SimulationType .eq. 5 ) .or.  &
-         ( this%SimulationType .eq. 6 ) .or.  & 
-         ( this%SimulationType .eq. 7 )    )  &
-      .and. ( this%TrackingDirection .eq. 2 ) ) then 
-      call ustop('Random Walk Particle Tracking only accepts Forward tracking. Stop.')
-    end if
+    !if ((( this%SimulationType .eq. 5 ) .or.  &
+    !     ( this%SimulationType .eq. 6 ) .or.  & 
+    !     ( this%SimulationType .eq. 7 )    )  &
+    !  .and. ( this%TrackingDirection .eq. 2 ) ) then 
+    !  call ustop('Random Walk Particle Tracking only accepts Forward tracking. Stop.')
+    !end if
 
     ! Tracking direction
     select case(this%TrackingDirection)
@@ -3016,6 +3016,7 @@ contains
     doubleprecision :: initialTime, finalTime, minT
     doubleprecision :: effectiveMass, cummEffectiveMass, lastCummMass, totCummEffectiveMass
     doubleprecision :: npAuxDbl
+    doubleprecision :: releaseTrackingTime
     integer :: npThisRelease, npNextRelease
     logical :: lastRelease = .false.
     integer :: firstnonzero, nti, nte  
@@ -3235,8 +3236,15 @@ contains
           end if 
 
           ! While reading from AUX vars, uses simulation characteristic times
-          initialTime = this%ReferenceTime
-          finalTime   = this%StopTime
+          initialTime = this%ReferenceTime  ! The initial MODFLOW time is always ReferenceTime
+          ! The final MODFLOW time...
+          ! StopTime was updated at MPathRW, so it already 
+          ! contains the logic of StoppingTimeOption
+          if ( this%TrackingOptions%BackwardTracking ) then 
+            finalTime = this%ReferenceTime - this%StopTime ! Could it be less than zero ? 
+          else 
+            finalTime = this%ReferenceTime + this%StopTime
+          end if 
 
           ! Obtain flow and aux vars timeseries.
           ! Function allocates and return necessary arrays
@@ -3245,9 +3253,17 @@ contains
           call flowModelData%LoadFlowAndAuxTimeseries( srcPkgNames( nsb ), auxNames,& 
                                   this%isMF6, initialTime, finalTime, this%tdisData,&
                                 flowTimeseries, auxTimeseries, timeIntervals, times,&
-                                srcCellNumbers, outUnit, iFaceOption, srcCellIFaces )
-
-
+                                srcCellNumbers, outUnit, iFaceOption, srcCellIFaces,&
+                                              this%TrackingOptions%BackwardTracking )
+print *, 'AT SRC', initialTime, finalTime
+print *, srcCellNumbers
+print *, flowTimeseries
+print *, auxTimeseries
+print *, 'TINT', timeIntervals
+print *, 'TIMES',times 
+!print *, maxval(flowTimeseries,dim=1)
+!print *, maxval(auxTimeseries,dim=1)
+print *, '-------------------'
           ! From here until the creation of particles the process 
           ! is the same than for the SPEC format so it could be considered 
           ! to wrap these ops on a common function 
@@ -3590,6 +3606,17 @@ contains
                     ! Interpolate the release time        
                     call interp1d%evaluate( cummEffectiveMass, releaseTimes(nr) ) ! Replace array of release times by a single value
 
+                    ! Fix the release time considering backward/forward tracking
+                    if ( this%TrackingOptions%BackwardTracking ) then
+                      ! The interpolated value is the time in the context of the MODFLOW model, 
+                      ! if backward tracking, this time is decreasing with respect to reference time.
+                      releaseTrackingTime = this%ReferenceTime - releaseTimes(nr)
+                    else
+                      ! In forward tracking, the interpolated time is increasing with respect to 
+                      ! reference time 
+                      releaseTrackingTime = releaseTimes(nr) - this%ReferenceTime
+                    end if 
+
                     ! Assign to particles
                     do m = 1, npThisRelease
                      idmax = idmax + 1
@@ -3606,8 +3633,8 @@ contains
                      particleGroups(naux)%Particles(offset+m)%InitialLocalX = particleGroups(naux)%Particles(m)%InitialLocalX
                      particleGroups(naux)%Particles(offset+m)%InitialLocalY = particleGroups(naux)%Particles(m)%InitialLocalY
                      particleGroups(naux)%Particles(offset+m)%InitialLocalZ = particleGroups(naux)%Particles(m)%InitialLocalZ
-                     particleGroups(naux)%Particles(offset+m)%InitialTrackingTime = releaseTimes(nr) - this%ReferenceTime 
-                     !particleGroups(naux)%Particles(offset+m)%InitialTrackingTime = releaseTimes(nr) 
+                     particleGroups(naux)%Particles(offset+m)%InitialTrackingTime = releaseTrackingTime
+                     print *, releaseTrackingTime
                      particleGroups(naux)%Particles(offset+m)%TrackingTime = & 
                              particleGroups(naux)%Particles(offset+m)%InitialTrackingTime
                      particleGroups(naux)%Particles(offset+m)%CellNumber = particleGroups(naux)%Particles(m)%CellNumber

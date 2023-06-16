@@ -879,7 +879,8 @@ contains
     subroutine pr_LoadFlowAndAuxTimeseries(this, sourcePkgName, auxVarNames,& 
                                     isMF6, initialTime, finalTime, tdisData,&
                         flowTimeseries, auxTimeseries, timeIntervals, times,&
-                              cellNumbers, outUnit, iFaceOption, iFaceCells )
+                              cellNumbers, outUnit, iFaceOption, iFaceCells,&
+                                                           backwardTracking )
     !------------------------------------------------------------------------
     ! Given a range of times, extract timeseries for flow and auxvars related 
     ! to package name/budget header.
@@ -887,7 +888,11 @@ contains
     ! It can receive iFaceOption to extract the IFACE variable for each cell
     ! related to the source budget. The current extraction of IFACE considers 
     ! that is not changing in time.   
-    ! 
+    !
+    ! Flow rate and aux variable is extracted only for positive sign, source. 
+    ! The backward tracking flag modifies the sign of the flow rate in order 
+    ! to allow reversal of the boundary condition.
+    !  
     !------------------------------------------------------------------------
     ! Specifications
     !------------------------------------------------------------------------
@@ -908,6 +913,7 @@ contains
     doubleprecision, allocatable, dimension(:)    , intent(inout) :: times          ! nt + 1
     integer        , allocatable, dimension(:)    , intent(inout) :: cellNumbers    ! nCells
     integer, allocatable, dimension(:), optional  , intent(inout) :: iFaceCells     ! nCells
+    logical, optional, intent(in)                                 :: backwardTracking
     ! local
     logical :: lookForIFace = .false.
     integer :: ifaceindex
@@ -924,13 +930,16 @@ contains
     character(len=16)  :: textNameLabel
     character(len=132) :: message
     integer :: nCells, newcounter
-    integer :: kinitial, kfinal, ktime, kcounter
+    integer :: kinitial, kfinal, ktime, kcounter, kdelta
     integer :: nTimes, nTimeIntervals, nAuxVars
     integer :: spInit, tsInit, spEnd, tsEnd, nStressPeriods, nsp 
     integer, allocatable, dimension(:) :: tempCellNumbers
     integer, allocatable, dimension(:) :: spCellNumbers
     integer, allocatable, dimension(:) :: tempSPIFaces
     integer, allocatable, dimension(:) :: spIFaces
+    doubleprecision :: sign
+    logical         :: backTracking = .false.
+    integer         :: exactInterval
     ! For identifying pkgs with aux vars from modflow != mf6
     logical :: foundTheSource = .false.
     integer :: nb, nbindex
@@ -979,6 +988,26 @@ contains
       ! TotalTimes=2dt. 
       kinitial = tdisData%FindContainingTimeStep(initialTime)
       kfinal   = tdisData%FindContainingTimeStep(finalTime)
+      ! Determine the sign to consider for the source, for 
+      ! compatibility with backward tracking.
+      sign   = 1d0
+      kdelta = 1
+      exactInterval = 1 ! Assume inexact
+      backTracking = .false.
+      if ( present( backwardTracking ) ) then
+        if ( backwardTracking ) backTracking = .true. 
+      end if 
+
+      ! Modify values for backward tracking
+      if ( backTracking ) then 
+        sign   = -1d0
+        kdelta = -1 
+        ! This verification avoids creating an additional unnecessary interval.
+        ! Taking the previous example, if initialTime dt, and finalTime is 1.5dt, 
+        ! FindContainingTimeStep returns 1 and 2 respectively, hence nIntervals 
+        ! is 2 if computed as abs(kfinal-kinitial)+1, when in reality is only 1 interval.
+        if ( initialTime.eq.tdisData%TotalTimes(kinitial) ) exactInterval = 0  ! THIS IS OK FOR TIME STEPS IN THE SAME SP
+      end if
     
       ! There are cases in which, depending on the stoptimeoption, 
       ! finalTime may have the value 1.0d+30. Something really 
@@ -988,7 +1017,6 @@ contains
       ! number is higher than the length of the modflow simulation stoptime.
       ! In such case, it is enforced that kfinal adopt the value of 
       ! tdisData%CumulativeTimeStepCount, the highest possible value.
-      !if ( (kfinal .eq. 0) .and. (this%SteadyState)  ) then
       if ( (kfinal .eq. 0) ) then
        if ( present(outUnit) ) then       
         write(outUnit,'(a)') 'FlowModelData: LoadFlowAndAuxTimeseries: kfinal is assumed to be CumulativeTimeStepCount'
@@ -998,13 +1026,13 @@ contains
       end if
 
       ! The number of intervals
-      nTimeIntervals = kfinal - kinitial + 1
+      nTimeIntervals = abs(kfinal - kinitial) + exactInterval
       nTimes = nTimeIntervals + 1 
       ! Something wrong with times 
       if ( nTimeIntervals .lt. 1 ) then 
-         write(message,'(A)') 'Error: the number of times is .lt. 1. Check definition of reference and stoptimes. Stop.'
-         message = trim(message)
-         call ustop(message)
+        write(message,'(A)') 'Error: the number of times is .lt. 1. Check definition of reference and stoptimes. Stop.'
+        message = trim(message)
+        call ustop(message)
       end if  
 
       ! times: includes intial and final times ( reference, stoptime )
@@ -1014,13 +1042,24 @@ contains
       allocate( timeIntervals(nTimeIntervals) )  
 
       ! Fill times and time intervals
-      do ktime=1,nTimeIntervals
-        if ( ktime .eq. 1 ) times(1) = initialTime
-        if ( ktime .lt. nTimeIntervals ) times(ktime+1) = tdisData%TotalTimes(ktime+kinitial-1)
-        if ( ktime .eq. nTimeIntervals ) times(nTimes)  = finalTime 
-        timeIntervals(ktime) = times(ktime+1) - times(ktime)
-      end do 
-
+      if ( backTracking ) then 
+        do ktime=1,nTimeIntervals
+          if ( ktime .eq. 1 ) times(1) = initialTime
+          if ( ktime .lt. nTimeIntervals ) times(ktime+1) = tdisData%TotalTimes(kinitial-ktime)
+          if ( ktime .eq. nTimeIntervals ) times(nTimes)  = finalTime 
+          timeIntervals(ktime) = abs(times(ktime+1) - times(ktime))
+        end do
+      else
+        do ktime=1,nTimeIntervals
+          if ( ktime .eq. 1 ) times(1) = initialTime
+          if ( ktime .lt. nTimeIntervals ) times(ktime+1) = tdisData%TotalTimes(ktime+kinitial-1)
+          if ( ktime .eq. nTimeIntervals ) times(nTimes)  = finalTime 
+          timeIntervals(ktime) = times(ktime+1) - times(ktime)
+        end do
+      end if 
+print *, 'NINTERVALS', nTimeIntervals, nTimes 
+!print *, 'THETIMES:', times
+!print *, 'THETIMEINTRERVALS:', timeIntervals
       nAuxVars = size(auxVarNames)
       if ( nAuxVars .lt. 1 ) then 
          write(message,'(A)') 'Error: number of aux variables for timeseries should be at least 1. Stop.'
@@ -1035,9 +1074,10 @@ contains
       call tdisData%GetPeriodAndStep(kinitial, spInit, tsInit)
       call tdisData%GetPeriodAndStep(kfinal  , spEnd , tsEnd )
 
-      nStressPeriods = spEnd - spInit + 1
+      nStressPeriods = abs(spEnd - spInit) + 1
       timeStep = 1
-
+print *, 'SPINIT', spInit, spEnd 
+print *, 'NSTRESSPERIODS', nStressPeriods
       ! Loop over range of stress periods
       do nsp=1, nStressPeriods
 
@@ -1239,14 +1279,15 @@ contains
       allocate( auxTimeseries( nTimeIntervals, nCells, nAuxVars ) )
       auxTimeseries(:,:,:) = 0d0
 
-
+        print *, '0SHAPEAUX', shape(auxTimeseries)
       ! Use the determined steps (kinitial,kfinal) to build the timeseries
       kcounter = 0
-      do ktime=kinitial,kfinal
-
+      do ktime = kinitial, kfinal, kdelta
+        print *, kinitial, kfinal, kdelta, ktime 
         ! Get the stress period and time step from the cummulative time steps
         call tdisData%GetPeriodAndStep(ktime, stressPeriod, timeStep)
         kcounter = kcounter + 1 
+        print *, ktime, stressPeriod, timeStep, kcounter
 
         ! Determine record range for stressPeriod and timeStep
         call this%BudgetReader%GetRecordHeaderRange(stressPeriod, timeStep, firstRecord, lastRecord)
@@ -1256,7 +1297,6 @@ contains
           write(*,'(A)') message
           call ustop('Missing budget information. Budget file must have output for every time step. Stop.')
         end if
-
 
         ! Loop through record headers
         do n = firstRecord, lastRecord
@@ -1342,8 +1382,8 @@ contains
                   ! applies to concentration. However, because aux var
                   ! could be something else (?), it will save whatever 
                   ! it finds
-                  if(this%ListItemBuffer(m)%BudgetValue .gt. 0.0d0) then
-                    flowTimeseries( kcounter, cellindex )  = this%ListItemBuffer(m)%BudgetValue
+                  if(sign*this%ListItemBuffer(m)%BudgetValue .gt. 0.0d0) then
+                    flowTimeseries( kcounter, cellindex ) = sign*this%ListItemBuffer(m)%BudgetValue
                   end if
                   
                   ! Load aux vars
@@ -1365,6 +1405,9 @@ contains
           end if ! ( header%Method .eq. 5 ) .or. ( header%Method .eq. 6 ) 
 
         end do ! n = firstRecord, lastRecord
+
+        ! Break if the number of intervals was reached
+        if ( kcounter .eq. nTimeIntervals ) exit
 
       end do ! ktime=kinitial,kfinal
 
@@ -1670,8 +1713,8 @@ contains
           kfinal   = tdisData%FindContainingTimeStep(finalTime)
           if ( (kfinal .eq. 0) ) then
            if ( present(outUnit) ) then       
-            write(outUnit,'(a)') 'FlowModelData: LoadFlowAndAuxTimeseries: kfinal is assumed to be CumulativeTimeStepCount'
-            write(outUnit,'(a,e15.7)') 'FlowModelData: LoadFlowAndAuxTimeseries: final time is ', finalTime
+            write(outUnit,'(a)') 'FlowModelData: ValidateBudgetHeader: kfinal is assumed to be CumulativeTimeStepCount'
+            write(outUnit,'(a,e15.7)') 'FlowModelData: ValidateBudgetHeader: final time is ', finalTime
            end if
            kfinal = tdisData%CumulativeTimeStepCount
           end if
@@ -1987,7 +2030,8 @@ contains
     subroutine pr_LoadFlowTimeseries(this, sourcePkgName, & 
                         initialTime, finalTime, tdisData, &
                              cellNumbers, flowTimeseries, &
-                             readCellsFromBudget, outUnit )
+                            readCellsFromBudget, outUnit, & 
+                                         backwardTracking )
     !------------------------------------------------------------------------
     ! Given a range of times, extract a flow-rates timeseries from the header 
     ! sourcePkgName, only for cells in cellNumbers and positive flow-rates.
@@ -2008,6 +2052,7 @@ contains
     integer, allocatable, dimension(:), intent(inout) :: cellNumbers
     logical, optional, intent(in) :: readCellsFromBudget
     integer, optional, intent(in) :: outUnit
+    logical, optional, intent(in) :: backwardTracking
     ! out
     doubleprecision, allocatable, dimension(:,:)  , intent(inout) :: flowTimeseries ! nt x ncells
     ! local
@@ -2028,6 +2073,7 @@ contains
     integer, allocatable, dimension(:) :: tempCellNumbers
     integer, allocatable, dimension(:) :: spCellNumbers
     logical :: readCells
+    doubleprecision :: sign
     !------------------------------------------------------------------------
 
       ! Trim input pkg name
@@ -2042,7 +2088,7 @@ contains
       if ( (kfinal .eq. 0) ) then
        if ( present(outUnit) ) then       
         write(outUnit,'(a)') 'FlowModelData: LoadFlowTimeseries: kfinal is assumed to be CumulativeTimeStepCount'
-        write(outUnit,'(a,e15.7)') 'FlowModelData: LoadFlowAndAuxTimeseries: final time is ', finalTime
+        write(outUnit,'(a,e15.7)') 'FlowModelData: LoadFlowTimeseries: final time is ', finalTime
        end if
        kfinal = tdisData%CumulativeTimeStepCount
       end if
@@ -2056,6 +2102,13 @@ contains
          message = trim(message)
          call ustop(message)
       end if  
+
+      ! Determine the sign to consider for the source, for 
+      ! compatibility with backward tracking.
+      sign = 1d0
+      if ( present( backwardTracking ) ) then 
+        if ( backwardTracking ) sign = -1d0
+      end if 
 
       ! Interpret readcells
       readCells = .false.
@@ -2115,7 +2168,7 @@ contains
                       ! Restart cellCounter
                       cellCounter = 0
                       do m = 1, spaceAssigned
-                        if(this%ArrayBufferDbl(m) .gt. 0.0d0) then
+                        if(sign*this%ArrayBufferDbl(m) .gt. 0.0d0) then
                           cellCounter = cellCounter + 1
                         end if
                       end do
@@ -2135,7 +2188,7 @@ contains
                       ! Assign to stress period cell numbers
                       cellCounter = 0
                       do m = 1, spaceAssigned
-                        if(this%ArrayBufferDbl(m) .gt. 0.0d0) then
+                        if(sign*this%ArrayBufferDbl(m) .gt. 0.0d0) then
                           cellCounter = cellCounter + 1
                           cellNumber  = m 
                           spCellNumbers(m) = cellNumber
@@ -2152,7 +2205,7 @@ contains
                         ! Restart cellCounter
                         cellCounter = 0
                         do m = 1, spaceAssigned
-                          if(this%ArrayBufferDbl(m) .gt. 0.0d0) then
+                          if(sign*this%ArrayBufferDbl(m) .gt. 0.0d0) then
                             cellCounter = cellCounter + 1
                           end if
                         end do
@@ -2173,7 +2226,7 @@ contains
                         ! Assign to stress period cell numbers
                         cellCounter = 0
                         do m = 1, spaceAssigned
-                          if(this%ArrayBufferDbl(m) .gt. 0.0d0) then
+                          if(sign*this%ArrayBufferDbl(m) .gt. 0.0d0) then
                             cellCounter = cellCounter + 1
                             cellNumber  = m 
                             spCellNumbers(m) = cellNumber
@@ -2191,7 +2244,7 @@ contains
                   ! Restart cellCounter
                   cellCounter = 0
                   do m = 1, spaceAssigned
-                    if(this%ListItemBuffer(m)%BudgetValue .gt. 0.0d0) then
+                    if(sign*this%ListItemBuffer(m)%BudgetValue .gt. 0.0d0) then
                       cellCounter = cellCounter + 1
                     end if
                   end do
@@ -2211,7 +2264,7 @@ contains
                   ! Assign to stress period cell numbers
                   cellCounter = 0 
                   do m = 1, spaceAssigned
-                    if(this%ListItemBuffer(m)%BudgetValue .gt. 0.0d0) then
+                    if(sign*this%ListItemBuffer(m)%BudgetValue .gt. 0.0d0) then
                       cellCounter = cellCounter + 1
                       cellNumber = this%ListItemBuffer(m)%CellNumber
                       spCellNumbers(cellCounter) = cellNumber
@@ -2227,7 +2280,7 @@ contains
                   ! Restart cellCounter
                   cellCounter = 0
                   do m = 1, spaceAssigned
-                    if(this%ArrayBufferDbl(m) .gt. 0.0d0) then
+                    if(sign*this%ArrayBufferDbl(m) .gt. 0.0d0) then
                       cellCounter = cellCounter + 1
                     end if
                   end do
@@ -2247,7 +2300,7 @@ contains
                   ! Assign to stress period cell numbers
                   cellCounter = 0
                   do m = 1, spaceAssigned
-                    if(this%ArrayBufferDbl(m) .gt. 0.0d0) then
+                    if(sign*this%ArrayBufferDbl(m) .gt. 0.0d0) then
                       cellCounter = cellCounter + 1
                       cellNumber = this%ArrayBufferInt(m)
                       spCellNumbers(m) = cellNumber
@@ -2263,7 +2316,7 @@ contains
                   ! Restart cellCounter
                   cellCounter = 0
                   do m = 1, spaceAssigned
-                    if(this%ArrayBufferDbl(m) .gt. 0.0d0) then
+                    if(sign*this%ArrayBufferDbl(m) .gt. 0.0d0) then
                       cellCounter = cellCounter + 1
                     end if
                   end do
@@ -2283,7 +2336,7 @@ contains
                   ! Assign to stress period cell numbers
                   cellCounter = 0
                   do m = 1, spaceAssigned
-                    if(this%ArrayBufferDbl(m) .gt. 0.0d0) then
+                    if(sign*this%ArrayBufferDbl(m) .gt. 0.0d0) then
                       cellCounter = cellCounter + 1
                       cellNumber  = m 
                       spCellNumbers(m) = cellNumber
@@ -2299,7 +2352,7 @@ contains
                   ! Restart cellCounter
                   cellCounter = 0
                   do m = 1, spaceAssigned
-                    if(this%ListItemBuffer(m)%BudgetValue .gt. 0.0d0) then
+                    if(sign*this%ListItemBuffer(m)%BudgetValue .gt. 0.0d0) then
                       cellCounter = cellCounter + 1
                     end if
                   end do
@@ -2319,7 +2372,7 @@ contains
                   ! Assign to stress period cell numbers
                   cellCounter = 0 
                   do m = 1, spaceAssigned
-                    if(this%ListItemBuffer(m)%BudgetValue .gt. 0.0d0) then
+                    if(sign*this%ListItemBuffer(m)%BudgetValue .gt. 0.0d0) then
                       cellCounter = cellCounter + 1
                       cellNumber = this%ListItemBuffer(m)%CellNumber
                       spCellNumbers(cellCounter) = cellNumber
@@ -2446,8 +2499,8 @@ contains
                       cellindex  = findloc( cellNumbers, cellNumber, 1 ) 
                       if ( cellindex .eq. 0 ) cycle ! Not requested
                       ! Load into flow rates timeseries only if positive
-                      if(this%ArrayBufferDbl(m) .gt. 0.0d0) then
-                        flowTimeseries( kcounter, cellindex )  = this%ArrayBufferDbl(m)
+                      if(sign*this%ArrayBufferDbl(m) .gt. 0.0d0) then
+                        flowTimeseries( kcounter, cellindex ) = sign*this%ArrayBufferDbl(m)
                       end if
                     end do
                   end if
@@ -2463,8 +2516,8 @@ contains
                         cellindex  = findloc( cellNumbers, cellNumber, 1 ) 
                         if ( cellindex .eq. 0 ) cycle ! Not requested
                         ! Load into flow rates timeseries only if positive
-                        if(this%ArrayBufferDbl(m) .gt. 0.0d0) then
-                          flowTimeseries( kcounter, cellindex )  = this%ArrayBufferDbl(m)
+                        if(sign*this%ArrayBufferDbl(m) .gt. 0.0d0) then
+                          flowTimeseries( kcounter, cellindex ) = sign*this%ArrayBufferDbl(m)
                         end if
                       end do
                     end if
@@ -2481,8 +2534,8 @@ contains
                   cellindex  = findloc( cellNumbers, cellNumber, 1 ) 
                   if ( cellindex .eq. 0 ) cycle ! Not requested
                   ! Load into flow rates timeseries only if positive
-                  if(this%ListItemBuffer(m)%BudgetValue .gt. 0.0d0) then
-                    flowTimeseries( kcounter, cellindex ) = this%ListItemBuffer(m)%BudgetValue
+                  if(sign*this%ListItemBuffer(m)%BudgetValue .gt. 0.0d0) then
+                    flowTimeseries( kcounter, cellindex ) = sign*this%ListItemBuffer(m)%BudgetValue
                   end if
                 end do
               end if
@@ -2497,8 +2550,8 @@ contains
                   cellindex  = findloc( cellNumbers, cellNumber, 1 ) 
                   if ( cellindex .eq. 0 ) cycle ! Not requested
                   ! Load into flow rates timeseries only if positive
-                  if(this%ArrayBufferDbl(m) .gt. 0.0d0) then
-                    flowTimeseries( kcounter, cellindex ) = this%ArrayBufferDbl(m)
+                  if(sign*this%ArrayBufferDbl(m) .gt. 0.0d0) then
+                    flowTimeseries( kcounter, cellindex ) = sign*this%ArrayBufferDbl(m)
                   end if
                 end do
               end if
@@ -2513,8 +2566,8 @@ contains
                   cellindex  = findloc( cellNumbers, cellNumber, 1 ) 
                   if ( cellindex .eq. 0 ) cycle ! Not requested
                   ! Load into flow rates timeseries only if positive 
-                  if(this%ArrayBufferDbl(m) .gt. 0.0d0) then
-                    flowTimeseries( kcounter, cellindex ) = this%ArrayBufferDbl(m)
+                  if(sign*this%ArrayBufferDbl(m) .gt. 0.0d0) then
+                    flowTimeseries( kcounter, cellindex ) = sign*this%ArrayBufferDbl(m)
                   end if
                 end do
               end if
@@ -2530,8 +2583,8 @@ contains
                   cellindex = findloc( cellNumbers, cellNumber, 1 ) 
                   if ( cellindex .eq. 0 ) cycle ! Not requested
                   ! Load into flow rates timeseries only if positive 
-                  if(this%ListItemBuffer(m)%BudgetValue .gt. 0.0d0) then
-                    flowTimeseries( kcounter, cellindex ) = this%ListItemBuffer(m)%BudgetValue
+                  if(sign*this%ListItemBuffer(m)%BudgetValue .gt. 0.0d0) then
+                    flowTimeseries( kcounter, cellindex ) = sign*this%ListItemBuffer(m)%BudgetValue
                   end if
                 end do
               end if

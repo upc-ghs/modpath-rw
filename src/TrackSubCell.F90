@@ -3882,6 +3882,19 @@ contains
       if ( this%qprod101(7).gt.0d0 ) this%qprod101(8) = this%qprod101(6)/this%qprod101(7)
       this%qprod101(1:7) = this%qprod101(1:7)/this%qCorner101(4)
     end if 
+    ! 011
+    this%qprod011(:) = 0d0
+    if( this%qCorner011(4) .gt. 0d0 ) then
+      this%qprod011(1) = this%qCorner011(1)**2d0
+      this%qprod011(2) = this%qCorner011(1)*this%qCorner011(2)
+      this%qprod011(3) = this%qCorner011(1)*this%qCorner011(3)
+      this%qprod011(4) = this%qCorner011(2)**2d0
+      this%qprod011(5) = this%qCorner011(2)*this%qCorner011(3)
+      this%qprod011(6) = this%qCorner011(3)**2d0
+      this%qprod011(7) = this%qprod011(1) + this%qprod011(4)
+      if ( this%qprod011(7).gt.0d0 ) this%qprod011(8) = this%qprod011(6)/this%qprod011(7)
+      this%qprod011(1:7) = this%qprod011(1:7)/this%qCorner011(4)
+    end if 
     ! 111
     this%qprod111(:) = 0d0
     if( this%qCorner111(4) .gt. 0d0 ) then

@@ -450,7 +450,7 @@ program MPathRW
     klast = 1
     kincr = -1
   end if
-
+print *,'KLAST', klast, 'KFIRST', kfirst 
   ! Set the appropriate value of stoptime. Start by setting stoptime to correspond to the start or the
   ! end of the simulation (depending on the tracking direction)
   if(simulationData%TrackingDirection .eq. 1) then
@@ -463,6 +463,7 @@ program MPathRW
     call tdisData%GetPeriodAndStep(tdisData%CumulativeTimeStepCount, period, step)
     call flowModelData%LoadTimeStep(1, 1)
   end if
+print *, 'STOPTIME 1', stoptime
   !
   if(simulationData%StoppingTimeOption .eq. 2) then
     ! Set stoptime to 1.0d+30 if the EXTEND option is on and the boundary time step is steady state.
@@ -480,6 +481,11 @@ program MPathRW
       if(simulationData%StopTime .lt. stoptime) stoptime = simulationData%StopTime
     end if
   end if
+print *, 'STOPTIME 2', stoptime
+  ! Update the StopTime at simulation data, not the best practice
+  simulationData%StopTime = stoptime
+print *, 'STOPTIME 3', simulationData%StopTime
+
 
   if ( simulationData%TrackingOptions%RandomWalkParticleTracking ) then 
     ! Transfer flag from basicData to indicate 
@@ -875,17 +881,33 @@ program MPathRW
   ! Needs to aggregate flow rates over all cells  
   ! for sink observations
   if ( simulationData%TrackingOptions%anySinkObservation ) then 
-    do nobs=1,simulationData%TrackingOptions%nObservations
-      obs =>simulationData%TrackingOptions%Observations(nobs)
-      if ( obs%style .ne. 2 ) cycle ! if no sink, try next
-      ! Cummulative flow rate is needed independently of 
-      ! postprocess option
-      obs%cummSinkFlow = 0d0
-      do n=1,obs%nCells
-        obs%cummSinkFlow = obs%cummSinkFlow + flowModelData%SinkFlows(obs%cells(n))
-      end do 
-      obs%cummSinkFlowSeries(kcount) = obs%cummSinkFlow
-    end do
+    if ( .not. simulationData%TrackingOptions%BackwardTracking ) then 
+      ! For forward tracking uses sink flows
+      do nobs=1,simulationData%TrackingOptions%nObservations
+        obs =>simulationData%TrackingOptions%Observations(nobs)
+        if ( obs%style .ne. 2 ) cycle ! if no sink, try next
+        ! Cummulative flow rate is needed independently of 
+        ! postprocess option
+        obs%cummSinkFlow = 0d0
+        do n=1,obs%nCells
+          obs%cummSinkFlow = obs%cummSinkFlow + flowModelData%SinkFlows(obs%cells(n))
+        end do 
+        obs%cummSinkFlowSeries(kcount) = obs%cummSinkFlow
+      end do
+    else
+      ! For backward tracking, use source flows with minus one
+      do nobs=1,simulationData%TrackingOptions%nObservations
+        obs =>simulationData%TrackingOptions%Observations(nobs)
+        if ( obs%style .ne. 2 ) cycle ! if no sink, try next
+        ! Cummulative flow rate is needed independently of 
+        ! postprocess option
+        obs%cummSinkFlow = 0d0
+        do n=1,obs%nCells
+          obs%cummSinkFlow = obs%cummSinkFlow - flowModelData%SourceFlows(obs%cells(n))
+        end do 
+        obs%cummSinkFlowSeries(kcount) = obs%cummSinkFlow
+      end do
+    end if 
   end if 
 
   if(flowModelData%SteadyState) then
@@ -1337,7 +1359,7 @@ program MPathRW
                 obs => simulationData%TrackingOptions%Observations(&
                     simulationData%TrackingOptions%idObservation(p%CellNumber) )
                 if ( obs%style .eq. 2 ) then
-                  ! If a particle is removed due to strong sink
+                  ! If a particle is removed due to sink
                   !$omp critical (sinkobservation)
                   call WriteSinkObs(ktime, nt, p,                         &
                     simulationData%ParticleGroups(groupIndex)%Solute,     &
@@ -1354,6 +1376,30 @@ program MPathRW
             end if
           else if(status .eq. trackPathResult%Status_StopAtWeakSource()) then
             p%Status = 4
+            ! If any observation cells (this is for backward tracking)
+            if ( simulationData%TrackingOptions%anySinkObservation ) then
+              ! Is this an observation cell ?
+              if ( &
+                simulationData%TrackingOptions%isObservation(p%CellNumber) ) then
+                ! Assign the obs pointer
+                obs => simulationData%TrackingOptions%Observations(&
+                    simulationData%TrackingOptions%idObservation(p%CellNumber) )
+                if ( obs%style .eq. 2 ) then
+                  ! If a particle is removed due to sink
+                  !$omp critical (sinkobservation)
+                  call WriteSinkObs(ktime, nt, p,                         &
+                    simulationData%ParticleGroups(groupIndex)%Solute,     &
+                    obs%cummSinkFlow,                                     &
+                    obs%recOutputUnit)
+                  !$omp end critical (sinkobservation)
+                  ! Count record
+                  obsRecordCounter(&
+                    simulationData%TrackingOptions%idObservation(p%CellNumber)) = & 
+                  obsRecordCounter(&
+                    simulationData%TrackingOptions%idObservation(p%CellNumber)) + 1
+                end if
+              end if 
+            end if
           else if(status .eq. trackPathResult%Status_NoExitPossible()) then
             p%Status = 5
           else if(status .eq. trackPathResult%Status_StopZoneCell()) then
@@ -1613,30 +1659,6 @@ program MPathRW
     end if ! GPKDEReconstruction
 
   end if ! ParticleGroupCount .gt. 0
-
-
-  ! Sink observations: write a temporary file
-  ! with flow-rates per time. Works for the 
-  ! approach were timeseries points determine 
-  ! the obs postprocess.
-  !if( ( simulationData%TrackingOptions%anySinkObservation ) & 
-  !                                .and. isTimeSeriesPoint ) then
-  !  ! Write sink flow rates only for obs of this kind
-  !  do nobs=1,simulationData%TrackingOptions%nObservations
-  !    obs =>simulationData%TrackingOptions%Observations(nobs)
-  !    if ( obs%style .ne. 2 ) cycle ! if no sink, try next
-  !    if ( .not. obs%doPostprocess ) cycle ! if no postprocess for this obs, try next
-  !    if (allocated(qSinkBuffer))deallocate(qSinkBuffer)
-  !    allocate(qSinkBuffer(obs%nCells))
-  !    do n=1,obs%nCells
-  !      qSinkBuffer(n) = flowModelData%SinkFlows(obs%cells(n))
-  !    end do
-  !    !write(qSinkFormat,*) '(1I10,', obs%nCells, 'es18.9e3)'
-  !    !write(obs%auxOutputUnit,qSinkFormat) nt, qSinkBuffer(:)
-  !    write(obs%auxOutputUnit) nt, qSinkBuffer(:)
-  !    obs%nAuxRecords = obs%nAuxRecords + 1 ! Count aux records
-  !  end do
-  !end if
 
 
   ! Observation cells: if any sink cell observation, 
