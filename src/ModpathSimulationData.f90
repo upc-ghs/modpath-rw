@@ -3236,14 +3236,20 @@ contains
           end if 
 
           ! While reading from AUX vars, uses simulation characteristic times
-          initialTime = this%ReferenceTime  ! The initial MODFLOW time is always ReferenceTime
+          ! The initial MODFLOW time is always ReferenceTime
+          initialTime = this%ReferenceTime  
           ! The final MODFLOW time...
           ! StopTime was updated at MPathRW, so it already 
           ! contains the logic of StoppingTimeOption
+          ! In cases that stoptime is infinite, force the MODFLOW limits 
           if ( this%TrackingOptions%BackwardTracking ) then 
             finalTime = this%ReferenceTime - this%StopTime ! Could it be less than zero ? 
+            if ( finalTime .lt. 0d0 ) finalTime = 0d0
           else 
             finalTime = this%ReferenceTime + this%StopTime
+            if ( finalTime.gt.tdisData%TotalTimes(size(tdisData%TotalTimes)) ) then 
+              finalTime = tdisData%TotalTimes(size(tdisData%TotalTimes)) 
+            end if
           end if 
 
           ! Obtain flow and aux vars timeseries.
@@ -3259,8 +3265,6 @@ contains
           ! From here until the creation of particles the process 
           ! is the same than for the SPEC format so it could be considered 
           ! to wrap these ops on a common function 
-
-
           ! Now compute the cummulative mass function to obtain the total injected mass
           if ( allocated( cummMassTimeseries ) ) deallocate( cummMassTimeseries ) 
           allocate( cummMassTimeseries, mold=auxTimeseries ) 
@@ -4100,13 +4104,35 @@ contains
           ! It was already validated that input times 
           ! were increasing. 
 
+          ! Initial and final times are with respect to 
+          ! the MODFLOW time ? 
           ! Validate initial time against ReferenceTime 
           ! and set the initial. 
-          initialTime = allSpecData(1,1)
-          if ( initialTime.lt.this%ReferenceTime ) initialTime = this%ReferenceTime
-          ! Analogous with the highest
-          finalTime = allSpecData(2,nTimeIntervals)
-          if ( finalTime.gt.this%StopTime ) finalTime = this%StopTime
+          !initialTime = allSpecData(1,1)
+          !if ( initialTime.lt.0d0 ) initialTime = 0d0
+          !! Analogous with the highest
+          !finalTime = allSpecData(2,nTimeIntervals)
+          !if ( finalTime.gt.tdisData%TotalTimes(size(tdisData%TotalTimes)) ) then 
+          !  finalTime = tdisData%TotalTimes(size(tdisData%TotalTimes)) 
+          !end if
+
+          ! While reading from AUX vars, uses simulation characteristic times
+          ! The initial MODFLOW time is always ReferenceTime
+          initialTime = this%ReferenceTime  
+          ! The final MODFLOW time...
+          ! StopTime was updated at MPathRW, so it already 
+          ! contains the logic of StoppingTimeOption
+          ! In cases that stoptime is infinite, force the MODFLOW limits 
+          if ( this%TrackingOptions%BackwardTracking ) then 
+            finalTime = this%ReferenceTime - this%StopTime ! Could it be less than zero ? 
+            if ( finalTime .lt. 0d0 ) finalTime = 0d0
+          else 
+            finalTime = this%ReferenceTime + this%StopTime
+            if ( finalTime.gt.tdisData%TotalTimes(size(tdisData%TotalTimes)) ) then 
+              finalTime = tdisData%TotalTimes(size(tdisData%TotalTimes)) 
+            end if
+          end if 
+
 
           ! Given initial and final times, 
           ! compute the initial and final time step indexes.
@@ -4117,6 +4143,26 @@ contains
             write(outUnit,'(a,e15.7)') 'finalTime is ', finalTime
             kfinal = this%tdisData%CumulativeTimeStepCount
           end if
+
+          !sign   = 1d0
+          !kdelta = 1
+          !correctInterval = 1
+          !backTracking = .false.
+          !if ( present( backwardTracking ) ) then
+          !  if ( backwardTracking ) backTracking = .true. 
+          !end if 
+
+          !! Modify values for backward tracking
+          !if ( backTracking ) then 
+          !  sign   = -1d0
+          !  kdelta = -1 
+          !  ! This verification avoids creating an additional unnecessary interval.
+          !  ! Taking the previous example, if initialTime 1.5dt, and finalTime is dt, 
+          !  ! FindContainingTimeStep returns 2 and 1 respectively, hence nTimeIntervals 
+          !  ! is 2 if computed as abs(kfinal-kinitial)+1, when in reality is only 1 interval.
+          !  if ( finalTime.eq.tdisData%TotalTimes(kfinal) ) correctInterval = 0
+          !end if
+
 
           ! The number of intervals
           nMFTimeIntervals = kfinal - kinitial + 1
@@ -4139,6 +4185,23 @@ contains
             if ( ktime .lt. nMFTimeIntervals ) mftimes(ktime+1)  = this%tdisData%TotalTimes(ktime+kinitial-1)
             if ( ktime .eq. nMFTimeIntervals ) mftimes(nMFTimes) = finalTime 
           end do
+
+          !! Fill times and time intervals
+          !if ( backTracking ) then 
+          !  do ktime=1,nTimeIntervals
+          !    if ( ktime .eq. 1 ) times(1) = initialTime
+          !    if ( ktime .lt. nTimeIntervals ) times(ktime+1) = tdisData%TotalTimes(kinitial-ktime)
+          !    if ( ktime .eq. nTimeIntervals ) times(nTimes)  = finalTime 
+          !    timeIntervals(ktime) = abs(times(ktime+1) - times(ktime))
+          !  end do
+          !else
+          !  do ktime=1,nTimeIntervals
+          !    if ( ktime .eq. 1 ) times(1) = initialTime
+          !    if ( ktime .lt. nTimeIntervals ) times(ktime+1) = tdisData%TotalTimes(ktime+kinitial-1)
+          !    if ( ktime .eq. nTimeIntervals ) times(nTimes)  = finalTime 
+          !    timeIntervals(ktime) = times(ktime+1) - times(ktime)
+          !  end do
+          !end if 
 
           ! Allocate input times, will have at most nTimeIntervals*2 elements
           if ( allocated( inputTimes ) ) deallocate( inputTimes ) 
@@ -4185,6 +4248,7 @@ contains
           end do 
 
           ! Of the merged vector, how many are within the valid range 
+          ! THIS APPEARS TO BE TRACKING DIRECTION DEPENDENT
           tCounter =  count((mergedTimes.ge.initialTime).and.(mergedTimes.le.finalTime))
           if( allocated( times ) ) deallocate( times )
           allocate( times(tCounter) )
@@ -4202,9 +4266,8 @@ contains
           deallocate( mergedTimes ) 
           deallocate( inputTimes  )
          
-          ! For the vector of times, determine the 
-          ! input data interval. Will be used to assign 
-          ! concentrations. 
+          ! For the vector of times, determine the input data interval.
+          ! Will be used to assign concentrations. 
           if ( allocated( intervalIndex ) ) deallocate( intervalIndex ) 
           allocate( intervalIndex( size(times) ) ) 
           intervalIndex(:) = 0
@@ -4240,12 +4303,8 @@ contains
           call ustop('Error: something went wrong while analyzing time intervals for assigning concentrations. Stop.')
           end if 
 
-
-          ! Once the times are known, it can validate 
-          ! the existence of the budget header using the 
-          ! range of stress periods within the initial and
-          ! final times
-          ! Validate given aux names
+          ! Once the times are known, it can validate the existence of the budget header using the 
+          ! range of stress periods within the initial and final times. Validate given aux names.
           isValid = .false.
           isValid = flowModelData%ValidateBudgetHeader(srcPkgNames(nsb), initialTime, finalTime, this%tdisData)
           if ( .not. isValid ) then 
@@ -4258,7 +4317,8 @@ contains
           ! Generate the flow-rates timeseries
           call flowModelData%LoadFlowTimeseries( srcPkgNames(nsb), &
             initialTime, finalTime, this%tdisData, srcCellNumbers, &
-                  flowDataTimeseries, readCellsFromBudget, outUnit )
+                 flowDataTimeseries, readCellsFromBudget, outUnit, & 
+                             this%TrackingOptions%BackwardTracking )
 
           ! The allocation of concTimeseries needs to be after loadflowtimeseries
           ! in case nCells is determined after reading cells from the budget.
@@ -4291,12 +4351,12 @@ contains
             timeIntervals(nt) = times(nt+1)-times(nt)
           end do 
 
-          ! For the vector of times, determine the corresponding 
-          ! modflow data interval. Will be used to assign flow-rates.
+          ! For the vector of times, determine the corresponding MODFLOW data interval.
+          ! Will be used to assign flow-rates. 
           ! Note: mfTimes, by definition, is without blank-jumps in between intervals. 
           ! Meaning that the end of one interval is the beggining of the next. Similarly,
           ! mfTimes is built with the consideration that begins at ReferenceTime and 
-          ! after intersecting with the times provided by the user, times vector 
+          ! after intersecting with the times provided by the user, times vector
           ! also is such that begins at ReferenceTime.
 
           ! Reset intervalIndex 
@@ -4700,6 +4760,7 @@ contains
                      particleGroups(naux)%Particles(offset+m)%InitialLocalX = particleGroups(naux)%Particles(m)%InitialLocalX
                      particleGroups(naux)%Particles(offset+m)%InitialLocalY = particleGroups(naux)%Particles(m)%InitialLocalY
                      particleGroups(naux)%Particles(offset+m)%InitialLocalZ = particleGroups(naux)%Particles(m)%InitialLocalZ
+                     ! THIS CHANGES IN BACKWARD TRACKING
                      particleGroups(naux)%Particles(offset+m)%InitialTrackingTime = releaseTimes(nr) - this%ReferenceTime 
                      !particleGroups(naux)%Particles(offset+m)%InitialTrackingTime = releaseTimes(nr) 
                      particleGroups(naux)%Particles(offset+m)%TrackingTime = & 
