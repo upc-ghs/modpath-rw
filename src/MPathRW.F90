@@ -450,7 +450,7 @@ program MPathRW
     klast = 1
     kincr = -1
   end if
-print *,'KLAST', klast, 'KFIRST', kfirst 
+
   ! Set the appropriate value of stoptime. Start by setting stoptime to correspond to the start or the
   ! end of the simulation (depending on the tracking direction)
   if(simulationData%TrackingDirection .eq. 1) then
@@ -463,7 +463,6 @@ print *,'KLAST', klast, 'KFIRST', kfirst
     call tdisData%GetPeriodAndStep(tdisData%CumulativeTimeStepCount, period, step)
     call flowModelData%LoadTimeStep(1, 1)
   end if
-print *, 'STOPTIME 1', stoptime
   !
   if(simulationData%StoppingTimeOption .eq. 2) then
     ! Set stoptime to 1.0d+30 if the EXTEND option is on and the boundary time step is steady state.
@@ -481,11 +480,9 @@ print *, 'STOPTIME 1', stoptime
       if(simulationData%StopTime .lt. stoptime) stoptime = simulationData%StopTime
     end if
   end if
-print *, 'STOPTIME 2', stoptime
-  ! Update the StopTime at simulation data, not the best practice
-  simulationData%StopTime = stoptime
-print *, 'STOPTIME 3', simulationData%StopTime
 
+  ! Update the StopTime at simulation data, is used by SRC package
+  simulationData%StopTime = stoptime
 
   if ( simulationData%TrackingOptions%RandomWalkParticleTracking ) then 
     ! Transfer flag from basicData to indicate 
@@ -818,7 +815,6 @@ print *, 'STOPTIME 3', simulationData%StopTime
         ! Initialize the array of cummSinkFlowSeries
         if ( allocated( obs%cummSinkFlowSeries ) ) deallocate ( obs%cummSinkFlowSeries )
         ! For steady state runs with stoptime 1E+30 klast can be zero
-        ! Also somehow influenced by the tracking direction.
         !if ( (klast .eq. 0) ) then
         ! klast = tdisData%CumulativeTimeStepCount
         !end if
@@ -2639,16 +2635,36 @@ print *, 'STOPTIME 3', simulationData%StopTime
             if ( kfirst.eq.klast ) then
               obs%series(ns)%dataSeries(:,1) = obs%cummSinkFlowSeries(1)
             else
-              ! Pass the times, flow-rates, assumes that 
-              ! the model starts with the flow-rate of the first time step   
+              ! Pass the times, flow-rates. 
               ! Flow rates are known at modflow simulation times.
               ! So these need to be transformed to MODPATH tracking times.
-              call interp1d%initialize( &
-                (/0d0,tdisData%TotalTimes(kfirst:klast) - simulationData%ReferenceTime/), &
-                          (/obs%cummSinkFlowSeries(1),obs%cummSinkFlowSeries/), int1dstat )
+              select case(simulationData%TrackingDirection)
+              case(1)
+                ! Forward tracking
+                call interp1d%initialize( &
+                  (/0d0,tdisData%TotalTimes(kfirst:klast) - simulationData%ReferenceTime/), &
+                            (/obs%cummSinkFlowSeries(1),obs%cummSinkFlowSeries/), int1dstat )
+              case(2)
+                ! Backward tracking
+                if ( klast.ne.1 ) then 
+                  call interp1d%initialize( &
+                    (/& 
+                      simulationData%ReferenceTime - tdisData%TotalTimes(kfirst:klast:kincr), &
+                                 simulationData%ReferenceTime - tdisData%TotalTimes(klast-1)  &
+                    /),&
+                    (/ obs%cummSinkFlowSeries, obs%cummSinkFlowSeries(kcount) /), int1dstat )
+                else
+                  call interp1d%initialize( &
+                    (/& 
+                      simulationData%ReferenceTime - tdisData%TotalTimes(kfirst:klast:kincr), &
+                                                                simulationData%ReferenceTime  &
+                    /),&
+                    (/ obs%cummSinkFlowSeries, obs%cummSinkFlowSeries(kcount) /), int1dstat )
+                end if 
+              end select
               if ( int1dstat .gt. 0 ) then 
-                write(mplistUnit,'(A)') 'A problem while initializing flow rates interpolator.'
-                call ustop('A problem while initializing flow rates interpolator. Stop.')
+                write(mplistUnit,'(A)') 'Error: while initializing flow rates interpolator for sink observation.'
+                call ustop('Error: while initializing flow rates interpolator for sink observation. Stop.')
               end if
 
               ! Interpolate
@@ -2658,8 +2674,8 @@ print *, 'STOPTIME 3', simulationData%StopTime
               !$omp firstprivate( interp1d )       &
               !$omp private(n)
               do n = 1, size(obs%series(ns)%timeSeries)
-                 call interp1d%evaluate(& 
-                      obs%series(ns)%timeSeries(n), obs%series(ns)%dataSeries(n,1))
+                call interp1d%evaluate(& 
+                     obs%series(ns)%timeSeries(n), obs%series(ns)%dataSeries(n,1))
               end do 
               !$omp end parallel do
               ! After interpolating, destroy

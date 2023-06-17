@@ -939,7 +939,7 @@ contains
     integer, allocatable, dimension(:) :: spIFaces
     doubleprecision :: sign
     logical         :: backTracking = .false.
-    integer         :: exactInterval
+    integer         :: correctInterval
     ! For identifying pkgs with aux vars from modflow != mf6
     logical :: foundTheSource = .false.
     integer :: nb, nbindex
@@ -992,7 +992,7 @@ contains
       ! compatibility with backward tracking.
       sign   = 1d0
       kdelta = 1
-      exactInterval = 1 ! Assume inexact
+      correctInterval = 1
       backTracking = .false.
       if ( present( backwardTracking ) ) then
         if ( backwardTracking ) backTracking = .true. 
@@ -1003,12 +1003,12 @@ contains
         sign   = -1d0
         kdelta = -1 
         ! This verification avoids creating an additional unnecessary interval.
-        ! Taking the previous example, if initialTime dt, and finalTime is 1.5dt, 
-        ! FindContainingTimeStep returns 1 and 2 respectively, hence nIntervals 
+        ! Taking the previous example, if initialTime 1.5dt, and finalTime is dt, 
+        ! FindContainingTimeStep returns 2 and 1 respectively, hence nTimeIntervals 
         ! is 2 if computed as abs(kfinal-kinitial)+1, when in reality is only 1 interval.
-        if ( initialTime.eq.tdisData%TotalTimes(kinitial) ) exactInterval = 0  ! THIS IS OK FOR TIME STEPS IN THE SAME SP
+        if ( finalTime.eq.tdisData%TotalTimes(kfinal) ) correctInterval = 0
       end if
-    
+
       ! There are cases in which, depending on the stoptimeoption, 
       ! finalTime may have the value 1.0d+30. Something really 
       ! big to track particles until all of them get to a stop
@@ -1026,7 +1026,7 @@ contains
       end if
 
       ! The number of intervals
-      nTimeIntervals = abs(kfinal - kinitial) + exactInterval
+      nTimeIntervals = abs(kfinal - kinitial) + correctInterval
       nTimes = nTimeIntervals + 1 
       ! Something wrong with times 
       if ( nTimeIntervals .lt. 1 ) then 
@@ -1057,9 +1057,7 @@ contains
           timeIntervals(ktime) = times(ktime+1) - times(ktime)
         end do
       end if 
-print *, 'NINTERVALS', nTimeIntervals, nTimes 
-!print *, 'THETIMES:', times
-!print *, 'THETIMEINTRERVALS:', timeIntervals
+
       nAuxVars = size(auxVarNames)
       if ( nAuxVars .lt. 1 ) then 
          write(message,'(A)') 'Error: number of aux variables for timeseries should be at least 1. Stop.'
@@ -1076,8 +1074,7 @@ print *, 'NINTERVALS', nTimeIntervals, nTimes
 
       nStressPeriods = abs(spEnd - spInit) + 1
       timeStep = 1
-print *, 'SPINIT', spInit, spEnd 
-print *, 'NSTRESSPERIODS', nStressPeriods
+
       ! Loop over range of stress periods
       do nsp=1, nStressPeriods
 
@@ -1279,15 +1276,13 @@ print *, 'NSTRESSPERIODS', nStressPeriods
       allocate( auxTimeseries( nTimeIntervals, nCells, nAuxVars ) )
       auxTimeseries(:,:,:) = 0d0
 
-        print *, '0SHAPEAUX', shape(auxTimeseries)
       ! Use the determined steps (kinitial,kfinal) to build the timeseries
       kcounter = 0
       do ktime = kinitial, kfinal, kdelta
-        print *, kinitial, kfinal, kdelta, ktime 
+
         ! Get the stress period and time step from the cummulative time steps
         call tdisData%GetPeriodAndStep(ktime, stressPeriod, timeStep)
         kcounter = kcounter + 1 
-        print *, ktime, stressPeriod, timeStep, kcounter
 
         ! Determine record range for stressPeriod and timeStep
         call this%BudgetReader%GetRecordHeaderRange(stressPeriod, timeStep, firstRecord, lastRecord)

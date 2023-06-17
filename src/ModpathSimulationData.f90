@@ -3255,15 +3255,7 @@ contains
                                 flowTimeseries, auxTimeseries, timeIntervals, times,&
                                 srcCellNumbers, outUnit, iFaceOption, srcCellIFaces,&
                                               this%TrackingOptions%BackwardTracking )
-print *, 'AT SRC', initialTime, finalTime
-print *, srcCellNumbers
-print *, flowTimeseries
-print *, auxTimeseries
-print *, 'TINT', timeIntervals
-print *, 'TIMES',times 
-!print *, maxval(flowTimeseries,dim=1)
-!print *, maxval(auxTimeseries,dim=1)
-print *, '-------------------'
+
           ! From here until the creation of particles the process 
           ! is the same than for the SPEC format so it could be considered 
           ! to wrap these ops on a common function 
@@ -3634,7 +3626,6 @@ print *, '-------------------'
                      particleGroups(naux)%Particles(offset+m)%InitialLocalY = particleGroups(naux)%Particles(m)%InitialLocalY
                      particleGroups(naux)%Particles(offset+m)%InitialLocalZ = particleGroups(naux)%Particles(m)%InitialLocalZ
                      particleGroups(naux)%Particles(offset+m)%InitialTrackingTime = releaseTrackingTime
-                     print *, releaseTrackingTime
                      particleGroups(naux)%Particles(offset+m)%TrackingTime = & 
                              particleGroups(naux)%Particles(offset+m)%InitialTrackingTime
                      particleGroups(naux)%Particles(offset+m)%CellNumber = particleGroups(naux)%Particles(m)%CellNumber
