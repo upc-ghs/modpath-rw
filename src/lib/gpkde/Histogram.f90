@@ -611,7 +611,8 @@ contains
   integer, dimension(2) :: nPointsShape
   integer  :: n 
   !------------------------------------------------------------------------------
-   
+  
+    binSize = fZERO 
     nPointsShape = shape(dataPoints) 
     nPoints = nPointsShape(1)
 
@@ -650,6 +651,7 @@ contains
   real(fp) :: Q1, Q3, IQR
   !------------------------------------------------------------------------------
     
+    binSize = fZERO
     nPointsShape = shape(dataPoints) 
     nPoints = nPointsShape(1)
     if ( allocated(array) ) deallocate( array ) 

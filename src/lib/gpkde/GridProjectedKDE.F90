@@ -476,7 +476,6 @@ contains
 
     ! binSize 
     if ( present( binSize ).and.(.not.all(this%domainSize.eq.fZERO)) ) then 
-
       ! Stop if all bin sizes are zero
       if ( all( binSize .lt. fZERO ) ) then 
         write(*,*) 'Error: while initializing GPKDE, all binSizes are .lt. 0. Stop.'
@@ -490,7 +489,7 @@ contains
       end where
       ! Stop if any the domainGridSize .lt. 1
       if ( any( this%domainGridSize .lt. 1 ) ) then 
-        write(*,*) 'Error: while initializing GPKDE, some domainGridSize  .lt. 1. Stop.'
+        write(*,*) 'Error: while initializing GPKDE, some domainGridSize .lt. 1. Stop.'
         stop 
       end if
       this%binSize = binSize
@@ -533,15 +532,20 @@ contains
       end if  
     else
       this%slicedDimension = 0 
-    end if 
+    end if
 
+    ! initialSmoothingSelection
+    if ( present( initialSmoothingSelection ) ) then 
+      this%initialSmoothingSelection = initialSmoothingSelection
+    else
+      this%initialSmoothingSelection = defaultInitialSmoothingSelection
+    end if 
     ! initialSmoothingFactor
     if ( present( initialSmoothingFactor ) ) then 
       this%initialSmoothingFactor = initialSmoothingFactor
     else
       this%initialSmoothingFactor = defaultInitialSmoothingFactor
     end if 
-
     ! initialSmoothingArray
     this%initialSmoothingArray = fZERO
     if ( present( initialSmoothing ) ) then
@@ -607,11 +611,6 @@ contains
       ! Process further arguments !
 
       ! initialSmoothing
-      if ( present( initialSmoothingSelection ) ) then 
-        this%initialSmoothingSelection = initialSmoothingSelection
-      else
-        this%initialSmoothingSelection = defaultInitialSmoothingSelection
-      end if 
       this%initialSmoothing(:) = fZERO
       select case(this%initialSmoothingSelection) 
       case(0)
@@ -1121,7 +1120,6 @@ contains
     end if
 
     ! Initialize reconstruction grid parameters !
-
     where( binSize .ne. fZERO )
       ! domainSize expected to be already defined into the object 
       this%domainGridSize = int( this%domainSize/binSize + 0.5 )
@@ -1131,7 +1129,7 @@ contains
 
     ! Stop if any the domainGridSize .lt. 1
     if ( any( this%domainGridSize .lt. 1 ) ) then 
-      write(*,*) 'Error: while initializing GPKDE, some domainGridSize  .lt. 1. Stop.'
+      write(*,*) 'Error: while initializing GPKDE, some domainGridSize .lt. 1. Stop.'
       stop 
     end if
     this%binSize = binSize

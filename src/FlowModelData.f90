@@ -972,10 +972,19 @@ contains
       if ( present( iFaceCells ) ) then 
         if ( allocated( iFaceCells ) ) deallocate( iFaceCells ) 
       end if  
-
       ! Trim input pkg name
       call TrimAll(sourcePkgName, firstNonBlankIn, lastNonBlankIn, trimmedLengthIn)
       listItemBufferSize = size(this%ListItemBuffer)
+
+      ! Determine the sign to consider for the source, for 
+      ! compatibility with backward tracking.
+      sign   = 1d0
+      kdelta = 1
+      correctInterval = 1
+      backTracking = .false.
+      if ( present( backwardTracking ) ) then
+        if ( backwardTracking ) backTracking = .true. 
+      end if 
 
       ! Given initial and final times, 
       ! compute the initial and final time step indexes
@@ -988,16 +997,31 @@ contains
       ! TotalTimes=2dt. 
       kinitial = tdisData%FindContainingTimeStep(initialTime)
       kfinal   = tdisData%FindContainingTimeStep(finalTime)
-      ! Determine the sign to consider for the source, for 
-      ! compatibility with backward tracking.
-      sign   = 1d0
-      kdelta = 1
-      correctInterval = 1
-      backTracking = .false.
-      if ( present( backwardTracking ) ) then
-        if ( backwardTracking ) backTracking = .true. 
-      end if 
-
+      ! There are cases in which, depending on the stoptimeoption, 
+      ! finalTime may have the value 1.0d+30. Something really 
+      ! big to track particles until all of them get to a stop
+      ! condition for steady state models. For such value, 
+      ! FindContainingTimeStep will return 0, assuming that this large
+      ! number is higher than the length of the modflow simulation stoptime.
+      ! In such case, it is enforced that kfinal adopt the value of 
+      ! tdisData%CumulativeTimeStepCount, the highest possible value.
+      if ( backTracking ) then 
+        if ( (kfinal .eq. 0) ) then
+         if ( present(outUnit) ) then       
+          write(outUnit,'(a)') 'FlowModelData: LoadFlowAndAuxTimeseries: kfinal is assumed to be 1.'
+          write(outUnit,'(a,e15.7)') 'FlowModelData: LoadFlowAndAuxTimeseries: final time is ', finalTime
+         end if
+         kfinal = 1
+        end if
+      else
+        if ( (kfinal .eq. 0) ) then
+         if ( present(outUnit) ) then       
+          write(outUnit,'(a)') 'FlowModelData: LoadFlowAndAuxTimeseries: kfinal is assumed to be CumulativeTimeStepCount'
+          write(outUnit,'(a,e15.7)') 'FlowModelData: LoadFlowAndAuxTimeseries: final time is ', finalTime
+         end if
+         kfinal = tdisData%CumulativeTimeStepCount
+        end if
+      end if
       ! Modify values for backward tracking
       if ( backTracking ) then 
         sign   = -1d0
@@ -1008,23 +1032,6 @@ contains
         ! is 2 if computed as abs(kfinal-kinitial)+1, when in reality is only 1 interval.
         if ( finalTime.eq.tdisData%TotalTimes(kfinal) ) correctInterval = 0
       end if
-
-      ! There are cases in which, depending on the stoptimeoption, 
-      ! finalTime may have the value 1.0d+30. Something really 
-      ! big to track particles until all of them get to a stop
-      ! condition for steady state models. For such value, 
-      ! FindContainingTimeStep will return 0, assuming that this large
-      ! number is higher than the length of the modflow simulation stoptime.
-      ! In such case, it is enforced that kfinal adopt the value of 
-      ! tdisData%CumulativeTimeStepCount, the highest possible value.
-      if ( (kfinal .eq. 0) ) then
-       if ( present(outUnit) ) then       
-        write(outUnit,'(a)') 'FlowModelData: LoadFlowAndAuxTimeseries: kfinal is assumed to be CumulativeTimeStepCount'
-        write(outUnit,'(a,e15.7)') 'FlowModelData: LoadFlowAndAuxTimeseries: final time is ', finalTime
-       end if
-       kfinal = tdisData%CumulativeTimeStepCount
-      end if
-
       ! The number of intervals
       nTimeIntervals = abs(kfinal - kinitial) + correctInterval
       nTimes = nTimeIntervals + 1 
@@ -1034,13 +1041,11 @@ contains
         message = trim(message)
         call ustop(message)
       end if  
-
       ! times: includes intial and final times ( reference, stoptime )
       if ( allocated( times ) ) deallocate( times ) 
       allocate( times(nTimes) )
       if ( allocated( timeIntervals ) ) deallocate( timeIntervals ) 
       allocate( timeIntervals(nTimeIntervals) )  
-
       ! Fill times and time intervals
       if ( backTracking ) then 
         do ktime=1,nTimeIntervals
@@ -1057,7 +1062,7 @@ contains
           timeIntervals(ktime) = times(ktime+1) - times(ktime)
         end do
       end if 
-
+      ! Number of aux variables
       nAuxVars = size(auxVarNames)
       if ( nAuxVars .lt. 1 ) then 
          write(message,'(A)') 'Error: number of aux variables for timeseries should be at least 1. Stop.'
@@ -1067,11 +1072,9 @@ contains
 
       ! In order to extract the pkg cells, it needs to 
       ! run over stress periods
-
       ! Get the initial and final stress
       call tdisData%GetPeriodAndStep(kinitial, spInit, tsInit)
       call tdisData%GetPeriodAndStep(kfinal  , spEnd , tsEnd )
-
       nStressPeriods = abs(spEnd - spInit) + 1
       timeStep = 1
 
@@ -1638,7 +1641,7 @@ contains
 
 
     function pr_ValidateBudgetHeader( this, sourcePkgName, initialTime,& 
-                            finalTime, tdisData, outUnit ) result ( isValid )
+                  finalTime, tdisData, outUnit, backwardTracking, isMF6 ) result ( isValid )
     !------------------------------------------------------------------------
     !
     !------------------------------------------------------------------------
@@ -1651,6 +1654,8 @@ contains
     doubleprecision, optional, intent(in) :: initialTime, finalTime
     class( TimeDiscretizationDataType ), optional, intent(in) :: tdisData
     integer, optional, intent(in) :: outUnit
+    logical, optional, intent(in) :: backwardTracking
+    logical, optional, intent(in) :: isMF6
     ! output
     logical :: isValid
     ! local
@@ -1667,6 +1672,9 @@ contains
     integer :: spInit, spEnd, tsInit, tsEnd
     integer :: nsp
     integer :: nStressPeriods, nTimeIntervals, nTimes
+    logical         :: backTracking   = .false.
+    logical         :: isMF6Budget    = .false.
+    integer         :: correctInterval
     character(len=16)  :: anamebud(5)
     DATA anamebud(1) /'           WELLS'/ ! WEL
     DATA anamebud(2) /'    DRAINS (DRT)'/ ! DRT
@@ -1687,7 +1695,12 @@ contains
 
       ! Trim input pkg/header name 
       call TrimAll(sourcePkgName, firstNonBlankIn, lastNonBlankIn, trimmedLengthIn)
- 
+
+      isMF6Budget = .false.
+      if ( present( isMF6 ) ) then 
+        if ( isMF6 ) isMF6Budget = .true.
+      end if 
+
       if( present( initialTime ) .or. present( finalTime ) ) then 
         ! If times given verify header existence for a range of stress periods
 
@@ -1697,28 +1710,61 @@ contains
         call ustop(message)
         end if
 
+        correctInterval = 1
+        backTracking = .false.
+        if ( present( backwardTracking ) ) then
+          if ( backwardTracking ) backTracking = .true. 
+        end if 
+
         ! Given initial and final times, 
         ! compute the initial and final time step indexes
         if( present( initialTime ) ) then 
           kinitial = tdisData%FindContainingTimeStep(initialTime)
         else
-          kinitial = 1
+         if ( backTracking ) then  
+           kinitial = tdisData%CumulativeTimeStepCount
+         else
+           kinitial = 1
+         end if 
         end if 
         if( present( finalTime ) ) then 
           kfinal   = tdisData%FindContainingTimeStep(finalTime)
-          if ( (kfinal .eq. 0) ) then
-           if ( present(outUnit) ) then       
-            write(outUnit,'(a)') 'FlowModelData: ValidateBudgetHeader: kfinal is assumed to be CumulativeTimeStepCount'
-            write(outUnit,'(a,e15.7)') 'FlowModelData: ValidateBudgetHeader: final time is ', finalTime
-           end if
-           kfinal = tdisData%CumulativeTimeStepCount
+          if ( backTracking ) then 
+            if ( (kfinal .eq. 0) ) then
+             if ( present(outUnit) ) then       
+              write(outUnit,'(a)') 'FlowModelData: ValidateBudgetHeader: kfinal is assumed to be 1.'
+              write(outUnit,'(a,e15.7)') 'FlowModelData: ValidateBudgetHeader: final time is ', finalTime
+             end if
+             kfinal = 1
+            end if
+          else
+            if ( (kfinal .eq. 0) ) then
+             if ( present(outUnit) ) then       
+              write(outUnit,'(a)') 'FlowModelData: ValidateBudgetHeader: kfinal is assumed to be CumulativeTimeStepCount.'
+              write(outUnit,'(a,e15.7)') 'FlowModelData: ValidateBudgetHeader: final time is ', finalTime
+             end if
+             kfinal = tdisData%CumulativeTimeStepCount
+            end if
           end if
-        else 
-         kfinal = tdisData%CumulativeTimeStepCount
+        else
+         if ( backTracking ) then  
+           kfinal = 1
+         else 
+           kfinal = tdisData%CumulativeTimeStepCount
+         end if 
         end if 
-    
+   
+        ! Modify values for backward tracking
+        if ( backTracking ) then 
+          ! This verification avoids creating an additional unnecessary interval.
+          ! Taking the previous example, if initialTime 1.5dt, and finalTime is dt, 
+          ! FindContainingTimeStep returns 2 and 1 respectively, hence nTimeIntervals 
+          ! is 2 if computed as abs(kfinal-kinitial)+1, when in reality is only 1 interval.
+          if ( finalTime.eq.tdisData%TotalTimes(kfinal) ) correctInterval = 0
+        end if
+
         ! The number of intervals
-        nTimeIntervals = kfinal - kinitial + 1
+        nTimeIntervals = abs(kfinal - kinitial) + correctInterval
         nTimes = nTimeIntervals + 1 
         ! Something wrong with times 
         if ( nTimeIntervals .lt. 1 ) then 
@@ -1730,7 +1776,7 @@ contains
         ! Get the initial and final stress
         call tdisData%GetPeriodAndStep(kinitial, spInit, tsInit)
         call tdisData%GetPeriodAndStep(kfinal  , spEnd , tsEnd )
-        nStressPeriods = spEnd - spInit + 1
+        nStressPeriods = abs(spEnd - spInit) + 1
         timeStep = 1
       else
         ! If no time information given, verify against the first
@@ -1759,7 +1805,6 @@ contains
           header    = this%BudgetReader%GetRecordHeader(n)
           textLabel = header%TextLabel
           call TrimAll(textLabel, firstNonBlank, lastNonBlank, trimmedLength)
-
           if (&
             textLabel(firstNonBlank:lastNonBlank) .eq. & 
             sourcePkgName(firstNonBlankIn:lastNonBlankIn) ) then
@@ -1768,250 +1813,22 @@ contains
             return
           end if
 
-          ! Consider a second chance
-
-          !  ! Needs to verify relation
-          !  ! Find equivalence
-          !  nbindex = 0
-          !  do nb=1,nbmax
-          !    textNameLabel = anamebud(nb) 
-          !    call TrimAll(textNameLabel, firstNonBlankLoc, lastNonBlankLoc, trimmedLengthLoc)
-          !    if (&
-          !      textNameLabel(firstNonBlankLoc:lastNonBlankLoc) .eq. & 
-          !      textLabel(firstNonBlank:lastNonBlank) ) then
-          !      ! Found, continue
-          !      nbindex = nb
-          !      exit
-          !    end if   
-          !  end do
-
-          !  ! Not found in the list of known budgets supporting
-          !  ! aux variables, try next budget header. It might be useful 
-          !  ! to report the header text label for validation.
-          !  if ( nbindex .eq. 0 ) then
-          !    exit
-          !  end if
-
-          !  ! Compare the id/ftype (e.g. WEL) against the given src name,
-          !  ! and if not, give it another chance by comparing against the 
-          !  ! budget label itself (e.g. WELLS)
-          !  textNameLabel = anameid(nbindex) 
-          !  call TrimAll(textNameLabel, firstNonBlankLoc, lastNonBlankLoc, trimmedLengthLoc)
-          !  if (&
-          !    textNameLabel(firstNonBlankLoc:lastNonBlankLoc) .eq. & 
-          !    sourcePkgName(firstNonBlankIn:lastNonBlankIn) ) then
-          !    nval = 0
-          !    do nx =1, naux 
-          !      auxindex = header%FindAuxiliaryNameIndex(auxVarNames(nx)) ! it does a trim
-          !      if(auxindex .gt. 0) then
-          !        nval = nval + 1
-          !      end if
-          !    end do
-          !    if ( lookForIFace ) then
-          !      ifaceindex = header%FindAuxiliaryNameIndex('IFACE')
-          !      ! Is valid
-          !      if ( (nval .eq. naux) .and. (ifaceindex.gt.0) ) then 
-          !        isValid = .true.
-          !        ! Leave 
-          !        return
-          !      end if
-          !    else
-          !      ! Is valid
-          !      if ( nval .eq. naux ) then 
-          !        isValid = .true.
-          !        ! Leave 
-          !        return
-          !      end if
-          !    end if
-          !  else
-          !    textNameLabel = anamebud(nbindex) 
-          !    call TrimAll(textNameLabel, firstNonBlankLoc, lastNonBlankLoc, trimmedLengthLoc)
-          !    if (&
-          !      textNameLabel(firstNonBlankLoc:lastNonBlankLoc) .eq. & 
-          !      sourcePkgName(firstNonBlankIn:lastNonBlankIn) ) then
-          !      nval = 0
-          !      do nx =1, naux 
-          !        auxindex = header%FindAuxiliaryNameIndex(auxVarNames(nx)) ! it does a trim
-          !        if(auxindex .gt. 0) then
-          !          nval = nval + 1
-          !        end if
-          !      end do
-          !      if ( lookForIFace ) then
-          !        ifaceindex = header%FindAuxiliaryNameIndex('IFACE')
-          !        ! Is valid
-          !        if ( (nval .eq. naux) .and. (ifaceindex.gt.0) ) then 
-          !          isValid = .true.
-          !          ! Leave 
-          !          return
-          !        end if
-          !      else
-          !        ! Is valid
-          !        if ( nval .eq. naux ) then 
-          !          isValid = .true.
-          !          ! Leave 
-          !          return
-          !        end if
-          !      end if
-          !    end if
-          !  end if
+          ! A second chance for mf6
+          if ( isMF6Budget .and. ( .not. isValid ) ) then 
+            textLabel = header%TXT2ID2
+            call TrimAll(textLabel, firstNonBlank, lastNonBlank, trimmedLength)
+            if (&
+              textLabel(firstNonBlank:lastNonBlank) .eq. & 
+              sourcePkgName(firstNonBlankIn:lastNonBlankIn) ) then
+              ! Found it
+              isValid = .true.
+              return
+            end if
+          end if 
 
         end do ! n = firstRecord, lastRecord
 
       end do !nsp=1, nStressPeriods
-
-
-    !  ! Determine record range for stressPeriod and timeStep
-    !  if(firstRecord .eq. 0) then
-    !    write(message,'(A,I5,A,I5,A)') ' Error loading Time Step ', timeStep, ' Period ', stressPeriod, '.'
-    !    message = trim(message)
-    !    write(*,'(A)') message
-    !    call ustop('Missing budget information. Budget file must have output for every time step. Stop.')
-    !  end if
-
-    !  naux = size( auxVarNames )
-    !  listItemBufferSize = size(this%ListItemBuffer) 
-
-    !  ! For MF6, the easiest validation is to 
-    !  ! verify auxiliary var names by identifying the 
-    !  ! package against TXT2ID2
-    !  if ( isMF6 ) then
-    !    ! Loop through record headers
-    !    do n = firstRecord, lastRecord
-    !      header    = this%BudgetReader%GetRecordHeader(n)
-    !      ! Only methods 5,6 support aux variables
-    !      if ( ( header%Method .eq. 5 ) .or. ( header%Method .eq. 6 ) ) then
-    !        textLabel = header%TXT2ID2
-    !        call TrimAll(textLabel, firstNonBlank, lastNonBlank, trimmedLength)
-    !        if (&
-    !          textLabel(firstNonBlank:lastNonBlank) .eq. & 
-    !          sourcePkgName(firstNonBlankIn:lastNonBlankIn) ) then
-    !          nval = 0
-    !          do nx =1, naux 
-    !            auxindex = header%FindAuxiliaryNameIndex(auxVarNames(nx)) ! it does a trim
-    !            if(auxindex .gt. 0) then
-    !              nval = nval + 1
-    !            end if
-    !          end do
-    !          if ( lookForIFace ) then
-    !            ifaceindex = header%FindAuxiliaryNameIndex('IFACE')
-    !            ! Is valid
-    !            if ( (nval .eq. naux) .and. (ifaceindex.gt.0) ) then 
-    !              isValid = .true.
-    !              ! Leave 
-    !              return
-    !            end if
-    !          else
-    !            ! Is valid
-    !            if ( nval .eq. naux ) then 
-    !              isValid = .true.
-    !              ! Leave 
-    !              return
-    !            end if
-    !          end if 
-    !        end if
-    !      end if
-    !    end do
-    !  ! Other MODFLOW flavors
-    !  ! Compare against the list of known headers that accept
-    !  ! aux variables
-    !  else
-    !    ! Loop through record headers
-    !    do n = firstRecord, lastRecord
-    !      header    = this%BudgetReader%GetRecordHeader(n)
-    !      ! Only methods 5,6 support aux variables
-    !      if ( ( header%Method .eq. 5 ) .or. ( header%Method .eq. 6 ) ) then
-    !        textLabel = header%TextLabel
-    !        call TrimAll(textLabel, firstNonBlank, lastNonBlank, trimmedLength)
-
-    !        ! Needs to verify relation
-    !        ! Find equivalence
-    !        nbindex = 0
-    !        do nb=1,nbmax
-    !          textNameLabel = anamebud(nb) 
-    !          call TrimAll(textNameLabel, firstNonBlankLoc, lastNonBlankLoc, trimmedLengthLoc)
-    !          if (&
-    !            textNameLabel(firstNonBlankLoc:lastNonBlankLoc) .eq. & 
-    !            textLabel(firstNonBlank:lastNonBlank) ) then
-    !            ! Found, continue
-    !            nbindex = nb
-    !            exit
-    !          end if   
-    !        end do
-
-    !        ! Not found in the list of known budgets supporting
-    !        ! aux variables, try next budget header. It might be useful 
-    !        ! to report the header text label for validation.
-    !        if ( nbindex .eq. 0 ) then
-    !          exit
-    !        end if
-
-    !        ! Compare the id/ftype (e.g. WEL) against the given src name,
-    !        ! and if not, give it another chance by comparing against the 
-    !        ! budget label itself (e.g. WELLS)
-    !        textNameLabel = anameid(nbindex) 
-    !        call TrimAll(textNameLabel, firstNonBlankLoc, lastNonBlankLoc, trimmedLengthLoc)
-    !        if (&
-    !          textNameLabel(firstNonBlankLoc:lastNonBlankLoc) .eq. & 
-    !          sourcePkgName(firstNonBlankIn:lastNonBlankIn) ) then
-    !          nval = 0
-    !          do nx =1, naux 
-    !            auxindex = header%FindAuxiliaryNameIndex(auxVarNames(nx)) ! it does a trim
-    !            if(auxindex .gt. 0) then
-    !              nval = nval + 1
-    !            end if
-    !          end do
-    !          if ( lookForIFace ) then
-    !            ifaceindex = header%FindAuxiliaryNameIndex('IFACE')
-    !            ! Is valid
-    !            if ( (nval .eq. naux) .and. (ifaceindex.gt.0) ) then 
-    !              isValid = .true.
-    !              ! Leave 
-    !              return
-    !            end if
-    !          else
-    !            ! Is valid
-    !            if ( nval .eq. naux ) then 
-    !              isValid = .true.
-    !              ! Leave 
-    !              return
-    !            end if
-    !          end if
-    !        else
-    !          textNameLabel = anamebud(nbindex) 
-    !          call TrimAll(textNameLabel, firstNonBlankLoc, lastNonBlankLoc, trimmedLengthLoc)
-    !          if (&
-    !            textNameLabel(firstNonBlankLoc:lastNonBlankLoc) .eq. & 
-    !            sourcePkgName(firstNonBlankIn:lastNonBlankIn) ) then
-    !            nval = 0
-    !            do nx =1, naux 
-    !              auxindex = header%FindAuxiliaryNameIndex(auxVarNames(nx)) ! it does a trim
-    !              if(auxindex .gt. 0) then
-    !                nval = nval + 1
-    !              end if
-    !            end do
-    !            if ( lookForIFace ) then
-    !              ifaceindex = header%FindAuxiliaryNameIndex('IFACE')
-    !              ! Is valid
-    !              if ( (nval .eq. naux) .and. (ifaceindex.gt.0) ) then 
-    !                isValid = .true.
-    !                ! Leave 
-    !                return
-    !              end if
-    !            else
-    !              ! Is valid
-    !              if ( nval .eq. naux ) then 
-    !                isValid = .true.
-    !                ! Leave 
-    !                return
-    !              end if
-    !            end if
-    !          end if
-    !        end if
-    !      end if ! ( header%Method .eq. 5 ) .or. ( header%Method .eq. 6 )
-
-    !    end do ! n = firstRecord, lastRecord
-
-    !  end if 
 
 
       ! Done
@@ -2021,12 +1838,12 @@ contains
     end function pr_ValidateBudgetHeader
 
 
-
     subroutine pr_LoadFlowTimeseries(this, sourcePkgName, & 
                         initialTime, finalTime, tdisData, &
                              cellNumbers, flowTimeseries, &
                             readCellsFromBudget, outUnit, & 
-                                         backwardTracking )
+                                        backwardTracking, &
+                                                   isMF6  )
     !------------------------------------------------------------------------
     ! Given a range of times, extract a flow-rates timeseries from the header 
     ! sourcePkgName, only for cells in cellNumbers and positive flow-rates.
@@ -2048,6 +1865,7 @@ contains
     logical, optional, intent(in) :: readCellsFromBudget
     integer, optional, intent(in) :: outUnit
     logical, optional, intent(in) :: backwardTracking
+    logical, optional, intent(in) :: isMF6
     ! out
     doubleprecision, allocatable, dimension(:,:)  , intent(inout) :: flowTimeseries ! nt x ncells
     ! local
@@ -2062,13 +1880,17 @@ contains
     character(len=16)  :: textLabel
     character(len=132) :: message
     integer :: nCells, newcounter
-    integer :: kinitial, kfinal, ktime, kcounter
+    integer :: kinitial, kfinal, ktime, kcounter, kdelta
     integer :: nTimes, nTimeIntervals, cellCounter 
     integer :: spInit, tsInit, spEnd, tsEnd, nStressPeriods, nsp 
     integer, allocatable, dimension(:) :: tempCellNumbers
     integer, allocatable, dimension(:) :: spCellNumbers
     logical :: readCells
     doubleprecision :: sign
+    logical         :: backTracking = .false.
+    integer         :: correctInterval
+    logical         :: foundTheSource = .false.
+    logical         :: isMF6Budget    = .false.
     !------------------------------------------------------------------------
 
       ! Trim input pkg name
@@ -2076,35 +1898,64 @@ contains
       cellCount = this%Grid%CellCount
       listItemBufferSize = size(this%ListItemBuffer)
 
+      isMF6Budget = .false.
+      if ( present ( isMF6 ) ) then 
+        if ( isMF6 ) isMF6Budget = .true.
+      end if 
+
+      ! Determine the sign to consider for the source, for 
+      ! compatibility with backward tracking.
+      sign   = 1d0
+      kdelta = 1
+      correctInterval = 1
+      backTracking = .false.
+      if ( present( backwardTracking ) ) then
+        if ( backwardTracking ) backTracking = .true. 
+      end if 
+
       ! Given initial and final times, 
       ! compute the initial and final time step indexes
       kinitial = tdisData%FindContainingTimeStep(initialTime)
       kfinal   = tdisData%FindContainingTimeStep(finalTime)
-      if ( (kfinal .eq. 0) ) then
-       if ( present(outUnit) ) then       
-        write(outUnit,'(a)') 'FlowModelData: LoadFlowTimeseries: kfinal is assumed to be CumulativeTimeStepCount'
-        write(outUnit,'(a,e15.7)') 'FlowModelData: LoadFlowTimeseries: final time is ', finalTime
-       end if
-       kfinal = tdisData%CumulativeTimeStepCount
+      if ( backTracking ) then 
+        if ( (kfinal .eq. 0) ) then
+         if ( present(outUnit) ) then       
+          write(outUnit,'(a)') 'FlowModelData: LoadFlowTimeseries: kfinal is assumed to be 1.'
+          write(outUnit,'(a,e15.7)') 'FlowModelData: LoadFlowTimeseries: final time is ', finalTime
+         end if
+         kfinal = 1 
+        end if
+      else
+        if ( (kfinal .eq. 0) ) then
+         if ( present(outUnit) ) then       
+          write(outUnit,'(a)') 'FlowModelData: LoadFlowTimeseries: kfinal is assumed to be CumulativeTimeStepCount.'
+          write(outUnit,'(a,e15.7)') 'FlowModelData: LoadFlowTimeseries: final time is ', finalTime
+         end if
+         kfinal = tdisData%CumulativeTimeStepCount
+        end if
+      end if
+
+      ! Modify values for backward tracking
+      if ( backTracking ) then 
+        sign   = -1d0
+        kdelta = -1 
+        ! This verification avoids creating an additional unnecessary interval.
+        ! Taking the previous example, if initialTime 1.5dt, and finalTime is dt, 
+        ! FindContainingTimeStep returns 2 and 1 respectively, hence nTimeIntervals 
+        ! is 2 if computed as abs(kfinal-kinitial)+1, when in reality is only 1 interval.
+        if ( finalTime.eq.tdisData%TotalTimes(kfinal) ) correctInterval = 0
       end if
 
       ! The number of intervals
-      nTimeIntervals = kfinal - kinitial + 1
+      nTimeIntervals = abs(kfinal - kinitial) + correctInterval
       nTimes = nTimeIntervals + 1 
       ! Something wrong with times 
       if ( nTimeIntervals .lt. 1 ) then 
-         write(message,'(A)') 'Error: the number of times is .lt. 1. Check definition of reference and stoptimes. Stop.'
-         message = trim(message)
-         call ustop(message)
+        write(message,'(A)') 'Error: the number of times is .lt. 1. Check definition of reference and stoptimes. Stop.'
+        message = trim(message)
+        call ustop(message)
       end if  
-
-      ! Determine the sign to consider for the source, for 
-      ! compatibility with backward tracking.
-      sign = 1d0
-      if ( present( backwardTracking ) ) then 
-        if ( backwardTracking ) sign = -1d0
-      end if 
-
+        
       ! Interpret readcells
       readCells = .false.
       if ( present( readCellsFromBudget ) ) then 
@@ -2120,7 +1971,7 @@ contains
         ! Get the initial and final stress
         call tdisData%GetPeriodAndStep(kinitial, spInit, tsInit)
         call tdisData%GetPeriodAndStep(kfinal  , spEnd , tsEnd )
-        nStressPeriods = spEnd - spInit + 1
+        nStressPeriods = abs(spEnd - spInit) + 1
         timeStep = 1
 
         ! Loop over range of stress periods
@@ -2142,11 +1993,28 @@ contains
             textLabel = header%TextLabel
             call TrimAll(textLabel, firstNonBlank, lastNonBlank, trimmedLength)
 
+            ! Is the requested pkg ?
+            foundTheSource = .false.
             if (&
               textLabel(firstNonBlank:lastNonBlank) .eq. & 
               sourcePkgName(firstNonBlankIn:lastNonBlankIn) ) then
               ! Found it
+              foundTheSource = .true.
+            end if 
 
+            ! A second chance for mf6
+            if ( isMF6Budget .and. ( .not. foundTheSource ) ) then 
+              textLabel = header%TXT2ID2
+              call TrimAll(textLabel, firstNonBlank, lastNonBlank, trimmedLength)
+              if (&
+                textLabel(firstNonBlank:lastNonBlank) .eq. & 
+                sourcePkgName(firstNonBlankIn:lastNonBlankIn) ) then
+                ! Found it
+                foundTheSource = .true.
+              end if
+            end if 
+
+            if ( foundTheSource ) then 
               ! Read accordingly
               select case(header%Method) 
               case(0,1)
@@ -2453,7 +2321,7 @@ contains
 
       ! Use the determined steps (kinitial,kfinal) to build the timeseries
       kcounter = 0
-      do ktime=kinitial,kfinal
+      do ktime = kinitial, kfinal, kdelta
 
         ! Get the stress period and time step from the cummulative time steps
         call tdisData%GetPeriodAndStep(ktime, stressPeriod, timeStep)
@@ -2474,11 +2342,28 @@ contains
           textLabel = header%TextLabel
           call TrimAll(textLabel, firstNonBlank, lastNonBlank, trimmedLength)
 
+          ! Is the requested pkg ?
+          foundTheSource = .false.
           if (&
             textLabel(firstNonBlank:lastNonBlank) .eq. & 
             sourcePkgName(firstNonBlankIn:lastNonBlankIn) ) then
             ! Found it
+            foundTheSource = .true.
+          end if 
 
+          ! A second chance for mf6
+          if ( isMF6Budget .and. ( .not. foundTheSource ) ) then 
+            textLabel = header%TXT2ID2
+            call TrimAll(textLabel, firstNonBlank, lastNonBlank, trimmedLength)
+            if (&
+              textLabel(firstNonBlank:lastNonBlank) .eq. & 
+              sourcePkgName(firstNonBlankIn:lastNonBlankIn) ) then
+              ! Found it
+              foundTheSource = .true.
+            end if
+          end if 
+
+          if ( foundTheSource ) then 
             ! Read accordingly
             select case(header%Method) 
             case(0,1)
@@ -2588,6 +2473,9 @@ contains
           end if ! found the srcPkgName
 
         end do ! n = firstRecord, lastRecord
+
+        ! Break if the number of intervals was reached
+        if ( kcounter .eq. nTimeIntervals ) exit
 
       end do ! ktime=kinitial,kfinal
 

@@ -3031,7 +3031,7 @@ contains
     integer :: layer, row, column
     integer :: nSpecies, ns
     integer :: nTimeIntervals,nMFTimeIntervals, nMFTimes
-    integer :: mftCounter, tCounter, itCounter, doCounter
+    integer :: mftCounter, tCounter, itCounter, doCounter, tcount
     doubleprecision, allocatable, dimension(:)     :: mergedTimes
     doubleprecision, allocatable, dimension(:)     :: inputTimes
     doubleprecision, allocatable, dimension(:)     :: mfTimes
@@ -3050,7 +3050,8 @@ contains
     logical :: concPerCell = .false.
     logical :: isValid = .false.
     integer :: nColumns
-    integer :: ktime, kinitial, kfinal
+    integer :: ktime, kinitial, kfinal, kdelta
+    integer :: correctInterval
     type(ParticleGroupType),dimension(:),allocatable :: particleGroups
     type(ParticleGroupType),dimension(:),allocatable :: newParticleGroups
     ! urword
@@ -3247,8 +3248,8 @@ contains
             if ( finalTime .lt. 0d0 ) finalTime = 0d0
           else 
             finalTime = this%ReferenceTime + this%StopTime
-            if ( finalTime.gt.tdisData%TotalTimes(size(tdisData%TotalTimes)) ) then 
-              finalTime = tdisData%TotalTimes(size(tdisData%TotalTimes)) 
+            if ( finalTime.gt.this%tdisData%TotalTimes(size(this%tdisData%TotalTimes)) ) then 
+              finalTime = this%tdisData%TotalTimes(size(this%tdisData%TotalTimes)) 
             end if
           end if 
 
@@ -3540,7 +3541,7 @@ contains
                   ! Define the new starting point and update lastCummMass
                   nti = nt - 1
                   lastCummMass = cummMassSeries(nt)
-                  cycle
+                  if( nt.ne.(totMassLoc(nc)+1) ) cycle
                 end if
 
                 ! If it is equal to the last, and the first 
@@ -3808,7 +3809,6 @@ contains
             if ( n.gt.0 ) then 
               readAsUnstructured = .true.
             end if
-
             ! Different concentration per cell
             concPerCell = .false.
             call urword(line,icol,istart,istop,2,n,r,0,0)
@@ -3816,16 +3816,14 @@ contains
               concPerCell = .true. 
               write(outUnit,'(A)') 'Will consider different concentration per cell. Expects nSpecies*nCells columns.'
             end if  
-
             ! Allocate array for cell ids
             if ( allocated( srcCellNumbers ) ) deallocate( srcCellNumbers )
             allocate( srcCellNumbers(nCells) )
-
+            ! iFaceOption
             if ( iFaceOption ) then 
               if ( allocated(srcCellIFaces) ) deallocate( srcCellIFaces )
               allocate( srcCellIFaces(nCells) )
             end if
-
             ! Read the cells
             if( readAsUnstructured ) then
               if ( .not. iFaceOption ) then 
@@ -4092,44 +4090,27 @@ contains
               exit
             end if  
           end do
-
           if( .not. isValid ) then 
           write(outUnit,'(A)') 'Error: invalid time intervals. Verify that do not overlap and that start is .le. end.'
           call ustop('Error: invalid time intervals. Verify that do not overlap and that start is .le. end. Stop.')
           end if 
 
-          ! It needs to build a time vector considering 
-          ! characteristic simulation times 
+          ! It needs to build a time vector considering characteristic simulation times.
+          ! It was already validated that input times were increasing. 
 
-          ! It was already validated that input times 
-          ! were increasing. 
-
-          ! Initial and final times are with respect to 
-          ! the MODFLOW time ? 
-          ! Validate initial time against ReferenceTime 
-          ! and set the initial. 
-          !initialTime = allSpecData(1,1)
-          !if ( initialTime.lt.0d0 ) initialTime = 0d0
-          !! Analogous with the highest
-          !finalTime = allSpecData(2,nTimeIntervals)
-          !if ( finalTime.gt.tdisData%TotalTimes(size(tdisData%TotalTimes)) ) then 
-          !  finalTime = tdisData%TotalTimes(size(tdisData%TotalTimes)) 
-          !end if
-
-          ! While reading from AUX vars, uses simulation characteristic times
-          ! The initial MODFLOW time is always ReferenceTime
-          initialTime = this%ReferenceTime  
+          ! Define the times for extracting information from MODFLOW.
+          ! The initial time is always ReferenceTime.
+          initialTime = this%ReferenceTime 
           ! The final MODFLOW time...
-          ! StopTime was updated at MPathRW, so it already 
-          ! contains the logic of StoppingTimeOption
+          ! StopTime was updated at MPathRW, so it already contains the logic of StoppingTimeOption.
           ! In cases that stoptime is infinite, force the MODFLOW limits 
           if ( this%TrackingOptions%BackwardTracking ) then 
-            finalTime = this%ReferenceTime - this%StopTime ! Could it be less than zero ? 
+            finalTime = this%ReferenceTime - this%StopTime
             if ( finalTime .lt. 0d0 ) finalTime = 0d0
           else 
             finalTime = this%ReferenceTime + this%StopTime
-            if ( finalTime.gt.tdisData%TotalTimes(size(tdisData%TotalTimes)) ) then 
-              finalTime = tdisData%TotalTimes(size(tdisData%TotalTimes)) 
+            if ( finalTime.gt.this%tdisData%TotalTimes(size(this%tdisData%TotalTimes)) ) then 
+              finalTime = this%tdisData%TotalTimes(size(this%tdisData%TotalTimes)) 
             end if
           end if 
 
@@ -4138,34 +4119,27 @@ contains
           ! compute the initial and final time step indexes.
           kinitial = this%tdisData%FindContainingTimeStep(initialTime)
           kfinal   = this%tdisData%FindContainingTimeStep(finalTime)
-          if ( (kfinal .eq. 0) ) then
+          if ( (kfinal .eq. 0) ) then ! Could it be one ?
             write(outUnit,'(a)') 'Warning: kfinal is assumed to be CumulativeTimeStepCount'
             write(outUnit,'(a,e15.7)') 'finalTime is ', finalTime
             kfinal = this%tdisData%CumulativeTimeStepCount
           end if
 
-          !sign   = 1d0
-          !kdelta = 1
-          !correctInterval = 1
-          !backTracking = .false.
-          !if ( present( backwardTracking ) ) then
-          !  if ( backwardTracking ) backTracking = .true. 
-          !end if 
-
-          !! Modify values for backward tracking
-          !if ( backTracking ) then 
-          !  sign   = -1d0
-          !  kdelta = -1 
-          !  ! This verification avoids creating an additional unnecessary interval.
-          !  ! Taking the previous example, if initialTime 1.5dt, and finalTime is dt, 
-          !  ! FindContainingTimeStep returns 2 and 1 respectively, hence nTimeIntervals 
-          !  ! is 2 if computed as abs(kfinal-kinitial)+1, when in reality is only 1 interval.
-          !  if ( finalTime.eq.tdisData%TotalTimes(kfinal) ) correctInterval = 0
-          !end if
-
+          kdelta = 1
+          correctInterval = 1
+          ! Modify values for backward tracking
+          if ( this%TrackingOptions%BackwardTracking ) then 
+            !sign   = -1d0
+            kdelta = -1 
+            ! This verification avoids creating an additional unnecessary interval.
+            ! Taking the previous example, if initialTime 1.5dt, and finalTime is dt, 
+            ! FindContainingTimeStep returns 2 and 1 respectively, hence nTimeIntervals 
+            ! is 2 if computed as abs(kfinal-kinitial)+1, when in reality is only 1 interval.
+            if ( finalTime.eq.this%tdisData%TotalTimes(kfinal) ) correctInterval = 0
+          end if
 
           ! The number of intervals
-          nMFTimeIntervals = kfinal - kinitial + 1
+          nMFTimeIntervals = abs(kfinal - kinitial) + correctInterval
           nMFTimes = nMFTimeIntervals + 1 
           ! Something wrong with times 
           if ( nMFTimeIntervals .lt. 1 ) then 
@@ -4180,28 +4154,27 @@ contains
           allocate( mfTimes(nMFTimes) )
 
           ! Fill mfTimes
-          do ktime=1,nMFTimeIntervals
-            if ( ktime .eq. 1 ) mfTimes(1) = initialTime
-            if ( ktime .lt. nMFTimeIntervals ) mftimes(ktime+1)  = this%tdisData%TotalTimes(ktime+kinitial-1)
-            if ( ktime .eq. nMFTimeIntervals ) mftimes(nMFTimes) = finalTime 
-          end do
-
-          !! Fill times and time intervals
-          !if ( backTracking ) then 
-          !  do ktime=1,nTimeIntervals
-          !    if ( ktime .eq. 1 ) times(1) = initialTime
-          !    if ( ktime .lt. nTimeIntervals ) times(ktime+1) = tdisData%TotalTimes(kinitial-ktime)
-          !    if ( ktime .eq. nTimeIntervals ) times(nTimes)  = finalTime 
-          !    timeIntervals(ktime) = abs(times(ktime+1) - times(ktime))
-          !  end do
-          !else
-          !  do ktime=1,nTimeIntervals
-          !    if ( ktime .eq. 1 ) times(1) = initialTime
-          !    if ( ktime .lt. nTimeIntervals ) times(ktime+1) = tdisData%TotalTimes(ktime+kinitial-1)
-          !    if ( ktime .eq. nTimeIntervals ) times(nTimes)  = finalTime 
-          !    timeIntervals(ktime) = times(ktime+1) - times(ktime)
-          !  end do
-          !end if 
+          !do ktime=1,nMFTimeIntervals
+          !  if ( ktime .eq. 1 ) mfTimes(1) = initialTime
+          !  if ( ktime .lt. nMFTimeIntervals ) mftimes(ktime+1)  = this%tdisData%TotalTimes(ktime+kinitial-1)
+          !  if ( ktime .eq. nMFTimeIntervals ) mftimes(nMFTimes) = finalTime 
+          !end do
+          ! Fill times and time intervals
+          if ( this%TrackingOptions%BackwardTracking ) then 
+            do ktime=1,nMFTimeIntervals
+              if ( ktime .eq. 1 ) mftimes(1) = initialTime
+              if ( ktime .lt. nMFTimeIntervals ) mftimes(ktime+1) = this%tdisData%TotalTimes(kinitial-ktime)
+              if ( ktime .eq. nMFTimeIntervals ) mftimes(nMFTimes) = finalTime 
+              !timeIntervals(ktime) = abs(times(ktime+1) - times(ktime))
+            end do
+          else
+            do ktime=1,nMFTimeIntervals
+              if ( ktime .eq. 1 ) mftimes(1) = initialTime
+              if ( ktime .lt. nMFTimeIntervals ) mftimes(ktime+1) = this%tdisData%TotalTimes(ktime+kinitial-1)
+              if ( ktime .eq. nMFTimeIntervals ) mftimes(nMFTimes) = finalTime 
+              !timeIntervals(ktime) = times(ktime+1) - times(ktime)
+            end do
+          end if 
 
           ! Allocate input times, will have at most nTimeIntervals*2 elements
           if ( allocated( inputTimes ) ) deallocate( inputTimes ) 
@@ -4210,22 +4183,43 @@ contains
 
           ! Flatten the input times
           itCounter = 0
-          do nt = 1, nTimeIntervals
-            if (nt.eq.1) then
-              inputTimes(1) = allSpecData(1,nt)
-              inputTimes(2) = allSpecData(2,nt)
-              itCounter = 2
-              cycle
-            end if
-            if ( nt.le.nTimeIntervals ) then
-              if ( allSpecData(1,nt) .gt. allSpecData(2,nt-1) ) then
-               itCounter = itCounter + 1
-               inputTimes(itCounter) = allSpecData(1,nt)
+          if ( this%TrackingOptions%BackwardTracking ) then 
+            ! Decreasing order
+            do nt = nTimeIntervals, 1, -1
+              if (nt.eq.nTimeIntervals) then
+                inputTimes(1) = allSpecData(2,nt)
+                inputTimes(2) = allSpecData(1,nt)
+                itCounter = 2
+                cycle
               end if
-              itCounter = itCounter + 1
-              inputTimes(itCounter) = allSpecData(2,nt)
-            end if
-          end do
+              if ( nt.ge.1 ) then 
+                if ( allSpecData(2,nt) .lt. allSpecData(1,nt+1) ) then
+                 itCounter = itCounter + 1
+                 inputTimes(itCounter) = allSpecData(2,nt)
+                end if
+                itCounter = itCounter + 1
+                inputTimes(itCounter) = allSpecData(1,nt)
+              end if 
+            end do
+          else
+            ! Increasing order
+            do nt = 1, nTimeIntervals
+              if (nt.eq.1) then
+                inputTimes(1) = allSpecData(1,nt)
+                inputTimes(2) = allSpecData(2,nt)
+                itCounter = 2
+                cycle
+              end if
+              if ( nt.le.nTimeIntervals ) then
+                if ( allSpecData(1,nt) .gt. allSpecData(2,nt-1) ) then
+                 itCounter = itCounter + 1
+                 inputTimes(itCounter) = allSpecData(1,nt)
+                end if
+                itCounter = itCounter + 1
+                inputTimes(itCounter) = allSpecData(2,nt)
+              end if
+            end do
+          end if 
 
           ! Allocate mergedTimes, will have at most 
           ! tCounter + nMFTimes elements
@@ -4234,79 +4228,143 @@ contains
           mergedTimes(:) = 0d0
           tCounter = 1
           mftCounter = 1
-          do nt = 1, (itCounter+nMFTimes)
-           if( (tCounter.le.itCounter).and.(mftCounter.le.nMFTimes) ) then 
-             minT = minval((/inputTimes(tCounter),mfTimes(mftCounter)/))
-           else
-             if ( tCounter.gt.itCounter ) minT = mfTimes(mftCounter) 
-             if ( mftCounter.gt.nMFTimes ) minT = inputTimes(tCounter)
-           end if 
-           if ( minT.eq.inputTimes(tCounter)) tCounter = tCounter + 1
-           if ( minT.eq.mfTimes(mftCounter) ) mftCounter = mftCounter + 1
-           mergedTimes(nt) = minT
-           if( (tCounter.gt.itCounter).and.(mftCounter.gt.nMFTimes) ) exit
-          end do 
 
-          ! Of the merged vector, how many are within the valid range 
-          ! THIS APPEARS TO BE TRACKING DIRECTION DEPENDENT
-          tCounter =  count((mergedTimes.ge.initialTime).and.(mergedTimes.le.finalTime))
-          if( allocated( times ) ) deallocate( times )
-          allocate( times(tCounter) )
-          times(:) = 0d0
-          ! Fill the time vector
-          tCounter = 0
-          do nt = 1, (itCounter+nMFTimes)
-            if( mergedTimes(nt) .lt. initialTime ) cycle
-            if( mergedTimes(nt) .gt. finalTime ) exit
-            tCounter = tCounter + 1 
-            times(tCounter) = mergedTimes(nt)
-          end do
-
-          ! Some cleaning
-          deallocate( mergedTimes ) 
-          deallocate( inputTimes  )
-         
-          ! For the vector of times, determine the input data interval.
-          ! Will be used to assign concentrations. 
-          if ( allocated( intervalIndex ) ) deallocate( intervalIndex ) 
-          allocate( intervalIndex( size(times) ) ) 
-          intervalIndex(:) = 0
-          itCounter = 1
-          do nt=2,size(times)
-            doCounter = 0
-            do
-              if( itCounter .gt. nTimeIntervals ) exit
-              if( times(nt).le.allSpecData(1,itCounter) ) then
-                exit
-              end if
-              if(&
-                (times(nt-1).ge.allSpecData(1,itCounter)).and.& 
-                (times(nt).le.allSpecData(2,itCounter)) ) then
-                intervalIndex(nt) = itCounter
-                exit
-              end if
-              if(&
-                (times(nt-1).ge.allSpecData(2,itCounter)).and.& 
-                (times(nt).le.allSpecData(1,itCounter+1)) ) then
-                itCounter = itCounter + 1
-                exit
-              end if
-              doCounter = doCounter + 1
-              if( doCounter .gt. 1e5 ) exit ! just in case
+          if ( this%TrackingOptions%BackwardTracking ) then
+            ! Merge in decreasing order 
+            do nt = 1, (itCounter+nMFTimes)
+             if( (tCounter.le.itCounter).and.(mftCounter.le.nMFTimes) ) then 
+               minT = maxval((/inputTimes(tCounter),mfTimes(mftCounter)/))
+             else
+               if ( tCounter.gt.itCounter ) minT = mfTimes(mftCounter) 
+               if ( mftCounter.gt.nMFTimes ) minT = inputTimes(tCounter)
+             end if 
+             if ( minT.eq.inputTimes(tCounter)) tCounter = tCounter + 1
+             if ( minT.eq.mfTimes(mftCounter) ) mftCounter = mftCounter + 1
+             mergedTimes(nt) = minT
+             if( (tCounter.gt.itCounter).and.(mftCounter.gt.nMFTimes) ) exit
+            end do 
+            ! Of the merged vector, how many are within the valid range 
+            ! The range (1:nt) is to avoid the potential zeros at the end of the array
+            tCounter =  count((mergedTimes(1:nt).ge.finalTime).and.(mergedTimes(1:nt).le.initialTime))
+            ! Filter times and fill the time vector
+            if( allocated( times ) ) deallocate( times )
+            allocate( times(tCounter) )
+            times(:) = 0d0
+            tcount = 0
+            do nt = 1, (itCounter+nMFTimes)
+              if( mergedTimes(nt) .gt. initialTime ) cycle
+              if( mergedTimes(nt) .lt. finalTime ) exit
+              tcount = tcount + 1 
+              if ( tcount .gt. tCounter ) exit
+              times(tcount) = mergedTimes(nt)
             end do
-            if( itCounter .gt. nTimeIntervals ) exit
-            if( doCounter .gt. 1e5 ) exit
-          end do 
-
+            ! For the vector of times, determine the input data interval.
+            ! Will be used to assign concentrations. 
+            if ( allocated( intervalIndex ) ) deallocate( intervalIndex ) 
+            allocate( intervalIndex( size(times) ) ) 
+            intervalIndex(:) = 0
+            itCounter = nTimeIntervals
+            do nt=2,size(times)
+              doCounter = 0
+              do
+                if( itCounter .lt. 1 ) exit
+                if( times(nt).ge.allSpecData(2,itCounter) ) then
+                  exit
+                end if
+                if(&
+                  (times(nt-1).le.allSpecData(2,itCounter)).and.& 
+                  (times(nt).ge.allSpecData(1,itCounter)) ) then
+                  intervalIndex(nt) = itCounter
+                  exit
+                end if
+                if(&
+                  (times(nt-1).le.allSpecData(1,itCounter)).and.& 
+                  (times(nt).ge.allSpecData(2,itCounter-1)) ) then
+                  itCounter = itCounter - 1
+                  exit
+                end if
+                doCounter = doCounter + 1
+                if( doCounter .gt. 1e5 ) exit ! just in case
+              end do
+              if( itCounter .lt. 1 ) exit
+              if( doCounter .gt. 1e5 ) exit
+            end do 
+          else
+            ! Merge in increasing order
+            do nt = 1, (itCounter+nMFTimes)
+             if( (tCounter.le.itCounter).and.(mftCounter.le.nMFTimes) ) then 
+               minT = minval((/inputTimes(tCounter),mfTimes(mftCounter)/))
+             else
+               if ( tCounter.gt.itCounter ) minT = mfTimes(mftCounter) 
+               if ( mftCounter.gt.nMFTimes ) minT = inputTimes(tCounter)
+             end if 
+             if ( minT.eq.inputTimes(tCounter)) tCounter = tCounter + 1
+             if ( minT.eq.mfTimes(mftCounter) ) mftCounter = mftCounter + 1
+             mergedTimes(nt) = minT
+             if( (tCounter.gt.itCounter).and.(mftCounter.gt.nMFTimes) ) exit
+            end do 
+            ! Of the merged vector, how many are within the valid range 
+            ! The range (1:nt) is to avoid the potential zeros at the end of the array
+            tCounter =  count((mergedTimes(1:nt).ge.initialTime).and.(mergedTimes(1:nt).le.finalTime))
+            ! Filter times and fill the time vector
+            if( allocated( times ) ) deallocate( times )
+            allocate( times(tCounter) )
+            times(:) = 0d0
+            tcount = 0
+            do nt = 1, (itCounter+nMFTimes)
+              if( mergedTimes(nt) .lt. initialTime ) cycle
+              if( mergedTimes(nt) .gt. finalTime ) exit
+              tcount = tcount + 1 
+              if ( tcount .gt. tCounter ) exit
+              times(tcount) = mergedTimes(nt)
+            end do
+            ! For the vector of times, determine the input data interval.
+            ! Will be used to assign concentrations. 
+            if ( allocated( intervalIndex ) ) deallocate( intervalIndex ) 
+            allocate( intervalIndex( size(times) ) ) 
+            intervalIndex(:) = 0
+            itCounter = 1
+            do nt=2,size(times)
+              doCounter = 0
+              do
+                if( itCounter .gt. nTimeIntervals ) exit
+                if( times(nt).le.allSpecData(1,itCounter) ) then
+                  exit
+                end if
+                if(&
+                  (times(nt-1).ge.allSpecData(1,itCounter)).and.& 
+                  (times(nt).le.allSpecData(2,itCounter)) ) then
+                  intervalIndex(nt) = itCounter
+                  exit
+                end if
+                if(&
+                  (times(nt-1).ge.allSpecData(2,itCounter)).and.& 
+                  (times(nt).le.allSpecData(1,itCounter+1)) ) then
+                  itCounter = itCounter + 1
+                  exit
+                end if
+                doCounter = doCounter + 1
+                if( doCounter .gt. 1e5 ) exit ! just in case
+              end do
+              if( itCounter .gt. nTimeIntervals ) exit
+              if( doCounter .gt. 1e5 ) exit
+            end do 
+          end if 
           if ( doCounter.gt.1e5 ) then 
           write(outUnit,'(A)') 'Error: something went wrong while analyzing time intervals for assigning concentrations.'
           call ustop('Error: something went wrong while analyzing time intervals for assigning concentrations. Stop.')
           end if 
 
+          ! Some cleaning
+          deallocate( mergedTimes ) 
+          deallocate( inputTimes  )
+
           ! Once the times are known, it can validate the existence of the budget header using the 
           ! range of stress periods within the initial and final times. Validate given aux names.
           isValid = .false.
-          isValid = flowModelData%ValidateBudgetHeader(srcPkgNames(nsb), initialTime, finalTime, this%tdisData)
+          isValid = flowModelData%ValidateBudgetHeader(srcPkgNames(nsb),&
+                         initialTime, finalTime, this%tdisData, outUnit,&
+                      this%TrackingOptions%BackwardTracking, this%isMF6 )
           if ( .not. isValid ) then 
             write(message,'(A,A,A)') 'Given header ', trim(adjustl(srcPkgNames(nsb))),' was not found in budget file. Stop.'
             call ustop(message)
@@ -4318,12 +4376,12 @@ contains
           call flowModelData%LoadFlowTimeseries( srcPkgNames(nsb), &
             initialTime, finalTime, this%tdisData, srcCellNumbers, &
                  flowDataTimeseries, readCellsFromBudget, outUnit, & 
-                             this%TrackingOptions%BackwardTracking )
+                            this%TrackingOptions%BackwardTracking, &
+                                                        this%isMF6 )
 
           ! The allocation of concTimeseries needs to be after loadflowtimeseries
           ! in case nCells is determined after reading cells from the budget.
           nCells = size(srcCellNumbers)
-
           ! Assign concentrations and fill timeIntervals
           nTimeIntervals = size(times)-1
           if ( allocated( concTimeseries ) ) deallocate( concTimeseries ) 
@@ -4348,38 +4406,55 @@ contains
                 end do 
               end if 
             end if
-            timeIntervals(nt) = times(nt+1)-times(nt)
+            timeIntervals(nt) = abs(times(nt+1)-times(nt))
           end do 
 
           ! For the vector of times, determine the corresponding MODFLOW data interval.
           ! Will be used to assign flow-rates. 
           ! Note: mfTimes, by definition, is without blank-jumps in between intervals. 
-          ! Meaning that the end of one interval is the beggining of the next. Similarly,
+          ! Meaning that the end of one interval is the beggining of the next. 
           ! mfTimes is built with the consideration that begins at ReferenceTime and 
-          ! after intersecting with the times provided by the user, times vector
-          ! also is such that begins at ReferenceTime.
-
-          ! Reset intervalIndex 
+          ! after intersecting with the information provided by the user, the times vector
+          ! also begins at ReferenceTime.
           intervalIndex(:) = 0
           itCounter = 1
-          do nt=2,size(times)
-            doCounter = 0
-            do
+          if ( this%TrackingOptions%BackwardTracking ) then 
+            do nt=2,size(times)
+              doCounter = 0
+              do
+                if( itCounter .gt. nMFTimeIntervals ) exit
+                if(&
+                  (times(nt-1).le.mfTimes(itCounter)).and.& 
+                  (times(nt).ge.mfTimes(itCounter+1)) ) then
+                  intervalIndex(nt) = itCounter
+                  if( (times(nt).eq.mfTimes(itCounter+1)) ) itCounter = itCounter + 1
+                  exit
+                end if
+                doCounter = doCounter + 1
+                if( doCounter .gt. 1e5 ) exit ! just in case
+              end do
               if( itCounter .gt. nMFTimeIntervals ) exit
-              if(&
-                (times(nt-1).ge.mfTimes(itCounter)).and.& 
-                (times(nt).le.mfTimes(itCounter+1)) ) then
-                intervalIndex(nt) = itCounter
-                if( (times(nt).eq.mfTimes(itCounter+1)) ) itCounter = itCounter + 1
-                exit
-              end if
-              doCounter = doCounter + 1
-              if( doCounter .gt. 1e5 ) exit ! just in case
-            end do
-            if( itCounter .gt. nMFTimeIntervals ) exit
-            if( doCounter .gt. 1e5 ) exit
-          end do 
-
+              if( doCounter .gt. 1e5 ) exit
+            end do 
+          else
+            do nt=2,size(times)
+              doCounter = 0
+              do
+                if( itCounter .gt. nMFTimeIntervals ) exit
+                if(&
+                  (times(nt-1).ge.mfTimes(itCounter)).and.& 
+                  (times(nt).le.mfTimes(itCounter+1)) ) then
+                  intervalIndex(nt) = itCounter
+                  if( (times(nt).eq.mfTimes(itCounter+1)) ) itCounter = itCounter + 1
+                  exit
+                end if
+                doCounter = doCounter + 1
+                if( doCounter .gt. 1e5 ) exit ! just in case
+              end do
+              if( itCounter .gt. nMFTimeIntervals ) exit
+              if( doCounter .gt. 1e5 ) exit
+            end do 
+          end if
           if ( doCounter.gt.1e5 ) then 
           write(outUnit,'(A)') 'Error: something went wrong while analyzing time intervals for assigning flow-rates.'
           call ustop('Error: something went wrong while analyzing time intervals for assigning flow-rates. Stop.')
@@ -4394,7 +4469,6 @@ contains
               flowTimeseries(nt,:) = flowDataTimeseries(intervalIndex(nt+1),:)
             end if
           end do 
-
           ! Apply default iface if cells were read from budget
           if ( iFaceOption.and.readCellsFromBudget ) then 
             if ( allocated(srcCellIFaces) ) deallocate( srcCellIFaces )
@@ -4402,11 +4476,9 @@ contains
             srcCellIFaces(:) = defaultIFaceNumber
           end if
 
-
           ! From here until the creation of particles the process 
           ! is the same than for the AUX format so it could be considered 
           ! to wrap these ops on a common function 
-
 
           ! Now compute the cummulative mass function to obtain the total injected mass
           if ( allocated( cummMassTimeseries ) ) deallocate( cummMassTimeseries ) 
@@ -4621,7 +4693,6 @@ contains
                   auxSubDivisions(naux,3),  & 
                   0, effectiveMass, -999d0  )
               end if
-
               ! Assign values for particle template
               !   - layer
               !   - group
@@ -4650,10 +4721,8 @@ contains
               lastCummMass = 0d0
               cummEffectiveMass = 0d0
               npNextRelease = 0
-
               ! Loop over cummulative mass series
               do nt = 1, totMassLoc(nc)+1
-
                 ! Advance loop until finding the first non-zero
                 if (&
                   ( cummMassSeries( nt ) .eq. 0d0 ) .and. &
@@ -4667,7 +4736,6 @@ contains
                   lastCummMass = cummMassSeries(nt)
                   if( nt .ne. (totMassLoc(nc)+1) ) cycle 
                 end if
-
                 ! If the current mass is higher than the last found, 
                 ! and the initial index is defined, then everything is ok, continue
                 ! to the next index if it is not the last.
@@ -4681,13 +4749,12 @@ contains
                   ! Define the new starting point and update lastCummMass
                   nti = nt - 1
                   lastCummMass = cummMassSeries(nt)
-                  cycle
+                  if( nt.ne.(totMassLoc(nc)+1) ) cycle
                 end if
 
                 ! If it is equal to the last, and the first 
                 ! index is defined, then we are on a flat zone
                 if ( (cummMassSeries(nt) .eq. lastCummMass) .and. (nti.gt.0) ) then
-
                   ! This is the last index for interpolation 
                   nte = nt-1 
                   ! If it is the last loop, set at the last index in array
@@ -4717,7 +4784,6 @@ contains
                   ! And loop until a maximum of nReleases
                   ! It will break based on cummulative mass
                   do nr=1, nReleases(nc)
-
                     ! Increase the cummulative mass counter
                     cummEffectiveMass = cummEffectiveMass + npThisRelease*effectiveMass
 
@@ -4744,6 +4810,17 @@ contains
                     ! Interpolate the release time        
                     call interp1d%evaluate( cummEffectiveMass, releaseTimes(nr) ) ! THIS ARRAY RELEASE TIMES BYE BYE
 
+                    ! Fix the release time considering backward/forward tracking
+                    if ( this%TrackingOptions%BackwardTracking ) then
+                      ! The interpolated value is the time in the context of the MODFLOW model, 
+                      ! if backward tracking, this time is decreasing with respect to reference time.
+                      releaseTrackingTime = this%ReferenceTime - releaseTimes(nr)
+                    else
+                      ! In forward tracking, the interpolated time is increasing with respect to 
+                      ! reference time 
+                      releaseTrackingTime = releaseTimes(nr) - this%ReferenceTime
+                    end if 
+
                     ! Assign to particles
                     do m = 1, npThisRelease
                      idmax = idmax + 1
@@ -4760,9 +4837,7 @@ contains
                      particleGroups(naux)%Particles(offset+m)%InitialLocalX = particleGroups(naux)%Particles(m)%InitialLocalX
                      particleGroups(naux)%Particles(offset+m)%InitialLocalY = particleGroups(naux)%Particles(m)%InitialLocalY
                      particleGroups(naux)%Particles(offset+m)%InitialLocalZ = particleGroups(naux)%Particles(m)%InitialLocalZ
-                     ! THIS CHANGES IN BACKWARD TRACKING
-                     particleGroups(naux)%Particles(offset+m)%InitialTrackingTime = releaseTimes(nr) - this%ReferenceTime 
-                     !particleGroups(naux)%Particles(offset+m)%InitialTrackingTime = releaseTimes(nr) 
+                     particleGroups(naux)%Particles(offset+m)%InitialTrackingTime = releaseTrackingTime
                      particleGroups(naux)%Particles(offset+m)%TrackingTime = & 
                              particleGroups(naux)%Particles(offset+m)%InitialTrackingTime
                      particleGroups(naux)%Particles(offset+m)%CellNumber = particleGroups(naux)%Particles(m)%CellNumber
@@ -4855,7 +4930,6 @@ contains
 
 
         end do ! nsb=1,nSrcBudgets
-
 
 
       case default
