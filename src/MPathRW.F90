@@ -2067,16 +2067,6 @@ program MPathRW
           cycle ! nobs
         end if
 
-        ! If no aux records, don't even try.
-        ! Flow-rates. 
-        ! This check will make sense only if the 
-        ! observation was recording data at timeseries time steps.
-        ! However, most likley this should be completely removed.
-        !if ( obs%nAuxRecords .lt. 2 ) then 
-        !  write(mplistUnit, '(A)') 'Not enough aux records for this observation, continue to the next'
-        !  cycle ! nobs
-        !end if
-
         ! Allocate data carrier (active particles coordinates, temporary)
         if ( allocated( activeParticleCoordinates ) ) deallocate( activeParticleCoordinates )
         allocate( activeParticleCoordinates(obsRecordCounter(nobs),2) )
@@ -2451,16 +2441,19 @@ program MPathRW
               maxObsTime = maxval( gpkde%coordinatesX, dim=1 ) 
 
               ! The number of points ( for this solute ) 
-              obs%timePointCount = ceiling( maxObsTime/obs%timeStepOut )
+              obs%timePointCount = int( maxObsTime/obs%timeStepOut )
+              if ( obs%timePointCount .lt. 2 ) then 
+                write(mplistUnit,'(a,I2,a)') 'Warning: solute ',solute%id,' with less than two observation times, skip.'
+                call ulog('Warning: solute does not have enough observation times, it will be skipped.', logUnit)
+                cycle ! nSolutes
+              end if 
 
               ! Fill the vector of times
               if ( allocated( obs%series(ns)%timeSeries ) ) deallocate( obs%series(ns)%timeSeries )
               allocate( obs%series(ns)%timeSeries(obs%timePointCount) )
               obs%series(ns)%timeSeries(1) = obs%timeStepOut
               do n=2,obs%timePointCount
-                if ( n.lt.obs%TimePointCount ) obs%series(ns)%timeSeries(n) = obs%series(ns)%timeSeries(n-1)+obs%timeStepOut; cycle;
-                ! the last 
-                obs%series(ns)%timeSeries(n) = maxObsTime
+                obs%series(ns)%timeSeries(n) = obs%series(ns)%timeSeries(n-1)+obs%timeStepOut
               end do  
               
               ! Fill the vector with data
@@ -2473,6 +2466,7 @@ program MPathRW
                ! Assign reconstruction data: QSink, Hist, Gpkde 
                allocate( obs%series(ns)%dataSeries(obs%timePointCount,3) ) 
               end select
+              obs%series(ns)%dataSeries = 0d0
 
               ! Interpolate histogram
               !$omp parallel do              &
@@ -2552,12 +2546,6 @@ program MPathRW
               if ( allocated( obs%series(ns)%timeSeries ) ) deallocate( obs%series(ns)%timeSeries )
               allocate( obs%series(ns)%timeSeries(obs%timePointCount) )
               obs%series(ns)%timeSeries = gpkde%coordinatesX
-              !obs%series(ns)%timeSeries(1) = obs%timeStepOut
-              !do n=2,obs%timePointCount
-              !  if ( n.lt.obs%TimePointCount ) obs%series(ns)%timeSeries(n) = obs%series(ns)%timeSeries(n-1)+obs%timeStepOut; cycle;
-              !  ! the last 
-              !  obs%series(ns)%timeSeries(n) = maxObsTime
-              !end do  
               
               ! Fill the vector with data
               if ( allocated( obs%series(ns)%dataSeries ) ) deallocate( obs%series(ns)%dataSeries )
@@ -2712,16 +2700,35 @@ program MPathRW
           if ( kfirst.eq.klast ) then
             obsAccumSinkFlowInTime(:) = obs%cummSinkFlowSeries(1)
           else
-            ! Pass the times, flow-rates, assumes that 
-            ! the model starts with the flow-rate of the first time step   
             ! Flow rates are known at modflow simulation times.
             ! So these need to be transformed to MODPATH tracking times.
-            call interp1d%initialize( &
-              (/0d0,tdisData%TotalTimes(kfirst:klast) - simulationData%ReferenceTime/), &
-                        (/obs%cummSinkFlowSeries(1),obs%cummSinkFlowSeries/), int1dstat )
+            select case(simulationData%TrackingDirection)
+            case(1)
+              ! Forward tracking
+              call interp1d%initialize( &
+                (/0d0,tdisData%TotalTimes(kfirst:klast) - simulationData%ReferenceTime/), &
+                          (/obs%cummSinkFlowSeries(1),obs%cummSinkFlowSeries/), int1dstat )
+            case(2)
+              ! Backward tracking
+              if ( klast.ne.1 ) then 
+                call interp1d%initialize( &
+                  (/& 
+                    simulationData%ReferenceTime - tdisData%TotalTimes(kfirst:klast:kincr), &
+                               simulationData%ReferenceTime - tdisData%TotalTimes(klast-1)  &
+                  /),&
+                  (/ obs%cummSinkFlowSeries, obs%cummSinkFlowSeries(kcount) /), int1dstat )
+              else
+                call interp1d%initialize( &
+                  (/& 
+                    simulationData%ReferenceTime - tdisData%TotalTimes(kfirst:klast:kincr), &
+                                                              simulationData%ReferenceTime  &
+                  /),&
+                  (/ obs%cummSinkFlowSeries, obs%cummSinkFlowSeries(kcount) /), int1dstat )
+              end if 
+            end select
             if ( int1dstat .gt. 0 ) then 
-              write(mplistUnit,'(A)') 'A problem while initializing flow rates interpolator.'
-              call ustop('A problem while initializing flow rates interpolator. Stop.')
+              write(mplistUnit,'(A)') 'Error: while initializing flow rates interpolator for sink observation.'
+              call ustop('Error: while initializing flow rates interpolator for sink observation. Stop.')
             end if
 
             ! Interpolate
