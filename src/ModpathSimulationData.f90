@@ -4268,15 +4268,25 @@ contains
               doCounter = 0
               do
                 if( itCounter .lt. 1 ) exit
+                ! If the minimum time of the interval in times vector
+                ! is greater than than the higher limit of the data interval, continue...
                 if( times(nt).ge.allSpecData(2,itCounter) ) then
                   exit
                 end if
+                ! If the interval in times vector is contained
+                ! into the data interval, assign the interval index and continue...
                 if(&
                   (times(nt-1).le.allSpecData(2,itCounter)).and.& 
                   (times(nt).ge.allSpecData(1,itCounter)) ) then
                   intervalIndex(nt) = itCounter
                   exit
                 end if
+                ! No more intervals to advance, force break in times loop.
+                if ( (itCounter-1).lt.1 ) then 
+                  itCounter = itCounter - 1 
+                  exit
+                end if
+                ! Advance data interval 
                 if(&
                   (times(nt-1).le.allSpecData(1,itCounter)).and.& 
                   (times(nt).ge.allSpecData(2,itCounter-1)) ) then
@@ -4328,15 +4338,25 @@ contains
               doCounter = 0
               do
                 if( itCounter .gt. nTimeIntervals ) exit
+                ! If the maximum time of the interval in times vector
+                ! is less than the lower limit of the data interval, continue...
                 if( times(nt).le.allSpecData(1,itCounter) ) then
                   exit
                 end if
+                ! If the interval in times vector is contained
+                ! into the data interval, assign the interval index and continue...
                 if(&
                   (times(nt-1).ge.allSpecData(1,itCounter)).and.& 
                   (times(nt).le.allSpecData(2,itCounter)) ) then
                   intervalIndex(nt) = itCounter
                   exit
                 end if
+                ! No more intervals to advance, force break in times loop.
+                if ( (itCounter+1).gt.nTimeIntervals ) then 
+                  itCounter = itCounter + 1 
+                  exit
+                end if 
+                ! Advance data interval
                 if(&
                   (times(nt-1).ge.allSpecData(2,itCounter)).and.& 
                   (times(nt).le.allSpecData(1,itCounter+1)) ) then
