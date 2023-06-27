@@ -1107,6 +1107,16 @@ contains
                 textLabel(firstNonBlank:lastNonBlank) .eq. & 
                 sourcePkgName(firstNonBlankIn:lastNonBlankIn) ) then
                 foundTheSource = .true.
+              end if
+              ! Try with the budget text label
+              if ( .not. foundTheSource ) then 
+                textLabel = header%TextLabel
+                call TrimAll(textLabel, firstNonBlank, lastNonBlank, trimmedLength)
+                if (&
+                  textLabel(firstNonBlank:lastNonBlank) .eq. & 
+                  sourcePkgName(firstNonBlankIn:lastNonBlankIn) ) then
+                  foundTheSource = .true.
+                end if 
               end if 
             ! OTHER MODFLOW
             else
@@ -1314,6 +1324,16 @@ contains
                 sourcePkgName(firstNonBlankIn:lastNonBlankIn) ) then
                 foundTheSource = .true.
               end if 
+              ! Try with the budget text label
+              if ( .not. foundTheSource ) then 
+                textLabel = header%TextLabel
+                call TrimAll(textLabel, firstNonBlank, lastNonBlank, trimmedLength)
+                if (&
+                  textLabel(firstNonBlank:lastNonBlank) .eq. & 
+                  sourcePkgName(firstNonBlankIn:lastNonBlankIn) ) then
+                  foundTheSource = .true.
+                end if 
+              end if 
             ! OTHER MODFLOW
             else
               textLabel = header%TextLabel
@@ -1481,10 +1501,10 @@ contains
       ! Determine record range for stressPeriod and timeStep
       call this%BudgetReader%GetRecordHeaderRange(stressPeriod, timeStep, firstRecord, lastRecord)
       if(firstRecord .eq. 0) then
-        write(message,'(A,I5,A,I5,A)') ' Error loading Time Step ', timeStep, ' Period ', stressPeriod, '.'
+        write(message,'(A,I5,A,I5,A)') 'Error: loading Time Step ', timeStep, ' Period ', stressPeriod, '.'
         message = trim(message)
         write(*,'(A)') message
-        call ustop('Missing budget information. Budget file must have output for every time step. Stop.')
+        call ustop('Error: Missing budget information. Budget file must have output for every time step. Stop.')
       end if
 
       naux = size( auxVarNames )
@@ -1526,9 +1546,40 @@ contains
                   ! Leave 
                   return
                 end if
-              end if 
+              end if
+            else 
+              ! A second chance with the budget text label
+              textLabel = header%TextLabel
+              call TrimAll(textLabel, firstNonBlank, lastNonBlank, trimmedLength)
+              if (&
+                textLabel(firstNonBlank:lastNonBlank) .eq. & 
+                sourcePkgName(firstNonBlankIn:lastNonBlankIn) ) then
+                nval = 0
+                do nx =1, naux 
+                  auxindex = header%FindAuxiliaryNameIndex(auxVarNames(nx)) ! it does a trim
+                  if(auxindex .gt. 0) then
+                    nval = nval + 1
+                  end if
+                end do
+                if ( lookForIFace ) then
+                  ifaceindex = header%FindAuxiliaryNameIndex('IFACE')
+                  ! Is valid
+                  if ( (nval .eq. naux) .and. (ifaceindex.gt.0) ) then 
+                    isValid = .true.
+                    ! Leave 
+                    return
+                  end if
+                else
+                  ! Is valid
+                  if ( nval .eq. naux ) then 
+                    isValid = .true.
+                    ! Leave 
+                    return
+                  end if
+                end if
+              end if
             end if
-          end if
+          end if ! header method 5,6
         end do
       ! Other MODFLOW flavors
       ! Compare against the list of known headers that accept

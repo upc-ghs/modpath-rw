@@ -3232,8 +3232,8 @@ contains
           ! Validate given aux names
           validAuxNames = flowModelData%ValidateAuxVarNames( srcPkgNames( nsb ), auxNames, this%isMF6, iFaceOption )
           if ( .not. validAuxNames ) then 
-            write(outUnit,'(A,A,A)') 'Not all aux variables were found in source ', trim(adjustl(srcPkgNames(nsb))), '.'
-            call ustop('Not all aux variables were found in source or it does not support aux vars. Stop.')
+            write(outUnit,'(A,A,A)') 'Error: Not all aux variables were found in source ', trim(adjustl(srcPkgNames(nsb))), '.'
+            call ustop('Error: Not all aux variables were found in source or it does not support aux vars. Stop.')
           end if 
 
           ! While reading from AUX vars, uses simulation characteristic times
