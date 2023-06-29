@@ -1,9 +1,0 @@
-MPBAS      p09sim.mpbas
-GRBDIS     gwf-p09-mf6.dis.grb
-TDIS       gwf-p09-mf6.tdis
-HEAD       gwf-p09-mf6.hds
-BUDGET     gwf-p09-mf6.bud
-DSP        p09sim.dsp
-RWOPTS     p09sim.rwopts
-OBS        p09sim.obs
-SRC        p09sim.src
