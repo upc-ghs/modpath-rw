@@ -17,7 +17,7 @@ mpathrw ex05a_mf6.mprw
 ```
 
 ### Random walk: case b
-Similar to the previous case, but now considering that two solutes of different inflow concentration (``CONCENTRATION``,``CONCENTRATION2``) and specific dispersion properties are being injected. Simulation illustrates the usage of the multispecies capabilities of the program. The ``SPC`` package links the dispersion parameters and solutes. The species id's are given in the ``SRC`` package for each auxiliary variable. 
+Similar to the previous case, but now considering the injection of two solutes with different inflow concentration (``CONCENTRATION``,``CONCENTRATION2``) and specific dispersion properties. Simulation illustrates the usage of the multispecies capabilities of the program. The ``SPC`` package links the dispersion parameters and solutes. The species id's are given in the ``SRC`` package for each auxiliary variable. 
 
 The sink observation monitors flux concentration at the extraction well. Time vector for each solute is different breakthrough data is concatenated vertically, being the first data column the species id. 
  
