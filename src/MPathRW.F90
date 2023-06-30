@@ -1103,8 +1103,8 @@ program MPathRW
          weights=activeParticleMasses,                                                     &
          scalingFactor=simulationData%TrackingOptions%gpkdeScalingFactor,                  & ! transform to resident
          histogramScalingFactor=simulationData%TrackingOptions%gpkdeScalingFactor,         &
-         isotropic=simulationData%TrackingOptions%gpkdeIsotropicKernels,                   &
-         !isotropic=simulationData%TrackingOptions%gpkdeIsotropicKernelsIC,                 &
+         !isotropic=simulationData%TrackingOptions%gpkdeIsotropicKernels,                  &
+         isotropic=simulationData%TrackingOptions%gpkdeIsotropicKernelsIC,                 &
          skipErrorConvergence=simulationData%TrackingOptions%gpkdeSkipError,               &
          relativeErrorConvergence=simulationData%TrackingOptions%gpkdeRelErrorConvergence  &
         )
