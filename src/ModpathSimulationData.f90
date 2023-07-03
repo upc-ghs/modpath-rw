@@ -1068,8 +1068,27 @@ contains
       select case(n)
       case(1)
         this%TrackingOptions%gpkdeIsotropicKernels = .true.
+        write(outUnit,'(A)') 'Kernels are isotropic.'
       case default 
         this%TrackingOptions%gpkdeIsotropicKernels = .false.
+        write(outUnit,'(A)') 'Kernels are anisotropic.'
+      end select 
+
+      ! Read the kernels format for initial condition
+      ! 0: isotropic kernels for IC
+      ! 1: anisotropic kernels for IC
+      ! 2: kernels for initial condition follow isotropic kernels variable
+      call urword(line, icol, istart, istop, 2, n, r, 0, 0)
+      select case(n)
+      case(1)
+        this%TrackingOptions%gpkdeIsotropicKernelsIC = .false.
+        write(outUnit,'(A)') 'Kernels for initial condition are anisotropic.'
+      case(2)
+        this%TrackingOptions%gpkdeIsotropicKernelsIC = this%TrackingOptions%gpkdeIsotropicKernels 
+        write(outUnit,'(A)') 'Kernels for initial condition follow the isotropic kernels variable.' 
+      case default 
+        this%TrackingOptions%gpkdeIsotropicKernelsIC = .true.
+        write(outUnit,'(A)') 'Kernels for initial condition are isotropic.'
       end select 
 
       ! Interpret KDB params
