@@ -66,7 +66,7 @@ program MPathRW
   type(TimeDiscretizationDataType), allocatable :: tdisData
   type(ParticleTrackingEngineType) :: trackingEngine
   type(FlowModelDataType), allocatable :: flowModelData
-  type(TransportModelDataType), allocatable, target:: transportModelData  ! RWPT
+  type(TransportModelDataType), allocatable, target:: transportModelData
   type(ModpathBasicDataType), allocatable, target :: basicData
   type(ModpathSimulationDataType), allocatable, target :: simulationData
   type(ModpathCellDataType), allocatable, target :: cellData
@@ -76,9 +76,9 @@ program MPathRW
   type(ParticleCoordinateType) :: pCoord
   type(ParticleType),pointer :: p
   type(GeoReferenceType) :: geoRef
-  type(GridProjectedKDEType), allocatable:: gpkde                 ! GPKDE
-  type(ModpathCellDataType) :: cellDataBuffer                     ! RWPT
-  type(SoluteType), pointer :: solute                             ! RWPT
+  type(GridProjectedKDEType), allocatable:: gpkde
+  type(ModpathCellDataType) :: cellDataBuffer
+  type(SoluteType), pointer :: solute
   doubleprecision,dimension(:),allocatable :: tPoint
   logical :: traceModeOn
   integer :: clockCountStart, clockCountStop, clockCountRate, clockCountMax
@@ -86,7 +86,7 @@ program MPathRW
   integer :: groupIndex, particleIndex, pendingCount,  &
     activeCount, tPointCount, pathlineRecordCount
   integer :: stressPeriodCount
-  integer :: n, m, ktime, kfirst, klast, kincr, kcount, period, step, nt, count,&
+  integer :: n, m, ktime, kfirst, klast, kincr, kcount, period, step, nt, count, &
     plCount, tsCount, status, itend, particleID, topActiveCellNumber
   integer :: bufferSize, cellConnectionCount
   integer,dimension(:),allocatable :: buffer
@@ -96,10 +96,10 @@ program MPathRW
   character(len=100) terminationMessage
   character(len=90) compilerVersionText
   logical :: isTimeSeriesPoint, timeseriesRecordWritten
-  doubleprecision, dimension(:,:), allocatable :: activeParticleCoordinates ! GPKDE
+  doubleprecision, dimension(:,:), allocatable :: activeParticleCoordinates
   doubleprecision, dimension(:), allocatable   :: activeParticleMasses
   doubleprecision, dimension(:,:), allocatable :: gpkdeDataCarrier
-  doubleprecision, dimension(:), allocatable :: gpkdeWeightsCarrier
+  doubleprecision, dimension(:), allocatable   :: gpkdeWeightsCarrier
   integer :: itcount, ns, npg, particleCounter
   logical :: isGpkdePoint
   integer :: ngpkde, gpkdetindex
@@ -112,22 +112,14 @@ program MPathRW
   doubleprecision :: waterVolume, rFactor, particleMass, qSink 
   doubleprecision :: initialTime, maxObsTime
   type( ObservationType ), pointer :: obs => null()
-  !doubleprecision, allocatable, dimension(:,:) :: obsSinkFlowInTime      ! (ntimes,ncells)
-  doubleprecision, allocatable, dimension(:)   :: obsAccumSinkFlowInTime ! (ntimes)
-  !doubleprecision, allocatable, dimension(:)   :: qSinkBuffer
+  doubleprecision, allocatable, dimension(:)   :: obsAccumSinkFlowInTime    ! (ntimes)
   doubleprecision, allocatable, dimension(:,:) :: obsWaterVolumeInTime      ! (ntimes,ncells)
   doubleprecision, allocatable, dimension(:)   :: obsAccumWaterVolumeInTime ! (ntimes)
   doubleprecision, allocatable, dimension(:)   :: waterVolBuffer
   integer, allocatable, dimension(:)           :: obsRecordCounter
   character(len=200) :: colFormat
-  ! linear interpolation 
-  type( linear_interp_1d ) :: interp1d
+  type( linear_interp_1d ) :: interp1d ! linear interpolation 
   integer                  :: int1dstat
-  !doubleprecision, dimension(:), pointer :: histogramDensity => null()
-  !integer            :: idColFormat ! To be deprecated
-  !character(len=200) :: qSinkFormat
-  !character(len=200) :: waterVolFormat ! To be deprecated
-  !doubleprecision    :: avgTimeData, stdTimeData, varTimeData
   doubleprecision    :: dX, dY, dZ, dZC, porosity
   doubleprecision    :: modelX, modelY
   integer            :: timePointIndex, timeStep
@@ -170,15 +162,15 @@ program MPathRW
   traceModeUnit   = 115
   binPathlineUnit = 116
   gridMetaUnit    = 117
-  gpkdeUnit       = 118 ! RWPT
-  obsUnit         = 119 ! RWPT
-  dspUnit         = 120 ! RWPT
-  rwoptsUnit      = 121 ! RWPT
-  spcUnit         = 122 ! RWPT
-  icUnit          = 123 ! RWPT
-  srcUnit         = 124 ! RWPT
-  impUnit         = 125 ! RWPT
-  baseTimeseriesUnit = 660 ! OpenMP
+  gpkdeUnit       = 118 
+  obsUnit         = 119 
+  dspUnit         = 120 
+  rwoptsUnit      = 121 
+  spcUnit         = 122 
+  icUnit          = 123 
+  srcUnit         = 124 
+  impUnit         = 125 
+  baseTimeseriesUnit = 660 ! Parallel output timeseries
   !-----------------------------------------------------------------------------
   ! Set version
   version = '1.0.0'
@@ -642,9 +634,9 @@ program MPathRW
   ! Timeseries
   if (.not.simulationData%TrackingOptions%skipTimeseriesWriter) then 
     if((simulationData%SimulationType .eq. 3) .or.  &
-      (simulationData%SimulationType .eq. 4)  .or.  &
-      (simulationData%SimulationType .eq. 5)  .or.  & ! RWPT
-      (simulationData%SimulationType .eq. 6)) then    ! RWPT
+       (simulationData%SimulationType .eq. 4) .or.  &
+       (simulationData%SimulationType .eq. 5) .or.  & 
+       (simulationData%SimulationType .eq. 6)) then   
 
       ! Allocate arrays for parallel output
       ! In serial will be allocated with 
@@ -794,10 +786,6 @@ program MPathRW
           open( unit=obs%outputUnit, &
                 file=obs%outputFileName,& 
                 status='replace', form='formatted', access='sequential')
-          ! Temporary binary for aux data ( flow rates )
-          !open( unit=obs%auxOutputUnit, &
-          !      status='scratch', form='unformatted',&
-          !      access='stream', action='readwrite')
         case(2)
           ! Records as temporary binary and output as text plain
           WriteSinkObs=> WriteSinkObsRecordBinary
@@ -807,17 +795,15 @@ program MPathRW
           open( unit=obs%outputUnit, &
                 file=obs%outputFileName,& 
                 status='replace', form='formatted', access='sequential')
-          ! Temporary binary for aux data ( flow rates )
-          !open( unit=obs%auxOutputUnit, &
-          !      status='scratch', form='unformatted',&
-          !      access='stream', action='readwrite')
         end select
         ! Initialize the array of cummSinkFlowSeries
         if ( allocated( obs%cummSinkFlowSeries ) ) deallocate ( obs%cummSinkFlowSeries )
         ! For steady state runs with stoptime 1E+30 klast can be zero
-        !if ( (klast .eq. 0) ) then
-        ! klast = tdisData%CumulativeTimeStepCount
-        !end if
+        if ( (klast .eq. 0) ) then
+          if ( simulationData%TrackingOptions%BackwardTracking ) klast = 1
+          if ( .not. simulationData%TrackingOptions%BackwardTracking ) & 
+                                klast = tdisData%CumulativeTimeStepCount
+        end if
         ! If they are equal, then only one element.
         allocate( obs%cummSinkFlowSeries(abs(kfirst-klast)+1) )
       end if
@@ -1293,15 +1279,12 @@ program MPathRW
           end if
         end if
     
-        ! RWPT
         ! Verify cell not dry anymore
         if (p%Status .eq. 7 ) then 
           ! Initialize cellBuffer cellNumber
           call trackingEngine%FillCellBuffer( p%CellNumber, cellDataBuffer )
-
           ! Verify dry/partially dried cells
           call cellDataBuffer%VerifyDryCell()
-
           ! If partially dried restore active/track status, otherwise keep Status = 7
           if ( cellDataBuffer%partiallyDry ) p%Status = 1 ! Track particle
         end if 
@@ -1546,8 +1529,7 @@ program MPathRW
 
 
     ! Once it finished transporting all 
-    ! particle groups, reconstruction 
-    ! grouped by solute
+    ! particle groups, reconstruction grouped by solute
     if ( simulationData%TrackingOptions%GPKDEReconstruction .and. isGpkdePoint ) then
 
       ! Define time id and time value according to the timepointoption for gpkde
@@ -1580,11 +1562,11 @@ program MPathRW
         particleCounter = 0
         do npg=1,solute%nParticleGroups
           groupIndex = solute%pGroups(npg)
-          !!$omp parallel do                       & 
-          !!$omp default(none)                     &
-          !!$omp shared(simulationData,groupIndex) &
-          !!$omp private(particleIndex,p)          &
-          !!$omp reduction(+:particleCounter)
+          !$omp parallel do                       & 
+          !$omp default(none)                     &
+          !$omp shared(simulationData,groupIndex) &
+          !$omp private(particleIndex,p)          &
+          !$omp reduction(+:particleCounter)
           do particleIndex = 1, simulationData%ParticleGroups(groupIndex)%TotalParticleCount
             p => simulationData%ParticleGroups(groupIndex)%Particles(particleIndex)
             ! If active, to the array for GPKDE
@@ -1592,7 +1574,7 @@ program MPathRW
               particleCounter = particleCounter + 1
             end if
           end do
-          !!$omp end parallel do
+          !$omp end parallel do
         end do
 
         if ( particleCounter.eq.0 ) then
@@ -1601,7 +1583,6 @@ program MPathRW
           call ulog('Skip GPKDE reconstruction, no particles found', logUnit)
           cycle 
         end if 
-
 
         ! Allocate active particles coordinates
         if ( allocated( activeParticleCoordinates ) ) deallocate( activeParticleCoordinates )
@@ -1628,7 +1609,6 @@ program MPathRW
           end do
         end do
 
-        ! GPKDE
         ! Compute density for the particles linked to a given 
         ! solute. These may have different mass
         call gpkde%ComputeDensity(                                                         &
@@ -1677,7 +1657,7 @@ program MPathRW
             flowModelData%Heads(obs%cells(n)) .lt. modelGrid%Top(obs%cells(n)) ) then 
             dZ  = flowModelData%Heads(obs%cells(n))-modelGrid%Bottom(obs%cells(n))
             if ( dZ.lt.0d0 ) cycle ! dry cell 
-            ! Can TOP be .lt. BOT ?
+            ! can top be .lt. bot ?
             dZC = modelGrid%Top(obs%cells(n))-modelGrid%Bottom(obs%cells(n))
             if ( dZ/dZC.lt.0.01d0 ) cycle ! almost dry cell
           end if
@@ -1687,8 +1667,6 @@ program MPathRW
         porosity = flowModelData%Porosity(obs%cells(n))
         waterVolBuffer(n) = dX*dY*dZ*porosity
       end do
-      !write(waterVolFormat,*) '(1I10,', obs%nCells, 'es18.9e3)'
-      !write(obs%auxOutputUnit,waterVolFormat) nt, waterVolBuffer(:)
       write(obs%auxOutputUnit) nt, waterVolBuffer(:)
       obs%nAuxRecords = obs%nAuxRecords + 1 ! Count aux records
     end do
@@ -1764,7 +1742,6 @@ program MPathRW
   end if
 
 
-  ! RWPT
   ! Process observation cells
   if ( simulationData%TrackingOptions%anyObservation ) then
 
@@ -2157,7 +2134,7 @@ program MPathRW
           call gpkde%Initialize(& 
               domainSize=(/maxObsTime,0d0,0d0/),                      & 
               binSize=(/dtObsSeries,0d0,0d0/),                        &
-              domainOrigin=(/0d0,0d0,0d0/),                           & ! does the origin changes for backward tracking ?
+              domainOrigin=(/0d0,0d0,0d0/),                           &
               nOptimizationLoops=obs%nOptLoops,                       &
               databaseOptimization=.false.,                           &
               initialSmoothingSelection=obs%initialSmoothingFormat,   & 
@@ -2817,9 +2794,6 @@ program MPathRW
   call WriteParticleSummaryInfo(simulationData, mplistUnit)
 
 
-!100 continue    
-
-  ! RWPT
   ! Close observation units if any is open
   if ( simulationData%TrackingOptions%anyObservation ) then
     do n = 1, simulationData%TrackingOptions%nObservations
@@ -2842,12 +2816,10 @@ program MPathRW
   if(allocated(headReader)) deallocate(headReader)
   if(allocated(budgetReader)) deallocate(budgetReader)
   if(allocated(tdisData)) deallocate(tdisData)
-  !if(allocated(trackingEngine)) deallocate(trackingEngine)
   if(allocated(flowModelData)) deallocate(flowModelData)
   if(allocated(transportModelData)) deallocate(transportModelData)
   if(allocated(basicData)) deallocate(basicData)
   if(allocated(simulationData)) deallocate(simulationData)
-  ! GPKDE
   if(allocated(gpkde)) deallocate(gpkde)
   call ulog('Memory deallocation complete.', logUnit)
   
