@@ -1138,10 +1138,11 @@ program MPathRW
     ! Compare maxtime with reconstruction times array
     if ( simulationData%TrackingOptions%GPKDEReconstruction ) then 
       ! If gpkde follows timeseries !
-      if ( (simulationData%TrackingOptions%gpkdeTimePointOption.eq.0) .and. &
-           isTimeSeriesPoint ) then
-        ngpkde = ngpkde + 1
-        isGpkdePoint = .true.
+      if ( simulationData%TrackingOptions%gpkdeTimePointOption.eq.0 ) then
+        if ( isTimeSeriesPoint ) then
+          ngpkde = ngpkde + 1
+          isGpkdePoint = .true.
+        end if
       else
         ! needs to select the minimum between the 
         ! timeseries and the reconstruction timepoints
