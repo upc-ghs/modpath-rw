@@ -1146,15 +1146,12 @@ program MPathRW
       else
         ! needs to select the minimum between the 
         ! timeseries and the reconstruction timepoints
+        maxTimeGpkde = 0d0
+        isGpkdePoint = .false.
         if (ngpkde+1 .le. simulationData%TrackingOptions%gpkdeTimePointCount) then
           if (simulationData%TrackingOptions%gpkdeTimePoints(ngpkde+1) .le. tsMax) then
             maxTimeGpkde = simulationData%TrackingOptions%gpkdeTimePoints(ngpkde+1)
           end if
-        else
-          ! If it concluded the reconstruction times array, 
-          ! set it as zero and continue with the processing of timeseries
-          maxTimeGpkde = 0d0
-          isGpkdePoint = .false.
         end if
 
         ! If not finished with reconstruction times
@@ -1168,11 +1165,10 @@ program MPathRW
               isGpkdePoint = .true.
             end if
           else 
-            ! If the required time for gpkde was the minimum, then update
-            ! maxtime and disable timeseries
+            ! If the time for gpkde was the minimum, then update
+            ! maxtime and disable timeseries point
             tPoint(1) = -1d0 ! to avoid detection of timeIndex in tracking engine
             isTimeSeriesPoint = .false.
-            nt = nt - 1 
             ! redefine maxTime
             ngpkde = ngpkde + 1
             isGpkdePoint = .true.
@@ -1185,6 +1181,7 @@ program MPathRW
       end if 
     end if ! if reconstruction
   end if ! if timeseries
+
 
   ! Track particles
   pendingCount = 0
