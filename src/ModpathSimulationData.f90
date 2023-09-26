@@ -3041,7 +3041,8 @@ contains
     integer :: firstnonzero, nti, nte  
     character(len=20) :: tempChar1
     character(len=20) :: tempChar2
-    integer :: m, idmax, seqNumber, cellCounter, offset, cellNumber
+    integer :: m, idmax, seqNumber, cellCounter, cellNumber
+    integer :: offset, cellPOffset
     integer :: nValidPGroup = 0
     integer :: newParticleGroupCount, pgCount
     integer :: iFaceNumber, defaultIFaceNumber
@@ -3441,6 +3442,7 @@ contains
             ! Variables for defining the particles of this group
             idmax = 0
             offset = 0
+            cellPOffset = 0
             seqNumber = this%currentSeqNumber
             cellCounter = 0
             currentParticleCount = 0 
@@ -3466,6 +3468,9 @@ contains
               ! Drape = 0: particle placed in the cell. If dry, status to unreleased
               ! Drape = 1: particle placed in the uppermost active cell
               ! -999: is a placeholder for release time, it will assigned later
+
+              ! update the particle offset for this cell
+              cellPOffset = currentParticleCount
 
               ! Interpret srcCellIFaces
               ! This check requires allocated srcCellIFaces, it could be improved. 
@@ -3500,11 +3505,10 @@ contains
                   auxSubDivisions(naux,3),  & 
                   0, effectiveMass, -999d0  )
               end if
-
               ! Assign values for particle template
               !   - layer
               !   - group
-              do m = 1, currentParticleCount 
+              do m = cellPOffset+1, currentParticleCount
                 particleGroups(naux)%Particles(m)%Group = particleGroups(naux)%Group
                 particleGroups(naux)%Particles(m)%InitialLayer =                       &
                   grid%GetLayer(particleGroups(naux)%Particles(m)%InitialCellNumber)
@@ -3634,30 +3638,36 @@ contains
                     end if 
 
                     ! Assign to particles
-                    do m = 1, npThisRelease
+                    do m = 1, npThisRelease ! (npThisRelease is at most the number of particles in the template)
                      idmax = idmax + 1
                      seqNumber = seqNumber + 1
                      particleGroups(naux)%Particles(offset+m)%Id = idmax
                      particleGroups(naux)%Particles(offset+m)%SequenceNumber = seqNumber
                      particleGroups(naux)%Particles(offset+m)%Group = particleGroups(naux)%Group
-                     particleGroups(naux)%Particles(offset+m)%Drape = particleGroups(naux)%Particles(m)%Drape
-                     particleGroups(naux)%Particles(offset+m)%Status = particleGroups(naux)%Particles(m)%Status
+                     particleGroups(naux)%Particles(offset+m)%Drape = particleGroups(naux)%Particles(cellPOffset+m)%Drape
+                     particleGroups(naux)%Particles(offset+m)%Status = particleGroups(naux)%Particles(cellPOffset+m)%Status
                      particleGroups(naux)%Particles(offset+m)%InitialCellNumber = & 
-                             particleGroups(naux)%Particles(m)%InitialCellNumber
-                     particleGroups(naux)%Particles(offset+m)%InitialLayer = particleGroups(naux)%Particles(m)%InitialLayer
-                     particleGroups(naux)%Particles(offset+m)%InitialFace = particleGroups(naux)%Particles(m)%InitialFace
-                     particleGroups(naux)%Particles(offset+m)%InitialLocalX = particleGroups(naux)%Particles(m)%InitialLocalX
-                     particleGroups(naux)%Particles(offset+m)%InitialLocalY = particleGroups(naux)%Particles(m)%InitialLocalY
-                     particleGroups(naux)%Particles(offset+m)%InitialLocalZ = particleGroups(naux)%Particles(m)%InitialLocalZ
+                             particleGroups(naux)%Particles(cellPOffset+m)%InitialCellNumber
+                     particleGroups(naux)%Particles(offset+m)%InitialLayer = &
+                             particleGroups(naux)%Particles(cellPOffset+m)%InitialLayer
+                     particleGroups(naux)%Particles(offset+m)%InitialFace = & 
+                             particleGroups(naux)%Particles(cellPOffset+m)%InitialFace
+                     particleGroups(naux)%Particles(offset+m)%InitialLocalX = &
+                             particleGroups(naux)%Particles(cellPOffset+m)%InitialLocalX
+                     particleGroups(naux)%Particles(offset+m)%InitialLocalY = & 
+                             particleGroups(naux)%Particles(cellPOffset+m)%InitialLocalY
+                     particleGroups(naux)%Particles(offset+m)%InitialLocalZ = & 
+                             particleGroups(naux)%Particles(cellPOffset+m)%InitialLocalZ
                      particleGroups(naux)%Particles(offset+m)%InitialTrackingTime = releaseTrackingTime
                      particleGroups(naux)%Particles(offset+m)%TrackingTime = & 
                              particleGroups(naux)%Particles(offset+m)%InitialTrackingTime
-                     particleGroups(naux)%Particles(offset+m)%CellNumber = particleGroups(naux)%Particles(m)%CellNumber
-                     particleGroups(naux)%Particles(offset+m)%Layer = particleGroups(naux)%Particles(m)%Layer
-                     particleGroups(naux)%Particles(offset+m)%Face = particleGroups(naux)%Particles(m)%Face
-                     particleGroups(naux)%Particles(offset+m)%LocalX = particleGroups(naux)%Particles(m)%LocalX
-                     particleGroups(naux)%Particles(offset+m)%LocalY = particleGroups(naux)%Particles(m)%LocalY
-                     particleGroups(naux)%Particles(offset+m)%LocalZ = particleGroups(naux)%Particles(m)%LocalZ
+                     particleGroups(naux)%Particles(offset+m)%CellNumber = & 
+                             particleGroups(naux)%Particles(cellPOffset+m)%CellNumber
+                     particleGroups(naux)%Particles(offset+m)%Layer = particleGroups(naux)%Particles(cellPOffset+m)%Layer
+                     particleGroups(naux)%Particles(offset+m)%Face = particleGroups(naux)%Particles(cellPOffset+m)%Face
+                     particleGroups(naux)%Particles(offset+m)%LocalX = particleGroups(naux)%Particles(cellPOffset+m)%LocalX
+                     particleGroups(naux)%Particles(offset+m)%LocalY = particleGroups(naux)%Particles(cellPOffset+m)%LocalY
+                     particleGroups(naux)%Particles(offset+m)%LocalZ = particleGroups(naux)%Particles(cellPOffset+m)%LocalZ
                      ! Mass ( potentially different effectiveMass for different cells )
                      particleGroups(naux)%Particles(offset+m)%Mass   = effectiveMass
                     end do
@@ -3709,7 +3719,7 @@ contains
 
 
           end do ! naux = 1, nAuxNames
-       
+
           ! It needs to add the newly created groups to simulationData%ParticleGroups
 
           ! Extend simulationdata to include these particle groups
@@ -4673,6 +4683,7 @@ contains
             ! Variables for defining the particles of this group
             idmax = 0
             offset = 0
+            cellPOffset = 0
             seqNumber = this%currentSeqNumber 
             cellCounter = 0
             currentParticleCount = 0 
@@ -4698,6 +4709,9 @@ contains
               ! Drape = 0: particle placed in the cell. If dry, status to unreleased
               ! Drape = 1: particle placed in the uppermost active cell
               ! -999: is a placeholder for release time, it will assigned later
+
+              ! update the particle offset for this cell
+              cellPOffset = currentParticleCount
 
               ! Interpret srcCellIFaces
               ! This check requires allocated srcCellIFaces, it could be improved. 
@@ -4735,7 +4749,7 @@ contains
               ! Assign values for particle template
               !   - layer
               !   - group
-              do m = 1, currentParticleCount 
+              do m = cellPOffset+1, currentParticleCount
                 particleGroups(naux)%Particles(m)%Group = particleGroups(naux)%Group
                 particleGroups(naux)%Particles(m)%InitialLayer =                       &
                   grid%GetLayer(particleGroups(naux)%Particles(m)%InitialCellNumber)
@@ -4861,30 +4875,36 @@ contains
                     end if 
 
                     ! Assign to particles
-                    do m = 1, npThisRelease
+                    do m = 1, npThisRelease ! (npThisRelease is at most the number of particles in the template)
                      idmax = idmax + 1
                      seqNumber = seqNumber + 1
                      particleGroups(naux)%Particles(offset+m)%Id = idmax
                      particleGroups(naux)%Particles(offset+m)%SequenceNumber = seqNumber
                      particleGroups(naux)%Particles(offset+m)%Group = particleGroups(naux)%Group
-                     particleGroups(naux)%Particles(offset+m)%Drape = particleGroups(naux)%Particles(m)%Drape
-                     particleGroups(naux)%Particles(offset+m)%Status = particleGroups(naux)%Particles(m)%Status
+                     particleGroups(naux)%Particles(offset+m)%Drape = particleGroups(naux)%Particles(cellPOffset+m)%Drape
+                     particleGroups(naux)%Particles(offset+m)%Status = particleGroups(naux)%Particles(cellPOffset+m)%Status
                      particleGroups(naux)%Particles(offset+m)%InitialCellNumber = & 
-                             particleGroups(naux)%Particles(m)%InitialCellNumber
-                     particleGroups(naux)%Particles(offset+m)%InitialLayer = particleGroups(naux)%Particles(m)%InitialLayer
-                     particleGroups(naux)%Particles(offset+m)%InitialFace = particleGroups(naux)%Particles(m)%InitialFace
-                     particleGroups(naux)%Particles(offset+m)%InitialLocalX = particleGroups(naux)%Particles(m)%InitialLocalX
-                     particleGroups(naux)%Particles(offset+m)%InitialLocalY = particleGroups(naux)%Particles(m)%InitialLocalY
-                     particleGroups(naux)%Particles(offset+m)%InitialLocalZ = particleGroups(naux)%Particles(m)%InitialLocalZ
+                             particleGroups(naux)%Particles(cellPOffset+m)%InitialCellNumber
+                     particleGroups(naux)%Particles(offset+m)%InitialLayer = & 
+                             particleGroups(naux)%Particles(cellPOffset+m)%InitialLayer
+                     particleGroups(naux)%Particles(offset+m)%InitialFace = &
+                             particleGroups(naux)%Particles(cellPOffset+m)%InitialFace
+                     particleGroups(naux)%Particles(offset+m)%InitialLocalX = & 
+                             particleGroups(naux)%Particles(cellPOffset+m)%InitialLocalX
+                     particleGroups(naux)%Particles(offset+m)%InitialLocalY = &
+                             particleGroups(naux)%Particles(cellPOffset+m)%InitialLocalY
+                     particleGroups(naux)%Particles(offset+m)%InitialLocalZ = &
+                             particleGroups(naux)%Particles(cellPOffset+m)%InitialLocalZ
                      particleGroups(naux)%Particles(offset+m)%InitialTrackingTime = releaseTrackingTime
                      particleGroups(naux)%Particles(offset+m)%TrackingTime = & 
                              particleGroups(naux)%Particles(offset+m)%InitialTrackingTime
-                     particleGroups(naux)%Particles(offset+m)%CellNumber = particleGroups(naux)%Particles(m)%CellNumber
-                     particleGroups(naux)%Particles(offset+m)%Layer = particleGroups(naux)%Particles(m)%Layer
-                     particleGroups(naux)%Particles(offset+m)%Face = particleGroups(naux)%Particles(m)%Face
-                     particleGroups(naux)%Particles(offset+m)%LocalX = particleGroups(naux)%Particles(m)%LocalX
-                     particleGroups(naux)%Particles(offset+m)%LocalY = particleGroups(naux)%Particles(m)%LocalY
-                     particleGroups(naux)%Particles(offset+m)%LocalZ = particleGroups(naux)%Particles(m)%LocalZ
+                     particleGroups(naux)%Particles(offset+m)%CellNumber = &
+                             particleGroups(naux)%Particles(cellPOffset+m)%CellNumber
+                     particleGroups(naux)%Particles(offset+m)%Layer = particleGroups(naux)%Particles(cellPOffset+m)%Layer
+                     particleGroups(naux)%Particles(offset+m)%Face = particleGroups(naux)%Particles(cellPOffset+m)%Face
+                     particleGroups(naux)%Particles(offset+m)%LocalX = particleGroups(naux)%Particles(cellPOffset+m)%LocalX
+                     particleGroups(naux)%Particles(offset+m)%LocalY = particleGroups(naux)%Particles(cellPOffset+m)%LocalY
+                     particleGroups(naux)%Particles(offset+m)%LocalZ = particleGroups(naux)%Particles(cellPOffset+m)%LocalZ
                      ! Mass ( potentially different effectiveMass for different cells )
                      particleGroups(naux)%Particles(offset+m)%Mass   = effectiveMass
                     end do
