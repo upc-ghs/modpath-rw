@@ -3190,7 +3190,8 @@ contains
           call urword(line,icol,istart,istop,2,n,r,0,0)
           nAuxNames = n 
           if ( nAuxNames .lt. 1 ) then
-            write(outUnit,'(A,A,A)') 'Number of aux variables source ', trim(adjustl(srcPkgNames(nsb))) ,' should be at least 1.'
+            write(outUnit,'(A,A,A)')& 
+              'Number of aux variables source ', trim(adjustl(srcPkgNames(nsb))) ,' should be at least 1.'
             call ustop('Number of aux variables is .lt. 1. It should be at least 1. Stop.')
           end if 
           if ( allocated( auxNames ) ) deallocate( auxNames ) 
@@ -3250,9 +3251,11 @@ contains
           ! for this source budget
 
           ! Validate given aux names
-          validAuxNames = flowModelData%ValidateAuxVarNames( srcPkgNames( nsb ), auxNames, this%isMF6, iFaceOption )
+          validAuxNames = flowModelData%ValidateAuxVarNames( srcPkgNames( nsb ), &
+                                               auxNames, this%isMF6, iFaceOption )
           if ( .not. validAuxNames ) then 
-            write(outUnit,'(A,A,A)') 'Error: Not all aux variables were found in source ', trim(adjustl(srcPkgNames(nsb))), '.'
+            write(outUnit,'(A,A,A)')& 
+              'Error: Not all aux variables were found in source ', trim(adjustl(srcPkgNames(nsb))), '.'
             call ustop('Error: Not all aux variables were found in source or it does not support aux vars. Stop.')
           end if 
 
@@ -4120,7 +4123,8 @@ contains
             end if  
           end do
           if( .not. isValid ) then 
-          write(outUnit,'(A)') 'Error: invalid time intervals. Verify that do not overlap and that start is .le. end.'
+          write(outUnit,'(A)')& 
+            'Error: invalid time intervals. Verify that do not overlap and that start is .le. end.'
           call ustop('Error: invalid time intervals. Verify that do not overlap and that start is .le. end. Stop.')
           end if 
 
@@ -4400,7 +4404,8 @@ contains
             end do 
           end if 
           if ( doCounter.gt.1e5 ) then 
-          write(outUnit,'(A)') 'Error: something went wrong while analyzing time intervals for assigning concentrations.'
+          write(outUnit,'(A)')& 
+            'Error: something went wrong while analyzing time intervals for assigning concentrations.'
           call ustop('Error: something went wrong while analyzing time intervals for assigning concentrations. Stop.')
           end if 
 
@@ -4415,7 +4420,8 @@ contains
                          initialTime, finalTime, this%tdisData, outUnit,&
                       this%TrackingOptions%BackwardTracking, this%isMF6 )
           if ( .not. isValid ) then 
-            write(message,'(A,A,A)') 'Given header ', trim(adjustl(srcPkgNames(nsb))),' was not found in budget file. Stop.'
+            write(message,'(A,A,A)') & 
+            'Given header ', trim(adjustl(srcPkgNames(nsb))),' was not found in budget file. Stop.'
             call ustop(message)
           end if
 

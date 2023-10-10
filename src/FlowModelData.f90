@@ -1016,8 +1016,10 @@ contains
       else
         if ( (kfinal .eq. 0) ) then
          if ( present(outUnit) ) then       
-          write(outUnit,'(a)') 'FlowModelData: LoadFlowAndAuxTimeseries: kfinal is assumed to be CumulativeTimeStepCount'
-          write(outUnit,'(a,e15.7)') 'FlowModelData: LoadFlowAndAuxTimeseries: final time is ', finalTime
+          write(outUnit,'(a)')& 
+           'FlowModelData: LoadFlowAndAuxTimeseries: kfinal is assumed to be CumulativeTimeStepCount'
+          write(outUnit,'(a,e15.7)')& 
+           'FlowModelData: LoadFlowAndAuxTimeseries: final time is ', finalTime
          end if
          kfinal = tdisData%CumulativeTimeStepCount
         end if
@@ -1037,7 +1039,8 @@ contains
       nTimes = nTimeIntervals + 1 
       ! Something wrong with times 
       if ( nTimeIntervals .lt. 1 ) then 
-        write(message,'(A)') 'Error: the number of times is .lt. 1. Check definition of reference and stoptimes. Stop.'
+        write(message,'(A)')& 
+          'Error: the number of times is .lt. 1. Check definition of reference and stoptimes. Stop.'
         message = trim(message)
         call ustop(message)
       end if  
@@ -1716,28 +1719,34 @@ contains
     integer :: firstRecord,lastRecord
     integer :: firstNonBlank,lastNonBlank,trimmedLength
     integer :: firstNonBlankIn,lastNonBlankIn,trimmedLengthIn
+    integer :: firstNonBlankLoc,lastNonBlankLoc,trimmedLengthLoc
     type(BudgetRecordHeaderType) :: header
     character(len=16)  :: textLabel
+    character(len=16)  :: textNameLabel
     character(len=132) :: message
     integer :: kfinal, kinitial
     integer :: spInit, spEnd, tsInit, tsEnd
     integer :: nsp
     integer :: nStressPeriods, nTimeIntervals, nTimes
-    logical         :: backTracking   = .false.
-    logical         :: isMF6Budget    = .false.
-    integer         :: correctInterval
-    character(len=16)  :: anamebud(5)
+    logical :: backTracking   = .false.
+    logical :: isMF6Budget    = .false.
+    integer :: correctInterval
+    integer :: nb
+    integer :: nbmax = 6
+    character(len=16)  :: anamebud(6)
     DATA anamebud(1) /'           WELLS'/ ! WEL
     DATA anamebud(2) /'    DRAINS (DRT)'/ ! DRT
     DATA anamebud(3) /'          DRAINS'/ ! DRN
     DATA anamebud(4) /'   RIVER LEAKAGE'/ ! RIV
     DATA anamebud(5) /' HEAD DEP BOUNDS'/ ! GHB
-    character(len=16)  :: anameid(5)
+    DATA anamebud(6) /'        RECHARGE'/ ! RCH
+    character(len=16)  :: anameid(6)
     DATA anameid(1)  /'             WEL'/ ! WEL
     DATA anameid(2)  /'             DRT'/ ! DRT
     DATA anameid(3)  /'             DRN'/ ! DRN
     DATA anameid(4)  /'             RIV'/ ! RIV
     DATA anameid(5)  /'             GHB'/ ! GHB
+    DATA anameid(6)  /'             RCH'/ ! RCH
     !------------------------------------------------------------------------
 
 
@@ -1756,7 +1765,8 @@ contains
         ! If times given verify header existence for a range of stress periods
 
         if (.not. present( tdisData ) ) then 
-        write(message,'(A)') 'FlowModelData:ValidateBudgetHeader: when any time is given, it also requires tdisData. Stop.'
+        write(message,'(A)')& 
+          'FlowModelData: ValidateBudgetHeader: when any time is given, it also requires tdisData. Stop.'
         message = trim(message)
         call ustop(message)
         end if
@@ -1791,7 +1801,8 @@ contains
           else
             if ( (kfinal .eq. 0) ) then
              if ( present(outUnit) ) then       
-              write(outUnit,'(a)') 'FlowModelData: ValidateBudgetHeader: kfinal is assumed to be CumulativeTimeStepCount.'
+              write(outUnit,'(a)') &
+                'FlowModelData: ValidateBudgetHeader: kfinal is assumed to be CumulativeTimeStepCount.'
               write(outUnit,'(a,e15.7)') 'FlowModelData: ValidateBudgetHeader: final time is ', finalTime
              end if
              kfinal = tdisData%CumulativeTimeStepCount
@@ -1819,7 +1830,8 @@ contains
         nTimes = nTimeIntervals + 1 
         ! Something wrong with times 
         if ( nTimeIntervals .lt. 1 ) then 
-         write(message,'(A)') 'Error: the number of times is .lt. 1. Check definition of reference and stoptimes. Stop.'
+         write(message,'(A)')& 
+           'Error: the number of times is .lt. 1. Check definition of reference and stoptimes. Stop.'
          message = trim(message)
          call ustop(message)
         end if  
@@ -1836,14 +1848,12 @@ contains
       end if 
 
 
-      ! Loop over range of stress periods. 
-      ! It needs to find it only once, so return 
-      ! as soon as found. 
+      ! Loop over the range of stress periods. 
+      ! It needs to find it only once, so return as soon as found. 
       do nsp=1, nStressPeriods
 
         ! Determine record range for stressPeriod and timeStep
         call this%BudgetReader%GetRecordHeaderRange(nsp, timeStep, firstRecord, lastRecord)
-        ! Determine record range for stressPeriod and timeStep
         if(firstRecord .eq. 0) then
           write(message,'(A,I5,A,I5,A)') ' Error loading Time Step ', timeStep, ' Period ', stressPeriod, '.'
           message = trim(message)
@@ -1875,6 +1885,23 @@ contains
               isValid = .true.
               return
             end if
+          end if 
+
+          ! A second chance for other MODFLOW, trying from anamebud
+          if ( ( .not. isMF6Budget ) .and. ( .not. isValid ) ) then 
+            ! Verify if the given source name (short) is in the list 
+            ! of known budgets names (longnames)
+            do nb=1,nbmax
+              textNameLabel = anameid(nb) 
+              call TrimAll(textNameLabel, firstNonBlankLoc, lastNonBlankLoc, trimmedLengthLoc)
+              if (&
+                textNameLabel(firstNonBlankLoc:lastNonBlankLoc) .eq. & 
+                sourcePkgName(firstNonBlankIn:lastNonBlankIn) ) then
+                ! Found it
+                isValid = .true.
+                return
+              end if   
+            end do
           end if 
 
         end do ! n = firstRecord, lastRecord
@@ -1925,10 +1952,12 @@ contains
     integer :: firstRecord,lastRecord
     integer :: firstNonBlank,lastNonBlank,trimmedLength
     integer :: firstNonBlankIn,lastNonBlankIn,trimmedLengthIn
+    integer :: firstNonBlankLoc,lastNonBlankLoc,trimmedLengthLoc
     integer :: spaceAssigned, status, cellCount, cellindex
     integer :: listItemBufferSize, cellNumber
     type(BudgetRecordHeaderType) :: header
     character(len=16)  :: textLabel
+    character(len=16)  :: textNameLabel
     character(len=132) :: message
     integer :: nCells, newcounter
     integer :: kinitial, kfinal, ktime, kcounter, kdelta
@@ -1937,11 +1966,27 @@ contains
     integer, allocatable, dimension(:) :: tempCellNumbers
     integer, allocatable, dimension(:) :: spCellNumbers
     logical :: readCells
+    logical :: backTracking   = .false.
+    integer :: correctInterval
+    logical :: foundTheSource = .false.
+    logical :: isMF6Budget    = .false.
     doubleprecision :: sign
-    logical         :: backTracking = .false.
-    integer         :: correctInterval
-    logical         :: foundTheSource = .false.
-    logical         :: isMF6Budget    = .false.
+    integer :: nb
+    integer :: nbmax = 6
+    character(len=16)  :: anamebud(6)
+    DATA anamebud(1) /'           WELLS'/ ! WEL
+    DATA anamebud(2) /'    DRAINS (DRT)'/ ! DRT
+    DATA anamebud(3) /'          DRAINS'/ ! DRN
+    DATA anamebud(4) /'   RIVER LEAKAGE'/ ! RIV
+    DATA anamebud(5) /' HEAD DEP BOUNDS'/ ! GHB
+    DATA anamebud(6) /'        RECHARGE'/ ! RCH
+    character(len=16)  :: anameid(6)
+    DATA anameid(1)  /'             WEL'/ ! WEL
+    DATA anameid(2)  /'             DRT'/ ! DRT
+    DATA anameid(3)  /'             DRN'/ ! DRN
+    DATA anameid(4)  /'             RIV'/ ! RIV
+    DATA anameid(5)  /'             GHB'/ ! GHB
+    DATA anameid(6)  /'             RCH'/ ! RCH
     !------------------------------------------------------------------------
 
       ! Trim input pkg name
@@ -2064,6 +2109,28 @@ contains
                 foundTheSource = .true.
               end if
             end if 
+
+            ! A second chance for other MODFLOW, trying from anamebud
+            if ( ( .not. isMF6Budget ) .and. ( .not. foundTheSource ) ) then 
+              ! Verify if the given source name (short) is in the list 
+              ! of known budgets names (longnames)
+              do nb=1,nbmax
+                textNameLabel = anameid(nb) 
+                call TrimAll(textNameLabel, firstNonBlankLoc, lastNonBlankLoc, trimmedLengthLoc)
+                if (&
+                  textNameLabel(firstNonBlankLoc:lastNonBlankLoc) .eq. & 
+                  sourcePkgName(firstNonBlankIn:lastNonBlankIn) ) then
+                  ! Found it
+                  foundTheSource = .true.
+                  ! Assign textLabel to the found longname
+                  textLabel = anamebud(nb) 
+                  ! Calculate the extent in text, using the longname
+                  call TrimAll(textLabel, firstNonBlank, lastNonBlank, trimmedLength)
+                  exit
+                end if   
+              end do
+            end if
+
 
             if ( foundTheSource ) then 
               ! Read accordingly
@@ -2413,6 +2480,28 @@ contains
               foundTheSource = .true.
             end if
           end if 
+
+          ! A second chance for other MODFLOW, trying from anamebud
+          if ( ( .not. isMF6Budget ) .and. ( .not. foundTheSource ) ) then 
+            ! Verify if the given source name (short) is in the list 
+            ! of known budgets names (longnames)
+            do nb=1,nbmax
+              textNameLabel = anameid(nb) 
+              call TrimAll(textNameLabel, firstNonBlankLoc, lastNonBlankLoc, trimmedLengthLoc)
+              if (&
+                textNameLabel(firstNonBlankLoc:lastNonBlankLoc) .eq. & 
+                sourcePkgName(firstNonBlankIn:lastNonBlankIn) ) then
+                ! Found it
+                foundTheSource = .true.
+                ! Assign textLabel to the found longname
+                textLabel = anamebud(nb) 
+                ! Calculate the extent in text, using the longname
+                call TrimAll(textLabel, firstNonBlank, lastNonBlank, trimmedLength)
+                exit
+              end if   
+            end do
+          end if
+
 
           if ( foundTheSource ) then 
             ! Read accordingly
