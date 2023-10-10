@@ -967,11 +967,16 @@ contains
         lookForIface = .false.
         ifaceindex   = 0
         lookForIFace = iFaceOption
-      end if 
+      end if
+
+      ! Initialize cellNumbers by deallocating if allocated
+      if ( allocated( cellNumbers ) ) deallocate( cellNumbers )
+
       ! Initialize iFaceCells by deallocating if allocated 
       if ( present( iFaceCells ) ) then 
         if ( allocated( iFaceCells ) ) deallocate( iFaceCells ) 
       end if  
+
       ! Trim input pkg name
       call TrimAll(sourcePkgName, firstNonBlankIn, lastNonBlankIn, trimmedLengthIn)
       listItemBufferSize = size(this%ListItemBuffer)
