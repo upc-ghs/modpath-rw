@@ -1255,6 +1255,12 @@ program MPathRW
             p%Status = 8
           else if(p%InitialTrackingTime .le. maxTime) then
             p%Status = 1
+            ! RWPT:
+            ! About NR models:
+            !   for a flow-model solved with Newton-Raphson (NR) formulation, 
+            !   the drape option has no effect, while considering the original
+            !   implementation of GetTopMostActiveCell, which verifies the next 
+            !   cell of release based on IBoundTS. In NR, all cells always have IBoundTS.eq.1.
             if(p%Drape .eq. 0) then
               ! Drape option is not in effect.
               if(trackingEngine%FlowModelData%IBoundTS(p%CellNumber) .eq. 0) then
@@ -1277,7 +1283,12 @@ program MPathRW
           end if
         end if
     
-        ! Verify cell not dry anymore
+        ! Verify cell not dry anymore.
+        ! About NR models: 
+        !   notice that the status will never be 
+        !   marked as 7, because cells are always active (IBoundTS.eq.1).
+        !   So a particle initially placed on a cell with head<bot, will
+        !   not enter this section. 
         if (p%Status .eq. 7 ) then 
           ! Initialize cellBuffer cellNumber
           call trackingEngine%FillCellBuffer( p%CellNumber, cellDataBuffer )

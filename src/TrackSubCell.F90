@@ -866,13 +866,10 @@ contains
 
     if ( this%SubCellData%dry ) then
       ! If cell is completely dry, then particle is not displaced
-      ! Q:
-      ! If particle is set to InactiveCell, 
+      ! Q: If particle is set to InactiveCell, 
       ! can be displaced in a later cycle if cell is rewetted ?
-      ! A: 
-      ! in MPath7.f90 there is a verification. If cell 
-      ! is partially dry, particle status is set to active for 
-      ! retracking
+      ! A: in MPathRW.f90 there is a verification. If cell 
+      ! is partially dry, particle status is set to active for tracking
       trackingResult%Status = trackingResult%Status_InactiveCell()
       trackingResult%FinalLocation%CellNumber = cellNumber
       trackingResult%FinalLocation%LocalX = x
@@ -882,7 +879,7 @@ contains
       return
     end if 
 
-    ! In case somehing needs to be done 
+    ! In case something needs to be done 
     ! for partially dry cells
     if ( this%SubCellData%partiallyDry ) then
       continue

@@ -3187,13 +3187,13 @@ contains
 
 
   function pr_GetDZRW(this) result(dz)
+  !-----------------------------------------------
+  ! Return dz as domain size when dry
+  !-----------------------------------------------
   implicit none
   class(ModpathCellDataType) :: this
   doubleprecision :: dz, dzc
   !-----------------------------------------------
-  ! Return dz as domain size when dry
-  !-----------------------------------------------
-
 
   dz  = this%Top - this%Bottom
   dzc = this%Top - this%Bottom
@@ -3221,7 +3221,8 @@ contains
       end if 
     end if 
   end if
-  
+ 
+
   end function pr_GetDZRW
 
 
