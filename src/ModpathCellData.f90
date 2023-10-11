@@ -3030,26 +3030,26 @@ contains
   logical, intent(in) :: skipSubCells
   !---------------------------------------------------------
 
-      if ( .not. skipSubCells ) then
-          dx = this%DX / dble(this%SubCellColumnCount)
-          dy = this%DY / dble(this%SubCellRowCount)
-      else
-          dx = this%DX
-          dy = this%DY
-      end if
-      ! areas are used for flow purposes so 
-      ! this function is not a problem in RWPT.
-      ! Verify that it does not defines cell properties...
+    if ( .not. skipSubCells ) then
+      dx = this%DX / dble(this%SubCellColumnCount)
+      dy = this%DY / dble(this%SubCellRowCount)
+    else
+      dx = this%DX
+      dy = this%DY
+    end if
+    ! areas are used for flow purposes so 
+    ! this function is not a problem in RWPT.
+    ! Verify that it does not defines cell properties...
 
-      ! If dry cell, this value is really small 1e-4
-      !dz = this%GetDZ() 
-      dz = this%GetDZRW() 
+    ! If dry cell, this value is really small 1e-4
+    !dz = this%GetDZ() 
+    dz = this%GetDZRW() 
 
-      areas(1) = dy*dz ! These areas are intended for balances in corners 
-      areas(2) = dx*dz
-      areas(3) = dx*dy
-        
-      return
+    areas(1) = dy*dz ! These areas are intended for balances in corners 
+    areas(2) = dx*dz
+    areas(3) = dx*dy
+      
+    return
 
 
   end subroutine pr_FillSubCellFaceAreas 
@@ -3068,18 +3068,18 @@ contains
   !---------------------------------------------------------
  
     
-      if ( .not. skipSubCells ) then
-          ! Get face flows as usual   
-          call this%FillSubCellFaceFlowsBuffer( subRow, subColumn, faceFlows )
-      else
-          ! Skip subcell indexation and bring cell face flows
-          faceFlows(1) = this%GetAveragedFaceFlow(1)
-          faceFlows(2) = this%GetAveragedFaceFlow(2)
-          faceFlows(3) = this%GetAveragedFaceFlow(3)
-          faceFlows(4) = this%GetAveragedFaceFlow(4)
-          faceFlows(5) = this%GetAveragedFaceFlow(5)
-          faceFlows(6) = this%GetAveragedFaceFlow(6)
-      end if
+    if ( .not. skipSubCells ) then
+      ! Get face flows as usual   
+      call this%FillSubCellFaceFlowsBuffer( subRow, subColumn, faceFlows )
+    else
+      ! Skip subcell indexation and bring cell face flows
+      faceFlows(1) = this%GetAveragedFaceFlow(1)
+      faceFlows(2) = this%GetAveragedFaceFlow(2)
+      faceFlows(3) = this%GetAveragedFaceFlow(3)
+      faceFlows(4) = this%GetAveragedFaceFlow(4)
+      faceFlows(5) = this%GetAveragedFaceFlow(5)
+      faceFlows(6) = this%GetAveragedFaceFlow(6)
+    end if
 
   
   end subroutine pr_FillSubCellFaceFlows
@@ -3100,19 +3100,19 @@ contains
   doubleprecision :: dx, dy, dz
   !---------------------------------------------------------
 
-      if ( .not. skipSubCells ) then
-          dx = this%DX / dble(this%SubCellColumnCount)
-          dy = this%DY / dble(this%SubCellRowCount)
-      else
-          dx = this%DX
-          dy = this%DY
-      end if
-      !dz = this%GetDZ()
-      dz = this%GetDZRW()
+    if ( .not. skipSubCells ) then
+      dx = this%DX / dble(this%SubCellColumnCount)
+      dy = this%DY / dble(this%SubCellRowCount)
+    else
+      dx = this%DX
+      dy = this%DY
+    end if
+    !dz = this%GetDZ()
+    dz = this%GetDZRW()
 
-      volume = dx*dy*dz
-        
-      return
+    volume = dx*dy*dz
+      
+    return
 
   end function pr_GetVolume 
 
@@ -3135,7 +3135,7 @@ contains
     dy = this%DY
     dz = this%GetDZRW() ! brings the saturation
     
-    ! If dry no water 
+    ! If dry no water
     if ( this%dry ) return
 
     waterVolume = this%Porosity*dx*dy*dz
@@ -3152,6 +3152,7 @@ contains
   implicit none
   class(ModpathCellDataType) :: this
   doubleprecision :: dz
+  doubleprecision, dimension(6) :: flows
   !---------------------------------------------------------
   
   dz = this%Top - this%Bottom
@@ -3160,27 +3161,32 @@ contains
 
   ! If the layer is convertible, set dz = Head - Bottom if Head < Top
   if(this%LayerType .eq. 1) then
-      ! ORIGINAL
-      !if(this%Head .lt. this%Top) dz = this%Head - this%Bottom
-      !! If dz < 0, set dz to an arbitrary, small positive value
-      !if(dz .lt. 0.0d0) dz = 1.0d-4
-      ! END ORIGINAL
+    if(this%Head .lt. this%Top) then 
+      ! if dz < 0, means that the cell is completely dry
+      ! if dz > 0, but Head < Top, cell is partially dry
+      ! this second case can be used for displacing particles by RWPT in 
+      ! that are within the region that is partially saturated.
+      dz = this%Head - this%Bottom
+      this%dry = .false.
+      this%partiallyDry = .true.
+      ! If dz < 0, set dz to an arbitrary, small positive value (MODPATH default)
+      if(dz .le. 0.0d0) then 
+        dz = 1.0d-4
+        this%dry = .true.
+        this%partiallyDry = .false.
 
-      if(this%Head .lt. this%Top) then 
-          ! DEV RWPT: if dz < 0, means that the cell is completely dry
-          ! DEV RWPT: if dz > 0, but Head < Top, cell is partially dry
-          ! this second case can be used for displacing particles by RWPT in 
-          ! that are within the region that is partially saturated.
-          dz = this%Head - this%Bottom
+        ! The alternative to handle MF6 models with Newton-Raphson 
+        ! If a cell has head<bot, but there are flows in it, 
+        ! mark only as partiallyDry in order to allow the 
+        ! the displacement of particles following the 
+        ! cell flows.
+        call this%AssignAveragedFaceFlowArray( flows )
+        if ( any(flows.ne.0d0) ) then 
           this%dry = .false.
           this%partiallyDry = .true.
-          ! If dz < 0, set dz to an arbitrary, small positive value (MODPATH default)
-          if(dz .lt. 0.0d0) then 
-              dz = 1.0d-4
-              this%dry = .true.
-              this%partiallyDry = .false.
-          end if 
+        end if 
       end if 
+    end if 
   end if
  
   end subroutine pr_VerifyDryCell
@@ -3193,6 +3199,7 @@ contains
   implicit none
   class(ModpathCellDataType) :: this
   doubleprecision :: dz, dzc
+  doubleprecision, dimension(6) :: flows
   !-----------------------------------------------
 
   dz  = this%Top - this%Bottom
@@ -3211,15 +3218,25 @@ contains
       this%dry = .false.
       this%partiallyDry = .true.
       ! If dz < 0, set dz to an arbitrary, small positive value (MODPATH default)
-      ! RWPT: tighthen the leash
       if ( &
-        ( dz .lt. 0d0 ) .or. &
+        ( dz .le. 0d0 ) .or. &
         ( (this%Head - this%Bottom)/dzc .lt. 0.01d0) ) then 
         dz = this%Top - this%Bottom ! to avoid blow up dzrw/dz
         this%dry = .true.
         this%partiallyDry = .false.
+
+        ! The alternative to handle MF6 models with Newton-Raphson 
+        ! If a cell has head<bot, but there are flows in it, 
+        ! mark only as partiallyDry in order to allow the 
+        ! the displacement of particles following the 
+        ! cell flows.
+        call this%AssignAveragedFaceFlowArray( flows )
+        if ( any(flows.ne.0d0) ) then 
+          this%dry = .false.
+          this%partiallyDry = .true.
+        end if 
       end if 
-    end if 
+    end if
   end if
  
 
