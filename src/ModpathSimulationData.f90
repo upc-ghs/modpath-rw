@@ -2067,6 +2067,7 @@ contains
     integer :: totalParticleCount, seqNumber, idmax, particleCount
     integer :: iNPX,iNPY,iNPZ,NPCELL
     integer :: validCellCounter, cellCounter, cellNumber
+    integer :: drape
     integer, allocatable, dimension(:,:) :: subDivisions
     integer, allocatable, dimension(:)   :: validCellNumbers
     doubleprecision, allocatable, dimension(:) :: activeCellTotalMass
@@ -2146,16 +2147,14 @@ contains
         case(0,1)
           initialConditionFormat = n
         case default
-          write(outUnit,*) 'Invalid initial condition format. Stop.'
-          call ustop('Invalid initial condition format. Stop.')
+          write(outUnit,*) 'Error: invalid initial condition format. Stop.'
+          call ustop('Error: invalid initial condition format. Stop.')
       end select
       
       ! Read the particles location format
       ! 0: structured, equispaced
       ! 1: quasi-random
       ! 2: random
-      !read(icUnit, '(a)') line
-      !icol = 1
       call urword(line,icol,istart,istop,2,n,r,0,0)
       select case(n)
         ! uniform/structured
@@ -2171,14 +2170,19 @@ contains
           CreateMassParticlesArray => CreateMassParticlesAsRandomInternalArray
           particleArrayFormat = n
         case default
-          write(outUnit,'(A)') 'Given format for creating mass particles internal array is not valid. Stop.' 
-          call ustop('Given format for creating mass particles internal array is not valid. Stop.' )
+          write(outUnit,'(A)') 'Error: given format for creating mass particles internal array is not valid. Stop.' 
+          call ustop('Error: given format for creating mass particles internal array is not valid. Stop.' )
       end select
 
+      ! Read drape
+      call urword(line,icol,istart,istop,2,n,r,0,0)
+      drape = 0
+      if (n.eq.1) then 
+        drape = 1
+      end if 
 
       ! Initialize sequence number to the current value
       seqNumber = this%currentSeqNumber
-    
 
       ! And process initial condition 
       select case ( initialConditionFormat )
@@ -2197,8 +2201,8 @@ contains
         icol = 1
         call urword(line,icol,istart,istop,3,n,r,0,0)
         if ( r.lt.0d0 ) then 
-          write(outUnit,'(A)') 'Given particle mass is negative. Should be positive. Stop.'
-          call ustop('Given particle mass is negative. Should be positive. Stop.')
+          write(outUnit,'(A)') 'Error: given particle mass is negative. Should be positive. Stop.'
+          call ustop('Error: given particle mass is negative. Should be positive. Stop.')
         end if
         particleMass = r 
 
@@ -2208,8 +2212,8 @@ contains
           icol = 1
           call urword(line,icol,istart,istop,2,n,r,0,0)
           if ( n.lt.1 ) then 
-            write(outUnit,'(A)')'Given SpeciesID is less than 1. Minimum is 1. Stop.'
-            call ustop('Given SpeciesID is less than 1. Minimum is 1. Stop.')
+            write(outUnit,'(A)')'Error: given SpeciesID is less than 1. Minimum is 1. Stop.'
+            call ustop('Error: given SpeciesID is less than 1. Minimum is 1. Stop.')
           end if
           soluteId = n
         end if
@@ -2222,9 +2226,9 @@ contains
           call u3ddblmpusg(icUnit, outUnit, grid%CellCount, grid%LayerCount,  &
             densityDistribution, aname(1), cellsPerLayer)
         else
-          write(outUnit,*) 'Invalid grid type specified when reading IC array ', & 
+          write(outUnit,*) 'Error: invalid grid type specified when reading IC array ', & 
               particleGroups(nic)%Name, ' name. Stop.'
-          call ustop('Invalid grid type specified when reading IC array') 
+          call ustop('Error: invalid grid type specified when reading IC array. Stop.') 
         end if
 
         ! Validity of initial condition
@@ -2455,15 +2459,12 @@ contains
 
             cellNumber = validCellNumbers(cellCounter)
 
-            ! 0: is for drape. TEMPORARY
-            ! Drape = 0: particle placed in the cell. If dry, status to unreleased
-            ! Drape = 1: particle placed in the uppermost active cell
             call CreateMassParticlesArray(& 
               particleGroups(nic), cellNumber, m, &
               subDivisions(cellCounter,1),&
               subDivisions(cellCounter,2),&
               subDivisions(cellCounter,3),& 
-              0, effParticleMass, particleGroups(nic)%GetReleaseTime(1) )
+              drape, effParticleMass, particleGroups(nic)%GetReleaseTime(1) )
           end do
 
         else
@@ -2502,15 +2503,12 @@ contains
             !  particleMass = -1*effParticleMass
             !end if
 
-            ! 0: is for drape. TEMPORARY
-            ! Drape = 0: particle placed in the cell. If dry, status to unreleased
-            ! Drape = 1: particle placed in the uppermost active cell
             call CreateMassParticlesArray(& 
               particleGroups(nic), nc, m, &
               subDivisions(cellCounter,1),&
               subDivisions(cellCounter,2),&
               subDivisions(cellCounter,3),& 
-              0, effParticleMass, particleGroups(nic)%GetReleaseTime(1) )
+              drape, effParticleMass, particleGroups(nic)%GetReleaseTime(1) )
           end do
 
         end if 
@@ -2549,8 +2547,8 @@ contains
         icol = 1
         call urword(line,icol,istart,istop,3,n,r,0,0)
         if ( r.lt.0d0 ) then 
-          write(outUnit,'(A)') 'Given particle mass is negative. Should be positive. Stop.'
-          call ustop('Given particle mass is negative. Should be positive. Stop.')
+          write(outUnit,'(A)') 'Error: given particle mass is negative. Should be positive. Stop.'
+          call ustop('Error: given particle mass is negative. Should be positive. Stop.')
         end if
         particleMass = r 
 
@@ -2560,8 +2558,8 @@ contains
           icol = 1
           call urword(line,icol,istart,istop,2,n,r,0,0)
           if ( n.lt.1 ) then 
-            write(outUnit,'(A)')'Given SpeciesID is less than 1. Minimum is 1. Stop.'
-            call ustop('Given SpeciesID is less than 1. Minimum is 1. Stop.')
+            write(outUnit,'(A)')'Error: given SpeciesID is less than 1. Minimum is 1. Stop.'
+            call ustop('Error: given SpeciesID is less than 1. Minimum is 1. Stop.')
           end if
           soluteId = n
         end if
@@ -2574,9 +2572,9 @@ contains
           call u3ddblmpusg(icUnit, outUnit, grid%CellCount, grid%LayerCount,  &
             densityDistribution, aname(1), cellsPerLayer)
         else
-          write(outUnit,*) 'Invalid grid type specified when reading IC array ', & 
+          write(outUnit,*) 'Error: invalid grid type specified when reading IC array ', & 
               particleGroups(nic)%Name, ' name. Stop.'
-          call ustop('Invalid grid type specified when reading IC array') 
+          call ustop('Error: invalid grid type specified when reading IC array. Stop.') 
         end if
 
         ! Validity of initial condition
@@ -2817,15 +2815,12 @@ contains
               (nParticlesCell*( effParticleMass - avgParticleMass )**2d0)/dble(totalParticleCount)
             cellNumber = validCellNumbers(cellCounter)
 
-            ! 0: is for drape. TEMPORARY
-            ! Drape = 0: particle placed in the cell. If dry, status to unreleased
-            ! Drape = 1: particle placed in the uppermost active cell
             call CreateMassParticlesArray(& 
               particleGroups(nic), cellNumber, m, &
               subDivisions(cellCounter,1),&
               subDivisions(cellCounter,2),&
               subDivisions(cellCounter,3),& 
-              0, effParticleMass, particleGroups(nic)%GetReleaseTime(1) )
+              drape, effParticleMass, particleGroups(nic)%GetReleaseTime(1) )
           end do
 
         else
@@ -2857,15 +2852,12 @@ contains
             varParticleMass = varParticleMass + &
               (nParticlesCell*( effParticleMass - avgParticleMass )**2d0)/dble(totalParticleCount)
 
-            ! 0: is for drape. TEMPORARY
-            ! Drape = 0: particle placed in the cell. If dry, status to unreleased
-            ! Drape = 1: particle placed in the uppermost active cell
             call CreateMassParticlesArray(& 
               particleGroups(nic), nc, m, &
               subDivisions(cellCounter,1),&
               subDivisions(cellCounter,2),&
               subDivisions(cellCounter,3),& 
-              0, effParticleMass, particleGroups(nic)%GetReleaseTime(1) )
+              drape, effParticleMass, particleGroups(nic)%GetReleaseTime(1) )
           end do
 
         end if 
@@ -2895,8 +2887,8 @@ contains
         ! Done with this IC kind
 
       case default
-        write(outUnit,*) 'Invalid initial condition kind ', initialConditionFormat, '. Stop.' 
-        call ustop('Invalid initial condition kind')
+        write(outUnit,*) 'Error: invalid initial condition kind ', initialConditionFormat, '. Stop.' 
+        call ustop('Error: invalid initial condition kind. Stop.')
       end select
 
       ! Report about total mass and number of particles
