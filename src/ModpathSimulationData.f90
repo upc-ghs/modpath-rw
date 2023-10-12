@@ -3047,6 +3047,7 @@ contains
     integer :: newParticleGroupCount, pgCount
     integer :: iFaceNumber, defaultIFaceNumber
     logical :: iFaceOption
+    integer :: drape
     integer :: cellReadFormat
     integer :: layer, row, column
     integer :: nSpecies, ns
@@ -3173,16 +3174,28 @@ contains
           ! Read iFaceOption
           call urword(line,icol,istart,istop,2,n,r,0,0)
           srcIFaceOpt(nsb) = n 
+        
+          ! Read Drape
+          call urword(line,icol,istart,istop,2,n,r,0,0)
+          drape = 0
+          if (n.eq.1) then 
+            drape = 1
+          end if 
 
           ! Report
           write(outUnit,'(A,A)') 'Source budget name: ', trim(adjustl(srcPkgNames(nsb)))
 
-          ! Activate/deactivate iFaceOption for this source
+          ! Report activate/deactivate iFaceOption for this source
           iFaceOption = .false.
           if ( srcIFaceOpt(nsb) .gt. 0 ) then 
             iFaceOption = .true.
             write(outUnit,'(A,A)') 'Will interpret IFACE from the budget file.'
           end if  
+
+          ! Report drape
+          if ( drape.eq.1 ) then
+            write(outUnit,'(A,A)') 'Drape option is active.'
+          end if 
 
           ! Number of aux variables and allocate
           read(srcUnit, '(a)') line
@@ -3467,9 +3480,6 @@ contains
               effectiveMass = totMass(nc)/(nReleases(nc)*auxNPCell(naux,nc))
 
               ! Create particle template for this cell
-              ! 0: is for drape. (TEMP)
-              ! Drape = 0: particle placed in the cell. If dry, status to unreleased
-              ! Drape = 1: particle placed in the uppermost active cell
               ! -999: is a placeholder for release time, it will assigned later
 
               ! update the particle offset for this cell
@@ -3496,7 +3506,7 @@ contains
                   srcCellNumbers(nc),      &
                   currentParticleCount,    &
                   auxFaceDivisions,        &
-                  0, effectiveMass, -999d0 )
+                  drape, effectiveMass, -999d0 )
               else
                 ! Normal internal array of particles
                 call CreateMassParticlesAsInternalArray(& 
@@ -3506,7 +3516,7 @@ contains
                   auxSubDivisions(naux,1),  &
                   auxSubDivisions(naux,2),  &
                   auxSubDivisions(naux,3),  & 
-                  0, effectiveMass, -999d0  )
+                  drape, effectiveMass, -999d0  )
               end if
               ! Assign values for particle template
               !   - layer
@@ -3798,6 +3808,13 @@ contains
           call urword(line,icol,istart,istop,2,n,r,0,0)
           defaultIFaceNumber = n 
 
+          ! Read Drape
+          call urword(line,icol,istart,istop,2,n,r,0,0)
+          drape = 0
+          if (n.eq.1) then 
+            drape = 1
+          end if 
+
           ! Activate/deactivate iFaceOption for this source
           iFaceOption = .false.
           if ( srcIFaceOpt(nsb) .gt. 0 ) then 
@@ -3993,9 +4010,14 @@ contains
             if ( allocated( cellsHolder ) ) deallocate( cellsHolder ) 
           ! Invalid
           case default
-            write(outUnit,'(A,I6)') 'Cells reading format not available. Given ', cellReadFormat
-            call ustop('Cells reading format not available. Stop.')
+            write(outUnit,'(A,I6)') 'Error: cells reading format not available. Given ', cellReadFormat
+            call ustop('Error: in SRC with SPECIFIED format, given an invalid cells reading protocol. Stop.')
           end select
+
+          ! Report drape
+          if ( drape.eq.1 ) then
+            write(outUnit,'(A,A)') 'Drape option is active.'
+          end if 
 
           ! Read the number of concentrations/species
           read(srcUnit, '(a)') line
@@ -4003,12 +4025,12 @@ contains
           call urword(line,icol,istart,istop,2,n,r,0,0)
           nSpecies = n 
           if ( nSpecies .lt. 1 ) then 
-            write(outUnit,'(A)') 'Number of species/concentration columns should be at least 1.'
-            call ustop('Number of species/concentration columns should be at least 1. Stop.')
+            write(outUnit,'(A)') 'Error: number of species/concentration columns should be at least 1.'
+            call ustop('Error: number of species/concentration columns should be at least 1. Stop.')
           end if 
           if ( nSpecies .gt. 50 ) then 
-            write(outUnit,'(A)') 'Number of concentration columns is large. An arbitrary limit of 50 is established.'
-            call ustop('Number of concentration columns is large. An arbitrary limit of 50 is established. Stop.')
+            write(outUnit,'(A)') 'Error: number of concentration columns is large. An arbitrary limit of 50 is established.'
+            call ustop('Error: number of concentration columns is large. An arbitrary limit of 50 is established. Stop.')
           end if 
 
           ! Read the option to determine how to read 
@@ -4062,8 +4084,8 @@ contains
             read(srcUnit,*) (soluteIds(ns),ns=1,nSpecies)
             do ns=1,nSpecies
              if ( soluteIds(ns) .lt. 1 ) then 
-              write(outUnit,'(A)') 'SpeciesID for source is invalid. It was not given or is less than 1. Stop.'
-              call ustop('SpeciesID for source is invalid. It was not given or is less than 1. Stop.')
+              write(outUnit,'(A)') 'Error: SpeciesID for source is invalid. It was not given or is less than 1. Stop.'
+              call ustop('Error: SpeciesID for source is invalid. It was not given or is less than 1. Stop.')
              end if 
             end do
           end if
@@ -4074,12 +4096,12 @@ contains
           call urword(line,icol,istart,istop,2,n,r,0,0)
           nTimeIntervals = n 
           if ( nTimeIntervals .lt. 1 ) then 
-            write(outUnit,'(A)') 'Number of time intervals should be at least 1.'
-            call ustop('Number of time intervals should be at least 1. Stop.')
+            write(outUnit,'(A)') 'Error: number of time intervals should be at least 1.'
+            call ustop('Error: number of time intervals should be at least 1. Stop.')
           end if 
           if ( nTimeIntervals .gt. 1000000 ) then 
-            write(outUnit,'(A)') 'Number of time intervals is large. An arbitrary limit of 1e6 is established.'
-            call ustop('Number of time intervals is large. An arbitrary limit of 1e6 is established. Stop.')
+            write(outUnit,'(A)') 'Error: number of time intervals is large. An arbitrary limit of 1e6 is established.'
+            call ustop('Error: number of time intervals is large. An arbitrary limit of 1e6 is established. Stop.')
           end if 
 
           ! Allocate allSpecData
@@ -4421,7 +4443,7 @@ contains
                       this%TrackingOptions%BackwardTracking, this%isMF6 )
           if ( .not. isValid ) then 
             write(message,'(A,A,A)') & 
-            'Given header ', trim(adjustl(srcPkgNames(nsb))),' was not found in budget file. Stop.'
+            'Error: given header ', trim(adjustl(srcPkgNames(nsb))),' was not found in budget file. Stop.'
             call ustop(message)
           end if
 
@@ -4740,7 +4762,7 @@ contains
                   srcCellNumbers(nc),      &
                   currentParticleCount,    &
                   auxFaceDivisions,        &
-                  0, effectiveMass, -999d0 )
+                  drape, effectiveMass, -999d0 )
               else
                 ! Normal internal array of particles
                 call CreateMassParticlesAsInternalArray(& 
@@ -4750,7 +4772,7 @@ contains
                   auxSubDivisions(naux,1),  &
                   auxSubDivisions(naux,2),  &
                   auxSubDivisions(naux,3),  & 
-                  0, effectiveMass, -999d0  )
+                  drape, effectiveMass, -999d0  )
               end if
               ! Assign values for particle template
               !   - layer
@@ -4821,15 +4843,15 @@ contains
 
                   ! Can it occur ?
                   if ( nte .eq. nti ) then 
-                    write(outUnit,'(A)') 'Range of time indexes for 1d interpolation is inconsistent.'
-                    call ustop('Range of time indexes for 1d interpolation is inconsistent. Stop.')
+                    write(outUnit,'(A)') 'Error: range of time indexes for 1d interpolation is inconsistent.'
+                    call ustop('Error: range of time indexes for 1d interpolation is inconsistent. Stop.')
                   end if
 
                   ! Initialize interpolator
                   call interp1d%initialize(cummMassSeries(nti:nte),times(nti:nte), int1dstat)
                   if ( int1dstat .gt. 0 ) then 
-                    write(outUnit,'(A)') 'There was a problem while initializing 1d interpolator.'
-                    call ustop('There was a problem while initializing 1d interpolator. Stop.')
+                    write(outUnit,'(A)') 'Error: there was a problem while initializing 1d interpolator.'
+                    call ustop('Error: there was a problem while initializing 1d interpolator. Stop.')
                   end if
 
                   ! Initialize release variables
@@ -4999,7 +5021,7 @@ contains
 
       case default
         ! Not implemented
-        write(message,'(A,A,A)') 'The SRC specification kind ',trim(adjustl(srcSpecKind)),' has not been implemented. Stop.'
+        write(message,'(A,A,A)') 'Error: the SRC specification kind ',trim(adjustl(srcSpecKind)),' is not implemented. Stop.'
         message = trim(message)
         write(outUnit,'(A)') message
         call ustop(message)
