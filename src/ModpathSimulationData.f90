@@ -1434,7 +1434,6 @@ contains
             select case(n)
             case (0,1)
               obs%histogramOptions = n
-              write(outUnit,'(a)') 'Will interpret histogram options for the observation.'
             case default
               write(outUnit,'(a)') 'Invalid histogram options value, will remain disabled.'
               obs%histogramOptions = 0
@@ -1447,7 +1446,6 @@ contains
           select case(n)
           case (0,1)
             obs%reconstructionOptions = n
-            write(outUnit,'(a)') 'Will interpret reconstruction options for the observation.'
           case default
             write(outUnit,'(a)') 'Invalid reconstruction options value, will remain disabled.'
             obs%reconstructionOptions = 0
@@ -1457,7 +1455,7 @@ contains
           ! Process histogram options
           select case(obs%histogramOptions)
           case(1)
-            write(outUnit,'(a)') 'Interpreting histogram options.'
+            write(outUnit,'(a)') 'Will interpret histogram options for the observation.'
 
             ! Histogram option for sink observations
             ! 0: Scott's rule for bin size
@@ -1530,7 +1528,7 @@ contains
           !call urword(line, icol, istart, istop, 2, n, r, 0, 0)
           select case(obs%reconstructionOptions)
           case(1)
-            write(outUnit,'(a)') 'Interpret reconstruction parameters for the observation.'
+            write(outUnit,'(a)') 'Will interpret reconstruction options for this observation.'
             ! Read opt loops
             read(obsUnit, '(a)', iostat=ioInUnit) line
             icol = 1
@@ -1588,7 +1586,7 @@ contains
             end select
 
           case default
-            write(outUnit,'(A)') 'Will not interpret reconstruction parameters for observation.' 
+            write(outUnit,'(A)') 'Will not interpret reconstruction parameters for this observation.' 
           end select
 
         end if 
@@ -3019,7 +3017,7 @@ contains
         write(outUnit,'(A,es18.9e3)') 'Total accumulated mass for initial condition = ', totalAccumulatedMass
         write(outUnit,'(A,es18.9e3)') 'Total accumulated mass with particles = ', totalAccumulatedParticlesMass
       else 
-        write(outUnit,'(A)') 'Retardation factor is unitary so total dissolved mass is the total mass.'
+        write(outUnit,'(A)') 'Retardation factor is unitary, so total dissolved mass is the total mass.'
         write(outUnit,'(A,es18.9e3)') 'Total accumulated mass for initial condition = ', totalAccumulatedMass
         write(outUnit,'(A,es18.9e3)') 'Total accumulated mass with particles = ', totalAccumulatedParticlesMass
       end if 
