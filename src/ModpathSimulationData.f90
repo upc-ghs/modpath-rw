@@ -2024,7 +2024,8 @@ contains
 
 
   ! Read specific IC data
-  subroutine pr_ReadICData( this, icFile, icUnit, outUnit, grid, porosity )
+  subroutine pr_ReadICData( this, icFile, icUnit, outUnit, grid, &
+                                         porosity, flowModelData )
     use UTL8MODULE,only : urword,ustop,u3ddblmpusg, u3ddblmp
     !--------------------------------------------------------------
     ! Specifications
@@ -2037,6 +2038,7 @@ contains
     integer, intent(in)                          :: outUnit
     class(ModflowRectangularGridType),intent(in) :: grid
     doubleprecision, dimension(:), intent(in)    :: porosity
+    class(FlowModelDataType),intent(in)          :: flowModelData
     ! local
     integer :: isThisFileOpen
     integer :: icol,istart,istop,n
@@ -2063,10 +2065,11 @@ contains
     doubleprecision :: cellVolume,sX,sY,sZ,nPX,nPY,nPZ
     doubleprecision :: nParticlesCell
     doubleprecision :: avgParticleMass, varParticleMass
+    doubleprecision :: dZSat, dZCell
     doubleprecision, parameter :: nParticlesCellMin = 0.5d0 
     integer :: totalParticleCount, seqNumber, idmax, particleCount
     integer :: iNPX,iNPY,iNPZ,NPCELL
-    integer :: validCellCounter, cellCounter, cellNumber
+    integer :: validCellCounter, cellCounter, cellNumber, cellType
     integer :: drape
     integer, allocatable, dimension(:,:) :: subDivisions
     integer, allocatable, dimension(:)   :: validCellNumbers
@@ -2186,12 +2189,11 @@ contains
 
       ! And process initial condition 
       select case ( initialConditionFormat )
-      ! Read initial condition as resident concentration (ML^-3)
       case (0) 
+        ! Read initial condition as resident concentration (ML^-3).
         ! Given a value for the mass of particles, use flowModelData to compute cellvolume
         ! and a shape factor from which the number of particles per cell is estimated.
-        ! Establishes mass consistency at the domain level and all particles remain
-        ! with the same mass.
+        ! Establishes mass consistency at the domain level, all particles with the same mass. 
 
         if(allocated(densityDistribution)) deallocate(densityDistribution)
         allocate(densityDistribution(grid%CellCount))
@@ -2274,7 +2276,8 @@ contains
             ! If no concentration, next
             if ( densityDistribution(nc) .eq. 0d0 ) cycle
 
-            ! Increase cellCounter
+            ! Increase cellCounter:
+            ! this counter is related to densityDistribution /= 0d0
             cellCounter = cellCounter + 1
 
             ! Compute cell volume
@@ -2287,10 +2290,39 @@ contains
               case(2)
                 cellVolume = cellVolume*grid%DelY(nc)
               case(3)
-                ! simple dZ
-                cellVolume = cellVolume*(grid%Top(nc)-grid%Bottom(nc))
+                !! simple dZ
+                !cellVolume = cellVolume*(grid%Top(nc)-grid%Bottom(nc))
+                ! Calculate the dz considering saturation
+                dZCell   = grid%Top(nc)-grid%Bottom(nc)
+                cellType = grid%CellType(nc)
+                select case( cellType ) 
+                case (0)
+                  dZSat = dZCell
+                  cellVolume = cellVolume*dZSat
+                case (1)
+                  ! Calculate water volume considering saturation
+                  ! A unsaturated cell is considered of volume = 0d0, 
+                  ! and is skipped from the initial condition.
+                  dZSat = flowModelData%Heads(nc) - grid%Bottom(nc)
+                  if ( dZSat .gt. dZCell ) then 
+                    ! Saturated cell, set saturated size as 
+                    ! the cell size.
+                    dZSat = dZCell
+                    cellVolume = cellVolume*dZSat
+                  else if ( dZSat .le. 0d0 ) then
+                    ! Unsaturated cell
+                    cellVolume = 0d0
+                  else if ( dZSat .lt. dZCell ) then 
+                    ! Partially saturated cell
+                    cellVolume = cellVolume*dZSat
+                  end if
+                end select
               end select
             end do
+
+            ! Treat it as no concentration
+            if ( cellVolume .eq. 0d0 ) cycle
+
             cellDissolvedMass = 0d0
             cellTotalMass = 0d0
             ! Absolute value is required for the weird case that 
@@ -2321,7 +2353,8 @@ contains
                 sY = grid%DelY(nc)/(cellVolume**(1d0/dble(nDim)))
               case(3)
                 ! simple dZ
-                sZ = (grid%Top(nc)-grid%Bottom(nc))/(cellVolume**(1d0/dble(nDim)))
+                !sZ = (grid%Top(nc)-grid%Bottom(nc))/(cellVolume**(1d0/dble(nDim)))
+                sZ = dZSat/(cellVolume**(1d0/dble(nDim)))
               end select
             end do
 
@@ -2365,10 +2398,39 @@ contains
               case(2)
                 cellVolume = cellVolume*grid%DelY(nc)
               case(3)
-                ! simple dZ
-                cellVolume = cellVolume*(grid%Top(nc)-grid%Bottom(nc))
+                !! simple dZ
+                !cellVolume = cellVolume*(grid%Top(nc)-grid%Bottom(nc))
+                ! Calculate the dz considering saturation
+                dZCell   = grid%Top(nc)-grid%Bottom(nc)
+                cellType = grid%CellType(nc)
+                select case( cellType ) 
+                case (0)
+                  dZSat = dZCell
+                  cellVolume = cellVolume*dZSat
+                case (1)
+                  ! Calculate water volume considering saturation
+                  ! A unsaturated cell is considered of volume = 0d0, 
+                  ! and is skipped from the initial condition.
+                  dZSat = flowModelData%Heads(nc) - grid%Bottom(nc)
+                  if ( dZSat .gt. dZCell ) then 
+                    ! Saturated cell, set saturated size as 
+                    ! the cell size.
+                    dZSat = dZCell
+                    cellVolume = cellVolume*dZSat
+                  else if ( dZSat .le. 0d0 ) then
+                    ! Unsaturated cell
+                    cellVolume = 0d0
+                  else if ( dZSat .lt. dZCell ) then 
+                    ! Partially saturated cell
+                    cellVolume = cellVolume*dZSat
+                  end if
+                end select
               end select
             end do
+
+            ! Treat it as no concentration
+            if ( cellVolume .eq. 0d0 ) cycle
+
             cellDissolvedMass = 0d0
             cellTotalMass = 0d0
             ! Absolute value is required for the weird case that 
@@ -2391,8 +2453,7 @@ contains
             totalParticleCount = totalParticleCount + NPCELL
 
             ! Save in subdivisions
-            ! NOTE: the first position contains
-            ! all the particles
+            ! NOTE: the first position contains all the particles
             subDivisions(cellCounter,1) = NPCELL
             !subDivisions(cellCounter,2) = 0 
             !subDivisions(cellCounter,3) = 0
@@ -2532,12 +2593,12 @@ contains
 
         ! Done with this IC kind
 
-      ! Read initial condition as resident concentration (ML^-3)
       case(1)
-        ! Similar to the previous case, but now enforces consistency at a cell level. 
+        ! Read initial condition as resident concentration (ML^-3).
+        ! Similar to the previous case, but now enforces mass consistency at a cell level. 
         ! Given a magnitude for particles' mass, determines a number of particles 
-        ! inside each cell. From here, establish a per-cell value for the mass, 
-        ! obtained from the total mass inside the cell. Particles with non-uniform mass. :O 
+        ! inside each cell. From here, establish a per-cell value for the individual mass, 
+        ! obtained from the total mass inside the cell. Particles with non-uniform mass.
 
         if(allocated(densityDistribution)) deallocate(densityDistribution)
         allocate(densityDistribution(grid%CellCount))
@@ -2638,10 +2699,39 @@ contains
               case(2)
                 cellVolume = cellVolume*grid%DelY(nc)
               case(3)
-                ! simple dZ
-                cellVolume = cellVolume*(grid%Top(nc)-grid%Bottom(nc))
+                !! simple dZ
+                !cellVolume = cellVolume*(grid%Top(nc)-grid%Bottom(nc))
+                ! Calculate the dz considering saturation
+                dZCell   = grid%Top(nc)-grid%Bottom(nc)
+                cellType = grid%CellType(nc)
+                select case( cellType ) 
+                case (0)
+                  dZSat = dZCell
+                  cellVolume = cellVolume*dZSat
+                case (1)
+                  ! Calculate water volume considering saturation
+                  ! A unsaturated cell is considered of volume = 0d0, 
+                  ! and is skipped from the initial condition.
+                  dZSat = flowModelData%Heads(nc) - grid%Bottom(nc)
+                  if ( dZSat .gt. dZCell ) then 
+                    ! Saturated cell, set saturated size as 
+                    ! the cell size.
+                    dZSat = dZCell
+                    cellVolume = cellVolume*dZSat
+                  else if ( dZSat .le. 0d0 ) then
+                    ! Unsaturated cell
+                    cellVolume = 0d0
+                  else if ( dZSat .lt. dZCell ) then 
+                    ! Partially saturated cell
+                    cellVolume = cellVolume*dZSat
+                  end if
+                end select
               end select
             end do
+            
+            ! Treat it as no concentration
+            if ( cellVolume .eq. 0d0 ) cycle
+
             cellDissolvedMass = 0d0
             cellTotalMass = 0d0
             ! Absolute value is required for the weird case that 
@@ -2676,7 +2766,9 @@ contains
                 sY = grid%DelY(nc)/(cellVolume**(1d0/dble(nDim)))
               case(3)
                 ! simple dZ
-                sZ = (grid%Top(nc)-grid%Bottom(nc))/(cellVolume**(1d0/dble(nDim)))
+                !sZ = (grid%Top(nc)-grid%Bottom(nc))/(cellVolume**(1d0/dble(nDim)))
+                ! consider saturation
+                sZ = dZSat/(cellVolume**(1d0/dble(nDim)))
               end select
             end do
 
@@ -2720,10 +2812,39 @@ contains
               case(2)
                 cellVolume = cellVolume*grid%DelY(nc)
               case(3)
-                ! simple dZ
-                cellVolume = cellVolume*(grid%Top(nc)-grid%Bottom(nc))
+                !! simple dZ
+                !cellVolume = cellVolume*(grid%Top(nc)-grid%Bottom(nc))
+                ! Calculate the dz considering saturation
+                dZCell   = grid%Top(nc)-grid%Bottom(nc)
+                cellType = grid%CellType(nc)
+                select case( cellType ) 
+                case (0)
+                  dZSat = dZCell
+                  cellVolume = cellVolume*dZSat
+                case (1)
+                  ! Calculate water volume considering saturation
+                  ! A unsaturated cell is considered of volume = 0d0, 
+                  ! and is skipped from the initial condition.
+                  dZSat = flowModelData%Heads(nc) - grid%Bottom(nc)
+                  if ( dZSat .gt. dZCell ) then 
+                    ! Saturated cell, set saturated size as 
+                    ! the cell size.
+                    dZSat = dZCell
+                    cellVolume = cellVolume*dZSat
+                  else if ( dZSat .le. 0d0 ) then
+                    ! Unsaturated cell
+                    cellVolume = 0d0
+                  else if ( dZSat .lt. dZCell ) then 
+                    ! Partially saturated cell
+                    cellVolume = cellVolume*dZSat
+                  end if
+                end select
               end select
             end do
+
+            ! Treat it as no concentration
+            if ( cellVolume .eq. 0d0 ) cycle
+
             cellDissolvedMass = 0d0
             cellTotalMass = 0d0
             ! Absolute value is required for the weird case that 
@@ -2750,8 +2871,7 @@ contains
             totalParticleCount = totalParticleCount + NPCELL
 
             ! Save in subdivisions
-            ! NOTE: the first position contains
-            ! all the particles
+            ! NOTE: the first position contains all the particles
             subDivisions(cellCounter,1) = NPCELL
             !subDivisions(cellCounter,2) = 0 
             !subDivisions(cellCounter,3) = 0

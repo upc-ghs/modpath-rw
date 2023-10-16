@@ -492,7 +492,8 @@ program MPathRW
     call simulationData%ReadRWOPTSData( rwoptsFile, rwoptsUnit, mpListUnit )
 
     call ulog('Read specific IC simulation data.', logUnit)
-    call simulationData%ReadICData( icFile, icUnit, mpListUnit, modelGrid, basicData%Porosity )
+    call simulationData%ReadICData( icFile, icUnit, mpListUnit, modelGrid, &
+                                         basicData%Porosity, flowModelData )
 
     call ulog('Read specific SRC simulation data.', logUnit)
     call simulationData%ReadSRCData( srcFile, srcUnit, mpListUnit, modelGrid, flowModelData )
