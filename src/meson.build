@@ -2,7 +2,7 @@ external_sources = files(
   # gpkde
   'lib' / 'gpkde' / 'Precision.F90',
   'lib' / 'gpkde' / 'Constants.f90',
-  'lib' / 'gpkde' / 'Histogram.f90',
+  'lib' / 'gpkde' / 'Histogram.F90',
   'lib' / 'gpkde' / 'KernelMultiGaussian.f90',
   'lib' / 'gpkde' / 'GridCell.f90', 
   'lib' / 'gpkde' / 'GridProjectedKDE.F90',

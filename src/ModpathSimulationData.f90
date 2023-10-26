@@ -1136,13 +1136,13 @@ contains
       icol = 1
       call urword(line, icol, istart, istop, 2, n, r, 0, 0)
       this%TrackingOptions%gpkdeInitialSmoothingFormat = 0
-      this%TrackingOptions%gpkdeBinSizeFactor = 5.0
+      this%TrackingOptions%gpkdeBinSizeFactor = 1.0
       select case(n)
       case(1)
         this%TrackingOptions%gpkdeInitialSmoothingFormat =  n
         write(outUnit,'(A)') 'Initial kernel size as a factor multiplying bin size.'
         call urword(line, icol, istart, istop, 3, n, r, 0, 0)
-        if ( r.le.0.0 ) then 
+        if ( r.le.0d0 ) then 
           write(outUnit,'(A)') 'Given initial bin size factor is less or equal to zero, will default to automatic global selection.' 
           this%TrackingOptions%gpkdeInitialSmoothingFormat = 0
         else

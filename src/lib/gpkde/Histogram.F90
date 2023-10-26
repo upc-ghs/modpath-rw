@@ -64,7 +64,11 @@ module HistogramModule
       ! https://stackoverflow.com/questions/20941575/sorting-in-fortran-undefined-reference-to-qsort
       !--------------------------------------------------------------------------------------------- 
       import
+#ifdef REAL32
+      real(c_float),intent(inout) :: array(*)
+#else
       real(c_double),intent(inout) :: array(*)
+#endif
       integer(c_size_t),value      :: elem_count
       integer(c_size_t),value      :: elem_size
       type(c_funptr),value         :: compare !int(*compare)(const void *, const void *)
@@ -606,31 +610,38 @@ contains
   class(HistogramType) :: this
   real(fp), dimension(:,:), intent(in)  :: dataPoints ! (npoints, 3)
   real(fp), dimension(3), intent(inout) :: binSize    ! for 3D but now only use first
-  real(fp) :: avg, var
+  real(fp), dimension(3) :: avg, var
   integer  :: nPoints
   integer, dimension(2) :: nPointsShape
-  integer  :: n 
+  integer  :: n, did, ndims
+  real(fp) :: ndimsexp
   !------------------------------------------------------------------------------
   
     binSize = fZERO 
     nPointsShape = shape(dataPoints) 
     nPoints = nPointsShape(1)
 
-    avg = sum(dataPoints(:,1))/real(nPoints,fp)
-    var = fZERO
- 
-    do n =1, nPoints
-      var = var + (dataPoints(n,1) - avg)**2d0
-    end do 
-    var = var/real(nPoints,fp)
-
-    binSize(1) = 3.49*sqrt(var)/( (real(nPoints,fp))**(fONE/fTHREE) )
+    do did = 1, 3
+     avg(did) = sum(dataPoints(:,did))/real(nPoints,fp)
+     var(did) = fZERO
+     do n =1, nPoints
+       var(did) = var(did) + (dataPoints(n,did) - avg(did))**2d0
+     end do 
+     var(did) = var(did)/real(nPoints,fp)
+    end do
+     
+    ndims    = count( var /= fZERO )
+    ndimsexp = fTWO + real( ndims, fp ) 
+    do did = 1, 3
+      if ( var(did) .eq. fZERO ) cycle
+      binSize(did) = 3.49*sqrt(var(did))/( (real(nPoints,fp))**(fONE/ndimsexp) )
+    end do
 
 
   end subroutine prEstimateBinSizeScott
 
 
-  subroutine prEstimateBinSizeFD( this, dataPoints, binSize ) 
+  subroutine prEstimateBinSizeFD( this, dataPoints, binSize, dimId ) 
   !------------------------------------------------------------------------------
   ! Freedman Diaconis
   !------------------------------------------------------------------------------
@@ -639,24 +650,34 @@ contains
   use iso_c_binding
   implicit none 
   class(HistogramType) :: this
-  real(fp), dimension(:,:), intent(in) :: dataPoints ! (npoints, 3)
-  real(fp), dimension(3), intent(inout) :: binSize    ! for 3D but now only use first
-  !real(fp) :: avg, var
+  real(fp), dimension(:,:), intent(in)  :: dataPoints ! (npoints, 3)
+  real(fp), dimension(3), intent(inout) :: binSize   ! 
+  integer, intent(in), optional         :: dimId
   integer  :: nPoints
   integer, dimension(2) :: nPointsShape
-  !integer  :: n 
   real(fp), dimension(:), allocatable :: array
   integer  :: residue
   real(fp) :: residuefp
   real(fp) :: Q1, Q3, IQR
+  integer  :: did
   !------------------------------------------------------------------------------
-    
+   
+    if ( present(dimId) ) then 
+      if ( (dimId.gt.0).and.(dimId.le.3) ) then 
+        did = dimId
+      else
+        did = 1
+      end if
+    else
+      did = 1
+    end if  
+
     binSize = fZERO
     nPointsShape = shape(dataPoints) 
     nPoints = nPointsShape(1)
     if ( allocated(array) ) deallocate( array ) 
     allocate( array(nPoints) )
-    array(:) = dataPoints(:,1)
+    array(:) = dataPoints(:,did)
 
     ! Preprocessor flags for type selection !
     call prSortDblArray1D( array, int(nPoints,c_size_t), int(fp,c_size_t), c_funloc( comparedbl ) ) 
@@ -693,15 +714,18 @@ contains
     IQR = Q3-Q1 
 
     ! The estimated bin size
-    binSize(1) = fTWO*IQR/(real(nPoints,fp)**(fONE/fTHREE))
+    binSize(did) = fTWO*IQR/(real(nPoints,fp)**(fONE/fTHREE))
 
 
   end subroutine prEstimateBinSizeFD
 
-
   integer(c_int) function comparedbl( a, b ) bind(C)
     use iso_c_binding
+#ifdef REAL32
+    real(c_float) a, b
+#else
     real(c_double) a, b
+#endif
     if ( a .lt. b ) comparedbl = -1
     if ( a .eq. b ) comparedbl = 0
     if ( a .gt. b ) comparedbl = 1
