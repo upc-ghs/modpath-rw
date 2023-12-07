@@ -498,7 +498,7 @@ contains
        end if 
        ! Initialize reconstruction grid parameters 
        where( binSize .ne. fZERO ) 
-         this%domainGridSize = int( this%domainSize/binSize + 0.5 )
+         this%domainGridSize = int( this%domainSize/binSize + 0.5_fp )
        elsewhere
          this%domainGridSize = 1
        end where
@@ -1162,7 +1162,7 @@ contains
     ! Initialize reconstruction grid parameters !
     where( binSize .ne. fZERO )
       ! domainSize expected to be already defined into the object 
-      this%domainGridSize = int( this%domainSize/binSize + 0.5 )
+      this%domainGridSize = int( this%domainSize/binSize + 0.5_fp )
     elsewhere
       this%domainGridSize = 1
     end where
@@ -1363,15 +1363,6 @@ contains
 
     ! Initialize net roughness function
     call this%InitializeNetRoughnessFunction( nDim )
-
-
-    !! Report intialization
-    !if ( this%reportToOutUnit ) then 
-    !  write( this%outFileUnit, '(A)' ) ' GPKDE is initialized  '
-    !  write( this%outFileUnit, '(A)' ) '-----------------------'
-    !  write( this%outFileUnit,  *    )
-    !  flush( this%outFileUnit ) 
-    !end if
 
     ! Done
 
@@ -1601,10 +1592,10 @@ contains
     !------------------------------------------------------------------------------
 
     ! Compute constants
-    this%supportDimensionConstant = ( ( fNDim + fTWO )*( fEIGHT*pi )**( 0.5*fNDim ) )**( 0.25 )
+    this%supportDimensionConstant = ( ( fNDim + fTWO )*( fEIGHT*pi )**( 0.5_fp*fNDim ) )**( 0.25_fp )
 
     this%alphaDimensionConstant =& 
-        ( ( fONE + fTWO**(0.5*fNDim + fTWO) )/( fTHREE*fTWO**( fFOUR/( fNDim + fFOUR ) ) ) )**(&
+        ( ( fONE + fTWO**(0.5_fp*fNDim + fTWO) )/( fTHREE*fTWO**( fFOUR/( fNDim + fFOUR ) ) ) )**(&
         fONE/(fNDim + fSIX) )*( fNDim + fTWO )**( fONE/(fNDim + fFOUR) )/( ( fNDim + fFOUR )**( fONE/(fNDim + fSIX) ) )
 
     this%betaDimensionConstant  = fTWO/( fNDim + fFOUR)/( fNDim + fSIX ) 
@@ -1612,7 +1603,7 @@ contains
     ! Appear recurrently in expressions
     oneOverNDimPlusFour     = fONE/( fNDim + fFOUR )
     minusOneOverNDimPlusSix = -fONE/( fNDim + fSIX )
-    onePlusNDimQuarter      = fONE + 0.25*fNDim
+    onePlusNDimQuarter      = fONE + 0.25_fp*fNDim
 
     ! Done
     return
@@ -1745,7 +1736,6 @@ contains
                   gc%kernelSDYGSpan(1):gc%kernelSDYGSpan(2), & 
                   gc%kernelSDZGSpan(1):gc%kernelSDZGSpan(2)  & 
               ) + this%histogramCounts(                             &
-              !) + this%histogram%counts(                             &
                    gc%id(1), gc%id(2), gc%id(3) )*gc%kernelSD1Matrix(&
                           gc%kernelSDXMSpan(1):gc%kernelSDXMSpan(2), &
                           gc%kernelSDYMSpan(1):gc%kernelSDYMSpan(2), & 
@@ -1786,7 +1776,6 @@ contains
                   gc%kernelSDYGSpan(1):gc%kernelSDYGSpan(2), & 
                   gc%kernelSDZGSpan(1):gc%kernelSDZGSpan(2)  & 
               ) + this%histogramCounts(                             &
-              !) + this%histogram%counts(                             &
                    gc%id(1), gc%id(2), gc%id(3) )*gc%kernelSD1Matrix(&
                           gc%kernelSDXMSpan(1):gc%kernelSDXMSpan(2), &
                           gc%kernelSDYMSpan(1):gc%kernelSDYMSpan(2), & 
@@ -1827,7 +1816,6 @@ contains
                   gc%kernelSDYGSpan(1):gc%kernelSDYGSpan(2), & 
                   gc%kernelSDZGSpan(1):gc%kernelSDZGSpan(2)  & 
               ) + this%histogramCounts(                             &
-              !) + this%histogram%counts(                             &
                    gc%id(1), gc%id(2), gc%id(3) )*gc%kernelSD1Matrix(&
                           gc%kernelSDXMSpan(1):gc%kernelSDXMSpan(2), &
                           gc%kernelSDYMSpan(1):gc%kernelSDYMSpan(2), & 
@@ -1996,7 +1984,6 @@ contains
                 gc%kernelSD1YGSpan(1):gc%kernelSD1YGSpan(2), & 
                 gc%kernelSD1ZGSpan(1):gc%kernelSD1ZGSpan(2)  & 
             ) + this%histogramCounts(                                &
-            !) + this%histogram%counts(                               &
                    gc%id(1), gc%id(2), gc%id(3) )*gc%kernelSD1Matrix(&
                         gc%kernelSD1XMSpan(1):gc%kernelSD1XMSpan(2), &
                         gc%kernelSD1YMSpan(1):gc%kernelSD1YMSpan(2), & 
@@ -2012,7 +1999,6 @@ contains
                 gc%kernelSD2YGSpan(1):gc%kernelSD2YGSpan(2), & 
                 gc%kernelSD2ZGSpan(1):gc%kernelSD2ZGSpan(2)  & 
             ) + this%histogramCounts(                                &
-            !) + this%histogram%counts(                               &
                    gc%id(1), gc%id(2), gc%id(3) )*gc%kernelSD2Matrix(&
                         gc%kernelSD2XMSpan(1):gc%kernelSD2XMSpan(2), &
                         gc%kernelSD2YMSpan(1):gc%kernelSD2YMSpan(2), & 
@@ -2056,7 +2042,6 @@ contains
                 gc%kernelSD1YGSpan(1):gc%kernelSD1YGSpan(2), & 
                 gc%kernelSD1ZGSpan(1):gc%kernelSD1ZGSpan(2)  & 
             ) + this%histogramCounts(                                &
-            !) + this%histogram%counts(                               &
                    gc%id(1), gc%id(2), gc%id(3) )*gc%kernelSD1Matrix(&
                         gc%kernelSD1XMSpan(1):gc%kernelSD1XMSpan(2), &
                         gc%kernelSD1YMSpan(1):gc%kernelSD1YMSpan(2), & 
@@ -2072,7 +2057,6 @@ contains
                 gc%kernelSD2YGSpan(1):gc%kernelSD2YGSpan(2), & 
                 gc%kernelSD2ZGSpan(1):gc%kernelSD2ZGSpan(2)  & 
             ) + this%histogramCounts(                                &
-            !) + this%histogram%counts(                               &
                    gc%id(1), gc%id(2), gc%id(3) )*gc%kernelSD2Matrix(&
                         gc%kernelSD2XMSpan(1):gc%kernelSD2XMSpan(2), &
                         gc%kernelSD2YMSpan(1):gc%kernelSD2YMSpan(2), & 
@@ -2116,7 +2100,6 @@ contains
                 gc%kernelSD1YGSpan(1):gc%kernelSD1YGSpan(2), & 
                 gc%kernelSD1ZGSpan(1):gc%kernelSD1ZGSpan(2)  & 
             ) + this%histogramCounts(                                &
-            !) + this%histogram%counts(                               &
                    gc%id(1), gc%id(2), gc%id(3) )*gc%kernelSD1Matrix(&
                         gc%kernelSD1XMSpan(1):gc%kernelSD1XMSpan(2), &
                         gc%kernelSD1YMSpan(1):gc%kernelSD1YMSpan(2), & 
@@ -2132,7 +2115,6 @@ contains
                 gc%kernelSD2YGSpan(1):gc%kernelSD2YGSpan(2), & 
                 gc%kernelSD2ZGSpan(1):gc%kernelSD2ZGSpan(2)  & 
             ) + this%histogramCounts(                                &
-            !) + this%histogram%counts(                               &
                    gc%id(1), gc%id(2), gc%id(3) )*gc%kernelSD2Matrix(&
                         gc%kernelSD2XMSpan(1):gc%kernelSD2XMSpan(2), &
                         gc%kernelSD2YMSpan(1):gc%kernelSD2YMSpan(2), & 
@@ -3922,9 +3904,9 @@ contains
       maxSubGridCoords = this%domainSize + this%domainOrigin
       where ( this%binSize .ne. fZERO )
         ! For the minimum coordinates, substract half the border fraction
-        minSubGridCoords   = minCoords - 0.5*this%borderFraction*deltaCoords
+        minSubGridCoords   = minCoords - 0.5_fp*this%borderFraction*deltaCoords
         ! For the maximum coordinates, add half the border fraction
-        maxSubGridCoords   = maxCoords + 0.5*this%borderFraction*deltaCoords
+        maxSubGridCoords   = maxCoords + 0.5_fp*this%borderFraction*deltaCoords
       end where
 
       ! Limit these coordinates by domain specs
@@ -3945,7 +3927,7 @@ contains
         subGridNBins         = subGridLimitIndexes - subGridOriginIndexes ! it shall verify at least 1 ?
         subGridSize          = subGridNBins*this%binSize
       end where
-      subGridOrigin = subGridOriginIndexes*this%binSize
+      subGridOrigin = subGridOriginIndexes*this%binSize + this%domainOrigin
 
       ! Some health control and eventually reporting
       if ( any(subGridNBins.gt.this%domainGridSize) ) then
@@ -4098,7 +4080,7 @@ contains
       case(3)
         this%minLimitRoughness = &
          this%minRelativeRoughness*(this%histogram%maxRawDensity**fTWO)/&
-         ( product(this%stdCoords**(0.75),dim=1,mask=(this%stdCoords.ne.fZERO)) ) ! 3/4=0.75
+         ( product(this%stdCoords**(0.75_fp),dim=1,mask=(this%stdCoords.ne.fZERO)) ) ! 3/4=0.75
       end select
     ! From minRelativeRoughness and a given length scale
     case(1)
@@ -4200,8 +4182,9 @@ contains
          end if
         end if
 
-        ! Density optimization over a pointer to the slice
-        ! sliced given as a range to preserve matrix rank.
+        ! Density optimization over a slice.
+        ! Assign pointer to the corresponding slice of the histogram count.
+        ! Slice given as a range to preserve matrix rank.
         select case(this%slicedDimension) 
         case(1)
           this%histogramCounts => this%histogram%counts(sliceId:sliceId,:,:)
@@ -4599,7 +4582,6 @@ contains
       gc => activeGridCellsMod(n)
       call gc%Initialize( this%computeBinIds( :, n ) )
       rawDensity(n) = this%histogramCounts(gc%id(1),gc%id(2),gc%id(3))
-      !rawDensity(n) = this%histogram%counts(gc%id(1),gc%id(2),gc%id(3))
     end do
     !$omp end parallel do
     rawDensity = rawDensity/this%histogram%binVolume
@@ -4667,7 +4649,6 @@ contains
             gc%kernelYGSpan(1):gc%kernelYGSpan(2), & 
             gc%kernelZGSpan(1):gc%kernelZGSpan(2)  & 
         ) + this%histogramCounts(                  &
-        !) + this%histogram%counts(                 &
             gc%id(1), gc%id(2), gc%id(3) )*gc%kernelMatrix(&
                  gc%kernelXMSpan(1):gc%kernelXMSpan(2), &
                  gc%kernelYMSpan(1):gc%kernelYMSpan(2), & 
@@ -4692,8 +4673,8 @@ contains
     ! Initialize error metric 
     errorMetricArray = fZERO
     where ( kernelSmoothingScale .ne. fZERO ) 
-      errorMetricArray = (nEstimateArray/( (kernelSmoothingScale**fNDim)*(fFOUR*pi)**(0.5*fNDim)) + &
-      0.25*netRoughnessArray*kernelSmoothingScale**fFOUR)/(real(this%histogram%nPoints,fp)**fTWO)
+      errorMetricArray = (nEstimateArray/( (kernelSmoothingScale**fNDim)*(fFOUR*pi)**(0.5_fp*fNDim)) + &
+      0.25_fp*netRoughnessArray*kernelSmoothingScale**fFOUR)/(real(this%histogram%nPoints,fp)**fTWO)
     end where
     errorALMISEProxy  = sqrt(sum(errorMetricArray**fTWO)/real(this%nComputeBins,fp))
     errorALMISECumsum = errorALMISEProxy 
@@ -4735,7 +4716,6 @@ contains
         case(0,1)
           ! The formats where densities are transformed scaling by a uniform weight
           this%histogramCounts = this%histogramCounts*this%histogram%effectiveMass
-          !this%histogram%counts = this%histogram%counts*this%histogram%effectiveMass
           densityEstimateGrid = densityEstimateGrid*this%histogram%effectiveMass
         case(2,3)
           ! The formats where histogram stored both 
@@ -4766,7 +4746,6 @@ contains
                   gc%kernelYGSpan(1):gc%kernelYGSpan(2), & 
                   gc%kernelZGSpan(1):gc%kernelZGSpan(2)  & 
               ) + this%histogramWCounts(                &  ! Notice histogram%wcounts !
-              !) + this%histogram%wcounts(                &  ! Notice histogram%wcounts !
                   gc%id(1), gc%id(2), gc%id(3) )*gc%kernelMatrix(&
                        gc%kernelXMSpan(1):gc%kernelXMSpan(2), &
                        gc%kernelYMSpan(1):gc%kernelYMSpan(2), & 
@@ -4877,8 +4856,8 @@ contains
 
         ! Scale for the support kernel !
         ! - Eq. 23 in Sole-Mari et al. (2019)
-        kernelSigmaScale = nEstimate**(0.5)*kernelScale**onePlusNDimQuarter/&
-                       ( ( fFOUR*density )**0.25 )*this%supportDimensionConstant
+        kernelSigmaScale = nEstimate**(0.5_fp)*kernelScale**onePlusNDimQuarter/&
+                       ( ( fFOUR*density )**0.25_fp )*this%supportDimensionConstant
 
         ! Bound support size
         if ( this%boundKernels ) then 
@@ -4961,7 +4940,6 @@ contains
               gc%kernelYGSpan(1):gc%kernelYGSpan(2), & 
               gc%kernelZGSpan(1):gc%kernelZGSpan(2)  & 
           ) + this%histogramCounts(                  &
-          !) + this%histogram%counts(                 &
               gc%id(1), gc%id(2), gc%id(3) )*gc%kernelMatrix(&
                    gc%kernelXMSpan(1):gc%kernelXMSpan(2), &
                    gc%kernelYMSpan(1):gc%kernelYMSpan(2), & 
@@ -5001,8 +4979,8 @@ contains
       ! A proxy to error: ALMISE
       errorMetricArray = fZERO
       where ( kernelSmoothingScale .ne. fZERO ) 
-        errorMetricArray = (nEstimateArray/( (kernelSmoothingScale**fNDim)*(fFOUR*pi)**(0.5*fNDim)) + &
-        0.25*netRoughnessArray*kernelSmoothingScale**fFOUR)/(real(this%histogram%nPoints,fp)**fTWO)
+        errorMetricArray = (nEstimateArray/( (kernelSmoothingScale**fNDim)*(fFOUR*pi)**(0.5_fp*fNDim)) + &
+        0.25_fp*netRoughnessArray*kernelSmoothingScale**fFOUR)/(real(this%histogram%nPoints,fp)**fTWO)
       end where
       errorALMISEProxy = sqrt(sum(errorMetricArray**fTWO)/real(this%nComputeBins,fp))
       errorALMISECumsum = errorALMISECumsum + errorALMISEProxy
@@ -5129,7 +5107,6 @@ contains
                 gc%kernelYGSpan(1):gc%kernelYGSpan(2), & 
                 gc%kernelZGSpan(1):gc%kernelZGSpan(2)  & 
             ) + this%histogramWcounts(                &  ! Notice histogram%wcounts !
-            !) + this%histogram%wcounts(                &  ! Notice histogram%wcounts !
                 gc%id(1), gc%id(2), gc%id(3) )*gc%kernelMatrix(&
                      gc%kernelXMSpan(1):gc%kernelXMSpan(2), &
                      gc%kernelYMSpan(1):gc%kernelYMSpan(2), & 
@@ -5456,14 +5433,14 @@ contains
     integer  :: n, nd
     logical  :: updateScale
     real(fp) :: normShape
-    real(fp), parameter :: isoRoughnessFactor = 0.5
+    real(fp), parameter :: isoRoughnessFactor = 0.5_fp
     !----------------------------------------------------------------------------
 
     ! Initialize smoothing scale
     kernelSmoothingScale(:) = fZERO
 
     ! Announce that something is wrong and leave
-    if (maxval(netRoughness).eq.fZERO ) then 
+    if ( maxval(netRoughness).eq.fZERO ) then 
       write(*,*) 'Error: the maximum value of roughness is fZERO, something wrong with discretization or kernel sizes.'
       stop
     end if
@@ -5473,7 +5450,7 @@ contains
     ! forces isotropic kernels. 
     if ( this%useGlobalSmoothing ) then 
      kernelSmoothingScale =&
-       ( fNDim/( ( fFOUR*pi )**( 0.5*fNDim )*netRoughness*this%histogram%nEffective ) )**( oneOverNDimPlusFour )
+       ( fNDim/( ( fFOUR*pi )**( 0.5_fp*fNDim )*netRoughness*this%histogram%nEffective ) )**( oneOverNDimPlusFour )
     end if 
 
     ! Apply a correction to net roughness in case one of the 
@@ -5541,10 +5518,10 @@ contains
     if ( .not. this%useGlobalSmoothing ) then 
      if ( this%minLimitRoughness .gt. fZERO ) then  
       where ( netRoughness .gt. this%minLimitRoughness )
-       kernelSmoothingScale = ( fNDim*nEstimate/( ( fFOUR*pi )**( 0.5*fNDim )*netRoughness ) )**( oneOverNDimPlusFour )
+       kernelSmoothingScale = ( fNDim*nEstimate/( ( fFOUR*pi )**( 0.5_fp*fNDim )*netRoughness ) )**( oneOverNDimPlusFour )
       elsewhere
        ! Estimate a scale based on minLimitRoughness
-       kernelSmoothingScale = ( fNDim*nEstimate/( ( fFOUR*pi )**( 0.5*fNDim )*this%minLimitRoughness ) )**( oneOverNDimPlusFour )
+       kernelSmoothingScale = ( fNDim*nEstimate/( ( fFOUR*pi )**( 0.5_fp*fNDim )*this%minLimitRoughness ) )**( oneOverNDimPlusFour )
       end where
      else
       ! If minLimitRoughness is zero, then compute 
@@ -5552,13 +5529,14 @@ contains
       ! case where netRoughnes is zero then assign the maximum 
       ! computed kernelSmoothingScale.
       where ( netRoughness .gt. this%minLimitRoughness )
-       kernelSmoothingScale = ( fNDim*nEstimate/( ( fFOUR*pi )**( 0.5*fNDim )*netRoughness ) )**( oneOverNDimPlusFour )
+       kernelSmoothingScale = ( fNDim*nEstimate/( ( fFOUR*pi )**( 0.5_fp*fNDim )*netRoughness ) )**( oneOverNDimPlusFour )
       end where
       where ( netRoughness .eq. fZERO ) 
        kernelSmoothingScale = maxval(kernelSmoothingScale, mask=(kernelSmoothingScale.gt.fZERO)) 
       end where
      end if
     end if
+
 
     ! Shape determination based on roughnesses ! 
     kernelSmoothing(:,:) = fZERO
@@ -7077,21 +7055,111 @@ contains
     ! Add some default
     open( outputUnit, file=outputFileName, status='replace' )
 
-    do n = 1, this%nComputeBins
-      ix = this%computeBinIds( 1, n ) + this%deltaBinsOrigin(1) 
-      iy = this%computeBinIds( 2, n ) + this%deltaBinsOrigin(2)
-      iz = this%computeBinIds( 3, n ) + this%deltaBinsOrigin(3)
-      write(outputUnit,"(3I6,17es18.9e3)") ix, iy, iz,& 
-        densityEstimateArray( n ),& 
-        kernelSmoothing(1,n), kernelSmoothing(2,n), kernelSmoothing(3,n),& 
-        kernelSmoothingShape(1,n), kernelSmoothingShape(2,n), kernelSmoothingShape(3,n),& 
-        kernelSmoothingScale(n), kernelSigmaSupportScale(n), &
-        curvatureBandwidth(1,n), curvatureBandwidth(2,n), curvatureBandwidth(3,n), &
-        !nEstimate(n), roughnessXXArray(n), roughnessYYArray(n), &
-        !roughnessZZArray(n), netRoughness(n)
-        nEstimate(n), roughnessXXArray(n), 0d0, 0d0 , &
-         netRoughness(n)
-    end do
+    ! This selection could be done only once...
+    select case(nDim) 
+    case (1)
+      select case( this%idDim1 ) 
+        case (1)
+          do n = 1, this%nComputeBins
+            ix = this%computeBinIds( 1, n ) + this%deltaBinsOrigin(1) 
+            iy = this%computeBinIds( 2, n ) + this%deltaBinsOrigin(2)
+            iz = this%computeBinIds( 3, n ) + this%deltaBinsOrigin(3)
+            write(outputUnit,"(3I6,17es18.9e3)") ix, iy, iz,& 
+              densityEstimateArray( n ),& 
+              kernelSmoothing(1,n), kernelSmoothing(2,n), kernelSmoothing(3,n),& 
+              kernelSmoothingShape(1,n), kernelSmoothingShape(2,n), kernelSmoothingShape(3,n),& 
+              kernelSmoothingScale(n), kernelSigmaSupportScale(n), &
+              curvatureBandwidth(1,n), curvatureBandwidth(2,n), curvatureBandwidth(3,n), &
+              nEstimate(n), roughnessXXArray(n), fZERO, fZERO, netRoughness(n)
+          end do
+        case (2)
+          do n = 1, this%nComputeBins
+            ix = this%computeBinIds( 1, n ) + this%deltaBinsOrigin(1) 
+            iy = this%computeBinIds( 2, n ) + this%deltaBinsOrigin(2)
+            iz = this%computeBinIds( 3, n ) + this%deltaBinsOrigin(3)
+            write(outputUnit,"(3I6,17es18.9e3)") ix, iy, iz,& 
+              densityEstimateArray( n ),& 
+              kernelSmoothing(1,n), kernelSmoothing(2,n), kernelSmoothing(3,n),& 
+              kernelSmoothingShape(1,n), kernelSmoothingShape(2,n), kernelSmoothingShape(3,n),& 
+              kernelSmoothingScale(n), kernelSigmaSupportScale(n), &
+              curvatureBandwidth(1,n), curvatureBandwidth(2,n), curvatureBandwidth(3,n), &
+              nEstimate(n), fZERO, roughnessYYArray(n), fZERO, netRoughness(n)
+          end do
+        case (3)
+          do n = 1, this%nComputeBins
+            ix = this%computeBinIds( 1, n ) + this%deltaBinsOrigin(1) 
+            iy = this%computeBinIds( 2, n ) + this%deltaBinsOrigin(2)
+            iz = this%computeBinIds( 3, n ) + this%deltaBinsOrigin(3)
+            write(outputUnit,"(3I6,17es18.9e3)") ix, iy, iz,& 
+              densityEstimateArray( n ),& 
+              kernelSmoothing(1,n), kernelSmoothing(2,n), kernelSmoothing(3,n),& 
+              kernelSmoothingShape(1,n), kernelSmoothingShape(2,n), kernelSmoothingShape(3,n),& 
+              kernelSmoothingScale(n), kernelSigmaSupportScale(n), &
+              curvatureBandwidth(1,n), curvatureBandwidth(2,n), curvatureBandwidth(3,n), &
+              nEstimate(n), fZERO, fZERO, roughnessZZArray(n), netRoughness(n)
+          end do
+      end select
+    case (2)
+      ! Only two roughnesses are allocated 
+      if ( ( this%idDim1 .eq. 1 ) .and. ( this%idDim2 .eq. 2 ) ) then 
+        do n = 1, this%nComputeBins
+          ix = this%computeBinIds( 1, n ) + this%deltaBinsOrigin(1) 
+          iy = this%computeBinIds( 2, n ) + this%deltaBinsOrigin(2)
+          iz = this%computeBinIds( 3, n ) + this%deltaBinsOrigin(3)
+          write(outputUnit,"(3I6,17es18.9e3)") ix, iy, iz,& 
+            densityEstimateArray( n ),& 
+            kernelSmoothing(1,n), kernelSmoothing(2,n), kernelSmoothing(3,n),& 
+            kernelSmoothingShape(1,n), kernelSmoothingShape(2,n), kernelSmoothingShape(3,n),& 
+            kernelSmoothingScale(n), kernelSigmaSupportScale(n), &
+            curvatureBandwidth(1,n), curvatureBandwidth(2,n), curvatureBandwidth(3,n), &
+            nEstimate(n), roughnessXXArray(n), roughnessYYArray(n), &
+            fZERO, netRoughness(n)
+        end do
+      else if ( ( this%idDim1 .eq. 1 ) .and. ( this%idDim2 .eq. 3 ) ) then
+        do n = 1, this%nComputeBins
+          ix = this%computeBinIds( 1, n ) + this%deltaBinsOrigin(1) 
+          iy = this%computeBinIds( 2, n ) + this%deltaBinsOrigin(2)
+          iz = this%computeBinIds( 3, n ) + this%deltaBinsOrigin(3)
+          write(outputUnit,"(3I6,17es18.9e3)") ix, iy, iz,& 
+            densityEstimateArray( n ),& 
+            kernelSmoothing(1,n), kernelSmoothing(2,n), kernelSmoothing(3,n),& 
+            kernelSmoothingShape(1,n), kernelSmoothingShape(2,n), kernelSmoothingShape(3,n),& 
+            kernelSmoothingScale(n), kernelSigmaSupportScale(n), &
+            curvatureBandwidth(1,n), curvatureBandwidth(2,n), curvatureBandwidth(3,n), &
+            nEstimate(n), roughnessXXArray(n), fZERO, &
+            roughnessZZArray(n), netRoughness(n)
+        end do
+      else
+        do n = 1, this%nComputeBins
+          ix = this%computeBinIds( 1, n ) + this%deltaBinsOrigin(1) 
+          iy = this%computeBinIds( 2, n ) + this%deltaBinsOrigin(2)
+          iz = this%computeBinIds( 3, n ) + this%deltaBinsOrigin(3)
+          write(outputUnit,"(3I6,17es18.9e3)") ix, iy, iz,& 
+            densityEstimateArray( n ),& 
+            kernelSmoothing(1,n), kernelSmoothing(2,n), kernelSmoothing(3,n),& 
+            kernelSmoothingShape(1,n), kernelSmoothingShape(2,n), kernelSmoothingShape(3,n),& 
+            kernelSmoothingScale(n), kernelSigmaSupportScale(n), &
+            curvatureBandwidth(1,n), curvatureBandwidth(2,n), curvatureBandwidth(3,n), &
+            nEstimate(n), fZERO, roughnessYYArray(n), &
+            roughnessZZArray(n), netRoughness(n)
+        end do
+      end if 
+    case (3) 
+      ! All roughnesses are allocated 
+      do n = 1, this%nComputeBins
+        ix = this%computeBinIds( 1, n ) + this%deltaBinsOrigin(1) 
+        iy = this%computeBinIds( 2, n ) + this%deltaBinsOrigin(2)
+        iz = this%computeBinIds( 3, n ) + this%deltaBinsOrigin(3)
+        write(outputUnit,"(3I6,17es18.9e3)") ix, iy, iz,& 
+          densityEstimateArray( n ),& 
+          kernelSmoothing(1,n), kernelSmoothing(2,n), kernelSmoothing(3,n),& 
+          kernelSmoothingShape(1,n), kernelSmoothingShape(2,n), kernelSmoothingShape(3,n),& 
+          kernelSmoothingScale(n), kernelSigmaSupportScale(n), &
+          curvatureBandwidth(1,n), curvatureBandwidth(2,n), curvatureBandwidth(3,n), &
+          nEstimate(n), roughnessXXArray(n), roughnessYYArray(n), &
+          roughnessZZArray(n), netRoughness(n)
+      end do
+    end select
 
     ! Finished
     close(outputUnit)
