@@ -814,6 +814,7 @@ contains
   integer, parameter :: maxRestartPositionCounter = 10
   doubleprecision, parameter :: maxRelativeJump   = 0.5
   doubleprecision, parameter :: dtReductionFactor = 0.1
+  integer :: dtReductionCounter
   !------------------------------------------------------------
 
     ! Initialize trackingResult
@@ -914,6 +915,7 @@ contains
     dtLoopCounter     = 0
     intLoopCounter    = 0
     posRestartCounter = 0
+    dtReductionCounter = 0
 
     ! Local cell time loop 
     exitFace = 0
@@ -953,7 +955,11 @@ contains
         ( abs(dxrw/dx) .gt. maxRelativeJump ) .or. &
         ( abs(dyrw/dy) .gt. maxRelativeJump ) .or. &
         ( abs(dzrw/dz) .gt. maxRelativeJump ) )
-        
+         print *, 'RED:: ', cellNumber, dt, dtReductionCounter, abs(dxrw/dx), abs(dyrw/dy), abs(dzrw/dz)
+         print *, 'DXRW::', dAdvx/dx, divDx*dt/dx, dBx*sqrt( dt )/dx
+         print *, 'DYRW::', dAdvy/dy, divDy*dt/dy, dBy*sqrt( dt )/dy
+         print *, 'DZRW::', dAdvz/dz, divDz*dt/dz, dBz*sqrt( dt )/dz
+         dtReductionCounter = dtReductionCounter + 1
         t  = t - dt
         dt = dtReductionFactor*dt
 
@@ -967,6 +973,12 @@ contains
         dtold = dt
         t = t + dt
 
+         print *, 'RED:: ', cellNumber, dt, dtReductionCounter, abs(dxrw/dx), abs(dyrw/dy), abs(dzrw/dz)
+         print *, 'DXRW::', dAdvx/dx, divDx*dt/dx, dBx*sqrt( dt )/dx
+         print *, 'DYRW::', dAdvy/dy, divDy*dt/dy, dBy*sqrt( dt )/dy
+         print *, 'DZRW::', dAdvz/dz, divDz*dt/dz, dBz*sqrt( dt )/dz
+         dtReductionCounter = dtReductionCounter + 1
+         call exit(0)
         ! Disable the flag for maximum time 
         if ( reachedMaximumTime ) then
           reachedMaximumTime = .false.
@@ -1368,6 +1380,10 @@ contains
   doubleprecision :: dx, dy, dz
   doubleprecision :: alphaL, alphaT
   doubleprecision, dimension(2) :: dts
+  doubleprecision :: dxx1, dxx2
+  doubleprecision :: dyy1, dyy2
+  doubleprecision :: dzz1, dzz2
+  doubleprecision :: vnorm1, vnorm2
   !----------------------------------------------------------------
 
     ! Initialize
@@ -1421,6 +1437,32 @@ contains
                  alphaT*max(abs(vz1), abs(vz2))/( dz**2 ) )
         ! Compute minimum
         dt     = minval( dts, dts > 0 )
+
+        ! NOT OK
+        vnorm1 = sqrt(vx1**2d0 + vy1**2d0 + vz1**2d0)
+        vnorm2 = sqrt(vx2**2d0 + vy2**2d0 + vz2**2d0)
+        dxx1 = alphaT*vnorm1 + (alphaL - alphaT)*vx1*vx1/vnorm1
+        dxx2 = alphaT*vnorm2 + (alphaL - alphaT)*vx2*vx2/vnorm2
+        dyy1 = alphaT*vnorm1 + (alphaL - alphaT)*vy1*vy1/vnorm1
+        dyy2 = alphaT*vnorm2 + (alphaL - alphaT)*vy2*vy2/vnorm2
+        dzz1 = alphaT*vnorm1 + (alphaL - alphaT)*vz1*vz1/vnorm1
+        dzz2 = alphaT*vnorm2 + (alphaL - alphaT)*vz2*vz2/vnorm2
+        print *, '----------------------------'
+        print *, 'DTS', dts, dt
+        print *, 'TRACK PARAMS', trackingOptions%TimeStepParameters
+        print *, 'CELL SIZE' , dx, dy, dz
+        print *, 'DISPERS' , alphaL, alphaT
+        print *, 'PECLET' , dx/alphaL, dy/alphaT
+        print *, 'ADV' , dx/max(abs(vx1), abs(vx2)), dy/max(abs(vy1), abs(vy2))
+        !print *, 'DXX', dxx1, dxx2, alphaL*abs(vx1), alphaL*abs(vx2)
+        !print *, 'DYY', dyy1, dyy2, alphaL*abs(vy1), alphaT*abs(vy2)
+        print *, 'DXX', alphaL*abs(vx1), alphaL*abs(vx2)
+        print *, 'DYY', alphaT*abs(vy1), alphaT*abs(vy2)
+        print *, 'DZZ', alphaT*abs(vz1), alphaT*abs(vz2)
+        print *, 'DTDXX', dx**2d0/(alphaL*abs(vx2))
+        print *, 'DTDYY', dy**2d0/(alphaT*abs(vy1)), dy**2d0/(alphaT*abs(vy2))
+        !print *, 'DTDZZ', dz**2d0/(alphaT*abs(vz2))
+        !call exit(0) 
       case (4)
         ! Fixed
         dt = trackingOptions%timeStepParameters(1)
