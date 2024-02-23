@@ -688,8 +688,7 @@ contains
     !---------------------------------------------------------------------------------------
   
     ! Is this reset necessary ?
-    ! All scalar variables are reassigned
-    ! in the following lines after reset 
+    ! All scalar variables are reassigned in the following lines after reset
     !call this%Reset()
     call this%ResetArrays()
 
@@ -1117,7 +1116,10 @@ contains
   doubleprecision :: flow
   !-----------------------------------------------------------------------------------
   
-  call this%Reset()
+  ! Is this reset necessary ?
+  ! All scalar variables are reassigned in the following lines after reset
+  !call this%Reset()
+  call this%ResetArrays()
 
   this%CellNumber = cellNumber
   this%Layer = grid%GetLayer(cellNumber)
