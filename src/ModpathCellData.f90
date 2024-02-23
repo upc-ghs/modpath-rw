@@ -1175,7 +1175,6 @@ contains
       this%MassBoundarySubFace1 = defaultICBound
   end if
   
-  
   ! Face 2
   count = grid%GetPotentialFaceConnectionCount(cellNumber, 2)
   this%PotentialConnectionsCount(2) = count
@@ -1472,6 +1471,7 @@ contains
   ! Set sub-cell row and column count. For structured grids, all cells have only 1 sub-cell.
   this%SubCellRowCount = 1
   this%SubCellColumnCount = 1
+
 
   end subroutine pr_SetMassTransportDataStructured
 
