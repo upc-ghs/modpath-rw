@@ -50,6 +50,14 @@ module TrackSubCellModule
     doubleprecision :: porosity111
 
 
+    ! These arrays will contain the dispersion terms 
+    ! at the corners of each cell employed to calculate
+    ! the divergence of dispersion The naming convention
+    ! follows the rule: 
+    !
+    !   - Dxyx: evaluate Dxy terms for derivative x
+    !   - Dyzz: evaluate Dzy terms for derivative z
+    !
     ! (1): 000
     ! (2): 100
     ! (3): 010
