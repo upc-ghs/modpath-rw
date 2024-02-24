@@ -809,7 +809,7 @@ contains
   doubleprecision :: dxrw, dyrw, dzrw
   logical         :: continueTimeLoop
   logical         :: reachedMaximumTime
-  doubleprecision :: tinit, dtold
+  doubleprecision :: tinit, dtold, dtcell
   doubleprecision, dimension(3) :: dtxyz
   integer :: dtLoopCounter, posRestartCounter
   integer :: reboundCounter, intLoopCounter
@@ -817,7 +817,6 @@ contains
   integer, parameter :: maxRestartPositionCounter = 10
   doubleprecision, parameter :: maxRelativeJump   = 0.5
   doubleprecision, parameter :: dtReductionFactor = 0.1
-  integer :: dtReductionCounter
   !------------------------------------------------------------
 
     ! Initialize trackingResult
@@ -883,8 +882,7 @@ contains
       return
     end if 
 
-    ! In case something needs to be done 
-    ! for partially dry cells
+    ! In case something needs to be done for partially dry cells
     if ( this%SubCellData%partiallyDry ) then
       continue
     end if 
@@ -895,15 +893,15 @@ contains
     dzrw = 0d0
 
     ! Compute time step for RWPT
-    call this%ComputeRandomWalkTimeStep( trackingOptions, dt )
+    call this%ComputeRandomWalkTimeStep( trackingOptions, dtcell )
 
     ! Initializes current time
     t     = initialTime
     tinit = initialTime
-    dtold = dt
+    dtold = dtcell
 
     ! Something wrong, leave
-    if ( dt .le. 0d0 ) then 
+    if ( dtcell .le. 0d0 ) then 
       trackingResult%ExitFace = exitFace
       trackingResult%Status = trackingResult%Status_Undefined()
       trackingResult%FinalLocation%CellNumber = cellNumber
@@ -918,7 +916,6 @@ contains
     dtLoopCounter     = 0
     intLoopCounter    = 0
     posRestartCounter = 0
-    dtReductionCounter = 0
 
     ! Local cell time loop 
     exitFace = 0
@@ -928,6 +925,9 @@ contains
 
       ! Time loop counter
       dtLoopCounter = dtLoopCounter + 1
+
+      ! Initialize dt with dtcell
+      dt = dtcell
 
       ! Update current time
       t = t + dt
@@ -940,7 +940,7 @@ contains
         reachedMaximumTime = .true.
       end if
 
-      ! Compute RWPT movement
+      ! Compute RWPT terms
       call this%ComputeRWPTDisplacements( &
                      x, y, z, vx, vy, vz, &
                      dt, trackingOptions, &
@@ -948,7 +948,7 @@ contains
                            dBx, dBy, dBz, &
                      divDx, divDy, divDz  )
 
-      ! Vectorize coordinates maybe ?
+      ! RW displacements
       dxrw = dAdvx + divDx*dt + dBx*sqrt( dt )
       dyrw = dAdvy + divDy*dt + dBy*sqrt( dt )
       dzrw = dAdvz + divDz*dt + dBz*sqrt( dt )
@@ -958,34 +958,26 @@ contains
         ( abs(dxrw/dx) .gt. maxRelativeJump ) .or. &
         ( abs(dyrw/dy) .gt. maxRelativeJump ) .or. &
         ( abs(dzrw/dz) .gt. maxRelativeJump ) )
-         !print *, 'RED:: ', cellNumber, dt, dtReductionCounter, abs(dxrw/dx), abs(dyrw/dy), abs(dzrw/dz)
-         !print *, 'DXRW::', dAdvx/dx, divDx*dt/dx, dBx*sqrt( dt )/dx
-         !print *, 'DYRW::', dAdvy/dy, divDy*dt/dy, dBy*sqrt( dt )/dy
-         !print *, 'DZRW::', dAdvz/dz, divDz*dt/dz, dBz*sqrt( dt )/dz
-         !dtReductionCounter = dtReductionCounter + 1
+
+        ! Rollback time and reduce time step
         t  = t - dt
         dt = dtReductionFactor*dt
 
-        ! Given new dt, recompute displacements
+        ! Given new dt, recompute RW displacements
         call this%AdvectionDisplacement( x, y, z, dt, vx, vy, vz, & 
                                               dAdvx, dAdvy, dAdvz )
         dxrw = dAdvx + divDx*dt + dBx*sqrt( dt )
         dyrw = dAdvy + divDy*dt + dBy*sqrt( dt )
         dzrw = dAdvz + divDz*dt + dBz*sqrt( dt )
-         
-        dtold = dt
+        
+        ! and update time 
         t = t + dt
 
-         !print *, 'RED:: ', cellNumber, dt, dtReductionCounter, abs(dxrw/dx), abs(dyrw/dy), abs(dzrw/dz)
-         !print *, 'DXRW::', dAdvx/dx, divDx*dt/dx, dBx*sqrt( dt )/dx
-         !print *, 'DYRW::', dAdvy/dy, divDy*dt/dy, dBy*sqrt( dt )/dy
-         !print *, 'DZRW::', dAdvz/dz, divDz*dt/dz, dBz*sqrt( dt )/dz
-         !dtReductionCounter = dtReductionCounter + 1
-         !call exit(0)
-        ! Disable the flag for maximum time 
+        ! Disable the flag for maximum time if it was set
         if ( reachedMaximumTime ) then
           reachedMaximumTime = .false.
-        end if 
+        end if
+
       end do
 
       ! new positions
@@ -1019,7 +1011,7 @@ contains
             ny = initialLocation%LocalY
             nz = initialLocation%LocalZ
             t  = tinit
-            dt = dtold
+            dt = dtcell
             posRestartCounter = posRestartCounter + 1
             if ( posRestartCounter .gt. maxRestartPositionCounter ) then 
               ! Something wrong, leave
@@ -1041,7 +1033,7 @@ contains
                                                 dAdvx, dAdvy, dAdvz )
 
           ! If maximumTime was reached, but particle left
-          ! the cell, then the condition is resetted
+          ! the cell, then the condition is reset
           if (reachedMaximumTime) then
             reachedMaximumTime = .false.
           end if
@@ -1080,7 +1072,7 @@ contains
               ny = initialLocation%LocalY
               nz = initialLocation%LocalZ
               t  = tinit
-              dt = dtold
+              dt = dtcell
               posRestartCounter = posRestartCounter + 1
               if ( posRestartCounter .gt. maxRestartPositionCounter ) then 
                 ! Something wrong, leave
@@ -1103,13 +1095,15 @@ contains
 
           ! Found proper interface ?
           !
-          ! It is possible that nx,ny,nz are not consistent
-          ! values after previous displacement "to the interface".
-          ! This effect is originated due to changing direction of displacement vector 
-          ! for different dts. So even after finding time step for exitFace,
-          ! this new timestep may lead to landing outside the cell from an orthogonal 
-          ! direction, typical case of cell corners. If that is the case, then 
-          ! interface loop continues but now finding a smaller timestep for the "new" crossing.
+          ! It is possible that nx,ny,nz are not consistent values
+          ! after previous displacement "to the interface".
+          ! This effect is maybe originated due to changing direction
+          ! of the displacement vector for different dts. So, even after 
+          ! finding a time step for exitFace, this new time step may lead
+          ! to landing outside the cell from an orthogonal direction, 
+          ! typical case of cell corners. If that is the case, then 
+          ! interface loop continues, but now finding a smaller time step
+          ! for the "real" crossing.
           if (                                               &
                 ( nx .gt. 1.0d0 ) .or. ( nx .lt. 0d0 )  .or. &
                 ( ny .gt. 1.0d0 ) .or. ( ny .lt. 0d0 )  .or. &
@@ -1118,27 +1112,15 @@ contains
             ! Continue looking exact interface
             continue
           else
-            ! Once the interface is consistent, 
-            ! apply boundary conditions
+            ! Once the interface is consistent apply boundary conditions
 
-            ! Boundary conditions
-            ! Logic should be: 
-            ! Is there an interface and which kind
-            ! At this point, program already 
-            ! found an exitFace
-            ! By default, if a cell is not active from 
-            ! the flow model data, 
-
-            ! Consider a flag indicating whether the
-            ! center is connected to ANY rebound boundary 
+            ! Consider a flag indicating whether the center cell is 
+            ! connected to any boundary 
 
             ! elasticRebound:
-            ! Verify if particle has to rebound 
-            ! against boundary face.
-            ! Note: one of the possible outputs
-            ! from a reboundBoundary relies on 
-            ! the interface processing 
-            ! being inside the interface detection loop
+            ! Verify if particle has to rebound against boundary face.
+            ! Note: one of the possible outputs from a rebound boundary relies on 
+            ! the boundary processing being inside the interface detection loop
             reboundCounter = 0
             do while( ( exitFace .gt. 0 ) )
 
@@ -1166,16 +1148,15 @@ contains
               yi = ny
               zi = nz
               
-              ! If dt .eq. 0d0 then the particle is exactly 
-              ! at the interface, and is a rebound interface.
-              ! In the meantime, restart.
+              ! If dt .eq. 0d0 then the particle is exactly at the interface,
+              ! and is a rebound interface. In the meantime, restart.
               if ( dt .eq. 0d0 ) then
                 ! Restart coordinates 
                 nx = initialLocation%LocalX
                 ny = initialLocation%LocalY
                 nz = initialLocation%LocalZ
                 t  = t - dt
-                dt = dtold
+                dt = dtcell
                 exitFace = 0
                 posRestartCounter = posRestartCounter + 1
                 ! With nx, ny, nz adopting the starting values, 
@@ -1200,19 +1181,18 @@ contains
                 t  = maximumTime
                 reachedMaximumTime = .true.
 
-                ! Recompute advection displacement for new time step, 
+                ! Recompute advection displacement for the new time step, 
                 ! as if starting from original position
                 call this%AdvectionDisplacement( x, y, z, dt, vx, vy, vz, dAdvx, dAdvy, dAdvz )
 
-                ! Recompute RWPT displacements for new dt
+                ! Recompute RW displacements for new dt
                 dxrw = dAdvx + divDx*dt + dBx*sqrt( dt )
                 dyrw = dAdvy + divDy*dt + dBy*sqrt( dt )
                 dzrw = dAdvz + divDz*dt + dBz*sqrt( dt )
 
-                ! If particle lands outside cell, 
-                ! entering interface loop will modify
+                ! If particle lands outside cell, entering interface loop will modify
                 ! reachedMaximumTime back to .false.
-                !exitFace = 0 ! It is used later so dont' reset yet
+                !exitFace = 0 ! It is used later so don't reset yet
               end if ! maximumTime 
 
               ! Particle rebounds with elastic reflection
@@ -1232,7 +1212,7 @@ contains
                   nx = nx + dxrw/dx
                   ny = ny + dyrw/dy
                   nz = nz - dzrw/dz
-               end select
+              end select
 
               ! If nx, ny or nz are outside cell interfaces, 
               ! then the interface loop will continue.
@@ -1252,21 +1232,23 @@ contains
                 ! displacements of the rebound direction. 
                 ! These are going to be used in determining 
                 ! time step and exact exit position at interface loop
-                if ( ( exitFace .eq. 1 ) .or. ( exitFace .eq. 2 ) ) then 
-                  vx    = -vx
-                  divDx = -divDx
-                  dBx   = -dBx
-                end if 
-                if ( ( exitFace .eq. 3 ) .or. ( exitFace .eq. 4 ) ) then 
-                  vy    = -vy
-                  divDy = -divDy
-                  dBy   = -dBy
-                end if
-                if ( ( exitFace .eq. 5 ) .or. ( exitFace .eq. 6 ) ) then 
-                  vz    = -vz
-                  divDz = -divDz
-                   dBz   = -dBz
-                end if 
+                select case ( exitFace )
+                  ! X Face
+                  case(1,2)
+                    vx    = -vx
+                    divDx = -divDx
+                    dBx   = -dBx
+                  ! Y Face
+                  case(3,4)
+                    vy    = -vy
+                    divDy = -divDy
+                    dBy   = -dBy
+                  ! Z Face
+                  case(5,6)
+                    vz    = -vz
+                    divDz = -divDz
+                    dBz   = -dBz
+                end select 
 
                 ! Go to: particleLeavingCell
                 exitFace = 0
@@ -1276,11 +1258,10 @@ contains
                 ! particleLeavingCell loop is broken and will update 
                 ! particle position to rebound position and continue
                 ! time loop with cell characteristic time step
-                dt =  dtold
+                dt =  dtcell
                 exitFace = 0
 
                 ! If one of the positions is exactly an interface
-                ! Not the most beautiful way
                 if (                                          & 
                     ( nx .eq. 0d0 ) .or. ( nx .eq. 1d0 ) .or. & 
                     ( ny .eq. 0d0 ) .or. ( ny .eq. 1d0 ) .or. & 
