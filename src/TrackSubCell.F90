@@ -44,6 +44,7 @@ module TrackSubCellModule
     !
     !   - Dxyx: evaluate Dxy terms for derivative x
     !   - Dyzz: evaluate Dzy terms for derivative z
+    !   - and so on ...
     !
     ! (1): 000
     ! (2): 100
@@ -87,12 +88,6 @@ module TrackSubCellModule
     ! Needed for OBS (?)
     type(TrackSubCellResultType) :: TrackSubCellResult
 
-    ! Flags to indicate whether or not 
-    ! to consider random motion ( to be deprecated ) 
-    logical :: moveX = .true.
-    logical :: moveY = .true.
-    logical :: moveZ = .true.
-
     ! Point towards trackingOptions
     integer, dimension(:), pointer :: dimensions
     integer, pointer :: nDim
@@ -119,7 +114,7 @@ module TrackSubCellModule
     procedure :: TrilinearDerivativeY=>pr_TrilinearDerivativeY
     procedure :: TrilinearDerivativeZ=>pr_TrilinearDerivativeZ
     procedure :: SetDispersionDisplacement=>pr_SetDispersionDisplacement
-    procedure :: DispersionDivergenceDischarge=>pr_DispersionDivergenceDischarge
+    procedure :: DispersionDivergence=>pr_DispersionDivergence
     procedure :: AdvectionDisplacementExponential=>pr_AdvectionDisplacementExponential
     procedure :: AdvectionDisplacementEulerian=>pr_AdvectionDisplacementEulerian
     procedure :: NewtonRaphsonTimeStep=>NewtonRaphsonTimeStepExponentialAdvection
@@ -582,11 +577,7 @@ contains
       this%ComputeCornerPorosity => pr_ComputeCornerPorosityInterpolated 
     end if 
 
-    ! Initialize random displacement flags ( to be deprecated )
-    if ( trackingOptions%dimensionMask(1) .eq. 0 ) this%moveX = .false.
-    if ( trackingOptions%dimensionMask(2) .eq. 0 ) this%moveY = .false.
-    if ( trackingOptions%dimensionMask(3) .eq. 0 ) this%moveZ = .false.
-
+    ! Pointers to dimensionality
     this%dimensions => trackingOptions%dimensions
     this%nDim => trackingOptions%nDim
     
@@ -705,7 +696,7 @@ contains
       alphaT = this%SubCellData%alphaTH
 
       call this%LinearInterpolationVelocities( x, y, z, vx, vy, vz )
-      call this%DispersionDivergenceDischarge( x, y, z, alphaL, alphaT, dMEff, divDx, divDy, divDz )
+      call this%DispersionDivergence( x, y, z, divDx, divDy, divDz )
       call this%DisplacementRandomDischarge( x, y, z, alphaL, alphaT, dMEff, dBx, dBy, dBz )
       call this%AdvectionDisplacement( x, y, z, dt, vx, vy, vz, dAdvx, dAdvy, dAdvz )
 
@@ -759,7 +750,7 @@ contains
       ! Compute dispersivities
       call pr_ComputeNonlinearDispersivities( this, vx, vy, vz, Daqueous, &
                 mediumDistance, mediumDelta, betaL, betaT, alphaL, alphaT )
-      call this%DispersionDivergenceDischarge( x, y, z, alphaL, alphaT, Dmol, divDx, divDy, divDz )
+      call this%DispersionDivergence( x, y, z, divDx, divDy, divDz )
       call this%DisplacementRandomDischarge( x, y, z, alphaL, alphaT, Dmol, dBx, dBy, dBz )
       call this%AdvectionDisplacement( x, y, z, dt, vx, vy, vz, dAdvx, dAdvy, dAdvz )
 
@@ -805,9 +796,7 @@ contains
       alphaT = &
         this%SubCellData%alphaTV + cosinesq*(this%SubCellData%alphaTH-this%SubCellData%alphaTV)
 
-      call this%DispersionDivergenceDischarge( x, y, z, alphaL, alphaT, dMEff, divDx, divDy, divDz )
-      !call pr_DispersionDivergenceDischargeAxisymmetric( this, x, y, z, & 
-      !  alphaL, alphaT, this%SubCellData%alphaTH, dMEff, divDx, divDy, divDz )
+      call this%DispersionDivergence( x, y, z, divDx, divDy, divDz )
       call this%DisplacementRandomDischargeAxisymmetric( x, y, z, & 
         alphaL, alphaT, this%SubCellData%alphaTH, dMEff, dBx, dBy, dBz )
       call this%AdvectionDisplacement( x, y, z, dt, vx, vy, vz, dAdvx, dAdvy, dAdvz )
@@ -2703,7 +2692,7 @@ contains
 
 
   ! RWPT
-  subroutine pr_DispersionDivergenceDischarge( this, x, y, z, alphaL, alphaT, dMEff, divDx, divDy, divDz )
+  subroutine pr_DispersionDivergence( this, x, y, z, divDx, divDy, divDz )
       !----------------------------------------------------------------
       ! Compute dispersion divergence terms 
       ! 
@@ -2720,7 +2709,6 @@ contains
       class (TrackSubCellType), target :: this
       ! input
       doubleprecision, intent(in) :: x, y, z
-      doubleprecision, intent(in) :: alphaL, alphaT, dMEff
       ! output
       doubleprecision, intent(out) :: divDx, divDy, divDz
       ! local
@@ -2730,8 +2718,7 @@ contains
       !---------------------------------------------------------------- 
 
       ! Interpolated derivates !
-      call this%TrilinearDerivativeX( 1, x, y, z, &
-      !call this%TrilinearDerivative( 1, x, y, z, &
+      call this%TrilinearDerivativeX( x, y, z, &
                 this%Dxxx(1), & 
                 this%Dxxx(2), &
                 this%Dxxx(3), &
@@ -2741,8 +2728,7 @@ contains
                 this%Dxxx(7), &
                 this%Dxxx(8), &
                 dDxxdx )
-      call this%TrilinearDerivativeY( 2, x, y, z, &
-      !call this%TrilinearDerivative( 2, x, y, z, &
+      call this%TrilinearDerivativeY( x, y, z, &
                 this%Dyyy(1), &
                 this%Dyyy(2), &
                 this%Dyyy(3), &
@@ -2752,8 +2738,7 @@ contains
                 this%Dyyy(7), &
                 this%Dyyy(8), &
                 dDyydy )
-      call this%TrilinearDerivativeZ( 3, x, y, z, &
-      !call this%TrilinearDerivative( 3, x, y, z, &
+      call this%TrilinearDerivativeZ( x, y, z, &
                 this%Dzzz(1), &
                 this%Dzzz(2), &
                 this%Dzzz(3), &
@@ -2763,8 +2748,7 @@ contains
                 this%Dzzz(7), &
                 this%Dzzz(8), &
                 dDzzdz )
-      call this%TrilinearDerivativeX( 1, x, y, z, & 
-      !call this%TrilinearDerivative( 1, x, y, z, & 
+      call this%TrilinearDerivativeX( x, y, z, & 
                 this%Dxyx(1), & 
                 this%Dxyx(2), &
                 this%Dxyx(3), &
@@ -2774,8 +2758,7 @@ contains
                 this%Dxyx(7), &
                 this%Dxyx(8), &
                 dDxydx )
-      call this%TrilinearDerivativeX( 1, x, y, z, &
-      !call this%TrilinearDerivative( 1, x, y, z, &
+      call this%TrilinearDerivativeX( x, y, z, &
                 this%Dxzx(1), &
                 this%Dxzx(2), &
                 this%Dxzx(3), &
@@ -2785,8 +2768,7 @@ contains
                 this%Dxzx(7), &
                 this%Dxzx(8), &
                 dDxzdx )
-      call this%TrilinearDerivativeY( 2, x, y, z, &
-      !call this%TrilinearDerivative( 2, x, y, z, &
+      call this%TrilinearDerivativeY( x, y, z, &
                 this%Dxyy(1), &
                 this%Dxyy(2), &
                 this%Dxyy(3), &
@@ -2796,8 +2778,7 @@ contains
                 this%Dxyy(7), &
                 this%Dxyy(8), &
                 dDxydy )
-      call this%TrilinearDerivativeY( 2, x, y, z, &
-      !call this%TrilinearDerivative( 2, x, y, z, &
+      call this%TrilinearDerivativeY( x, y, z, &
                 this%Dyzy(1), &
                 this%Dyzy(2), &
                 this%Dyzy(3), &
@@ -2807,8 +2788,7 @@ contains
                 this%Dyzy(7), &
                 this%Dyzy(8), &
                 dDyzdy )
-      call this%TrilinearDerivativeZ( 3, x, y, z, &
-      !call this%TrilinearDerivative( 3, x, y, z, &
+      call this%TrilinearDerivativeZ( x, y, z, &
                 this%Dxzz(1), &
                 this%Dxzz(2), &
                 this%Dxzz(3), &
@@ -2818,8 +2798,7 @@ contains
                 this%Dxzz(7), &
                 this%Dxzz(8), &
                 dDxzdz )
-      call this%TrilinearDerivativeZ( 3, x, y, z, &
-      !call this%TrilinearDerivative( 3, x, y, z, &
+      call this%TrilinearDerivativeZ( x, y, z, &
                 this%Dyzz(1), &
                 this%Dyzz(2), &
                 this%Dyzz(3), &
@@ -2836,7 +2815,7 @@ contains
       divDz = ( dDxzdx + dDyzdy + dDzzdz )/this%SubCellData%Porosity/this%SubCellData%Retardation
 
 
-  end subroutine pr_DispersionDivergenceDischarge
+  end subroutine pr_DispersionDivergence
 
 
   subroutine pr_DisplacementRandomDischarge( this, x, y, z, alphaL, alphaT, dMEff, dBx, dBy, dBz ) 
@@ -3168,7 +3147,6 @@ contains
   doubleprecision :: alphaL, alphaT, dMEff
   doubleprecision :: alphaLH, alphaLV, alphaTH, alphaTV
   doubleprecision :: aLMinusaT
-  doubleprecision :: aTQPlusPDMEff
   doubleprecision :: cosinesq
 
   doubleprecision :: pDmeff000
@@ -3323,293 +3301,6 @@ contains
     return
 
   end subroutine pr_CornerDispersionAxisymmetric
-
-
-  !subroutine pr_DispersionDivergenceDischargeAxisymmetric( this, x, y, z, & 
-  !                    alphaL, alphaT, alphaTH, dMEff, divDx, divDy, divDz )
-  !!----------------------------------------------------------------
-  !! Compute dispersion divergence terms 
-  !!
-  !! Params:
-  !!   - x, y, z             : local cell coordinates
-  !!   - alphaL              : longidutinal dispersivity
-  !!   - alphaT              : transverse dispersivity
-  !!   - alphaTH             : transverse dispersivity horizontal
-  !!   - dMEff               : effective molecular diffusion (corrected by tortuosity)
-  !!   - divDx, divDy, divDz : dispersion divergence, output
-  !!
-  !! Follows axisymmetric dispersion model in Lichtner et al. 2002 
-  !! 
-  !!----------------------------------------------------------------
-  !! Specifications
-  !!----------------------------------------------------------------
-  !implicit none
-  !class (TrackSubCellType), target :: this
-  !! input
-  !doubleprecision, intent(in) :: x, y, z
-  !doubleprecision, intent(in) :: alphaL, alphaT, alphaTH, dMEff
-  !! output
-  !doubleprecision, intent(out) :: divDx, divDy, divDz
-  !! local
-  !doubleprecision, dimension(:), pointer :: qp000
-  !doubleprecision, dimension(:), pointer :: qp100
-  !doubleprecision, dimension(:), pointer :: qp010
-  !doubleprecision, dimension(:), pointer :: qp110
-  !doubleprecision, dimension(:), pointer :: qp001
-  !doubleprecision, dimension(:), pointer :: qp101
-  !doubleprecision, dimension(:), pointer :: qp011
-  !doubleprecision, dimension(:), pointer :: qp111
-
-  !doubleprecision :: dDxxdx, dDxydy, dDxzdz, &
-  !                   dDxydx, dDyydy, dDyzdz, &
-  !                   dDxzdx, dDyzdy, dDzzdz
-
-  !doubleprecision :: aLMinusaT
-
-  !doubleprecision :: pDmeff000
-  !doubleprecision :: pDmeff100
-  !doubleprecision :: pDmeff010
-  !doubleprecision :: pDmeff110
-  !doubleprecision :: pDmeff001
-  !doubleprecision :: pDmeff101
-  !doubleprecision :: pDmeff011
-  !doubleprecision :: pDmeff111
-
-  !doubleprecision :: Dxxx000, Dyyy000, Dzzz000 
-  !doubleprecision :: Dxxx100, Dyyy100, Dzzz100
-  !doubleprecision :: Dxxx010, Dyyy010, Dzzz010
-  !doubleprecision :: Dxxx110, Dyyy110, Dzzz110
-  !doubleprecision :: Dxxx001, Dyyy001, Dzzz001
-  !doubleprecision :: Dxxx101, Dyyy101, Dzzz101
-  !doubleprecision :: Dxxx011, Dyyy011, Dzzz011
-  !doubleprecision :: Dxxx111, Dyyy111, Dzzz111
-
-  !doubleprecision :: Dxyx000, Dxzx000, Dxyy000 
-  !doubleprecision :: Dxyx100, Dxzx100, Dxyy100
-  !doubleprecision :: Dxyx010, Dxzx010, Dxyy010
-  !doubleprecision :: Dxyx110, Dxzx110, Dxyy110
-  !doubleprecision :: Dxyx001, Dxzx001, Dxyy001
-  !doubleprecision :: Dxyx101, Dxzx101, Dxyy101
-  !doubleprecision :: Dxyx011, Dxzx011, Dxyy011
-  !doubleprecision :: Dxyx111, Dxzx111, Dxyy111
-
-  !doubleprecision :: Dyzy000, Dxzz000, Dyzz000 
-  !doubleprecision :: Dyzy100, Dxzz100, Dyzz100
-  !doubleprecision :: Dyzy010, Dxzz010, Dyzz010
-  !doubleprecision :: Dyzy110, Dxzz110, Dyzz110
-  !doubleprecision :: Dyzy001, Dxzz001, Dyzz001
-  !doubleprecision :: Dyzy101, Dxzz101, Dyzz101
-  !doubleprecision :: Dyzy011, Dxzz011, Dyzz011
-  !doubleprecision :: Dyzy111, Dxzz111, Dyzz111
-  !!---------------------------------------------------------------- 
-
-  !!  ! Initialize output !
-  !!  divDx = 0d0 
-  !!  divDy = 0d0
-  !!  divDz = 0d0
-  !!    
-  !!  ! alphaL - alphaT
-  !!  aLMinusaT = alphaL - alphaT
-
-  !!  ! Product between porosities and effecfive molecular diffusion 
-  !!  pDMeff000 = this%porosity000*dMEff 
-  !!  pDMeff100 = this%porosity100*dMEff
-  !!  pDMeff010 = this%porosity010*dMEff
-  !!  pDMeff110 = this%porosity110*dMEff
-  !!  pDMeff001 = this%porosity001*dMEff
-  !!  pDMeff101 = this%porosity101*dMEff
-  !!  pDMeff011 = this%porosity011*dMEff
-  !!  pDMeff111 = this%porosity111*dMEff
-
-  !!  qp000 => this%qprod000
-  !!  qp100 => this%qprod100
-  !!  qp010 => this%qprod010
-  !!  qp110 => this%qprod110
-  !!  qp001 => this%qprod001
-  !!  qp101 => this%qprod101
-  !!  qp011 => this%qprod011
-  !!  qp111 => this%qprod111
-
-  !!  ! 000
-  !!  Dxxx000 = pDMeff000 + ( alphaL + alphaT*qp000(8) )*qp000(1) + alphaTH*qp000(4)*( 1d0 + qp000(8) )
-  !!  Dyyy000 = pDMeff000 + alphaTH*qp000(1)*( 1d0 + qp000(8) ) + qp000(4)*( alphaL + alphaT*qp000(8) )
-  !!  Dxyx000 = ( alphaL - alphaTH*( 1d0 + qp000(8) ) + alphaT*qp000(8) )*qp000(1)
-  !!  Dxyy000 = Dxyx000
-  !!  Dzzz000 = pDMeff000 + alphaT*qp000(7) + alphaL*qp000(6)
-  !!  Dxzx000 = ( aLMinusaT )*qp000(3)
-  !!  Dyzy000 = ( aLMinusaT )*qp000(5)
-  !!  Dxzz000 = Dxzx000
-  !!  Dyzz000 = Dyzy000
-  !!  ! 100
-  !!  Dxxx100 = pDMeff100 + ( alphaL + alphaT*qp100(8) )*qp100(1) + alphaTH*qp100(4)*( 1d0 + qp100(8) )
-  !!  Dyyy100 = pDMeff100 + alphaTH*qp100(1)*( 1d0 + qp100(8) ) + qp100(4)*( alphaL + alphaT*qp100(8) )
-  !!  Dxyx100 = ( alphaL - alphaTH*( 1d0 + qp100(8) ) + alphaT*qp100(8) )*qp100(1)
-  !!  Dxyy100 = Dxyx100
-  !!  Dzzz100 = pDMeff100 + alphaT*qp100(7) + alphaL*qp100(6)
-  !!  Dxzx100 = ( aLMinusaT )*qp100(3)
-  !!  Dyzy100 = ( aLMinusaT )*qp100(5)
-  !!  Dxzz100 = Dxzx100
-  !!  Dyzz100 = Dyzy100
-  !!  ! 010
-  !!  Dxxx010 = pDMeff010 + ( alphaL + alphaT*qp010(8) )*qp010(1) + alphaTH*qp010(4)*( 1d0 + qp010(8) )
-  !!  Dyyy010 = pDMeff010 + alphaTH*qp010(1)*( 1d0 + qp010(8) ) + qp010(4)*( alphaL + alphaT*qp010(8) )
-  !!  Dxyx010 = ( alphaL - alphaTH*( 1d0 + qp010(8) ) + alphaT*qp010(8) )*qp010(1)
-  !!  Dxyy010 = Dxyx010
-  !!  Dzzz010 = pDMeff010 + alphaT*qp010(7) + alphaL*qp010(6)
-  !!  Dxzx010 = ( aLMinusaT )*qp010(3)
-  !!  Dyzy010 = ( aLMinusaT )*qp010(5)
-  !!  Dxzz010 = Dxzx010
-  !!  Dyzz010 = Dyzy010
-  !!  ! 110
-  !!  Dxxx110 = pDMeff110 + ( alphaL + alphaT*qp110(8) )*qp110(1) + alphaTH*qp110(4)*( 1d0 + qp110(8) )
-  !!  Dyyy110 = pDMeff110 + alphaTH*qp110(1)*( 1d0 + qp110(8) ) + qp110(4)*( alphaL + alphaT*qp110(8) )
-  !!  Dxyx110 = ( alphaL - alphaTH*( 1d0 + qp110(8) ) + alphaT*qp110(8) )*qp110(1)
-  !!  Dxyy110 = Dxyx110
-  !!  Dzzz110 = pDMeff110 + alphaT*qp110(7) + alphaL*qp110(6)
-  !!  Dxzx110 = ( aLMinusaT )*qp110(3)
-  !!  Dyzy110 = ( aLMinusaT )*qp110(5)
-  !!  Dxzz110 = Dxzx110
-  !!  Dyzz110 = Dyzy110
-  !!  ! 001
-  !!  Dxxx001 = pDMeff001 + ( alphaL + alphaT*qp001(8) )*qp001(1) + alphaTH*qp001(4)*( 1d0 + qp001(8) )
-  !!  Dyyy001 = pDMeff001 + alphaTH*qp001(1)*( 1d0 + qp001(8) ) + qp001(4)*( alphaL + alphaT*qp001(8) )
-  !!  Dxyx001 = ( alphaL - alphaTH*( 1d0 + qp001(8) ) + alphaT*qp001(8) )*qp001(1)
-  !!  Dxyy001 = Dxyx001
-  !!  Dzzz001 = pDMeff001 + alphaT*qp001(7) + alphaL*qp001(6)
-  !!  Dxzx001 = ( aLMinusaT )*qp001(3)
-  !!  Dyzy001 = ( aLMinusaT )*qp001(5)
-  !!  Dxzz001 = Dxzx001
-  !!  Dyzz001 = Dyzy001
-  !!  ! 101
-  !!  Dxxx101 = pDMeff101 + ( alphaL + alphaT*qp101(8) )*qp101(1) + alphaTH*qp101(4)*( 1d0 + qp101(8) )
-  !!  Dyyy101 = pDMeff101 + alphaTH*qp101(1)*( 1d0 + qp101(8) ) + qp101(4)*( alphaL + alphaT*qp101(8) )
-  !!  Dxyx101 = ( alphaL - alphaTH*( 1d0 + qp101(8) ) + alphaT*qp101(8) )*qp101(1)
-  !!  Dxyy101 = Dxyx101
-  !!  Dzzz101 = pDMeff101 + alphaT*qp101(7) + alphaL*qp101(6)
-  !!  Dxzx101 = ( aLMinusaT )*qp101(3)
-  !!  Dyzy101 = ( aLMinusaT )*qp101(5)
-  !!  Dxzz101 = Dxzx101
-  !!  Dyzz101 = Dyzy101
-  !!  ! 011
-  !!  Dxxx011 = pDMeff011 + ( alphaL + alphaT*qp011(8) )*qp011(1) + alphaTH*qp011(4)*( 1d0 + qp011(8) )
-  !!  Dyyy011 = pDMeff011 + alphaTH*qp011(1)*( 1d0 + qp011(8) ) + qp011(4)*( alphaL + alphaT*qp011(8) )
-  !!  Dxyx011 = ( alphaL - alphaTH*( 1d0 + qp011(8) ) + alphaT*qp011(8) )*qp011(1)
-  !!  Dxyy011 = Dxyx011
-  !!  Dzzz011 = pDMeff011 + alphaT*qp011(7) + alphaL*qp011(6)
-  !!  Dxzx011 = ( aLMinusaT )*qp011(3)
-  !!  Dyzy011 = ( aLMinusaT )*qp011(5)
-  !!  Dxzz011 = Dxzx011
-  !!  Dyzz011 = Dyzy011
-  !!  ! 111
-  !!  Dxxx111 = pDMeff111 + ( alphaL + alphaT*qp111(8) )*qp111(1) + alphaTH*qp111(4)*( 1d0 + qp111(8) )
-  !!  Dyyy111 = pDMeff111 + alphaTH*qp111(1)*( 1d0 + qp111(8) ) + qp111(4)*( alphaL + alphaT*qp111(8) )
-  !!  Dxyx111 = ( alphaL - alphaTH*( 1d0 + qp111(8) ) + alphaT*qp111(8) )*qp111(1)
-  !!  Dxyy111 = Dxyx111
-  !!  Dzzz111 = pDMeff111 + alphaT*qp111(7) + alphaL*qp111(6)
-  !!  Dxzx111 = ( aLMinusaT )*qp111(3)
-  !!  Dyzy111 = ( aLMinusaT )*qp111(5)
-  !!  Dxzz111 = Dxzx111
-  !!  Dyzz111 = Dyzy111
-
-  !!  ! Interpolated derivates !
-  !!  call this%TrilinearDerivative( 1, x, y, z, &
-  !!            Dxxx000, & 
-  !!            Dxxx100, &
-  !!            Dxxx010, &
-  !!            Dxxx110, &
-  !!            Dxxx001, &
-  !!            Dxxx101, &
-  !!            Dxxx011, &
-  !!            Dxxx111, &
-  !!            dDxxdx )
-  !!  call this%TrilinearDerivative( 2, x, y, z, &
-  !!            Dyyy000, &
-  !!            Dyyy100, &
-  !!            Dyyy010, &
-  !!            Dyyy110, &
-  !!            Dyyy001, &
-  !!            Dyyy101, &
-  !!            Dyyy011, &
-  !!            Dyyy111, &
-  !!            dDyydy )
-  !!  call this%TrilinearDerivative( 3, x, y, z, &
-  !!            Dzzz000, &
-  !!            Dzzz100, &
-  !!            Dzzz010, &
-  !!            Dzzz110, &
-  !!            Dzzz001, &
-  !!            Dzzz101, &
-  !!            Dzzz011, &
-  !!            Dzzz111, &
-  !!            dDzzdz )
-  !!  call this%TrilinearDerivative( 1, x, y, z, & 
-  !!            Dxyx000, & 
-  !!            Dxyx100, &
-  !!            Dxyx010, &
-  !!            Dxyx110, &
-  !!            Dxyx001, &
-  !!            Dxyx101, &
-  !!            Dxyx011, &
-  !!            Dxyx111, &
-  !!            dDxydx )
-  !!  call this%TrilinearDerivative( 1, x, y, z, &
-  !!            Dxzx000, &
-  !!            Dxzx100, &
-  !!            Dxzx010, &
-  !!            Dxzx110, &
-  !!            Dxzx001, &
-  !!            Dxzx101, &
-  !!            Dxzx011, &
-  !!            Dxzx111, &
-  !!            dDxzdx )
-  !!  call this%TrilinearDerivative( 2, x, y, z, &
-  !!            Dxyy000, &
-  !!            Dxyy100, &
-  !!            Dxyy010, &
-  !!            Dxyy110, &
-  !!            Dxyy001, &
-  !!            Dxyy101, &
-  !!            Dxyy011, &
-  !!            Dxyy111, &
-  !!            dDxydy )
-  !!  call this%TrilinearDerivative( 2, x, y, z, &
-  !!            Dyzy000, &
-  !!            Dyzy100, &
-  !!            Dyzy010, &
-  !!            Dyzy110, &
-  !!            Dyzy001, &
-  !!            Dyzy101, &
-  !!            Dyzy011, &
-  !!            Dyzy111, &
-  !!            dDyzdy )
-  !!  call this%TrilinearDerivative( 3, x, y, z, &
-  !!            Dxzz000, &
-  !!            Dxzz100, &
-  !!            Dxzz010, &
-  !!            Dxzz110, &
-  !!            Dxzz001, &
-  !!            Dxzz101, &
-  !!            Dxzz011, &
-  !!            Dxzz111, &
-  !!            dDxzdz )
-  !!  call this%TrilinearDerivative( 3, x, y, z, &
-  !!            Dyzz000, &
-  !!            Dyzz100, &
-  !!            Dyzz010, &
-  !!            Dyzz110, &
-  !!            Dyzz001, &
-  !!            Dyzz101, &
-  !!            Dyzz011, &
-  !!            Dyzz111, &
-  !!            dDyzdz )
-
-  !!  ! Notice correction by porosity and retardation 
-  !!  divDx = ( dDxxdx + dDxydy + dDxzdz )/this%SubCellData%Porosity/this%SubCellData%Retardation
-  !!  divDy = ( dDxydx + dDyydy + dDyzdz )/this%SubCellData%Porosity/this%SubCellData%Retardation
-  !!  divDz = ( dDxzdx + dDyzdy + dDzzdz )/this%SubCellData%Porosity/this%SubCellData%Retardation
-
-
-  !end subroutine pr_DispersionDivergenceDischargeAxisymmetric
 
 
   subroutine pr_DisplacementRandomDischargeAxisymmetric( this, x, y, z, & 
@@ -4738,7 +4429,7 @@ contains
   end subroutine pr_TrilinearDerivative
 
 
-  subroutine pr_TrilinearDerivativeX( this, direction, x, y, z, v000, v100, v010, v110, v001, v101, v011, v111, output )
+  subroutine pr_TrilinearDerivativeX( this, x, y, z, v000, v100, v010, v110, v001, v101, v011, v111, output )
   !-----------------------------------------------------------
   ! Compute derivative of a trilinear interpolation in a given
   ! direction
@@ -4753,7 +4444,6 @@ contains
   implicit none
   class (TrackSubCellType) :: this
   ! input
-  integer        , intent(in):: direction
   doubleprecision, intent(in):: x, y, z
   doubleprecision, intent(in):: v000, v100, v010, v110, v001, v101, v011, v111
   ! output
@@ -4777,7 +4467,7 @@ contains
   end subroutine pr_TrilinearDerivativeX
 
 
-  subroutine pr_TrilinearDerivativeY( this, direction, x, y, z, v000, v100, v010, v110, v001, v101, v011, v111, output )
+  subroutine pr_TrilinearDerivativeY( this, x, y, z, v000, v100, v010, v110, v001, v101, v011, v111, output )
   !-----------------------------------------------------------
   ! Compute derivative of a trilinear interpolation in a given
   ! direction
@@ -4792,7 +4482,6 @@ contains
   implicit none
   class (TrackSubCellType) :: this
   ! input
-  integer        , intent(in):: direction
   doubleprecision, intent(in):: x, y, z
   doubleprecision, intent(in):: v000, v100, v010, v110, v001, v101, v011, v111
   ! output
@@ -4816,14 +4505,13 @@ contains
   end subroutine pr_TrilinearDerivativeY
 
 
-  subroutine pr_TrilinearDerivativeZ( this, direction, x, y, z, v000, v100, v010, v110, v001, v101, v011, v111, output )
+  subroutine pr_TrilinearDerivativeZ( this, x, y, z, v000, v100, v010, v110, v001, v101, v011, v111, output )
   !-----------------------------------------------------------
   ! Compute derivative of a trilinear interpolation in a given
   ! direction
   ! 
   ! Params
   !     - x, y, z   : local cell coordinates 
-  !     - direction : specifies x=1, y=2 or z=3 direction
   !     - vijk      : values at corresponding corners
   !     - output    : the output variable
   !-----------------------------------------------------------
@@ -4832,7 +4520,6 @@ contains
   implicit none
   class (TrackSubCellType) :: this
   ! input
-  integer        , intent(in):: direction
   doubleprecision, intent(in):: x, y, z
   doubleprecision, intent(in):: v000, v100, v010, v110, v001, v101, v011, v111
   ! output
@@ -4896,326 +4583,41 @@ contains
   ! RWPT
   subroutine pr_ComputeNonlinearDispersivities( this, vx, vy, vz, Daqueous, distance, &
                                                   delta, betaL, betaT, alphaL, alphaT )
-      !----------------------------------------------------------------
-      ! Compute nonlinear equivalent dispersivities
-      ! establishing analogy with 
-      ! model from  Chiogna et al. 2010, Rolle et al. 2013
-      !  
-      ! Params:
-      !----------------------------------------------------------------
-      ! Specifications
-      !----------------------------------------------------------------
-      implicit none
-      class (TrackSubCellType)    :: this
-      ! input
-      doubleprecision, intent(in) :: vx, vy, vz, Daqueous
-      doubleprecision, intent(in) :: distance, delta, betaL, betaT
-      ! output
-      doubleprecision, intent(inout) :: alphaL, alphaT
-      ! local
-      doubleprecision :: v, peclet, fbase
-      !---------------------------------------------------------------- 
+  !----------------------------------------------------------------
+  ! Compute nonlinear equivalent dispersivities
+  ! establishing analogy with 
+  ! model from  Chiogna et al. 2010, Rolle et al. 2013
+  !  
+  ! Params:
+  !----------------------------------------------------------------
+  ! Specifications
+  !----------------------------------------------------------------
+  implicit none
+  class (TrackSubCellType)    :: this
+  ! input
+  doubleprecision, intent(in) :: vx, vy, vz, Daqueous
+  doubleprecision, intent(in) :: distance, delta, betaL, betaT
+  ! output
+  doubleprecision, intent(inout) :: alphaL, alphaT
+  ! local
+  doubleprecision :: v, peclet, fbase
+  !---------------------------------------------------------------- 
         
-      v      = 0d0
-      peclet = 0d0
-      fbase  = 0d0  
+    v      = 0d0
+    peclet = 0d0
+    fbase  = 0d0  
 
 
-      v      = sqrt( vx**2 + vy**2 + vz**2 )
-      peclet = v*distance/Daqueous
-      fbase  = peclet**2/( peclet + 2 + 4*delta**2 )
+    v      = sqrt( vx**2 + vy**2 + vz**2 )
+    peclet = v*distance/Daqueous
+    fbase  = peclet**2/( peclet + 2 + 4*delta**2 )
 
-      alphaL = (distance/peclet)*( fbase )**betaL 
-      alphaT = (distance/peclet)*( fbase )**betaT
+    alphaL = (distance/peclet)*( fbase )**betaL 
+    alphaT = (distance/peclet)*( fbase )**betaT
 
-      return
+    return
 
   end subroutine pr_ComputeNonlinearDispersivities
-
-
-  !! RWPT
-  !subroutine pr_UpdateTimeStepQuadratic( this, &
-  !                        x, y, z, nx, ny, nz, & 
-  !            vx, vy, vz, divDx, divDy, divDz, & 
-  !                dBx, dBy, dBz, t, dt, dtxyz  )
-  !    !----------------------------------------------------------------
-  !    ! Detects exit face and computes time step to force particle
-  !    ! into the interface, using analytical quadratic solution method.
-  !    ! Related to eulerian advection model
-  !    ! 
-  !    ! Params:
-  !    !     - x, y, z             : local cell coordinates
-  !    !     - nx, ny, nz          : updated coordinates after RWPT
-  !    !     - vx, vy, vz          : interpolated velocities
-  !    !     - divDx, divDy, divDz : dispersion divergence
-  !    !     - dBx, dBy, dBz       : random dispersion displacements
-  !    !     - t                   : current time
-  !    !     - dt                  : time step
-  !    !     - dtxyz               : array for saving each dt
-  !    !     - exitFace            : holder for exit face
-  !    !  
-  !    ! Interface:
-  !    !     - ExitFaceAndTimeStep
-  !    !----------------------------------------------------------------
-  !    ! Specifications
-  !    !----------------------------------------------------------------
-  !    implicit none
-  !    class (TrackSubCellType) :: this
-  !    ! input
-  !    doubleprecision, intent(in) :: x, y, z
-  !    doubleprecision, intent(in) :: nx, ny, nz
-  !    doubleprecision, intent(in) :: vx, vy, vz
-  !    doubleprecision, intent(in) :: divDx, divDy, divDz
-  !    doubleprecision, intent(in) :: dBx, dBy, dBz
-  !    ! output
-  !    doubleprecision, intent(inout) :: t, dt
-  !    doubleprecision, dimension(3), intent(inout) :: dtxyz
-  !    ! local
-  !    integer :: imindt
-  !    doubleprecision :: dx, dy, dz
-  !    doubleprecision :: dInterface
-  !    doubleprecision :: AFace, BFace, z1, z2, zsqrt, zsqrtarg
-  !    !----------------------------------------------------------------
-  !      
-  !    ! Local copies of cell size 
-  !    dx = this%SubCellData%DX
-  !    dy = this%SubCellData%DY
-  !    dz = this%SubCellData%DZ
-
-  !    !Reset t, dt will be replaced
-  !    t = t - dt
-
-  !    !! Long jump in x
-  !    !dInterface = 0.25*dx
-  !    !AFace      = 0d0
-  !    !BFace      = 0d0
-  !    !z1         = 0d0
-  !    !z2         = 0d0
-  !    !zsqrt      = 0d0 
-  !    !zsqrtarg   = 0d0 
-  !    !if ( ( dAdvx + divDx*dt + dBx*sqrt( dt ) )/dx .gt. 1d0  ) then
-
-  !    !  if ( dInterface .gt. 0d0 ) then
-
-  !    !    ! Coefficients
-  !    !    AFace = vx + divDx
-  !    !    BFace = dBx
-
-  !    !    ! Given dInterface, compute new dt
-  !    !    zsqrtarg = BFace**2 + 4*dInterface*AFace
-
-  !    !    if ( ( zsqrtarg .ge. 0d0 ) .and. ( AFace .ne. 0d0 ) ) then 
-  !    !        zsqrt = sqrt( zsqrtarg )
-  !    !        z1    = (-BFace + zsqrt )/( 2*AFace )
-  !    !        z2    = (-BFace - zsqrt )/( 2*AFace )
-
-  !    !        if ( any( (/ z1, z2 /) .gt. 0d0) ) then 
-  !    !            ! Compute new dt
-  !    !            dtxyz(1) = minval( (/z1, z2/), mask=(/z1, z2/)>0d0 )**2
-  !    !            ! If computed dt is zero, then 
-  !    !            ! particle is at the interface
-  !    !            if ( dtxyz(1) .eq. 0d0 ) then
-  !    !                exitFace = exitFaceX
-  !    !                dt = 0.0 
-  !    !                return
-  !    !            end if
-  !    !        else if ( any( (/ z1, z2 /) .eq. 0d0) ) then 
-  !    !            ! This is equivalent to being at the interface, 
-  !    !            ! It didn't detected any solution gt 0, but one zero,
-  !    !            ! which means interface
-  !    !            exitFace = exitFaceX
-  !    !            dt       = 0.0
-  !    !            return
-  !    !        end if
-
-  !    !    else if ( AFace .eq. 0d0 ) then 
-  !    !        ! If A is zero, then the equation is linear
-  !    !        ! At this point, it is important to note
-  !    !        ! that dInterface is non zero, but could be really small
-  !    !        if ( BFace .ne. 0d0 ) then 
-  !    !            dtxyz(1) = ( dInterface/BFace )**2
-  !    !            ! If computed dt is zero, then 
-  !    !            ! particle is at the interface
-  !    !            if ( dtxyz(1) .eq. 0d0 ) then
-  !    !                exitFace = exitFaceX
-  !    !                dt = 0.0 
-  !    !                return
-  !    !            end if
-  !    !        end if 
-  !    !    end if
-
-  !    !    ! If computed dt is higher than current
-  !    !    ! is not valid, set to zero
-  !    !    if ( dtxyz(1) .gt. dt ) dtxyz(1) = 0d0
-
-  !    !end if
-
-  !    !! Leaving through y face
-  !    !dInterface = 0.25*dy
-  !    !AFace      = 0d0
-  !    !BFace      = 0d0
-  !    !z1         = 0d0
-  !    !z2         = 0d0
-  !    !zsqrt      = 0d0 
-  !    !zsqrtarg   = 0d0 
-  !    !if ( ( ny .gt. 1.0d0 ) .or. ( ny .lt. 0d0 )  ) then
-
-  !    !    ! Compute dInterface
-  !    !    if ( ny .gt. 1.0d0 ) then 
-  !    !        dInterface = dy*( 1.0d0 - y )
-  !    !        exitFaceY  = 4
-  !    !    else 
-  !    !        dInterface = -dy*y
-  !    !        exitFaceY  = 3
-  !    !    end if
-
-  !    !    ! Exactly at interface, force new cell
-  !    !    if ( dInterface .eq. 0.0 ) then
-  !    !        exitFace = exitFaceY
-  !    !        dt = 0.0
-  !    !        return
-  !    !    end if
-
-  !    !    ! Coefficients
-  !    !    AFace = vy + divDy
-  !    !    BFace = dBy
-
-  !    !    ! Given dInterface, compute new dt
-  !    !    zsqrtarg = BFace**2 + 4*dInterface*AFace
-
-  !    !    if ( ( zsqrtarg .ge. 0d0 ) .and. ( AFace .ne. 0d0 ) ) then
-  !    !        zsqrt = sqrt( zsqrtarg )
-  !    !        z1    = (-BFace + zsqrt )/( 2*AFace )
-  !    !        z2    = (-BFace - zsqrt )/( 2*AFace )
-
-  !    !        if ( any( (/ z1, z2 /) .gt. 0d0) ) then 
-  !    !            ! Compute new dt
-  !    !            dtxyz(2) = minval( (/z1, z2/), mask=(/z1, z2/)>0d0 )**2
-  !    !            ! If computed dt is zero, then 
-  !    !            ! particle is at the interface
-  !    !            if ( dtxyz(2) .eq. 0d0 ) then
-  !    !                exitFace = exitFaceY
-  !    !                dt = 0.0 
-  !    !                return
-  !    !            end if
-  !    !        else if ( any( (/ z1, z2 /) .eq. 0d0) ) then 
-  !    !            ! This is equivalent to being at the interface, 
-  !    !            ! It didn't detected any solution gt 0, but one zero,
-  !    !            ! which means interface
-  !    !            exitFace = exitFaceY
-  !    !            dt       = 0.0
-  !    !            return
-  !    !        end if
-
-  !    !    else if ( AFace .eq. 0d0 ) then 
-  !    !        ! If A is zero, then the equation is linear
-  !    !        ! At this point, it is important to note
-  !    !        ! that dInterface is non zero, but could be really small
-  !    !        if ( BFace .ne. 0d0 ) then 
-  !    !            dtxyz(2) = ( dInterface/BFace )**2
-  !    !            ! If computed dt is zero, then 
-  !    !            ! particle is at the interface
-  !    !            if ( dtxyz(2) .eq. 0d0 ) then
-  !    !                exitFace = exitFaceY
-  !    !                dt = 0.0 
-  !    !                return
-  !    !            end if
-  !    !        end if 
-  !    !    end if
-
-  !    !    ! If computed dt is higher than current
-  !    !    ! is not valid, set to zero
-  !    !    if ( dtxyz(2) .gt. dt ) dtxyz(2) = 0d0
-
-  !    !end if
-
-  !    ! Long jump in z direction
-  !    dInterface = 0.25*dz
-  !    AFace      = 0d0
-  !    BFace      = 0d0
-  !    z1         = 0d0
-  !    z2         = 0d0
-  !    zsqrt      = 0d0 
-  !    zsqrtarg   = 0d0 
-  !    ! TEMP
-  !    if ( ( ( vz + divDz )*dt + dBz*sqrt( dt ) )/dz .gt. 1.0d0  ) then,
-
-  !      ! Coefficients
-  !      AFace = vz + divDz
-  !      BFace = dBz
-  !      
-  !      ! Given dInterface, compute new dt
-  !      zsqrtarg = BFace**2 + 4*dInterface*AFace
-
-  !      if ( ( zsqrtarg .ge. 0d0 ) .and. ( abs(AFace) .gt. 1d-15 ) )  then
-  !      !if ( ( zsqrtarg .ge. 0d0 ) .and. ( AFace .ne. 0d0 ) )  then
-
-  !        zsqrt = sqrt( zsqrtarg )
-  !        z1    = (-BFace + zsqrt )/( 2*AFace )
-  !        z2    = (-BFace - zsqrt )/( 2*AFace )
-
-  !        if ( any( (/ z1, z2 /) .gt. 0d0 ) ) then 
-  !          ! Compute new dt
-  !          dtxyz(3) = minval( (/z1, z2/), mask=(/z1, z2/)>0d0 )**2
-  !          !! If computed dt is zero, then 
-  !          !! particle is at the interface
-  !          !if ( dtxyz(3) .eq. 0d0 ) then
-  !          !    exitFace = exitFaceZ
-  !          !    dt = 0.0 
-  !          !    return
-  !          !end if
-  !        !else if ( any( (/ z1, z2 /) .eq. 0d0) ) then 
-  !        !    ! This is equivalent to being at the interface, 
-  !        !    ! It didn't detected any solution gt 0, but one zero,
-  !        !    ! which means interface
-  !        !    exitFace = exitFaceZ
-  !        !    dt       = 0.0
-  !        !    return
-  !        end if
-
-  !      else if ( AFace .lt. 1d-15 ) then 
-  !      !else if ( AFace .eq. 0d0 ) then 
-  !          ! If A is zero, then the equation is linear
-  !          ! At this point, it is important to note
-  !          ! that dInterface is non zero
-  !          if ( BFace .ne. 0d0 ) then 
-  !              dtxyz(3) = ( dInterface/BFace )**2
-  !              ! If computed dt is zero, then 
-  !              ! particle is at the interface
-  !              !if ( dtxyz(3) .eq. 0d0 ) then
-  !              !    exitFace = exitFaceZ
-  !              !    dt = 0.0 
-  !              !    return
-  !              !end if
-  !          end if 
-  !      end if
-
-  !      ! If computed dt is higher than current
-  !      ! is not valid, set something smaller
-  !      if ( dtxyz(3) .gt. dt ) dtxyz(3) = 0.5*dt
-
-  !    end if
-
-
-  !    !! If all dts where zero, restore t + dt
-  !    !! and leave
-  !    !if ( all( dtxyz .eq. 0d0 ) ) then 
-  !    !  t = t + dt
-  !    !  return
-  !    !end if
-
-
-  !    ! Find minimum dt and 
-  !    ! assign values accordingly
-  !    imindt = minloc( dtxyz, dim=1, mask=(dtxyz > 0d0) )
-  !    dt     = dtxyz(imindt)
-
-
-  !    ! Update time
-  !    t = t + dt
-
-
-  !end subroutine pr_UpdateTimeStepQuadratic
 
 
 end module TrackSubCellModule

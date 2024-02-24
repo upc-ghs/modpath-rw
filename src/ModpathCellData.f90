@@ -433,7 +433,6 @@ contains
   subroutine pr_ResetArrays(this)
   implicit none
   class(ModpathCellDataType) :: this
-  integer :: n
   !------------------------------------------
   
   this%SubFaceCounts = 1
