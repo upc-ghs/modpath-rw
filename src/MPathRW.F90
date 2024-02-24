@@ -47,8 +47,10 @@ program MPathRW
   use CompilerVersion,only : get_compiler_txt
   use SoluteModule, only : SoluteType ! RWPT
   use ObservationModule, only : ObservationType,    & ! OBS
-                                WriteSinkObsRecord, & ! These should be initialized
-                          WriteSinkObsRecordBinary    ! while loading obs package
+                                WriteSinkObsRecord, & !  
+                          WriteSinkObsRecordBinary, & ! 
+                            WriteResidentObsRecord, & ! 
+                      WriteResidentObsRecordBinary    ! 
   use GridProjectedKDEModule, only : GridProjectedKDEType ! GPKDE
   use linear_interpolation_module, only: linear_interp_1d ! OBS
 #ifdef _OPENMP
@@ -142,8 +144,6 @@ program MPathRW
   logical :: testinit = .false.
   ! Interfaces 
   procedure(TimeseriesWriter) , pointer :: WriteTimeseries   => null()
-  procedure(ResidentObsWriter), pointer :: WriteResidentObs  => null()
-  !procedure(SinkObsWriter)    , pointer :: WriteSinkObs      => null()
   procedure(EndpointWriter)   , pointer :: WriteEndpointFile => null()
   !-----------------------------------------------------------------------------
   ! Assign dedicated file unit numbers
@@ -738,13 +738,13 @@ program MPathRW
         select case(obs%outputOption)
         case(0)
           ! Open only records unit in text-plain format
-          WriteResidentObs=> WriteResidentObsRecord
+          obs%WriteResidentObs=> WriteResidentObsRecord
           open( unit=obs%recOutputUnit, &
                 file=obs%recOutputFileName,& 
                 status='replace', form='formatted', access='sequential')
         case(1)
           ! Both records and output unit as text plain 
-          WriteResidentObs=> WriteResidentObsRecord
+          obs%WriteResidentObs=> WriteResidentObsRecord
           open( unit=obs%recOutputUnit, &
                 file=obs%recOutputFileName,& 
                 status='replace', form='formatted', access='sequential')
@@ -757,7 +757,7 @@ program MPathRW
                 access='stream', action='readwrite')
         case(2)
           ! Records as temporary binary and output as text plain
-          WriteResidentObs=> WriteResidentObsRecordBinary
+          obs%WriteResidentObs=> WriteResidentObsRecordBinary
           open( unit=obs%recOutputUnit, &
                 status='scratch', form='unformatted',&
                 access='stream', action='readwrite')
@@ -1231,7 +1231,7 @@ program MPathRW
       !$omp private( waterVolume )                     &
       !$omp firstprivate( trackingEngine )             &
       !$omp firstprivate( WriteTimeseries )            &
-      !$omp firstprivate( WriteResidentObs )           &
+      !!$omp firstprivate( WriteResidentObs )           &
       !!$omp firstprivate( WriteSinkObs )               &
       !$omp reduction( +:obsRecordCounter )            &
       !$omp reduction( +:pendingCount )                &
@@ -1467,7 +1467,7 @@ program MPathRW
                     ! Get water volume and write record
                     waterVolume = trackingEngine%TrackCell%CellData%GetWaterVolume()
                     !$omp critical(resobservation)
-                    call WriteResidentObs(ktime, nt, p, pCoordTP,           &
+                    call obs%WriteResidentObs(ktime, nt, p, pCoordTP,       &
                           simulationData%ParticleGroups(groupIndex)%Solute, &
                           simulationData%Retardation(pCoordTP%CellNumber),  &
                           waterVolume, obs%recOutputUnit)
@@ -1520,7 +1520,7 @@ program MPathRW
                 ! Get water volume and write record
                 waterVolume = trackingEngine%TrackCell%CellData%GetWaterVolume()
                 !$omp critical(resobservation)
-                call WriteResidentObs(ktime, nt, p, pCoord,             &
+                call obs%WriteResidentObs(ktime, nt, p, pCoord,         &
                       simulationData%ParticleGroups(groupIndex)%Solute, &
                       simulationData%Retardation(pCoord%CellNumber),    &
                       waterVolume, obs%recOutputUnit)

@@ -1,5 +1,6 @@
 module ObservationModule
   use ParticleModule,only : ParticleType
+  use ParticleCoordinateModule,only : ParticleCoordinateType
 #ifdef _OPENMP
   use omp_lib
 #endif
@@ -52,6 +53,7 @@ module ObservationModule
 
     ! Record writers
     procedure(SinkObsWriter), pass, pointer :: WriteSinkObs=>null()
+    procedure(ResidentObsWriter), pass, pointer :: WriteResidentObs=>null()
 
   end type
 
@@ -79,12 +81,31 @@ module ObservationModule
       integer, intent(in)             :: outUnit
       !----------------------------------------------
     end subroutine SinkObsWriter
+
+    subroutine ResidentObsWriter( this, timeStep, timePointIndex, particle, &
+                      pCoord, soluteID, rFactor, waterVolume, outUnit )
+      !-------------------------------------------------------------
+      import ObservationType
+      import ParticleType
+      import ParticleCoordinateType
+      !-------------------------------------------------------------
+      class(ObservationType) :: this
+      integer,intent(in)                      :: timeStep, timePointIndex
+      type(ParticleType),intent(in)           :: particle
+      type(ParticleCoordinateType),intent(in) :: pCoord
+      integer, intent(in)                     :: soluteID
+      doubleprecision, intent(in)             :: rFactor, waterVolume 
+      integer, intent(in)                     :: outUnit
+    end subroutine ResidentObsWriter
+
   end interface
 
   
   ! Open some methods
   public WriteSinkObsRecord
   public WriteSinkObsRecordBinary
+  public WriteResidentObsRecord
+  public WriteResidentObsRecordBinary
 
 
 contains
@@ -142,6 +163,63 @@ contains
 
 
   end subroutine WriteSinkObsRecordBinary
+
+
+  subroutine WriteResidentObsRecord( this, timeStep, timePointIndex, particle, pCoord, &
+                                               soluteID, rFactor, waterVolume, outUnit )
+  !--------------------------------------------------------------------------------
+  ! Specifications
+  !---------------------------------------------------------------------------------
+  implicit none
+  class(ObservationType) :: this
+  integer,intent(in)                      :: timeStep, timePointIndex
+  type(ParticleType),intent(in)           :: particle
+  type(ParticleCoordinateType),intent(in) :: pCoord
+  integer, intent(in)                     :: soluteID
+  doubleprecision, intent(in)             :: rFactor, waterVolume 
+  integer, intent(in)                     :: outUnit
+  doubleprecision :: modelX, modelY
+  !---------------------------------------------------------------------------------
+  
+    modelX = pCoord%GlobalX
+    modelY = pCoord%GlobalY
+    
+    write(outUnit, '(2I8,es18.9e3,i10,es18.9e3,2i5,2i10,5es18.9e3)')             &
+      timePointIndex, timeStep, pCoord%TrackingTime, particle%ID, particle%Mass, & 
+                      particle%Group, soluteID, pCoord%CellNumber, pCoord%Layer, &
+                           rFactor, waterVolume, modelX, modelY, pCoord%GlobalZ
+
+
+  end subroutine WriteResidentObsRecord
+
+
+  subroutine WriteResidentObsRecordBinary( this, timeStep, timePointIndex, particle, pCoord, &
+                                                     soluteID, rFactor, waterVolume, outUnit )
+  !--------------------------------------------------------------------------------
+  ! Specifications
+  !---------------------------------------------------------------------------------
+  implicit none
+  class(ObservationType) :: this
+  integer,intent(in)                      :: timeStep, timePointIndex
+  type(ParticleType),intent(in)           :: particle
+  type(ParticleCoordinateType),intent(in) :: pCoord
+  integer, intent(in)                     :: soluteID
+  doubleprecision, intent(in)             :: rFactor, waterVolume 
+  integer, intent(in)                     :: outUnit
+  doubleprecision :: modelX, modelY
+  !---------------------------------------------------------------------------------
+  
+    modelX = pCoord%GlobalX
+    modelY = pCoord%GlobalY
+    
+    write(outUnit) &
+      timePointIndex, timeStep, pCoord%TrackingTime, particle%ID, particle%Mass, & 
+                      particle%Group, soluteID, pCoord%CellNumber, pCoord%Layer, &
+                           rFactor, waterVolume, modelX, modelY, pCoord%GlobalZ
+
+
+  end subroutine WriteResidentObsRecordBinary
+
 
 
 end module ObservationModule
