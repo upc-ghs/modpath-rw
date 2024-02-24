@@ -46,22 +46,22 @@ module ParticleManagerModule
   end interface
 
 
-  ! Write sink observation records 
-  abstract interface
-    subroutine SinkObsWriter( timeStep, timePointIndex, particle, & 
-                                      soluteID, flowRate, outUnit )
-      !-------------------------------------------------------------
-      import ParticleType
-      !-------------------------------------------------------------
-      ! input
-      integer,intent(in)              :: timeStep, timePointIndex
-      type(ParticleType),intent(in)   :: particle
-      integer, intent(in)             :: soluteID
-      doubleprecision, intent(in)     :: flowRate
-      integer, intent(in)             :: outUnit
-      !----------------------------------------------
-    end subroutine SinkObsWriter
-  end interface
+  !! Write sink observation records 
+  !abstract interface
+  !  subroutine SinkObsWriter( timeStep, timePointIndex, particle, & 
+  !                                    soluteID, flowRate, outUnit )
+  !    !-------------------------------------------------------------
+  !    import ParticleType
+  !    !-------------------------------------------------------------
+  !    ! input
+  !    integer,intent(in)              :: timeStep, timePointIndex
+  !    type(ParticleType),intent(in)   :: particle
+  !    integer, intent(in)             :: soluteID
+  !    doubleprecision, intent(in)     :: flowRate
+  !    integer, intent(in)             :: outUnit
+  !    !----------------------------------------------
+  !  end subroutine SinkObsWriter
+  !end interface
 
 
   ! Write endpoint file
@@ -781,54 +781,54 @@ contains
   end subroutine WriteResidentObsRecordBinary
 
 
-  subroutine WriteSinkObsRecord( timeStep, timePointIndex, particle, &
-                                         soluteID, flowRate, outUnit )
-  !---------------------------------------------------------------------------------
-  ! Write observation sink cell record
-  !---------------------------------------------------------------------------------
-  ! Specifications
-  !---------------------------------------------------------------------------------
-  implicit none
-  ! input
-  integer,intent(in)              :: timeStep, timePointIndex
-  type(ParticleType),intent(in)   :: particle
-  integer, intent(in)             :: soluteID
-  doubleprecision, intent(in)     :: flowRate
-  integer, intent(in)             :: outUnit
-  !---------------------------------------------------------------------------------
+  !subroutine WriteSinkObsRecord( timeStep, timePointIndex, particle, &
+  !                                       soluteID, flowRate, outUnit )
+  !!---------------------------------------------------------------------------------
+  !! Write observation sink cell record
+  !!---------------------------------------------------------------------------------
+  !! Specifications
+  !!---------------------------------------------------------------------------------
+  !implicit none
+  !! input
+  !integer,intent(in)              :: timeStep, timePointIndex
+  !type(ParticleType),intent(in)   :: particle
+  !integer, intent(in)             :: soluteID
+  !doubleprecision, intent(in)     :: flowRate
+  !integer, intent(in)             :: outUnit
+  !!---------------------------------------------------------------------------------
 
 
-    write(outUnit, '(2I8,es18.9e3,i10,es18.9e3,2i5,2i10,es18.9e3)')                &
-      timePointIndex, timeStep, particle%TrackingTime, particle%ID, particle%Mass, & 
-        particle%Group, soluteID, particle%CellNumber, particle%Layer, flowRate
+  !  write(outUnit, '(2I8,es18.9e3,i10,es18.9e3,2i5,2i10,es18.9e3)')                &
+  !    timePointIndex, timeStep, particle%TrackingTime, particle%ID, particle%Mass, & 
+  !      particle%Group, soluteID, particle%CellNumber, particle%Layer, flowRate
 
 
-  end subroutine WriteSinkObsRecord
+  !end subroutine WriteSinkObsRecord
 
 
-  subroutine WriteSinkObsRecordBinary( timeStep, timePointIndex, particle, & 
-                                               soluteID, flowRate, outUnit )
-  !---------------------------------------------------------------------------------
-  ! Write observation sink cell record
-  !---------------------------------------------------------------------------------
-  ! Specifications
-  !---------------------------------------------------------------------------------
-  implicit none
-  ! input
-  integer,intent(in)              :: timeStep, timePointIndex
-  type(ParticleType),intent(in)   :: particle
-  integer, intent(in)             :: soluteID
-  doubleprecision, intent(in)     :: flowRate
-  integer, intent(in)             :: outUnit
-  !---------------------------------------------------------------------------------
+  !subroutine WriteSinkObsRecordBinary( timeStep, timePointIndex, particle, & 
+  !                                             soluteID, flowRate, outUnit )
+  !!---------------------------------------------------------------------------------
+  !! Write observation sink cell record
+  !!---------------------------------------------------------------------------------
+  !! Specifications
+  !!---------------------------------------------------------------------------------
+  !implicit none
+  !! input
+  !integer,intent(in)              :: timeStep, timePointIndex
+  !type(ParticleType),intent(in)   :: particle
+  !integer, intent(in)             :: soluteID
+  !doubleprecision, intent(in)     :: flowRate
+  !integer, intent(in)             :: outUnit
+  !!---------------------------------------------------------------------------------
 
 
-    write(outUnit) &
-      timePointIndex, timeStep, particle%TrackingTime, particle%ID, particle%Mass, & 
-        particle%Group, soluteID, particle%CellNumber, particle%Layer, flowRate
+  !  write(outUnit) &
+  !    timePointIndex, timeStep, particle%TrackingTime, particle%ID, particle%Mass, & 
+  !      particle%Group, soluteID, particle%CellNumber, particle%Layer, flowRate
 
 
-  end subroutine WriteSinkObsRecordBinary
+  !end subroutine WriteSinkObsRecordBinary
 
 
 end module ParticleManagerModule

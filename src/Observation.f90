@@ -1,9 +1,14 @@
 module ObservationModule
+  use ParticleModule,only : ParticleType
+#ifdef _OPENMP
+  use omp_lib
+#endif
   implicit none
   
   ! Set default access status to private
   private
 
+  ! Observation type
   type, public :: ObservationType
     integer, allocatable, dimension(:) :: cells
     integer                            :: nCells
@@ -44,18 +49,99 @@ module ObservationModule
     doubleprecision, dimension(:), allocatable :: timeSeries
     integer :: timePointCount
     type(SeriesType), allocatable, dimension(:) :: series
+
+    ! Record writers
+    procedure(SinkObsWriter), pass, pointer :: WriteSinkObs=>null()
+
   end type
 
-
+  ! Series type
   type, public :: SeriesType
     doubleprecision, dimension(:)  , allocatable :: timeSeries
     doubleprecision, dimension(:,:), allocatable :: dataSeries ! for the same time may have multiple data columns
   end type
 
 
+  ! Interfaces
+  abstract interface
+    subroutine SinkObsWriter( this, timeStep, timePointIndex, particle, & 
+                                            soluteID, flowRate, outUnit )
+      !-------------------------------------------------------------
+      import ObservationType
+      import ParticleType
+      !-------------------------------------------------------------
+      class(ObservationType) :: this
+      ! input
+      integer,intent(in)              :: timeStep, timePointIndex
+      type(ParticleType),intent(in)   :: particle
+      integer, intent(in)             :: soluteID
+      doubleprecision, intent(in)     :: flowRate
+      integer, intent(in)             :: outUnit
+      !----------------------------------------------
+    end subroutine SinkObsWriter
+  end interface
+
+  
+  ! Open some methods
+  public WriteSinkObsRecord
+  public WriteSinkObsRecordBinary
+
+
 contains
 
-  ! Some subroutines
+
+  subroutine WriteSinkObsRecord( this, timeStep, timePointIndex, particle, &
+                                               soluteID, flowRate, outUnit )
+  !---------------------------------------------------------------------------------
+  ! Write observation sink cell record
+  !---------------------------------------------------------------------------------
+  ! Specifications
+  !---------------------------------------------------------------------------------
+  implicit none
+  class(ObservationType) :: this
+  ! input
+  integer,intent(in)              :: timeStep, timePointIndex
+  type(ParticleType),intent(in)   :: particle
+  integer, intent(in)             :: soluteID
+  doubleprecision, intent(in)     :: flowRate
+  integer, intent(in)             :: outUnit
+  !---------------------------------------------------------------------------------
+
+    ! These could make use of the properties in the obs object
+
+    write(outUnit, '(2I8,es18.9e3,i10,es18.9e3,2i5,2i10,es18.9e3)')                &
+      timePointIndex, timeStep, particle%TrackingTime, particle%ID, particle%Mass, & 
+        particle%Group, soluteID, particle%CellNumber, particle%Layer, flowRate
+
+
+  end subroutine WriteSinkObsRecord
+
+
+  subroutine WriteSinkObsRecordBinary( this, timeStep, timePointIndex, particle, & 
+                                                     soluteID, flowRate, outUnit )
+  !---------------------------------------------------------------------------------
+  ! Write observation sink cell record
+  !---------------------------------------------------------------------------------
+  ! Specifications
+  !---------------------------------------------------------------------------------
+  implicit none
+  class(ObservationType) :: this
+  ! input
+  integer,intent(in)              :: timeStep, timePointIndex
+  type(ParticleType),intent(in)   :: particle
+  integer, intent(in)             :: soluteID
+  doubleprecision, intent(in)     :: flowRate
+  integer, intent(in)             :: outUnit
+  !---------------------------------------------------------------------------------
+
+    ! These could make use of the properties in the obs object
+
+    write(outUnit) &
+      timePointIndex, timeStep, particle%TrackingTime, particle%ID, particle%Mass, & 
+        particle%Group, soluteID, particle%CellNumber, particle%Layer, flowRate
+
+
+  end subroutine WriteSinkObsRecordBinary
 
 
 end module ObservationModule

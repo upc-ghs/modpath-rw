@@ -46,7 +46,9 @@ program MPathRW
   use GeoReferenceModule,only : GeoReferenceType
   use CompilerVersion,only : get_compiler_txt
   use SoluteModule, only : SoluteType ! RWPT
-  use ObservationModule, only : ObservationType ! OBS
+  use ObservationModule, only : ObservationType,    & ! OBS
+                                WriteSinkObsRecord, & ! These should be initialized
+                          WriteSinkObsRecordBinary    ! while loading obs package
   use GridProjectedKDEModule, only : GridProjectedKDEType ! GPKDE
   use linear_interpolation_module, only: linear_interp_1d ! OBS
 #ifdef _OPENMP
@@ -141,7 +143,7 @@ program MPathRW
   ! Interfaces 
   procedure(TimeseriesWriter) , pointer :: WriteTimeseries   => null()
   procedure(ResidentObsWriter), pointer :: WriteResidentObs  => null()
-  procedure(SinkObsWriter)    , pointer :: WriteSinkObs      => null()
+  !procedure(SinkObsWriter)    , pointer :: WriteSinkObs      => null()
   procedure(EndpointWriter)   , pointer :: WriteEndpointFile => null()
   !-----------------------------------------------------------------------------
   ! Assign dedicated file unit numbers
@@ -774,13 +776,13 @@ program MPathRW
         select case(obs%outputOption)
         case(0)
           ! Open only records unit in text-plain format
-          WriteSinkObs=> WriteSinkObsRecord
+          obs%WriteSinkObs=> WriteSinkObsRecord
           open( unit=obs%recOutputUnit, &
                 file=obs%recOutputFileName,& 
                 status='replace', form='formatted', access='sequential')
         case(1)
           ! Both records and output unit as text plain 
-          WriteSinkObs=> WriteSinkObsRecord
+          obs%WriteSinkObs=> WriteSinkObsRecord
           open( unit=obs%recOutputUnit, &
                 file=obs%recOutputFileName,& 
                 status='replace', form='formatted', access='sequential')
@@ -789,7 +791,7 @@ program MPathRW
                 status='replace', form='formatted', access='sequential')
         case(2)
           ! Records as temporary binary and output as text plain
-          WriteSinkObs=> WriteSinkObsRecordBinary
+          obs%WriteSinkObs=> WriteSinkObsRecordBinary
           open( unit=obs%recOutputUnit, &
                 status='scratch', form='unformatted',&
                 access='stream', action='readwrite')
@@ -1230,7 +1232,7 @@ program MPathRW
       !$omp firstprivate( trackingEngine )             &
       !$omp firstprivate( WriteTimeseries )            &
       !$omp firstprivate( WriteResidentObs )           &
-      !$omp firstprivate( WriteSinkObs )               &
+      !!$omp firstprivate( WriteSinkObs )               &
       !$omp reduction( +:obsRecordCounter )            &
       !$omp reduction( +:pendingCount )                &
       !$omp reduction( +:activeCount )                 &
@@ -1349,7 +1351,7 @@ program MPathRW
                 if ( obs%style .eq. 2 ) then
                   ! If a particle is removed due to sink
                   !$omp critical (sinkobservation)
-                  call WriteSinkObs(ktime, nt, p,                         &
+                  call obs%WriteSinkObs(ktime, nt, p,                         &
                     simulationData%ParticleGroups(groupIndex)%Solute,     &
                     obs%cummSinkFlow,                                     &
                     obs%recOutputUnit)
@@ -1375,7 +1377,7 @@ program MPathRW
                 if ( obs%style .eq. 2 ) then
                   ! If a particle is removed due to sink
                   !$omp critical (sinkobservation)
-                  call WriteSinkObs(ktime, nt, p,                         &
+                  call obs%WriteSinkObs(ktime, nt, p,                         &
                     simulationData%ParticleGroups(groupIndex)%Solute,     &
                     obs%cummSinkFlow,                                     &
                     obs%recOutputUnit)
