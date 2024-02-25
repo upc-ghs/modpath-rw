@@ -3570,21 +3570,21 @@ contains
           allocate( this%coordinatesX(this%nBins(nd)) )
           do m = 1, this%nBins(nd)
              idbin = m+this%deltaBinsOrigin(nd)
-             this%coordinatesX(m) = (real(idbin,fp) + 0.5_fp)*this%binSize(nd) + this%domainOrigin(nd)
+             this%coordinatesX(m) = (real(idbin,fp) - 0.5_fp)*this%binSize(nd) + this%domainOrigin(nd)
           end do 
         case(2)
           if ( allocated( this%coordinatesY ) ) deallocate( this%coordinatesY )
           allocate( this%coordinatesY(this%nBins(nd)) )
           do m = 1, this%nBins(nd)
              idbin = m+this%deltaBinsOrigin(nd)
-             this%coordinatesY(m) = (real(idbin,fp) + 0.5_fp)*this%binSize(nd) + this%domainOrigin(nd)
+             this%coordinatesY(m) = (real(idbin,fp) - 0.5_fp)*this%binSize(nd) + this%domainOrigin(nd)
           end do 
         case(3)
           if ( allocated( this%coordinatesZ ) ) deallocate( this%coordinatesZ )
           allocate( this%coordinatesZ(this%nBins(nd)) )
           do m = 1, this%nBins(nd)
              idbin = m+this%deltaBinsOrigin(nd)
-             this%coordinatesZ(m) = (real(idbin,fp) + 0.5_fp)*this%binSize(nd) + this%domainOrigin(nd)
+             this%coordinatesZ(m) = (real(idbin,fp) - 0.5_fp)*this%binSize(nd) + this%domainOrigin(nd)
           end do 
         end select 
       end if 
@@ -6580,9 +6580,9 @@ contains
               write(outputUnit,"(I8,es18.9e3,4I8,3es18.9e3,2es18.9e3)")&
                                            outputDataId, outputDataIdVal, particleGroupId, &
                                                                    idbinx, idbiny, idbinz, & 
-                        (real(idbinx,fp) + 0.5_fp)*this%binSize(1) + this%domainOrigin(1), & 
-                        (real(idbiny,fp) + 0.5_fp)*this%binSize(2) + this%domainOrigin(2), &
-                        (real(idbinz,fp) + 0.5_fp)*this%binSize(3) + this%domainOrigin(3), &
+                        (real(idbinx,fp) - 0.5_fp)*this%binSize(1) + this%domainOrigin(1), & 
+                        (real(idbiny,fp) - 0.5_fp)*this%binSize(2) + this%domainOrigin(2), &
+                        (real(idbinz,fp) - 0.5_fp)*this%binSize(3) + this%domainOrigin(3), &
                  this%densityEstimateGrid( ix, iy, iz ), histogramData( ix, iy, iz )
             end do
           end do
@@ -6597,9 +6597,9 @@ contains
               idbinz = iz+this%deltaBinsOrigin(3)
               write(outputUnit,"(I8,es18.9e3,I8,3es18.9e3,2es18.9e3)")&
                                            outputDataId, outputDataIdVal, particleGroupId, &
-                        (real(idbinx,fp) + 0.5_fp)*this%binSize(1) + this%domainOrigin(1), & 
-                        (real(idbiny,fp) + 0.5_fp)*this%binSize(2) + this%domainOrigin(2), &
-                        (real(idbinz,fp) + 0.5_fp)*this%binSize(3) + this%domainOrigin(3), &
+                        (real(idbinx,fp) - 0.5_fp)*this%binSize(1) + this%domainOrigin(1), & 
+                        (real(idbiny,fp) - 0.5_fp)*this%binSize(2) + this%domainOrigin(2), &
+                        (real(idbinz,fp) - 0.5_fp)*this%binSize(3) + this%domainOrigin(3), &
                  this%densityEstimateGrid( ix, iy, iz ), histogramData( ix, iy, iz )
             end do
           end do
@@ -6629,9 +6629,9 @@ contains
               idbinz = iz+this%deltaBinsOrigin(3)
               write(outputUnit,"(5I8,3es18.9e3,2es18.9e3)") outputDataId, particleGroupId, &
                                                                    idbinx, idbiny, idbinz, & 
-                        (real(idbinx,fp) + 0.5_fp)*this%binSize(1) + this%domainOrigin(1), & 
-                        (real(idbiny,fp) + 0.5_fp)*this%binSize(2) + this%domainOrigin(2), &
-                        (real(idbinz,fp) + 0.5_fp)*this%binSize(3) + this%domainOrigin(3), &
+                        (real(idbinx,fp) - 0.5_fp)*this%binSize(1) + this%domainOrigin(1), & 
+                        (real(idbiny,fp) - 0.5_fp)*this%binSize(2) + this%domainOrigin(2), &
+                        (real(idbinz,fp) - 0.5_fp)*this%binSize(3) + this%domainOrigin(3), &
                  this%densityEstimateGrid( ix, iy, iz ), histogramData( ix, iy, iz )
             end do
           end do
@@ -6645,9 +6645,9 @@ contains
               idbiny = iy+this%deltaBinsOrigin(2)
               idbinz = iz+this%deltaBinsOrigin(3)
               write(outputUnit,"(2I8,3es18.9e3,2es18.9e3)") outputDataId, particleGroupId, &
-                        (real(idbinx,fp) + 0.5_fp)*this%binSize(1) + this%domainOrigin(1), & 
-                        (real(idbiny,fp) + 0.5_fp)*this%binSize(2) + this%domainOrigin(2), &
-                        (real(idbinz,fp) + 0.5_fp)*this%binSize(3) + this%domainOrigin(3), &
+                        (real(idbinx,fp) - 0.5_fp)*this%binSize(1) + this%domainOrigin(1), & 
+                        (real(idbiny,fp) - 0.5_fp)*this%binSize(2) + this%domainOrigin(2), &
+                        (real(idbinz,fp) - 0.5_fp)*this%binSize(3) + this%domainOrigin(3), &
                  this%densityEstimateGrid( ix, iy, iz ), histogramData( ix, iy, iz )
             end do
           end do
@@ -6682,9 +6682,9 @@ contains
               idbiny = iy+this%deltaBinsOrigin(2)
               idbinz = iz+this%deltaBinsOrigin(3)
               write(outputUnit,"(4I8,3es18.9e3,2es18.9e3)") dataId, idbinx, idbiny, idbinz, & 
-                         (real(idbinx,fp) + 0.5_fp)*this%binSize(1) + this%domainOrigin(1), & 
-                         (real(idbiny,fp) + 0.5_fp)*this%binSize(2) + this%domainOrigin(2), &
-                         (real(idbinz,fp) + 0.5_fp)*this%binSize(3) + this%domainOrigin(3), &
+                         (real(idbinx,fp) - 0.5_fp)*this%binSize(1) + this%domainOrigin(1), & 
+                         (real(idbiny,fp) - 0.5_fp)*this%binSize(2) + this%domainOrigin(2), &
+                         (real(idbinz,fp) - 0.5_fp)*this%binSize(3) + this%domainOrigin(3), &
                   this%densityEstimateGrid( ix, iy, iz ), histogramData( ix, iy, iz ) 
             end do
           end do
@@ -6699,9 +6699,9 @@ contains
               idbiny = iy+this%deltaBinsOrigin(2)
               idbinz = iz+this%deltaBinsOrigin(3)
               write(outputUnit,"(1I8,3es18.9e3,2es18.9e3)") dataId, &
-              (real(idbinx,fp) + 0.5_fp)*this%binSize(1) + this%domainOrigin(1), & 
-              (real(idbiny,fp) + 0.5_fp)*this%binSize(2) + this%domainOrigin(2), &
-              (real(idbinz,fp) + 0.5_fp)*this%binSize(3) + this%domainOrigin(3), &
+              (real(idbinx,fp) - 0.5_fp)*this%binSize(1) + this%domainOrigin(1), & 
+              (real(idbiny,fp) - 0.5_fp)*this%binSize(2) + this%domainOrigin(2), &
+              (real(idbinz,fp) - 0.5_fp)*this%binSize(3) + this%domainOrigin(3), &
               this%densityEstimateGrid( ix, iy, iz ), histogramData( ix, iy, iz ) 
             end do
           end do
@@ -6731,9 +6731,9 @@ contains
               idbiny = iy+this%deltaBinsOrigin(2)
               idbinz = iz+this%deltaBinsOrigin(3)
               write(outputUnit,"(3I8,3es18.9e3,2es18.9e3)") idbinx, idbiny, idbinz, & 
-                 (real(idbinx,fp) + 0.5_fp)*this%binSize(1) + this%domainOrigin(1), & 
-                 (real(idbiny,fp) + 0.5_fp)*this%binSize(2) + this%domainOrigin(2), &
-                 (real(idbinz,fp) + 0.5_fp)*this%binSize(3) + this%domainOrigin(3), &
+                 (real(idbinx,fp) - 0.5_fp)*this%binSize(1) + this%domainOrigin(1), & 
+                 (real(idbiny,fp) - 0.5_fp)*this%binSize(2) + this%domainOrigin(2), &
+                 (real(idbinz,fp) - 0.5_fp)*this%binSize(3) + this%domainOrigin(3), &
                  this%densityEstimateGrid( ix, iy, iz ), histogramData( ix, iy, iz ) 
             end do
           end do
@@ -6748,9 +6748,9 @@ contains
               idbiny = iy+this%deltaBinsOrigin(2)
               idbinz = iz+this%deltaBinsOrigin(3)
               write(outputUnit,"(3es18.9e3,2es18.9e3)") & 
-                 (real(idbinx,fp) + 0.5_fp)*this%binSize(1) + this%domainOrigin(1), & 
-                 (real(idbiny,fp) + 0.5_fp)*this%binSize(2) + this%domainOrigin(2), &
-                 (real(idbinz,fp) + 0.5_fp)*this%binSize(3) + this%domainOrigin(3), &
+                 (real(idbinx,fp) - 0.5_fp)*this%binSize(1) + this%domainOrigin(1), & 
+                 (real(idbiny,fp) - 0.5_fp)*this%binSize(2) + this%domainOrigin(2), &
+                 (real(idbinz,fp) - 0.5_fp)*this%binSize(3) + this%domainOrigin(3), &
                  this%densityEstimateGrid( ix, iy, iz ), histogramData( ix, iy, iz ) 
             end do
           end do
@@ -6840,9 +6840,9 @@ contains
               idbinz = iz+this%deltaBinsOrigin(3)
               write(outputUnit) outputDataId, outputDataIdVal, particleGroupId,  &
                                                          idbinx, idbiny, idbinz, & 
-              (real(idbinx,fp) + 0.5_fp)*this%binSize(1) + this%domainOrigin(1), & 
-              (real(idbiny,fp) + 0.5_fp)*this%binSize(2) + this%domainOrigin(2), &
-              (real(idbinz,fp) + 0.5_fp)*this%binSize(3) + this%domainOrigin(3), &
+              (real(idbinx,fp) - 0.5_fp)*this%binSize(1) + this%domainOrigin(1), & 
+              (real(idbiny,fp) - 0.5_fp)*this%binSize(2) + this%domainOrigin(2), &
+              (real(idbinz,fp) - 0.5_fp)*this%binSize(3) + this%domainOrigin(3), &
               this%densityEstimateGrid( ix, iy, iz ), histogramData( ix, iy, iz )
             end do
           end do
@@ -6856,9 +6856,9 @@ contains
               idbiny = iy+this%deltaBinsOrigin(2)
               idbinz = iz+this%deltaBinsOrigin(3)
               write(outputUnit) outputDataId, outputDataIdVal, particleGroupId,  &
-              (real(idbinx,fp) + 0.5_fp)*this%binSize(1) + this%domainOrigin(1), & 
-              (real(idbiny,fp) + 0.5_fp)*this%binSize(2) + this%domainOrigin(2), &
-              (real(idbinz,fp) + 0.5_fp)*this%binSize(3) + this%domainOrigin(3), &
+              (real(idbinx,fp) - 0.5_fp)*this%binSize(1) + this%domainOrigin(1), & 
+              (real(idbiny,fp) - 0.5_fp)*this%binSize(2) + this%domainOrigin(2), &
+              (real(idbinz,fp) - 0.5_fp)*this%binSize(3) + this%domainOrigin(3), &
               this%densityEstimateGrid( ix, iy, iz ), histogramData( ix, iy, iz )
             end do
           end do
@@ -6888,9 +6888,9 @@ contains
               idbinz = iz+this%deltaBinsOrigin(3)
               write(outputUnit) outputDataId, particleGroupId, &
                                                                    idbinx, idbiny, idbinz, & 
-                        (real(idbinx,fp) + 0.5_fp)*this%binSize(1) + this%domainOrigin(1), & 
-                        (real(idbiny,fp) + 0.5_fp)*this%binSize(2) + this%domainOrigin(2), &
-                        (real(idbinz,fp) + 0.5_fp)*this%binSize(3) + this%domainOrigin(3), &
+                        (real(idbinx,fp) - 0.5_fp)*this%binSize(1) + this%domainOrigin(1), & 
+                        (real(idbiny,fp) - 0.5_fp)*this%binSize(2) + this%domainOrigin(2), &
+                        (real(idbinz,fp) - 0.5_fp)*this%binSize(3) + this%domainOrigin(3), &
                  this%densityEstimateGrid( ix, iy, iz ), histogramData( ix, iy, iz )
             end do
           end do
@@ -6904,9 +6904,9 @@ contains
               idbiny = iy+this%deltaBinsOrigin(2)
               idbinz = iz+this%deltaBinsOrigin(3)
               write(outputUnit) outputDataId, particleGroupId, &
-                        (real(idbinx,fp) + 0.5_fp)*this%binSize(1) + this%domainOrigin(1), & 
-                        (real(idbiny,fp) + 0.5_fp)*this%binSize(2) + this%domainOrigin(2), &
-                        (real(idbinz,fp) + 0.5_fp)*this%binSize(3) + this%domainOrigin(3), &
+                        (real(idbinx,fp) - 0.5_fp)*this%binSize(1) + this%domainOrigin(1), & 
+                        (real(idbiny,fp) - 0.5_fp)*this%binSize(2) + this%domainOrigin(2), &
+                        (real(idbinz,fp) - 0.5_fp)*this%binSize(3) + this%domainOrigin(3), &
                  this%densityEstimateGrid( ix, iy, iz ), histogramData( ix, iy, iz )
             end do
           end do
@@ -6941,9 +6941,9 @@ contains
               idbiny = iy+this%deltaBinsOrigin(2)
               idbinz = iz+this%deltaBinsOrigin(3)
               write(outputUnit) dataId, idbinx, idbiny, idbinz, & 
-                         (real(idbinx,fp) + 0.5_fp)*this%binSize(1) + this%domainOrigin(1), & 
-                         (real(idbiny,fp) + 0.5_fp)*this%binSize(2) + this%domainOrigin(2), &
-                         (real(idbinz,fp) + 0.5_fp)*this%binSize(3) + this%domainOrigin(3), &
+                         (real(idbinx,fp) - 0.5_fp)*this%binSize(1) + this%domainOrigin(1), & 
+                         (real(idbiny,fp) - 0.5_fp)*this%binSize(2) + this%domainOrigin(2), &
+                         (real(idbinz,fp) - 0.5_fp)*this%binSize(3) + this%domainOrigin(3), &
                   this%densityEstimateGrid( ix, iy, iz ), histogramData( ix, iy, iz ) 
             end do
           end do
@@ -6958,9 +6958,9 @@ contains
               idbiny = iy+this%deltaBinsOrigin(2)
               idbinz = iz+this%deltaBinsOrigin(3)
               write(outputUnit) dataId, &
-              (real(idbinx,fp) + 0.5_fp)*this%binSize(1) + this%domainOrigin(1), & 
-              (real(idbiny,fp) + 0.5_fp)*this%binSize(2) + this%domainOrigin(2), &
-              (real(idbinz,fp) + 0.5_fp)*this%binSize(3) + this%domainOrigin(3), &
+              (real(idbinx,fp) - 0.5_fp)*this%binSize(1) + this%domainOrigin(1), & 
+              (real(idbiny,fp) - 0.5_fp)*this%binSize(2) + this%domainOrigin(2), &
+              (real(idbinz,fp) - 0.5_fp)*this%binSize(3) + this%domainOrigin(3), &
               this%densityEstimateGrid( ix, iy, iz ), histogramData( ix, iy, iz ) 
             end do
           end do
@@ -6990,9 +6990,9 @@ contains
               idbiny = iy+this%deltaBinsOrigin(2)
               idbinz = iz+this%deltaBinsOrigin(3)
               write(outputUnit) idbinx, idbiny, idbinz, & 
-                 (real(idbinx,fp) + 0.5_fp)*this%binSize(1) + this%domainOrigin(1), & 
-                 (real(idbiny,fp) + 0.5_fp)*this%binSize(2) + this%domainOrigin(2), &
-                 (real(idbinz,fp) + 0.5_fp)*this%binSize(3) + this%domainOrigin(3), &
+                 (real(idbinx,fp) - 0.5_fp)*this%binSize(1) + this%domainOrigin(1), & 
+                 (real(idbiny,fp) - 0.5_fp)*this%binSize(2) + this%domainOrigin(2), &
+                 (real(idbinz,fp) - 0.5_fp)*this%binSize(3) + this%domainOrigin(3), &
                  this%densityEstimateGrid( ix, iy, iz ), histogramData( ix, iy, iz ) 
             end do
           end do
@@ -7007,9 +7007,9 @@ contains
               idbiny = iy+this%deltaBinsOrigin(2)
               idbinz = iz+this%deltaBinsOrigin(3)
               write(outputUnit) & 
-                 (real(idbinx,fp) + 0.5_fp)*this%binSize(1) + this%domainOrigin(1), & 
-                 (real(idbiny,fp) + 0.5_fp)*this%binSize(2) + this%domainOrigin(2), &
-                 (real(idbinz,fp) + 0.5_fp)*this%binSize(3) + this%domainOrigin(3), &
+                 (real(idbinx,fp) - 0.5_fp)*this%binSize(1) + this%domainOrigin(1), & 
+                 (real(idbiny,fp) - 0.5_fp)*this%binSize(2) + this%domainOrigin(2), &
+                 (real(idbinz,fp) - 0.5_fp)*this%binSize(3) + this%domainOrigin(3), &
                  this%densityEstimateGrid( ix, iy, iz ), histogramData( ix, iy, iz ) 
             end do
           end do
@@ -7226,9 +7226,9 @@ contains
             idbiny = iy+this%deltaBinsOrigin(2)
             idbinz = iz+this%deltaBinsOrigin(3)
             write(outputUnit,"(3I8,3es18.9e3,2es18.9e3)") idbinx, idbiny, idbinz, & 
-               (real(idbinx,fp) + 0.5_fp)*this%binSize(1) + this%domainOrigin(1), & 
-               (real(idbiny,fp) + 0.5_fp)*this%binSize(2) + this%domainOrigin(2), &
-               (real(idbinz,fp) + 0.5_fp)*this%binSize(3) + this%domainOrigin(3), &
+               (real(idbinx,fp) - 0.5_fp)*this%binSize(1) + this%domainOrigin(1), & 
+               (real(idbiny,fp) - 0.5_fp)*this%binSize(2) + this%domainOrigin(2), &
+               (real(idbinz,fp) - 0.5_fp)*this%binSize(3) + this%domainOrigin(3), &
                this%densityEstimateGrid( ix, iy, iz ), this%histogram%counts( ix, iy, iz )
           end do
         end do
@@ -7242,9 +7242,9 @@ contains
             idbiny = iy+this%deltaBinsOrigin(2)
             idbinz = iz+this%deltaBinsOrigin(3)
             write(outputUnit,"(3es18.9e3,2es18.9e3)") &
-                      (real(idbinx,fp) + 0.5_fp)*this%binSize(1) + this%domainOrigin(1), & 
-                      (real(idbiny,fp) + 0.5_fp)*this%binSize(2) + this%domainOrigin(2), &
-                      (real(idbinz,fp) + 0.5_fp)*this%binSize(3) + this%domainOrigin(3), &
+                      (real(idbinx,fp) - 0.5_fp)*this%binSize(1) + this%domainOrigin(1), & 
+                      (real(idbiny,fp) - 0.5_fp)*this%binSize(2) + this%domainOrigin(2), &
+                      (real(idbinz,fp) - 0.5_fp)*this%binSize(3) + this%domainOrigin(3), &
                this%densityEstimateGrid( ix, iy, iz ), this%histogram%counts( ix, iy, iz )
           end do
         end do
@@ -7317,9 +7317,9 @@ contains
             idbiny = iy+this%deltaBinsOrigin(2)
             idbinz = iz+this%deltaBinsOrigin(3)
             write(outputUnit) idbinx, idbiny, idbinz, & 
-               (real(idbinx,fp) + 0.5_fp)*this%binSize(1) + this%domainOrigin(1), & 
-               (real(idbiny,fp) + 0.5_fp)*this%binSize(2) + this%domainOrigin(2), &
-               (real(idbinz,fp) + 0.5_fp)*this%binSize(3) + this%domainOrigin(3), &
+               (real(idbinx,fp) - 0.5_fp)*this%binSize(1) + this%domainOrigin(1), & 
+               (real(idbiny,fp) - 0.5_fp)*this%binSize(2) + this%domainOrigin(2), &
+               (real(idbinz,fp) - 0.5_fp)*this%binSize(3) + this%domainOrigin(3), &
                this%densityEstimateGrid( ix, iy, iz ), this%histogram%counts( ix, iy, iz )
           end do
         end do
@@ -7333,9 +7333,9 @@ contains
             idbiny = iy+this%deltaBinsOrigin(2)
             idbinz = iz+this%deltaBinsOrigin(3)
             write(outputUnit) &
-                      (real(idbinx,fp) + 0.5_fp)*this%binSize(1) + this%domainOrigin(1), & 
-                      (real(idbiny,fp) + 0.5_fp)*this%binSize(2) + this%domainOrigin(2), &
-                      (real(idbinz,fp) + 0.5_fp)*this%binSize(3) + this%domainOrigin(3), &
+                      (real(idbinx,fp) - 0.5_fp)*this%binSize(1) + this%domainOrigin(1), & 
+                      (real(idbiny,fp) - 0.5_fp)*this%binSize(2) + this%domainOrigin(2), &
+                      (real(idbinz,fp) - 0.5_fp)*this%binSize(3) + this%domainOrigin(3), &
                this%densityEstimateGrid( ix, iy, iz ), this%histogram%counts( ix, iy, iz )
           end do
         end do
