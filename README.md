@@ -4,9 +4,9 @@ A Random Walk Particle Tracking Code for Solute Transport in Heterogeneous Aquif
 ![](img/banner.png)
 
 ## Overview
-MODPATH-RW is Random Walk Particle Tracking (RWPT) model, implemented by extension of the particle tracking program [MODPATH-v7](https://github.com/MODFLOW-USGS/modpath-v7). The code employs discrete solute particles to solve the Advection Dispersion Equation (ADE), and inherits the parallel processing of particles from [MODPATH-OMP](https://github.com/upc-ghs/modpath-omp).
+MODPATH-RW is a Random Walk Particle Tracking (RWPT) model, implemented by extension of the particle tracking program [MODPATH-v7](https://github.com/MODFLOW-USGS/modpath-v7). The code employs discrete solute particles to solve the Advection Dispersion Equation (ADE), and inherits the parallel processing of particles from [MODPATH-OMP](https://github.com/upc-ghs/modpath-omp).
 
-Program is naturally integrated with groundwater flow models obtained with MODFLOW-2005, MODFLOW-USG and [MODFLOW-6](https://github.com/MODFLOW-USGS/modflow6), for structured and rectangular unstructured grids.
+The program is naturally integrated with groundwater flow models obtained with MODFLOW-2005, MODFLOW-USG and [MODFLOW 6](https://github.com/MODFLOW-USGS/modflow6), for structured and rectangular unstructured grids.
 
 ## Build
 
@@ -71,7 +71,7 @@ The necessary `dll`'s can also be installed from the Intel and Visual Studio red
 ## Input files
 Details about the configuration of input files are provided in the program [Documentation of Input-Output](doc/modpath-rw_IO_v100_.pdf). It is recommended to follow this document closely with the [Description of Model Input and Output of MODPATH-v7](doc/MODPATH_7_io.pdf).
 
-Users familiarized with the `python` interface [FloPy](https://github.com/modflowpy/flopy) are encouraged to write input files for MODPATH-RW with the extension [flopyrw](https://github.com/upc-ghs/flopyrw). The latter provide classes based on the interface for [mp7](https://github.com/modflowpy/flopy/tree/develop/flopy/modpath), which have been adapted to the specific requirements of MODPATH-RW, and implements classes for the new model packages. The extension is consistent with the program documentation and example configuration routines can be found on the project page.
+Users familiarized with the `python` interface [FloPy](https://github.com/modflowpy/flopy) are encouraged to write input files for MODPATH-RW with the extension [flopyrw](https://github.com/upc-ghs/flopyrw). This package provides classes based on the interface for [mp7](https://github.com/modflowpy/flopy/tree/develop/flopy/modpath), which have been adapted to the specific requirements of MODPATH-RW, plus new classes for the new model packages. The extension is consistent with the program documentation and example configuration routines and test cases can be found on the project page.
 
 
 ## Command line interface 
@@ -126,6 +126,12 @@ Follow the [contribution guidelines](readme/CONTRIBUTING.md) for this project.
 
 ## License
 MIT License
+
+## References
+[Pérez-Illanes R., Fernàndez-Garcia, D., 2023, Multiprocessing for the Particle Tracking Model MODPATH, Groundwater 61, no. 5: 733–742, doi:10.1111/gwat.13279](https://doi.org/10.1111/gwat.13279)
+
+[Pérez-Illanes R., Fernàndez-Garcia, D., 2024, MODPATH-RW: A Random Walk Particle Tracking Code for Solute Transport in Heterogeneous Aquifers, Groundwater, doi:10.1111/gwat.13390](https://doi.org/10.1111/gwat.13390)
+
 
 ## Resources
 * [MODPATH](https://www.usgs.gov/software/modpath-particle-tracking-model-modflow)
