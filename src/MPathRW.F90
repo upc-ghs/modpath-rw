@@ -1688,8 +1688,10 @@ program MPathRW
   ! If timeseries simulation and parallel and consolidated output
   ! Consolidation is done at this stage to preserve
   ! sorting of time indexes
-  if(&
-    ((simulationData%SimulationType .eq. 3)  .or. (simulationData%SimulationType .eq. 4) ) .and. & 
+  if(((simulationData%SimulationType .eq. 3)  .or.  &
+      (simulationData%SimulationType .eq. 4)  .or.  &
+      (simulationData%SimulationType .eq. 5)  .or.  &
+      (simulationData%SimulationType .eq. 6)) .and. & 
     parallel .and. (tsOutputType .eq. 2) ) then
     if ( .not. all( timeseriesRecordCounts .eq. 0 ) ) then
       call ConsolidateParallelTimeseriesRecords( timeseriesTempUnits, timeseriesUnit, timeseriesRecordCounts, lastRecord )
