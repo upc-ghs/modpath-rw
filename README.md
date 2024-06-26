@@ -128,7 +128,14 @@ Follow the [contribution guidelines](readme/CONTRIBUTING.md) for this project.
 MIT License
 
 ## References
+
+*** Software citation ***
+
 [Pérez-Illanes R., Fernàndez-Garcia, D., 2024, MODPATH-RW: A Random Walk Particle Tracking Code for Solute Transport in Heterogeneous Aquifers, Groundwater, doi:10.1111/gwat.13390](https://doi.org/10.1111/gwat.13390)
+
+*** Related publications ***
+
+[Pérez-Illanes R., Fernàndez-Garcia, D., 2024, A General Purpose Parallel Fortran Code for Grid Projected Concentration Reconstruction from Multidimensional Particle Distributions, Environmental Modelling & Software, doi: 10.1016/j.envsoft.2024.106008.](https://doi.org/10.1016/j.envsoft.2024.106008)
 
 [Pérez-Illanes R., Fernàndez-Garcia, D., 2023, Multiprocessing for the Particle Tracking Model MODPATH, Groundwater 61, no. 5: 733–742, doi:10.1111/gwat.13279](https://doi.org/10.1111/gwat.13279)
 
