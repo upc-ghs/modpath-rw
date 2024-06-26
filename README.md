@@ -102,7 +102,7 @@ options:
 For bug reports and updates, follow:                                             
   https://github.com/upc-ghs/modpath-rw  
 ```
-Note: if the OpenMP library is not found by compilers, the program will be generated without parallel compatibility, without the input parameters `nprocs`, `parallel` and `tsoutput`. If these are listed on the program help message (as above), the compilation with parallel compatibility was successful. 
+**Note**: if the OpenMP library is not found by compilers, the program will be generated without parallel compatibility, without the input parameters `nprocs`, `parallel` and `tsoutput`. If these are listed on the program help message (as above), the compilation with parallel compatibility was successful. 
 
 #### Some relevant CLI arguments
 
@@ -112,7 +112,7 @@ Note: if the OpenMP library is not found by compilers, the program will be gener
  
 `--parallel`: shorthand for running in parallel with the maximum number of processors (`omp_get_num_procs()`).
 
-Note: if neither ``--parallel`` nor ``--nprocs`` are given, the program will by default employ ``omp_get_max_threads()``, whose value can be controlled with the environment variable `OMP_NUM_THREADS`.
+**Note**: if neither ``--parallel`` nor ``--nprocs`` are given, the program will by default employ ``omp_get_max_threads()``, whose value can be controlled with the environment variable `OMP_NUM_THREADS`.
 
 
 `--tsoutput`: controls the output protocol for timeseries runs while running in parallel
@@ -129,11 +129,11 @@ MIT License
 
 ## References
 
-*** Software citation ***
+#### ***Software citation***
 
 [Pérez-Illanes R., Fernàndez-Garcia, D., 2024, MODPATH-RW: A Random Walk Particle Tracking Code for Solute Transport in Heterogeneous Aquifers, Groundwater, doi:10.1111/gwat.13390](https://doi.org/10.1111/gwat.13390)
 
-*** Related publications ***
+#### ***Related publications***
 
 [Pérez-Illanes R., Fernàndez-Garcia, D., 2024, A General Purpose Parallel Fortran Code for Grid Projected Concentration Reconstruction from Multidimensional Particle Distributions, Environmental Modelling & Software, doi: 10.1016/j.envsoft.2024.106008.](https://doi.org/10.1016/j.envsoft.2024.106008)
 
