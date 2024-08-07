@@ -835,15 +835,26 @@ contains
 
     this%Initialized = .false.
 
-    ! Object pointers
-    this%Grid => null()
-    this%FlowModelData => null()
-    this%TransportModelData => null()
-    
-    ! Interfaces
-    this%FillNeighborCellData=>null()
-    this%FillCellBuffer=>null()
-    this%TrackPath=>null()
+    ! nullify pointers
+    nullify( this%Grid                      )
+    nullify( this%FlowModelData             )
+    nullify( this%TransportModelData        )
+    nullify( this%FillNeighborCellData      )
+    nullify( this%FillCellBuffer            )
+    nullify( this%TrackPath                 )
+    nullify( this%FillDispersionParameters  )
+
+    ! Reset tracking options
+    ! Improve handling of tracking options, these should be pointers
+    call this%TrackCell%TrackingOptions%Reset()
+    call this%TrackingOptions%Reset()
+
+    ! particle path buffers
+    if(allocated(this%LocBuffP%Items))  deallocate(this%LocBuffP%Items)
+    if(allocated(this%LocBuffTS%Items)) deallocate(this%LocBuffTS%Items)
+    if(allocated(this%TrackCellResult%TrackingPoints%Items))& 
+      deallocate(this%TrackCellResult%TrackingPoints%Items)
+
 
   end subroutine pr_Reset
 

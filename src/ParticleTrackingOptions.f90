@@ -116,6 +116,8 @@ contains
     if(allocated(this%Observations)) deallocate(this%Observations)
     if(allocated(this%isObservation)) deallocate(this%isObservation)
     if(allocated(this%idObservation)) deallocate(this%idObservation)
+    if(allocated(this%gpkdeTimePoints)) deallocate(this%gpkdeTimePoints)
+    if(allocated(this%dimensions)) deallocate(this%dimensions)
   end subroutine pr_Reset
 
 
@@ -138,6 +140,7 @@ contains
     allocate(this%observationFiles(nObservations))
     allocate(this%obsRecordCounts(nObservations))
     allocate(this%Observations(nObservations))
+
   end subroutine pr_InitializeObservations
 
   

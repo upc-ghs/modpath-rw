@@ -8,6 +8,7 @@ module GridProjectedKDEModule
                               fSIX, fEIGHT, pi, sqrtEightPi
   use HistogramModule, only : HistogramType
   use KernelMultiGaussianModule, only : InitializeKernelDimensions, &
+                                             ResetKernelDimensions, &
                                            KernelMultiGaussianType, &
                                        KernelSecondDerivativeXType, &
                                        KernelSecondDerivativeYType, &
@@ -1121,8 +1122,10 @@ contains
 
     if ( associated(this%histogramCounts)  ) this%histogramCounts  => null()
     if ( associated(this%histogramWCounts) ) this%histogramWCounts => null()
-
-
+    !
+    ! -- reset in kernel module
+    call ResetKernelDimensions() 
+    !
   end subroutine prReset
 
   

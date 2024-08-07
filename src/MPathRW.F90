@@ -76,7 +76,10 @@ program MPathRW
   type(ModpathCellDataType), allocatable, target :: cellData
   type(TrackPathResultType), target :: trackPathResult
   type(ParticleLocationType) :: pLoc
-  type(ParticleCoordinateType),pointer :: pCoordFirst, pCoordLast, pCoordTP
+  !type(ParticleCoordinateType),pointer :: pCoordFirst, pCoordLast, pCoordTP
+  type(ParticleCoordinateType),pointer :: pCoordFirst => null()
+  type(ParticleCoordinateType),pointer :: pCoordLast => null()
+  type(ParticleCoordinateType),pointer :: pCoordTP => null()
   type(ParticleCoordinateType) :: pCoord
   type(ParticleType),pointer :: p
   type(GeoReferenceType) :: geoRef
@@ -260,7 +263,7 @@ program MPathRW
   
   ! Process spatial and time discretization data
   call ulog('Allocate rectangular unstructured grid component.', logUnit)
-  allocate(modelGrid)
+  !allocate(modelGrid) ! needed ? 
   call ulog('Allocate time discretization data component ...', logUnit)
   allocate(tdisData)
   
@@ -2843,6 +2846,7 @@ program MPathRW
 
   ! Deallocate major components
   call ulog('Begin memory deallocation.', logUnit)
+  !
   if(allocated(headReader)) deallocate(headReader)
   if(allocated(budgetReader)) deallocate(budgetReader)
   if(allocated(tdisData)) deallocate(tdisData)
@@ -2850,7 +2854,50 @@ program MPathRW
   if(allocated(transportModelData)) deallocate(transportModelData)
   if(allocated(basicData)) deallocate(basicData)
   if(allocated(simulationData)) deallocate(simulationData)
-  if(allocated(gpkde)) deallocate(gpkde)
+  if(allocated(gpkde)) then
+    call gpkde%Reset() 
+    deallocate(gpkde)
+  end if 
+  if(allocated(disGrid)) deallocate(disGrid)
+  if(allocated(disMf6Grid)) deallocate(disMf6Grid)
+  if(allocated(disvMf6Grid)) deallocate(disvMf6Grid)
+  if(allocated(disuMfusgGrid)) deallocate(disuMfusgGrid)
+  if(allocated(cellData)) deallocate(cellData)
+  !
+  if(allocated(activeParticleCoordinates)) deallocate(activeParticleCoordinates)
+  if(allocated(activeParticleMasses)) deallocate(activeParticleMasses)
+  if(allocated(gpkdeDataCarrier)) deallocate(gpkdeDataCarrier)
+  if(allocated(gpkdeWeightsCarrier)) deallocate(gpkdeWeightsCarrier)
+  if(allocated(buffer)) deallocate(buffer)
+  if(allocated(tPoint)) deallocate(tPoint)
+  if(allocated(obsAccumSinkFlowInTime)) deallocate(obsAccumSinkFlowInTime) 
+  if(allocated(obsWaterVolumeInTime)) deallocate(obsWaterVolumeInTime)     
+  if(allocated(obsAccumWaterVolumeInTime)) deallocate(obsAccumWaterVolumeInTime)
+  if(allocated(waterVolBuffer)) deallocate(waterVolBuffer)
+  if(allocated(obsRecordCounter)) deallocate(obsRecordCounter)
+  if(allocated(BTCHistPerSolute)) deallocate(BTCHistPerSolute)
+  if(allocated(BTCGpkdePerSolute)) deallocate(BTCGpkdePerSolute)
+  if(allocated(timeseriesTempUnits)) deallocate(timeseriesTempUnits)
+  if(allocated(timeseriesRecordCounts)) deallocate(timeseriesRecordCounts)
+  if(allocated(timeseriesTempFiles)) deallocate(timeseriesTempFiles)
+  !
+  nullify(modelGrid)
+  nullify(WriteTimeseries)
+  nullify(WriteEndpointFile)
+  nullify(obs)
+  nullify(solute)
+  nullify(p)
+  nullify(pCoordFirst)
+  nullify(pCoordLast)
+  nullify(pCoordTP)
+  !
+  if(trackingEngine%initialized) call trackingEngine%Reset()
+  if(allocated(trackPathResult%ParticlePath%Pathline%Items)) &
+    deallocate(trackPathResult%ParticlePath%Pathline%Items)
+  if(allocated(trackPathResult%ParticlePath%Timeseries%Items)) & 
+    deallocate(trackPathResult%ParticlePath%Timeseries%Items)
+  call trackPathResult%Reset()
+  !
   call ulog('Memory deallocation complete.', logUnit)
   
   write(*, '(a)') terminationMessage
