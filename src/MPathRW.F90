@@ -76,7 +76,6 @@ program MPathRW
   type(ModpathCellDataType), allocatable, target :: cellData
   type(TrackPathResultType), target :: trackPathResult
   type(ParticleLocationType) :: pLoc
-  !type(ParticleCoordinateType),pointer :: pCoordFirst, pCoordLast, pCoordTP
   type(ParticleCoordinateType),pointer :: pCoordFirst => null()
   type(ParticleCoordinateType),pointer :: pCoordLast => null()
   type(ParticleCoordinateType),pointer :: pCoordTP => null()
@@ -1234,8 +1233,6 @@ program MPathRW
       !$omp private( waterVolume )                     &
       !$omp firstprivate( trackingEngine )             &
       !$omp firstprivate( WriteTimeseries )            &
-      !!$omp firstprivate( WriteResidentObs )           &
-      !!$omp firstprivate( WriteSinkObs )               &
       !$omp reduction( +:obsRecordCounter )            &
       !$omp reduction( +:pendingCount )                &
       !$omp reduction( +:activeCount )                 &
