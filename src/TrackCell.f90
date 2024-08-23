@@ -12,9 +12,9 @@ module TrackCellModule
   private
 
   type,public :: TrackCellType
-    type(ModpathCellDataType)         :: CellData
-    type(ParticleTrackingOptionsType) :: TrackingOptions
-    type(TrackSubCellType)            :: TrackSubCell
+    type(ModpathCellDataType)                  :: CellData
+    type(ParticleTrackingOptionsType), pointer :: TrackingOptions
+    type(TrackSubCellType)                     :: TrackSubCell
     logical :: SteadyState
   contains
     procedure :: ExecuteTracking=>pr_ExecuteTracking

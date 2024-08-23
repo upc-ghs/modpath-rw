@@ -21,10 +21,10 @@ module ParticleTrackingEngineModule
 
   type,public :: ParticleTrackingEngineType
 
-    type(ParticleTrackingOptionsType) :: TrackingOptions
-    type(ModpathCellDataType)         :: CellDataBuffer
-    type(ParticleLocationListType)    :: LocBuffP
-    type(ParticleLocationListType)    :: LocBuffTS
+    type(ParticleTrackingOptionsType), pointer :: TrackingOptions
+    type(ModpathCellDataType)                  :: CellDataBuffer
+    type(ParticleLocationListType)             :: LocBuffP
+    type(ParticleLocationListType)             :: LocBuffTS
     logical :: Initialized = .false.
 
     ! Derived type pointers
@@ -397,9 +397,9 @@ contains
   implicit none
   class(ParticleTrackingEngineType) :: this
   class(ModflowRectangularGridType), intent(inout), pointer :: grid
-  type(ParticleTrackingOptionsType), intent(in)  :: trackingOptions
-  type(FlowModelDataType), intent(in), target    :: flowModelData
-  type(TransportModelDataType), optional, target :: transportModelData
+  type(ParticleTrackingOptionsType), intent(in)   , target  :: trackingOptions
+  type(FlowModelDataType)          , intent(in)   , target  :: flowModelData
+  type(TransportModelDataType)     , optional     , target  :: transportModelData
   integer :: m
   !------------------------------------------------------------------------------------------
   
@@ -409,7 +409,7 @@ contains
     ! Initialize pointers and tracking options
     this%FlowModelData => flowModelData
     this%Grid => grid
-    this%TrackingOptions = trackingOptions
+    this%TrackingOptions => trackingOptions
     
     if (this%TrackingOptions%RandomWalkParticleTracking) then
 
@@ -844,10 +844,9 @@ contains
     nullify( this%TrackPath                 )
     nullify( this%FillDispersionParameters  )
 
-    ! Reset tracking options
-    ! Improve handling of tracking options, these should be pointers
-    call this%TrackCell%TrackingOptions%Reset()
-    call this%TrackingOptions%Reset()
+    ! nullify tracking options pointers
+    nullify(this%TrackCell%TrackingOptions)
+    nullify(this%TrackingOptions)
 
     ! particle path buffers
     if(allocated(this%LocBuffP%Items))  deallocate(this%LocBuffP%Items)
@@ -902,7 +901,7 @@ contains
       
       ! Initialize TrackCell
       this%TrackCell%SteadyState = this%FlowModelData%SteadyState
-      this%TrackCell%TrackingOptions = this%TrackingOptions
+      this%TrackCell%TrackingOptions => this%TrackingOptions
       call this%FillCellBuffer(loc%CellNumber,  this%TrackCell%CellData)
 
       continueLoop = .true.
@@ -1100,7 +1099,7 @@ contains
     
     ! Initialize TrackCell
     this%TrackCell%SteadyState = this%FlowModelData%SteadyState
-    this%TrackCell%TrackingOptions = this%TrackingOptions
+    this%TrackCell%TrackingOptions => this%TrackingOptions
     call this%FillCellBuffer(loc%CellNumber,  this%TrackCell%CellData)
 
     ! RWPT: fill neighbor cells

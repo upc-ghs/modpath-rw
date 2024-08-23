@@ -2850,7 +2850,10 @@ program MPathRW
   if(allocated(flowModelData)) deallocate(flowModelData)
   if(allocated(transportModelData)) deallocate(transportModelData)
   if(allocated(basicData)) deallocate(basicData)
-  if(allocated(simulationData)) deallocate(simulationData)
+  if(allocated(simulationData)) then 
+    call simulationData%TrackingOptions%Reset()
+    deallocate(simulationData)
+  end if 
   if(allocated(gpkde)) then
     call gpkde%Reset() 
     deallocate(gpkde)
