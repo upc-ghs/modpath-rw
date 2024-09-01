@@ -102,6 +102,8 @@ module TrackSubCellModule
     procedure :: ExecuteRandomWalkParticleTracking=>pr_ExecuteRandomWalkParticleTracking
     procedure :: LinearInterpolationVelocities=>pr_LinearInterpolationVelocities
     procedure :: ComputeRandomWalkTimeStep=>pr_ComputeRandomWalkTimeStep
+    procedure :: ComputeAdvectiveTimeStep=>pr_ComputeAdvectiveTimeStep
+    procedure :: ComputeDispersiveTimeStep=>pr_ComputeDispersiveTimeStep
     procedure :: ComputeCornerVariables=>pr_ComputeCornerVariables
     procedure :: ComputeCornerDischarge=>pr_ComputeCornerDischarge
     procedure :: GetInterpolatedCornerDischarge=>pr_GetInterpolatedCornerDischarge
@@ -1417,77 +1419,181 @@ contains
   ! Specifications
   !----------------------------------------------------------------
   implicit none
-  class (TrackSubCellType) :: this
-  ! input
-  type(ParticleTrackingOptionsType),intent(in) :: trackingOptions
-  ! output
+  class(TrackSubCellType)                       :: this            !< TrackSubCellType
+  type(ParticleTrackingOptionsType), intent(in) :: trackingOptions !< tracking options, user input
+  ! -- output
   doubleprecision, intent(inout) :: dt
-  ! local
-  doubleprecision :: vx1, vx2, vy1, vy2, vz1, vz2 
-  doubleprecision :: dx, dy, dz
-  doubleprecision :: alphaL, alphaT
+  ! -- local
   doubleprecision, dimension(2) :: dts
   !----------------------------------------------------------------
+    !
+    ! -- compute time step
+    select case (trackingOptions%timeStepKind)
+    case (1)
+      ! -- evaluate advective dt
+      dt = this%ComputeAdvectiveTimeStep( trackingOptions )
+      ! 
+    case (2)
+      ! -- evaluate dispersive dt
+      dt = this%ComputeDispersiveTimeStep( trackingOptions ) 
+      !
+    case (3)
+      !
+      ! -- initialize
+      dt = 0d0
+      dts(:) = 0d0
+      !
+      ! -- evaluate advective dt
+      dts(1) = this%ComputeAdvectiveTimeStep( trackingOptions )
+      !
+      ! -- evaluate dispersive dt
+      dts(2) = this%ComputeDispersiveTimeStep( trackingOptions ) 
+      !
+      ! -- compute minimum
+      dt = minval( dts, dts > 0d0 )
+      !
+    case (4)
+      ! -- fixed
+      dt = trackingOptions%timeStepParameters(1)
+      !
+    end select
+    !
+  end subroutine pr_ComputeRandomWalkTimeStep
 
-    ! Initialize
-    dts(:) = 0d0
 
-    ! Make local copies of face velocities for convenience
+  !>
+  !! Evaluate the characteristic time step for the cell 
+  !! using the advective criteria:
+  !!
+  !! dt = c_o /sum( v_ii/dx_i )
+  !!
+  !! where c_o is a user provided courant number stored in tracking options.
+  !!
+  !<
+  function pr_ComputeAdvectiveTimeStep( this, trackingOptions ) result(dt) 
+  implicit none
+  class(TrackSubCellType)                       :: this            !< TrackSubCellType
+  type(ParticleTrackingOptionsType), intent(in) :: trackingOptions !< tracking options, user input
+  ! -- output
+  doubleprecision :: dt
+  ! -- local 
+  doubleprecision :: vx1, vx2, vy1, vy2, vz1, vz2 
+  doubleprecision :: dx, dy, dz
+  doubleprecision :: dtDenom
+  integer         :: idDim, i
+  !-----------------------------------------------------------------------------------
+    !
+    ! -- make local copies of face velocities for convenience
     vx1 = this%SubCellData%VX1
     vx2 = this%SubCellData%VX2
     vy1 = this%SubCellData%VY1
     vy2 = this%SubCellData%VY2
     vz1 = this%SubCellData%VZ1
     vz2 = this%SubCellData%VZ2
-   
-    ! Local copies of cell size
+    !   
+    ! -- local copies of cell size
     dx = this%SubCellData%DX
     dy = this%SubCellData%DY
     dz = this%SubCellData%DZ
+    !
+    ! -- evaluate denominator
+    dtDenom = 0d0
+    do i=1, trackingOptions%nDim
+      idDim = trackingOptions%dimensions(i)
+      select case(idDim)
+      case(1)
+        dtDenom = dtDenom + max(abs(vx1), abs(vx2))/dx
+      case(2)
+        dtDenom = dtDenom + max(abs(vy1), abs(vy2))/dy
+      case(3)
+        dtDenom = dtDenom + max(abs(vz1), abs(vz2))/dz 
+      end select
+    end do
+    !
+    ! -- evaluate dt
+    dt = 0d0
+    if (dtDenom.ne.0d0 ) then 
+      dt = trackingOptions%timeStepParameters(1)/dtDenom
+    end if
+    !
+    ! -- done
+    return
+    !
+  end function pr_ComputeAdvectiveTimeStep
 
-    ! Local copies of dispersivities
-    ! Note: simplified form taking only H values 
+  
+  !>
+  !! Evaluate the characteristic time step for the cell 
+  !! using the dispersive criteria:
+  !!
+  !! dt = c_T /sum( Dii/dx_i**2 )
+  !!
+  !! where c_T is a user provided parameter stored in tracking options.
+  !!
+  !<
+  function pr_ComputeDispersiveTimeStep( this, trackingOptions ) result(dt) 
+  implicit none
+  class(TrackSubCellType)                       :: this            !< TrackSubCellType
+  type(ParticleTrackingOptionsType), intent(in) :: trackingOptions !< tracking options, user input
+  ! -- output
+  doubleprecision :: dt
+  ! -- local 
+  doubleprecision :: vx1, vx2, vy1, vy2, vz1, vz2 
+  doubleprecision :: dx, dy, dz
+  doubleprecision :: alphaL, alphaT, dMEff
+  doubleprecision :: dtDenom
+  integer         :: idDim, i
+  !-----------------------------------------------------------------------------------
+    !
+    ! -- make local copies of face velocities for convenience
+    vx1 = this%SubCellData%VX1
+    vx2 = this%SubCellData%VX2
+    vy1 = this%SubCellData%VY1
+    vy2 = this%SubCellData%VY2
+    vz1 = this%SubCellData%VZ1
+    vz2 = this%SubCellData%VZ2
+    !   
+    ! -- local copies of cell size
+    dx = this%SubCellData%DX
+    dy = this%SubCellData%DY
+    dz = this%SubCellData%DZ
+    !
+    ! -- local copies of cell dispersivities, simplified form taking only H values 
     alphaL = this%SubCellData%alphaLH
     alphaT = this%SubCellData%alphaTH
+    !
+    ! -- effective molecular diffusion
+    dMEff  = this%SubCellData%dMEff
+    !
+    ! -- evaluate denominator
+    dtDenom = 0d0
+    do i=1, trackingOptions%nDim
+      idDim = trackingOptions%dimensions(i)
+      select case(idDim)
+      case(1)
+        dtDenom = dtDenom + ( dMEff + alphaL*max(abs(vx1), abs(vx2)) )/( dx**2d0 )
+      case(2)
+        dtDenom = dtDenom + ( dMEff + alphaT*max(abs(vy1), abs(vy2)) )/( dy**2d0 ) 
+      case(3)
+        dtDenom = dtDenom + ( dMEff + alphaT*max(abs(vz1), abs(vz2)) )/( dz**2d0 )
+      end select
+    end do
+    !
+    ! -- evaluate dt
+    dt = 0d0
+    if (dtDenom.ne.0d0 ) then 
+      dt = trackingOptions%timeStepParameters(2)/dtDenom
+    end if
+    !
+    ! -- done
+    return
+    !
+  end function pr_ComputeDispersiveTimeStep
 
-    ! Missing diffusion
 
-    ! Compute time step
-    select case (trackingOptions%timeStepKind)
-      case (1)
-        ! Advection criteria
-        dt = trackingOptions%timeStepParameters(1)/( &
-            max(abs(vx1), abs(vx2))/dx +             &
-            max(abs(vy1), abs(vy2))/dy +             &
-            max(abs(vz1), abs(vz2))/dz )
-      case (2)
-        ! Dispersion criteria
-        ! dt = c_T dx**2/D
-        dt = trackingOptions%timeStepParameters(2)/(        &
-                 alphaL*max(abs(vx1), abs(vx2))/( dx**2 ) + & 
-                 alphaT*max(abs(vy1), abs(vy2))/( dy**2 ) + &
-                 alphaT*max(abs(vz1), abs(vz2))/( dz**2 ) )
-      case (3)
-        ! Advection condition
-        ! dt = CFL dx / v 
-        dts(1) = trackingOptions%timeStepParameters(1)/( & 
-            max(abs(vx1), abs(vx2))/dx +                 &
-            max(abs(vy1), abs(vy2))/dy +                 &
-            max(abs(vz1), abs(vz2))/dz )
-        ! Dispersion condition
-        ! dt = c_T dx**2/D
-        dts(2) = trackingOptions%timeStepParameters(2)/(    &
-                 alphaL*max(abs(vx1), abs(vx2))/( dx**2 ) + & 
-                 alphaT*max(abs(vy1), abs(vy2))/( dy**2 ) + &
-                 alphaT*max(abs(vz1), abs(vz2))/( dz**2 ) )
-        ! Compute minimum
-        dt     = minval( dts, dts > 0 )
-      case (4)
-        ! Fixed
-        dt = trackingOptions%timeStepParameters(1)
-    end select
 
-  end subroutine pr_ComputeRandomWalkTimeStep
+
+
 
   ! RWPT
   subroutine pr_LinearInterpolationVelocities( this, x, y, z, vx, vy, vz )
@@ -2873,7 +2979,7 @@ contains
       doubleprecision, intent(out) :: dBx, dBy, dBz
       ! local
       doubleprecision :: vBx, vBy, vBz, vBnorm, vBnormxy
-      doubleprecision :: B11, B12, B13, B21, B22, B23, B31, B32
+      doubleprecision :: B11, B12, B13, B21, B22, B23, B31, B32, B33
       doubleprecision :: rdmx, rdmy, rdmz
       doubleprecision :: RFactor
       doubleprecision, dimension(4) :: v000
@@ -2918,8 +3024,8 @@ contains
                            v000(3), v100(3), v010(3), v110(3), &
                            v001(3), v101(3), v011(3), v111(3), &
                            vBz )
-      vBnorm   = sqrt( vBx**2 + vBy**2 + vBz**2 )
-      vBnormxy = sqrt( vBx**2 + vBy**2 )
+      vBnorm   = sqrt( vBx**2d0 + vBy**2d0 + vBz**2d0 )
+      vBnormxy = sqrt( vBx**2d0 + vBy**2d0 )
    
 
       ! Displacement matrix terms
@@ -2933,17 +3039,27 @@ contains
       B23 = 0d0
       B31 = 0d0
       B32 = 0d0
+      B33 = 0d0
       if ( vBnorm .gt. 0d0 ) then
-        B11 =       vBx*sqrt( 2*( alphaL*vBnorm + dMEff )/RFactor )/vBnorm
-        B21 =       vBy*sqrt( 2*( alphaL*vBnorm + dMEff )/RFactor )/vBnorm
-        B31 =       vBz*sqrt( 2*( alphaL*vBnorm + dMEff )/RFactor )/vBnorm
-        B32 =  vBnormxy*sqrt( 2*( alphaT*vBnorm + dMEff )/RFactor )/vBnorm
+        B11 =       vBx*sqrt( 2d0*( alphaL*vBnorm + dMEff )/RFactor )/vBnorm
+        B21 =       vBy*sqrt( 2d0*( alphaL*vBnorm + dMEff )/RFactor )/vBnorm
+        B31 =       vBz*sqrt( 2d0*( alphaL*vBnorm + dMEff )/RFactor )/vBnorm
+        B32 =  vBnormxy*sqrt( 2d0*( alphaT*vBnorm + dMEff )/RFactor )/vBnorm
         if ( vBnormxy .gt. 0d0 ) then
-          B12 =  -vBx*vBz*sqrt( 2*( alphaT*vBnorm + dMEff )/RFactor )/vBnorm/vBnormxy
-          B13 =      -vBy*sqrt( 2*( alphaT*vBnorm + dMEff )/RFactor )/vBnormxy
-          B22 =  -vBy*vBz*sqrt( 2*( alphaT*vBnorm + dMEff )/RFactor )/vBnorm/vBnormxy
-          B23 =       vBx*sqrt( 2*( alphaT*vBnorm + dMEff )/RFactor )/vBnormxy
+          B12 =  -vBx*vBz*sqrt( 2d0*( alphaT*vBnorm + dMEff )/RFactor )/vBnorm/vBnormxy
+          B13 =      -vBy*sqrt( 2d0*( alphaT*vBnorm + dMEff )/RFactor )/vBnormxy
+          B22 =  -vBy*vBz*sqrt( 2d0*( alphaT*vBnorm + dMEff )/RFactor )/vBnorm/vBnormxy
+          B23 =       vBx*sqrt( 2d0*( alphaT*vBnorm + dMEff )/RFactor )/vBnormxy
+        else
+          B11 = sqrt( 2d0*( alphaL*vBnorm + dMEff )/RFactor )
+          B22 = sqrt( 2d0*( alphaT*vBnorm + dMEff )/RFactor )
+          B33 = sqrt( 2d0*( alphaT*vBnorm + dMEff )/RFactor )
+          B31 = 0d0
         end if
+      else
+        B11 = sqrt( 2d0*dMEff/RFactor )
+        B22 = sqrt( 2d0*dMEff/RFactor )
+        B33 = sqrt( 2d0*dMEff/RFactor )
       end if 
 
       ! Compute random numbers
@@ -2954,7 +3070,7 @@ contains
       ! Compute displacement times random
       dBx = B11*rdmx + B12*rdmy + B13*rdmz 
       dBy = B21*rdmx + B22*rdmy + B23*rdmz 
-      dBz = B31*rdmx + B32*rdmy 
+      dBz = B31*rdmx + B32*rdmy + B33*rdmz 
 
 
   end subroutine pr_DisplacementRandomDischarge
@@ -3028,7 +3144,7 @@ contains
                            v000(idDim2), v100(idDim2), v010(idDim2), v110(idDim2), &
                            v001(idDim2), v101(idDim2), v011(idDim2), v111(idDim2), &
                            vB2 )
-      vBnorm   = sqrt( vB1**2 + vB2**2 )
+      vBnorm   = sqrt( vB1**2d0 + vB2**2d0 )
 
       ! Displacement matrix terms
       ! Refs: Fernàndez-Garcia et al. 2005; Salamon et al. 2006
@@ -3038,10 +3154,13 @@ contains
       B21 = 0d0
       B22 = 0d0
       if ( vBnorm .gt. 0d0 ) then
-        B11 =  vB1*sqrt( 2*( alphaL*vBnorm + dMEff )/RFactor )/vBnorm
-        B21 =  vB2*sqrt( 2*( alphaL*vBnorm + dMEff )/RFactor )/vBnorm
-        B12 = -vB2*sqrt( 2*( alphaT*vBnorm + dMEff )/RFactor )/vBnorm
-        B22 =  vB1*sqrt( 2*( alphaT*vBnorm + dMEff )/RFactor )/vBnorm
+        B11 =  vB1*sqrt( 2d0*( alphaL*vBnorm + dMEff )/RFactor )/vBnorm
+        B21 =  vB2*sqrt( 2d0*( alphaL*vBnorm + dMEff )/RFactor )/vBnorm
+        B12 = -vB2*sqrt( 2d0*( alphaT*vBnorm + dMEff )/RFactor )/vBnorm
+        B22 =  vB1*sqrt( 2d0*( alphaT*vBnorm + dMEff )/RFactor )/vBnorm
+      else
+        B11 =  sqrt( 2d0*dMEff/RFactor )
+        B22 =  sqrt( 2d0*dMEff/RFactor )
       end if 
 
       ! Compute random numbers
@@ -3123,13 +3242,10 @@ contains
                            v000(idDim1), v100(idDim1), v010(idDim1), v110(idDim1), &
                            v001(idDim1), v101(idDim1), v011(idDim1), v111(idDim1), &
                            vB1 )
-      vBnorm = sqrt(vB1**2)
+      vBnorm = sqrt(vB1**2d0)
 
       ! Displacement matrix terms
-      ! Refs: Fernàndez-Garcia et al. 2005; Salamon et al. 2006
-      ! Handles the case of zero vBnorm
-      B11 = 0d0 
-      if ( vBnorm .gt. 0d0 ) B11 = sqrt( 2*( alphaL*vBnorm + dMEff )/RFactor )
+      B11 = sqrt( 2d0*( alphaL*vBnorm + dMEff )/RFactor )
 
       ! Compute random numbers
       call this%GenerateStandardNormalRandom( rdm1 ) 
