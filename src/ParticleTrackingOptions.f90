@@ -78,13 +78,6 @@ module ParticleTrackingOptionsModule
     integer, allocatable, dimension(:) :: idObservation
     type( ObservationType ), allocatable, dimension(:) :: Observations
 
-    ! Deprecation warnning
-    ! Nonlinear dispersion rwpt (temp)
-    doubleprecision :: betaTrans, betaLong
-    doubleprecision :: mediumDistance, mediumDelta
-    doubleprecision :: Dmol = 0d0
-    ! Deprecation warning
-
   contains
      procedure :: Reset=>pr_Reset
      ! Observations

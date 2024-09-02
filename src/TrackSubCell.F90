@@ -654,9 +654,6 @@ contains
       ! Linear axisymmetric 
       this%ComputeRWPTDisplacements => pr_RWPTDisplacementsAxisymmetric
       this%ComputeCornerDispersion => pr_CornerDispersionAxisymmetric
-    !case(2)else if ( dispersionModel .eq.2 ) then
-    ! ! Non linear 
-    ! this%ComputeRWPTDisplacements => pr_RWPTDisplacementsNonlinear
     case default
       ! Not set !
       ! Some kind of error handling
@@ -706,61 +703,6 @@ contains
 
 
   end subroutine pr_RWPTDisplacementsLinear
-
-
-  subroutine pr_RWPTDisplacementsNonlinear(this, x, y, z, vx, vy, vz, &
-                                                 dt, trackingOptions, &
-                                                 dAdvx, dAdvy, dAdvz, &
-                                                       dBx, dBy, dBz, &
-                                                 divDx, divDy, divDz  )
-      !------------------------------------------------------------
-      !------------------------------------------------------------
-      implicit none
-      class(TrackSubCellType) :: this
-      type(ParticleTrackingOptionsType),intent(in) :: trackingOptions
-      doubleprecision, intent(in)    :: x, y, z, dt
-      doubleprecision, intent(inout) :: vx, vy, vz 
-      doubleprecision, intent(inout) :: dAdvx, dAdvy, dAdvz 
-      doubleprecision, intent(inout) :: dBx, dBy, dBz 
-      doubleprecision, intent(inout) :: divDx, divDy, divDz  
-      ! local
-      doubleprecision :: Daqueous, Dmol, betaL, betaT
-      doubleprecision :: mediumDistance, mediumDelta
-      doubleprecision :: alphaL, alphaT
-      !------------------------------------------------------------
-      ! Specifications
-      !------------------------------------------------------------
-        
-      ! Will consider by convention that molecular diffusion 
-      ! specified at configuration file is the aqueous
-
-      ! THIS IS TEMPORARY:
-      Daqueous       = trackingOptions%Dmol 
-      Dmol           = Daqueous*this%SubCellData%Porosity ! Pore diffusion approx Daq*phi
-      mediumDistance = trackingOptions%mediumDistance
-      mediumDelta    = trackingOptions%mediumDelta
-      betaL          = trackingOptions%betaLong 
-      betaT          = trackingOptions%betaTrans
-
-
-      alphaL = 0d0
-      alphaT = 0d0
-
-
-      ! Nonlinear dispersion
-      call this%LinearInterpolationVelocities( x, y, z, vx, vy, vz )
-      ! Compute dispersivities
-      call pr_ComputeNonlinearDispersivities( this, vx, vy, vz, Daqueous, &
-                mediumDistance, mediumDelta, betaL, betaT, alphaL, alphaT )
-      call this%DispersionDivergence( x, y, z, divDx, divDy, divDz )
-      call this%DisplacementRandomDischarge( x, y, z, alphaL, alphaT, Dmol, dBx, dBy, dBz )
-      call this%AdvectionDisplacement( x, y, z, dt, vx, vy, vz, dAdvx, dAdvy, dAdvz )
-
-
-      return
-
-
-  end subroutine pr_RWPTDisplacementsNonlinear
 
 
   subroutine pr_RWPTDisplacementsAxisymmetric(this, x, y, z, vx, vy, vz, &
@@ -1198,37 +1140,14 @@ contains
               yi = ny
               zi = nz
               
-              ! If dt .eq. 0d0 then the particle is exactly at the interface,
-              ! and is a rebound interface. In the meantime, restart.
+              ! -- If dt .eq. 0d0 then the particle is exactly at the interface,
+              !    and is a rebound interface. Set the time step to the cell 
+              !    characteristic value and allow the rebound to occurr normally
+              !    driven by the advection-dispersion conditions at the particle position. 
               if ( dt .eq. 0d0 ) then
-                ! Restart coordinates
-                x  = initialLocation%LocalX
-                y  = initialLocation%LocalY
-                z  = initialLocation%LocalZ
-                nx = initialLocation%LocalX
-                ny = initialLocation%LocalY
-                nz = initialLocation%LocalZ
-                t  = tinit
+                !
                 dt = dtcell
-                exitFace = 0
-                dtLoopCounter = 0
-                intLoopCounter = 0
-                continueTimeLoop = .true.
-                reachedMaximumTime = .false.
-                posRestartCounter = posRestartCounter + 1
-                if ( posRestartCounter .gt. maxRestartPositionCounter ) then 
-                  ! Something wrong, leave
-                  trackingResult%ExitFace = 0
-                  trackingResult%Status = trackingResult%Status_Undefined()
-                  trackingResult%FinalLocation%CellNumber = cellNumber
-                  trackingResult%FinalLocation%LocalX = x
-                  trackingResult%FinalLocation%LocalY = y
-                  trackingResult%FinalLocation%LocalZ = z
-                  trackingResult%FinalLocation%TrackingTime = t
-                  return
-                end if
-                ! Exit rebound loop 
-                exit
+                !
               end if
               
               ! Update current time with same time step 
@@ -4726,46 +4645,6 @@ contains
     return 
 
   end subroutine pr_Trilinear
-
-
-  ! RWPT
-  subroutine pr_ComputeNonlinearDispersivities( this, vx, vy, vz, Daqueous, distance, &
-                                                  delta, betaL, betaT, alphaL, alphaT )
-  !----------------------------------------------------------------
-  ! Compute nonlinear equivalent dispersivities
-  ! establishing analogy with 
-  ! model from  Chiogna et al. 2010, Rolle et al. 2013
-  !  
-  ! Params:
-  !----------------------------------------------------------------
-  ! Specifications
-  !----------------------------------------------------------------
-  implicit none
-  class (TrackSubCellType)    :: this
-  ! input
-  doubleprecision, intent(in) :: vx, vy, vz, Daqueous
-  doubleprecision, intent(in) :: distance, delta, betaL, betaT
-  ! output
-  doubleprecision, intent(inout) :: alphaL, alphaT
-  ! local
-  doubleprecision :: v, peclet, fbase
-  !---------------------------------------------------------------- 
-        
-    v      = 0d0
-    peclet = 0d0
-    fbase  = 0d0  
-
-
-    v      = sqrt( vx**2 + vy**2 + vz**2 )
-    peclet = v*distance/Daqueous
-    fbase  = peclet**2/( peclet + 2 + 4*delta**2 )
-
-    alphaL = (distance/peclet)*( fbase )**betaL 
-    alphaT = (distance/peclet)*( fbase )**betaT
-
-    return
-
-  end subroutine pr_ComputeNonlinearDispersivities
 
 
 end module TrackSubCellModule

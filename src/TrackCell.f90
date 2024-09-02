@@ -457,8 +457,22 @@ contains
           trackCellResult%Status = trackCellResult%Status_StopAtWeakSource()
           return
         else
-          if(.not. this%SteadyState) stopIfNoSubCellExit = .false.
+          if(.not. this%SteadyState) then 
+            stopIfNoSubCellExit = .false.
+          else
+            ! -- if steady state but non-infinite time and non-zero molecular diffusion, then allow the program
+            !    to transport the particle by diffusion if the cell has no exit due to zero flows.
+            if((.not. this%TrackingOptions%ExtendSteadyState).and.(this%CellData%DMEff.ne.0d0) ) then 
+              stopIfNoSubCellExit = .false.
+            end if 
+          end if 
         end if
+      else
+        ! -- if steady state but non-infinite time and non-zero molecular diffusion, then allow the program
+        !    to transport the particle by diffusion if the cell has no exit due to zero flows.
+        if((.not. this%TrackingOptions%ExtendSteadyState).and.(this%CellData%DMEff.ne.0d0) ) then 
+          stopIfNoSubCellExit = .false.
+        end if 
       end if
     else
       if(this%TrackingOptions%StopAtWeakSinks) then
@@ -466,21 +480,45 @@ contains
           trackCellResult%Status = trackCellResult%Status_StopAtWeakSink()
           return
         else
-          if(.not. this%SteadyState) stopIfNoSubCellExit = .false.
+          if(.not. this%SteadyState) then 
+            stopIfNoSubCellExit = .false.
+          else
+            ! -- if steady state but non-infinite time and non-zero molecular diffusion, then allow the program
+            !    to transport the particle by diffusion if the cell has no exit due to zero flows.
+            if((.not. this%TrackingOptions%ExtendSteadyState).and.(this%CellData%DMEff.ne.0d0) ) then 
+              stopIfNoSubCellExit = .false.
+            end if 
+          end if 
         end if
+      else
+        ! -- if steady state but non-infinite time and non-zero molecular diffusion, then allow the program
+        !    to transport the particle by diffusion if the cell has no exit due to zero flows.
+        if((.not. this%TrackingOptions%ExtendSteadyState).and.(this%CellData%DMEff.ne.0d0) ) then 
+          stopIfNoSubCellExit = .false.
+        end if 
       end if
     end if
-
-
-    ! If the cell has no exit face then:
-    !   1. If the system is steady state, set status NoExitPossible and return immediately
-    !   2. If the system is transient, tracking is backward, and SourceFlow is not equal to 0, set status to 
-    !      NoExitPossible and return immediately
-    !   3. If the system is transient, tracking is forware, and SinkFlow is not equal to 0, set status to
-    !      NoExitPossible and return immediately
     !
-    ! First check to see if cell has at least one exit face.
+    ! -- If the cell has no exit face (because of zero flows) then:
+    !     1. If the system is steady state, set status NoExitPossible and return immediately
+    !     2. If the system is transient, tracking is backward, and SourceFlow is not equal to 0, set status to
+    !        NoExitPossible and return immediately
+    !     3. If the system is transient, tracking is forware, and SinkFlow is not equal to 0, set status to
+    !        NoExitPossible and return immediately
+    ! -- Note: similar as above, do an exception for cases with non-zero molecular diffusion and non-infinite time.
+    !
+    ! -- First check to see if cell has at least one exit face.
     hasExit = this%CellData%HasExitFace(this%TrackingOptions%BackwardTracking)
+    !
+    ! -- if the cell has no exit because of zero flows, but the cell has non-zero molecular diffusion,
+    !    then a particle could eventually leave toward another cell. 
+    if ( (.not. hasExit).and.(.not.this%TrackingOptions%ExtendSteadyState) ) then  
+      if ( this%CellData%DMEff.ne.0d0 ) then 
+        hasExit = .true.
+      end if 
+    end if 
+    !
+    ! -- process the hasexit flag.
     if(.not. hasExit) then
       if(this%SteadyState) then
         trackCellResult%Status = trackCellResult%Status_NoExitPossible()

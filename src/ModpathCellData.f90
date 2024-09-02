@@ -42,7 +42,6 @@ module ModpathCellDataModule
     integer :: requestedFromDirection
 
     ! RWPT transport parameters
-    doubleprecision, public :: alphaL, alphaT ! to be deprecated
     doubleprecision, public :: alphaLH, alphaLV, alphaTH, alphaTV
     doubleprecision, public :: dMEff
 
@@ -384,7 +383,7 @@ contains
       return
     end if
   end do
-  
+ 
   end function pr_HasExitFace
   
 !------------------------------------------
@@ -421,9 +420,14 @@ contains
   this%parentSubColumn  = 0
   this%requestedFromDirection = 0
 
+  ! RWPT
   this%dry          = .false.
   this%partiallyDry = .false.
-
+  this%alphaLV      = 0d0 
+  this%alphaTH      = 0d0
+  this%alphaTV      = 0d0
+  this%alphaLH      = 0d0
+  this%dMEff        = 0d0
   this%initialized = .false.
 
   end subroutine pr_Reset
