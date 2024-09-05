@@ -956,6 +956,9 @@ contains
 
       end do
 
+      ! save dtold
+      dtold = dt
+
       ! new positions
       nx   = x + dxrw/dx
       ny   = y + dyrw/dy
@@ -1028,6 +1031,7 @@ contains
             case(1,2)
               nx   = 1.0d0
               if ( exitFace .eq. 1 ) nx=0d0
+              dxrw = dAdvx + divDx*dt + dBx*sqrt( dt )
               dyrw = dAdvy + divDy*dt + dBy*sqrt( dt )
               ny   = y + dyrw/dy
               dzrw = dAdvz + divDz*dt + dBz*sqrt( dt )
@@ -1038,6 +1042,7 @@ contains
               nx   = x + dxrw/dx
               ny   = 1.0d0
               if ( exitFace .eq. 3 ) ny=0d0
+              dyrw = dAdvy + divDy*dt + dBy*sqrt( dt )
               dzrw = dAdvz + divDz*dt + dBz*sqrt( dt )
               nz   = z + dzrw/dz
             ! Z Face
@@ -1048,6 +1053,7 @@ contains
               ny   = y + dyrw/dy
               nz   = 1.0d0
               if ( exitFace .eq. 5 ) nz=0d0
+              dzrw = dAdvz + divDz*dt + dBz*sqrt( dt )
             ! No exit
             case(0)
               ! If exitFace .eq. 0, restart to initial cell condition
@@ -1141,12 +1147,15 @@ contains
               zi = nz
               
               ! -- If dt .eq. 0d0 then the particle is exactly at the interface,
-              !    and is a rebound interface. Set the time step to the cell 
-              !    characteristic value and allow the rebound to occurr normally
-              !    driven by the advection-dispersion conditions at the particle position. 
+              !    and is a rebound interface. Set the time step to the time step previous 
+              !    to the interface detection (dtold) and allow the rebound to occurr normally
+              !    driven by the advection-dispersion conditions evaluated at the particle position. 
               if ( dt .eq. 0d0 ) then
                 !
-                dt = dtcell
+                dt = dtold
+                dxrw = dAdvx + divDx*dt + dBx*sqrt( dt )
+                dyrw = dAdvy + divDy*dt + dBy*sqrt( dt )
+                dzrw = dAdvz + divDz*dt + dBz*sqrt( dt )
                 !
               end if
               
