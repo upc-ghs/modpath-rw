@@ -91,7 +91,7 @@ module TrackSubCellModule
     ! Point towards trackingOptions
     integer, dimension(:), pointer :: dimensions
     integer, pointer :: nDim
-
+    !
   contains
     procedure,private :: CalculateDT=>pr_CalculateDT
     procedure,private :: NewXYZ=>pr_NewXYZ
@@ -674,35 +674,34 @@ contains
                                               dAdvx, dAdvy, dAdvz, &
                                                     dBx, dBy, dBz, &
                                               divDx, divDy, divDz  )
-      !------------------------------------------------------------
-      !------------------------------------------------------------
-      implicit none
-      class(TrackSubCellType) :: this
-      type(ParticleTrackingOptionsType),intent(in) :: trackingOptions
-      doubleprecision, intent(in)    :: x, y, z, dt
-      doubleprecision, intent(inout) :: vx, vy, vz 
-      doubleprecision, intent(inout) :: dAdvx, dAdvy, dAdvz 
-      doubleprecision, intent(inout) :: dBx, dBy, dBz 
-      doubleprecision, intent(inout) :: divDx, divDy, divDz  
-      ! local
-      doubleprecision :: alphaL, alphaT, dMEff
-      !------------------------------------------------------------
-      ! Specifications
-      !------------------------------------------------------------
-
-      dMEff  = this%SubCellData%dMEff 
-      alphaL = this%SubCellData%alphaLH
-      alphaT = this%SubCellData%alphaTH
-
-      call this%LinearInterpolationVelocities( x, y, z, vx, vy, vz )
-      call this%DispersionDivergence( x, y, z, divDx, divDy, divDz )
-      call this%DisplacementRandomDischarge( x, y, z, alphaL, alphaT, dMEff, dBx, dBy, dBz )
-      call this%AdvectionDisplacement( x, y, z, dt, vx, vy, vz, dAdvx, dAdvy, dAdvz )
-
-      return
-
-
+  !-----------------------------------------------------------------
+  implicit none
+  class(TrackSubCellType) :: this
+  type(ParticleTrackingOptionsType),intent(in) :: trackingOptions
+  doubleprecision, intent(in)    :: x, y, z, dt
+  doubleprecision, intent(inout) :: vx, vy, vz 
+  doubleprecision, intent(inout) :: dAdvx, dAdvy, dAdvz 
+  doubleprecision, intent(inout) :: dBx, dBy, dBz 
+  doubleprecision, intent(inout) :: divDx, divDy, divDz  
+  ! local
+  doubleprecision :: alphaL, alphaT, dMEff
+  !-----------------------------------------------------------------
+    !
+    dMEff  = this%SubCellData%dMEff 
+    alphaL = this%SubCellData%alphaLH
+    alphaT = this%SubCellData%alphaTH
+    !
+    call this%LinearInterpolationVelocities( x, y, z, vx, vy, vz )
+    call this%DispersionDivergence( x, y, z, divDx, divDy, divDz )
+    call this%DisplacementRandomDischarge( x, y, z, alphaL, alphaT, dMEff, dBx, dBy, dBz )
+    call this%AdvectionDisplacement( x, y, z, dt, vx, vy, vz, dAdvx, dAdvy, dAdvz )
+    !
+    ! -- done
+    return
+    !
   end subroutine pr_RWPTDisplacementsLinear
+
+
 
 
   subroutine pr_RWPTDisplacementsAxisymmetric(this, x, y, z, vx, vy, vz, &
@@ -749,7 +748,6 @@ contains
 
 
   end subroutine pr_RWPTDisplacementsAxisymmetric
-
 
 
 !-------------------------------------------------------------------
@@ -842,7 +840,7 @@ contains
     ny = initialLocation%LocalY
     nz = initialLocation%LocalZ
 
-
+    ! Handle dry cells
     if ( this%SubCellData%dry ) then
       ! If cell is completely dry, then particle is not displaced
       ! Q: If particle is set to InactiveCell, 
@@ -877,7 +875,7 @@ contains
     dtold = dtcell
 
     ! Something wrong, leave
-    if ( dtcell .le. 0d0 ) then 
+    if ( dtcell .le. 0d0 ) then
       trackingResult%ExitFace = exitFace
       trackingResult%Status = trackingResult%Status_Undefined()
       trackingResult%FinalLocation%CellNumber = cellNumber
@@ -1071,7 +1069,7 @@ contains
               continueTimeLoop = .true.
               reachedMaximumTime = .false.
               posRestartCounter = posRestartCounter + 1
-              if ( posRestartCounter .gt. maxRestartPositionCounter ) then 
+              if ( posRestartCounter .gt. maxRestartPositionCounter ) then
                 ! Something wrong, leave
                 trackingResult%ExitFace = 0
                 trackingResult%Status = trackingResult%Status_Undefined()
@@ -1145,22 +1143,28 @@ contains
               xi = nx
               yi = ny
               zi = nz
-              
+
               ! -- If dt .eq. 0d0 then the particle is exactly at the interface,
-              !    and is a rebound interface. Set the time step to the time step previous 
+              !    and is a rebound interface. Set the time step to the value previous 
               !    to the interface detection (dtold) and allow the rebound to occurr normally
               !    driven by the advection-dispersion conditions evaluated at the particle position. 
               if ( dt .eq. 0d0 ) then
                 !
+                ! -- set the time step to the value previous to the interface detection 
                 dt = dtold
+                ! 
+                ! -- update the advective displacements for the given time step 
+                call this%AdvectionDisplacement( x, y, z, dt, vx, vy, vz, & 
+                                                      dAdvx, dAdvy, dAdvz )
+                ! 
+                ! -- update the rw displacements
                 dxrw = dAdvx + divDx*dt + dBx*sqrt( dt )
                 dyrw = dAdvy + divDy*dt + dBy*sqrt( dt )
                 dzrw = dAdvz + divDz*dt + dBz*sqrt( dt )
                 !
               end if
               
-              ! Update current time with same time step 
-              ! determined for interface displacement 
+              ! Update current time 
               t = t + dt
 
               ! In case the new time for an elastic rebound 
@@ -1207,10 +1211,35 @@ contains
                   ny = ny + dyrw/dy
                   nz = nz - dzrw/dz
               end select
-
-              ! If nx, ny or nz are outside cell interfaces, 
-              ! then the interface loop will continue.
-              ! Set initial particle position to rebound interface
+              !
+              ! -- for a purely advective cell, if after the rebound all of the coordinates remained the same as before 
+              !    then the particle is in a continuous elastic rebound, which is a stranded condition for practical 
+              !    purposes. For example, in a purely advective problem only with velocity in the x-direction, the particle
+              !    can forever be rebounding until reaching the maximum time without changing its position, never reaching 
+              !    an exitface and slowly advancing in time. It is a weird limit case, but possible for certain combinations
+              !    of input parameters so it needs handling.
+              if ( (nx.eq.x).and.(ny.eq.y).and.(nz.eq.z) ) then 
+                !
+                ! -- if there is any non-zero random motion the particle 
+                !    could change its position in the next movement.
+                if ( all( (/dBx,dBy,dBz/).eq.0d0 ) ) then 
+                  !
+                  ! -- no exit face
+                  exitFace = 0
+                  ! 
+                  ! -- mark as maximum time
+                  t = maximumTime
+                  reachedMaximumTime = .true.
+                  ! 
+                  ! -- and break the rebound loop
+                  exit
+                  !
+                end if 
+              end if 
+              !
+              ! -- If nx, ny, nz are outside cell interfaces, 
+              !    then the interface loop will continue.
+              !    Set initial particle position to rebound interface
               if (                                             &
                   ( nx .gt. 1.0d0 ) .or. ( nx .lt. 0d0 )  .or. &
                   ( ny .gt. 1.0d0 ) .or. ( ny .lt. 0d0 )  .or. &
@@ -1248,35 +1277,19 @@ contains
                 exitFace = 0
 
               else
-                ! If nx, ny and nz are inside the cell, then no problem
-                ! particleLeavingCell loop is broken and will update 
-                ! particle position to rebound position and continue
-                ! time loop with cell characteristic time step
-                dt =  dtcell
+                !
+                ! -- If new coordinates are all inside the cell then no problem, 
+                !    particleLeavingCell loop will be broken and continue with the
+                !    time loop starting from the cell characteristic time step (dtcell). 
                 exitFace = 0
-
-                ! If one of the positions is exactly an interface
-                if (                                          & 
-                    ( nx .eq. 0d0 ) .or. ( nx .eq. 1d0 ) .or. & 
-                    ( ny .eq. 0d0 ) .or. ( ny .eq. 1d0 ) .or. & 
-                    ( nz .eq. 0d0 ) .or. ( nz .eq. 1d0 )      & 
-                ) then
-                    if ( nx .eq. 0d0 ) exitFace = 1 
-                    if ( nx .eq. 1d0 ) exitFace = 2
-                    if ( ny .eq. 0d0 ) exitFace = 3
-                    if ( ny .eq. 1d0 ) exitFace = 4
-                    if ( nz .eq. 0d0 ) exitFace = 5
-                    if ( nz .eq. 1d0 ) exitFace = 6
-                end if
-
+                !
               end if ! outsideInterfaces  
-
+              !
             end do ! elasticRebound
-
+            !
           end if ! If found proper interface
-
+          !
       end do ! particleLeavingCell
-
 
       ! Report and leave
 
@@ -1703,11 +1716,11 @@ contains
     z2         = 0d0
     zsqrt      = 0d0 
     zsqrtarg   = 0d0 
-    if ( ( nx .gt. 1.0d0 ) .or. ( nx .lt. 0d0 )  ) then
+    if ( (nx.gt.1d0).or.(nx.lt.0d0)  ) then
 
       ! Compute dInterface
-      if ( nx .gt. 1.0d0 ) then 
-        dInterface = dx*( 1.0d0 - x )
+      if ( nx.gt.1d0 ) then 
+        dInterface = dx*( 1d0 - x )
         exitFaceX  = 2
       else 
         dInterface = -dx*x
@@ -1715,9 +1728,9 @@ contains
       end if
 
       ! Exactly at interface, force new cell
-      if ( dInterface .eq. 0d0 ) then
+      if ( dInterface.eq.0d0 ) then
         exitFace = exitFaceX
-        dt = 0.0 
+        dt = 0d0 
         return
       end if
 
@@ -1726,21 +1739,21 @@ contains
       BFace = dBx
 
       ! Given dInterface, compute new dt
-      zsqrtarg = BFace**2 + 4*dInterface*AFace
+      zsqrtarg = BFace**2d0 + 4d0*dInterface*AFace
 
-      if ( ( zsqrtarg .ge. 0d0 ) .and. ( AFace .ne. 0d0 ) ) then 
+      if ( (zsqrtarg.ge.0d0).and.(AFace.ne.0d0) ) then 
         zsqrt = sqrt( zsqrtarg )
-        z1    = (-BFace + zsqrt )/( 2*AFace )
-        z2    = (-BFace - zsqrt )/( 2*AFace )
+        z1    = (-BFace + zsqrt )/( 2d0*AFace )
+        z2    = (-BFace - zsqrt )/( 2d0*AFace )
 
         if ( any( (/ z1, z2 /) .gt. 0d0) ) then 
           ! Compute new dt
-          dtxyz(1) = minval( (/z1, z2/), mask=(/z1, z2/)>0d0 )**2
+          dtxyz(1) = minval( (/z1, z2/), mask=(/z1, z2/)>0d0 )**2d0
           ! If computed dt is zero, then 
           ! particle is at the interface
           if ( dtxyz(1) .eq. 0d0 ) then
             exitFace = exitFaceX
-            dt = 0.0 
+            dt = 0d0 
             return
           end if
         else if ( any( (/ z1, z2 /) .eq. 0d0) ) then 
@@ -1748,21 +1761,21 @@ contains
           ! It didn't detected any solution gt 0, but one zero,
           ! which means interface
           exitFace = exitFaceX
-          dt       = 0.0
+          dt = 0d0 
           return
         end if
 
-      else if ( AFace .eq. 0d0 ) then 
+      else if ( AFace.eq.0d0 ) then 
         ! If A is zero, then the equation is linear
         ! At this point, it is important to note
         ! that dInterface is non zero, but could be really small
-        if ( BFace .ne. 0d0 ) then 
-          dtxyz(1) = ( dInterface/BFace )**2
+        if ( BFace.ne.0d0 ) then 
+          dtxyz(1) = ( dInterface/BFace )**2d0
           ! If computed dt is zero, then 
           ! particle is at the interface
-          if ( dtxyz(1) .eq. 0d0 ) then
+          if ( dtxyz(1).eq.0d0 ) then
             exitFace = exitFaceX
-            dt = 0.0 
+            dt = 0d0
             return
           end if
         end if 
@@ -1770,7 +1783,7 @@ contains
 
       ! If computed dt is higher than current
       ! is not valid, set to zero
-      if ( dtxyz(1) .gt. dt ) dtxyz(1) = 0d0
+      if ( dtxyz(1).gt.dt ) dtxyz(1) = 0d0
 
     end if
 
@@ -1782,11 +1795,11 @@ contains
     z2         = 0d0
     zsqrt      = 0d0 
     zsqrtarg   = 0d0 
-    if ( ( ny .gt. 1.0d0 ) .or. ( ny .lt. 0d0 )  ) then
+    if ( (ny.gt.1d0).or.(ny.lt.0d0)  ) then
 
       ! Compute dInterface
-      if ( ny .gt. 1.0d0 ) then 
-        dInterface = dy*( 1.0d0 - y )
+      if ( ny.gt.1d0 ) then 
+        dInterface = dy*( 1d0 - y )
         exitFaceY  = 4
       else 
         dInterface = -dy*y
@@ -1794,9 +1807,9 @@ contains
       end if
 
       ! Exactly at interface, force new cell
-      if ( dInterface .eq. 0.0 ) then
+      if ( dInterface.eq.0d0 ) then
         exitFace = exitFaceY
-        dt = 0.0
+        dt = 0d0
         return
       end if
 
@@ -1805,21 +1818,21 @@ contains
       BFace = dBy
 
       ! Given dInterface, compute new dt
-      zsqrtarg = BFace**2 + 4*dInterface*AFace
+      zsqrtarg = BFace**2d0 + 4d0*dInterface*AFace
 
-      if ( ( zsqrtarg .ge. 0d0 ) .and. ( AFace .ne. 0d0 ) ) then
+      if ( (zsqrtarg.ge.0d0).and.(AFace.ne.0d0) ) then
         zsqrt = sqrt( zsqrtarg )
-        z1    = (-BFace + zsqrt )/( 2*AFace )
-        z2    = (-BFace - zsqrt )/( 2*AFace )
+        z1    = (-BFace + zsqrt )/( 2d0*AFace )
+        z2    = (-BFace - zsqrt )/( 2d0*AFace )
 
         if ( any( (/ z1, z2 /) .gt. 0d0) ) then 
           ! Compute new dt
-          dtxyz(2) = minval( (/z1, z2/), mask=(/z1, z2/)>0d0 )**2
+          dtxyz(2) = minval( (/z1, z2/), mask=(/z1, z2/)>0d0 )**2d0
           ! If computed dt is zero, then 
           ! particle is at the interface
           if ( dtxyz(2) .eq. 0d0 ) then
             exitFace = exitFaceY
-            dt = 0.0 
+            dt = 0d0 
             return
           end if
         else if ( any( (/ z1, z2 /) .eq. 0d0) ) then 
@@ -1827,21 +1840,21 @@ contains
           ! It didn't detected any solution gt 0, but one zero,
           ! which means interface
           exitFace = exitFaceY
-          dt       = 0.0
+          dt = 0d0
           return
         end if
 
-      else if ( AFace .eq. 0d0 ) then 
+      else if ( AFace.eq.0d0 ) then 
         ! If A is zero, then the equation is linear
         ! At this point, it is important to note
         ! that dInterface is non zero, but could be really small
-        if ( BFace .ne. 0d0 ) then 
-          dtxyz(2) = ( dInterface/BFace )**2
+        if ( BFace.ne.0d0 ) then 
+          dtxyz(2) = ( dInterface/BFace )**2d0
           ! If computed dt is zero, then 
           ! particle is at the interface
-          if ( dtxyz(2) .eq. 0d0 ) then
+          if ( dtxyz(2).eq.0d0 ) then
             exitFace = exitFaceY
-            dt = 0.0 
+            dt = 0d0 
             return
           end if
         end if 
@@ -1849,7 +1862,7 @@ contains
 
       ! If computed dt is higher than current
       ! is not valid, set to zero
-      if ( dtxyz(2) .gt. dt ) dtxyz(2) = 0d0
+      if ( dtxyz(2).gt.dt ) dtxyz(2) = 0d0
 
     end if
 
@@ -1861,11 +1874,11 @@ contains
     z2         = 0d0
     zsqrt      = 0d0 
     zsqrtarg   = 0d0 
-    if ( ( nz .gt. 1.0d0 ) .or. ( nz .lt. 0d0 )  ) then
+    if ( (nz.gt.1d0).or.(nz.lt.0d0)  ) then
 
       ! Compute dInterface
-      if ( nz .gt. 1.0d0 ) then
-        dInterface = dz*( 1.0d0 - z )
+      if ( nz.gt.1d0 ) then
+        dInterface = dz*( 1d0 - z )
         exitFaceZ  = 6
       else
         dInterface = -dz*z
@@ -1873,9 +1886,9 @@ contains
       end if
 
       ! Exactly at interface, force new cell
-      if ( dInterface .eq. 0.0 ) then
+      if ( dInterface.eq.0d0 ) then
         exitFace = exitFaceZ
-        dt = 0.0
+        dt = 0d0
         return
       end if
 
@@ -1884,21 +1897,21 @@ contains
       BFace = dBz
       
       ! Given dInterface, compute new dt
-      zsqrtarg = BFace**2 + 4*dInterface*AFace
+      zsqrtarg = BFace**2d0 + 4d0*dInterface*AFace
 
-      if ( ( zsqrtarg .ge. 0d0 ) .and. ( AFace .ne. 0d0 ) )  then
+      if ( (zsqrtarg.ge.0d0).and.(AFace.ne.0d0) )  then
         zsqrt = sqrt( zsqrtarg )
-        z1    = (-BFace + zsqrt )/( 2*AFace )
-        z2    = (-BFace - zsqrt )/( 2*AFace )
+        z1    = (-BFace + zsqrt )/( 2d0*AFace )
+        z2    = (-BFace - zsqrt )/( 2d0*AFace )
 
         if ( any( (/ z1, z2 /) .gt. 0d0 ) ) then 
           ! Compute new dt
-          dtxyz(3) = minval( (/z1, z2/), mask=(/z1, z2/)>0d0 )**2
+          dtxyz(3) = minval( (/z1, z2/), mask=(/z1, z2/)>0d0 )**2d0
           ! If computed dt is zero, then 
           ! particle is at the interface
-          if ( dtxyz(3) .eq. 0d0 ) then
+          if ( dtxyz(3).eq.0d0 ) then
             exitFace = exitFaceZ
-            dt = 0.0 
+            dt = 0d0 
             return
           end if
         else if ( any( (/ z1, z2 /) .eq. 0d0) ) then 
@@ -1906,21 +1919,21 @@ contains
           ! It didn't detected any solution gt 0, but one zero,
           ! which means interface
           exitFace = exitFaceZ
-          dt       = 0.0
+          dt = 0d0
           return
         end if
 
-      else if ( AFace .eq. 0d0 ) then 
+      else if ( AFace.eq.0d0 ) then 
         ! If A is zero, then the equation is linear
         ! At this point, it is important to note
         ! that dInterface is non zero
-        if ( BFace .ne. 0d0 ) then 
-          dtxyz(3) = ( dInterface/BFace )**2
+        if ( BFace.ne.0d0 ) then 
+          dtxyz(3) = ( dInterface/BFace )**2d0
           ! If computed dt is zero, then 
           ! particle is at the interface
           if ( dtxyz(3) .eq. 0d0 ) then
             exitFace = exitFaceZ
-            dt = 0.0 
+            dt = 0d0 
             return
           end if
         end if 
@@ -1928,7 +1941,7 @@ contains
 
       ! If computed dt is higher than current
       ! is not valid, set to zero
-      if ( dtxyz(3) .gt. dt ) dtxyz(3) = 0d0 
+      if ( dtxyz(3).gt.dt ) dtxyz(3) = 0d0 
 
     end if
 

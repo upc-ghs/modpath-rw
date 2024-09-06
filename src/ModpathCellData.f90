@@ -15,14 +15,15 @@ module ModpathCellDataModule
 ! type: 
 !--------------------------------------
   type,public :: ModpathCellDataType
-    ! public data
+    ! -- public data
     integer :: CellNumber, Layer, Ibound, IboundTS, Zone, LayerType
     doubleprecision :: DX, DY, MinX, MinY, Bottom, Top, Head, Porosity,Retardation,SourceFlow,SinkFlow,StorageFlow
-    ! RWPT: more info for mass transport models could be considered 
+    !
+    ! -- rwpt: boundary info for rw particles 
     doubleprecision :: ICBound, ICBoundTS 
-
-    ! private data
-    ! RWPT: remove privates 
+    !
+    ! -- private data
+    !    rwpt: remove privates 
     integer :: SubCellRowCount,SubCellColumnCount,ReducedConnectionCount
     integer,dimension(6) :: SubFaceCounts,PotentialConnectionsCount,SubFaceBoundaryCounts
     integer,dimension(2) :: SubFaceConn1,SubFaceConn2,SubFaceConn3,SubFaceConn4
@@ -32,26 +33,26 @@ module ModpathCellDataModule
     doubleprecision,dimension(4) :: SubCellFlows,Q5,Q6
     doubleprecision,dimension(2) :: Q1,Q2,Q3,Q4
     integer :: ArraySizeMode = 1
-
-    ! RWPT-USG NEW PROPERTIES
+    !
+    ! -- rwpt-usg new properties
     logical :: fromSubCell    = .false.
     logical :: fromSubSubCell = .false.
     logical :: isParentCell   = .false.
     integer :: parentCellNumber
     integer :: parentSubRow, parentSubColumn
     integer :: requestedFromDirection
-
-    ! RWPT transport parameters
+    !
+    ! -- rwpt transport parameters
     doubleprecision, public :: alphaLH, alphaLV, alphaTH, alphaTV
     doubleprecision, public :: dMEff
-
-    ! RWPT convertible cells parameters
+    !
+    ! -- rwpt convertible cells parameters
     logical :: dry
     logical :: partiallyDry
-
-    ! RWPT Initialized flag
+    !
+    ! -- rwpt initialized flag
     logical :: initialized
-
+    !
   contains
     procedure :: GetDZ=>pr_GetDZ
     procedure :: GetDZRW=>pr_GetDZRW
@@ -2668,23 +2669,18 @@ contains
     subCellData%Connection(6) = this%SubFaceConn6(n)
     subCellData%MassBoundary(6) = this%MassBoundarySubFace6(n)
   end if
-
-
-  ! RWPT
-  ! Assign additional properties to sub cell buffer
-  ! need it ?
+  !
+  ! -- rwpt assign additional properties to subcelldatabuffer
   subCellData%Porosity    = this%Porosity 
   subCellData%Retardation = this%Retardation 
-
-
-  ! Necessary for distributed dispersivities
+  !
+  ! -- necessary for distributed dispersivities
   subCellData%alphaLH = this%alphaLH
   subCellData%alphaLV = this%alphaLV
   subCellData%alphaTH = this%alphaTH
   subCellData%alphaTV = this%alphaTV
   subCellData%dMEff   = this%dMEff
-
-
+  !
   end subroutine pr_FillMassSubCellDataBuffer
 
 

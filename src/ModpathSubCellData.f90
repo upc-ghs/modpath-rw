@@ -12,16 +12,16 @@ module ModpathSubCellDataModule
     integer,dimension(6) :: MassBoundary
     doubleprecision :: VX1,VX2,VY1,VY2,VZ1,VZ2,DX,DY,DZ
     doubleprecision,dimension(2) :: OffsetX,OffsetY,OffsetZ
-
-    !RWPT
+    !
+    ! -- RWPT
+    !
     doubleprecision :: Porosity, Retardation
-    doubleprecision :: alphaL, alphaT ! to be deprecated
     doubleprecision :: dMEff
     doubleprecision :: alphaLH, alphaLV, alphaTH, alphaTV
-    logical :: dry
-    logical :: partiallyDry
     doubleprecision :: Head, Top, Bottom 
-
+    logical         :: dry
+    logical         :: partiallyDry
+    !
   contains
     procedure :: IsExitFace=>pr_IsExitFace
     procedure :: HasExitFace=>pr_HasExitFace
