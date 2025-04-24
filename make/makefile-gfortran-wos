@@ -1,5 +1,6 @@
-# makefile 05-2023
-# using the gfortran and gcc c/c++ compilers.
+# makefile 04-2025
+# using the gfortran and gcc c/c++ compilers,
+# tested in Windows 11 with compilers from mingw-w64.
 
 # Define the directories for the object and module files,
 # the executable, and the executable name and path.
