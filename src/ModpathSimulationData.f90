@@ -3193,7 +3193,7 @@ contains
     type( linear_interp_1d ) :: interp1d
     integer :: int1dstat
     ! error
-    character(len=132) message
+    character(len=256) message
     ! u3d
     character(len=24)  :: aname(1)
     data aname(1) /'                   CELLS'/
@@ -3369,19 +3369,6 @@ contains
 
           end do ! naux = 1, nAuxNames 
         
-          ! Until this point, necessary data for reading auxiliary 
-          ! variables and transforming into particles is available
-          ! for this source budget
-
-          ! Validate given aux names
-          validAuxNames = flowModelData%ValidateAuxVarNames( srcPkgNames( nsb ), &
-                                               auxNames, this%isMF6, iFaceOption )
-          if ( .not. validAuxNames ) then 
-            write(outUnit,'(A,A,A)')& 
-              'Error: Not all aux variables were found in source ', trim(adjustl(srcPkgNames(nsb))), '.'
-            call ustop('Error: Not all aux variables were found in source or it does not support aux vars. Stop.')
-          end if 
-
           ! While reading from AUX vars, uses simulation characteristic times
           ! The initial MODFLOW time is always ReferenceTime
           initialTime = this%ReferenceTime  
@@ -3397,6 +3384,34 @@ contains
             if ( finalTime.gt.this%tdisData%TotalTimes(size(this%tdisData%TotalTimes)) ) then 
               finalTime = this%tdisData%TotalTimes(size(this%tdisData%TotalTimes)) 
             end if
+          end if 
+
+          ! Once the times are known, it can validate the existence of the budget header using the 
+          ! range of stress periods within the initial and final times.
+          isValid = .false.
+          isValid = flowModelData%ValidateBudgetHeader(srcPkgNames(nsb),&
+                         initialTime, finalTime, this%tdisData, outUnit,&
+                      this%TrackingOptions%BackwardTracking, this%isMF6 )
+          if ( .not. isValid ) then
+            write(message,'(A,A,A,A,A)') & 
+            'Error: the header ', trim(adjustl(srcPkgNames(nsb))), & 
+            ' given in source ', trim(adjustl(srcName)), &
+            ' was not found in the budget file. Stop.'
+            write(outUnit,*) message
+            call ustop(message)
+          end if
+
+          ! Until this point, necessary data for reading auxiliary 
+          ! variables and transforming into particles is available
+          ! for this source budget.
+
+          ! Validate given aux names
+          validAuxNames = flowModelData%ValidateAuxVarNames( srcPkgNames( nsb ), &
+                                               auxNames, this%isMF6, iFaceOption )
+          if ( .not. validAuxNames ) then 
+            write(outUnit,'(A,A,A)')& 
+              'Error: Not all aux variables were found in source ', trim(adjustl(srcPkgNames(nsb))), '.'
+            call ustop('Error: Not all aux variables were found in source or it does not support aux vars. Stop.')
           end if 
 
           ! Obtain flow and aux vars timeseries.
@@ -4552,8 +4567,11 @@ contains
                          initialTime, finalTime, this%tdisData, outUnit,&
                       this%TrackingOptions%BackwardTracking, this%isMF6 )
           if ( .not. isValid ) then 
-            write(message,'(A,A,A)') & 
-            'Error: given header ', trim(adjustl(srcPkgNames(nsb))),' was not found in budget file. Stop.'
+            write(message,'(A,A,A,A,A)') & 
+            'Error: the header ', trim(adjustl(srcPkgNames(nsb))), & 
+            ' given in source ', trim(adjustl(srcName)), &
+            ' was not found in the budget file. Stop.'
+            write(outUnit,*) message
             call ustop(message)
           end if
 
