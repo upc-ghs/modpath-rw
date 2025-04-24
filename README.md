@@ -31,7 +31,8 @@ Makefiles are available at the folder `make`:
 
 - `makefile-gfortran-pc`: for the `gfortran` compiler.
 - `makefile-ifort-pc`: for the `ifort` compiler, verified for `ifort@2021.9.0`.
-- `makefile-gfortran-mac`: for the `gfortran` compiler. 
+- `makefile-gfortran-mac`: for the `gfortran` compiler in macOS. 
+- `makefile-gfortran-wos`: for the `gfortran` compiler in Windows (tested with mingw-w64). 
 
 By default, the compiled program is called ``mpathrw``. Compilation process will create a folder with temporary objects (``make/objtemp``). When integrating program updates and recompiling, it is advised to remove this folder to avoid inconsistencies. 
 
@@ -56,17 +57,20 @@ The program can be built with the [meson](https://mesonbuild.com/) build system:
     meson test --verbose --no-rebuild -C builddir
 ```
 
-### Visual Studio
-The folder `msvs` contains the project and solution files generated with Visual Studio 2022 on a Windows system.
-
 ### Windows binary
- An executable file and complementary `dll`'s providing the OpenMP library are available at the folder `wbin/`. Users can make easy use of these files at a system level by extending the `PATH` environment variable, adding their specific address to the `wbin/` folder (as [here](https://www.itprotoday.com/windows-server/how-can-i-add-new-folder-my-system-path) or [here](https://windowsloop.com/how-to-add-to-windows-path/)).
+A Windows executable is available at the folder `wbin/`. The latest version of the [Windows executable](https://github.com/upc-ghs/modpath-rw/blob/develop/wbin/mpathrw.exe) is built with mingw-w64 `gfortran`, with static linking of libraries, meaning that the executable bundles all the necessary Fortran libraries (e.g., OpenMP). 
+
+**Note**: This new Windows executable replaces the [former executable](https://github.com/upc-ghs/modpath-rw/blob/develop/wbin/mpathrw_e216a4d.exe) generated with the Intel compiler and Visual Studio, which will remain as legacy updated until commit [e216a4d](https://github.com/upc-ghs/modpath-rw/commit/e216a4d483f13a8dbf5a26c630e613fe0e83c351) (see below).
+
+#### Visual Studio and Intel Compiler
+The folder `msvs` contains the project and solution files generated with Visual Studio 2022 on a Windows system. An executable file and complementary `dll`'s providing the OpenMP library are available at the folder `wbin/`. Users can make easy use of these files at a system level by extending the `PATH` environment variable, adding their specific address to the `wbin/` folder (as [here](https://www.itprotoday.com/windows-server/how-can-i-add-new-folder-my-system-path) or [here](https://windowsloop.com/how-to-add-to-windows-path/)).
 
 The necessary `dll`'s can also be installed from the Intel and Visual Studio redistributables (`x64`), respectively:
 
  - [Intel Fortran Compiler Runtime for Windows](https://www.intel.com/content/www/us/en/developer/articles/tool/compilers-redistributable-libraries-by-version.html) 
  - [Microsoft Visual C++ Redistributable](https://learn.microsoft.com/en-US/cpp/windows/latest-supported-vc-redist?view=msvc-170)
 
+**Note**: The Windows executable generated with the Intel compiler and Visual Studio will remain as legacy, updated until commit [e216a4d](https://github.com/upc-ghs/modpath-rw/commit/e216a4d483f13a8dbf5a26c630e613fe0e83c351).
 
 ## Input files
 Details about the configuration of input files are provided in the program [Documentation of Input-Output](doc/modpath-rw_IO_v100_.pdf). It is recommended to follow this document closely with the [Description of Model Input and Output of MODPATH-v7](doc/MODPATH_7_io.pdf).
@@ -149,6 +153,7 @@ MIT License
 * [flopy](https://github.com/modflowpy/flopy)
 * [flopyrw](https://github.com/upc-ghs/flopyrw)
 * [gfortran](https://gcc.gnu.org/wiki/GFortran)
+* [MinGW](https://www.mingw-w64.org)
 * [Intel oneApi HPC toolkit](https://www.intel.com/content/www/us/en/developer/tools/oneapi/hpc-toolkit.html)
 * [OpenMP](https://www.openmp.org/)
 * [MIT License](https://mit-license.org/)
