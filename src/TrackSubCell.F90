@@ -789,8 +789,8 @@ contains
   integer :: reboundCounter, intLoopCounter
   integer, parameter :: maxInterfaceLoopCounter   = 5
   integer, parameter :: maxRestartPositionCounter = 10
-  doubleprecision, parameter :: maxRelativeJump   = 0.5
-  doubleprecision, parameter :: dtReductionFactor = 0.1
+  !doubleprecision, parameter :: maxRelativeJump   = 0.5
+  !doubleprecision, parameter :: dtReductionFactor = 0.1
   !------------------------------------------------------------
 
     ! Initialize trackingResult
@@ -927,32 +927,32 @@ contains
       dyrw = dAdvy + divDy*dt + dBy*sqrt( dt )
       dzrw = dAdvz + divDz*dt + dBz*sqrt( dt )
 
-      ! Reduce dt if large relative jumps
-      do while ( & 
-        ( abs(dxrw/dx) .gt. maxRelativeJump ) .or. &
-        ( abs(dyrw/dy) .gt. maxRelativeJump ) .or. &
-        ( abs(dzrw/dz) .gt. maxRelativeJump ) )
+      !! Reduce dt if large relative jumps (needs review)
+      !do while ( & 
+      !  ( abs(dxrw/dx) .gt. maxRelativeJump ) .or. &
+      !  ( abs(dyrw/dy) .gt. maxRelativeJump ) .or. &
+      !  ( abs(dzrw/dz) .gt. maxRelativeJump ) )
 
-        ! Rollback time and reduce time step
-        t  = t - dt
-        dt = dtReductionFactor*dt
+      !  ! Rollback time and reduce time step
+      !  t  = t - dt
+      !  dt = dtReductionFactor*dt
 
-        ! Given new dt, recompute RW displacements
-        call this%AdvectionDisplacement( x, y, z, dt, vx, vy, vz, & 
-                                              dAdvx, dAdvy, dAdvz )
-        dxrw = dAdvx + divDx*dt + dBx*sqrt( dt )
-        dyrw = dAdvy + divDy*dt + dBy*sqrt( dt )
-        dzrw = dAdvz + divDz*dt + dBz*sqrt( dt )
-        
-        ! and update time 
-        t = t + dt
+      !  ! Given new dt, recompute RW displacements
+      !  call this%AdvectionDisplacement( x, y, z, dt, vx, vy, vz, & 
+      !                                        dAdvx, dAdvy, dAdvz )
+      !  dxrw = dAdvx + divDx*dt + dBx*sqrt( dt )
+      !  dyrw = dAdvy + divDy*dt + dBy*sqrt( dt )
+      !  dzrw = dAdvz + divDz*dt + dBz*sqrt( dt )
+      !  
+      !  ! and update time 
+      !  t = t + dt
 
-        ! Disable the flag for maximum time if it was set
-        if ( reachedMaximumTime ) then
-          reachedMaximumTime = .false.
-        end if
+      !  ! Disable the flag for maximum time if it was set
+      !  if ( reachedMaximumTime ) then
+      !    reachedMaximumTime = .false.
+      !  end if
 
-      end do
+      !end do
 
       ! save dtold
       dtold = dt
