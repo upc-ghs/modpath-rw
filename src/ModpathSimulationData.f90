@@ -4462,12 +4462,19 @@ contains
                   itCounter = itCounter - 1 
                   exit
                 end if
-                ! Advance data interval 
-                if(&
-                  (times(nt-1).le.allSpecData(1,itCounter)).and.& 
-                  (times(nt).ge.allSpecData(2,itCounter-1)) ) then
-                  itCounter = itCounter - 1
-                  exit
+                ! -- advance data interval 
+                if(times(nt-1).le.allSpecData(1,itCounter)) then 
+                  ! -- handling of discontinuous time in data intervals
+                  if ( times(nt).ge.allSpecData(2,itCounter-1) ) then
+                    itCounter = itCounter - 1
+                    exit
+                  end if 
+                  ! -- handling of continuous time in data intervals
+                  if (times(nt).ge.allSpecData(1,itCounter-1)) then
+                    itCounter = itCounter - 1
+                    intervalIndex(nt) = itCounter
+                   exit
+                  end if
                 end if
                 doCounter = doCounter + 1
                 if( doCounter .gt. 1e5 ) exit ! just in case
@@ -4496,6 +4503,7 @@ contains
             ! Of the merged vector, how many are within the valid range 
             ! The range (1:nt) is to avoid the potential zeros at the end of the array
             tCounter =  count((mergedTimes(1:nt).ge.initialTime).and.(mergedTimes(1:nt).le.finalTime))
+
             ! Filter times and fill the time vector
             if( allocated( times ) ) deallocate( times )
             allocate( times(tCounter) )
@@ -4508,6 +4516,7 @@ contains
               if ( tcount .gt. tCounter ) exit
               times(tcount) = mergedTimes(nt)
             end do
+
             ! For the vector of times, determine the input data interval.
             ! Will be used to assign concentrations. 
             if ( allocated( intervalIndex ) ) deallocate( intervalIndex ) 
@@ -4516,6 +4525,7 @@ contains
             itCounter = 1
             do nt=2,size(times)
               doCounter = 0
+              !
               do
                 if( itCounter .gt. nTimeIntervals ) exit
                 ! If the maximum time of the interval in times vector
@@ -4536,25 +4546,32 @@ contains
                   itCounter = itCounter + 1 
                   exit
                 end if 
-                ! Advance data interval
-                if(&
-                  (times(nt-1).ge.allSpecData(2,itCounter)).and.& 
-                  (times(nt).le.allSpecData(1,itCounter+1)) ) then
-                  itCounter = itCounter + 1
-                  exit
+                ! -- advance data interval 
+                if(times(nt-1).ge.allSpecData(2,itCounter)) then 
+                  ! -- handling of discontinuous time in data intervals
+                  if ( times(nt).le.allSpecData(1,itCounter+1)) then
+                    itCounter = itCounter + 1
+                    exit
+                  end if 
+                  ! -- handling of continuous time in data intervals
+                  if (times(nt).le.allSpecData(2,itCounter+1)) then
+                    itCounter = itCounter + 1
+                    intervalIndex(nt) = itCounter
+                   exit
+                  end if
                 end if
                 doCounter = doCounter + 1
                 if( doCounter .gt. 1e5 ) exit ! just in case
               end do
               if( itCounter .gt. nTimeIntervals ) exit
               if( doCounter .gt. 1e5 ) exit
-            end do 
+            end do
           end if 
           if ( doCounter.gt.1e5 ) then 
           write(outUnit,'(A)')& 
             'Error: something went wrong while analyzing time intervals for assigning concentrations.'
           call ustop('Error: something went wrong while analyzing time intervals for assigning concentrations. Stop.')
-          end if 
+          end if
 
           ! Some cleaning
           deallocate( mergedTimes ) 
