@@ -188,16 +188,16 @@ program MPathRW
   ! Parse the command line for simulation file name, log file name, and options
   call ParseCommandLine(mpsimFile, mplogFile, logType, & 
                       parallel, tsOutputType, testinit )
-  ! If simulation file name not on command line, prompt user for name
-  if (mpsimFile == "") then
-    call ulog('Prompt for the name of the MODPATH-RW simulation file.', logUnit)
-    call PromptSimulationFile(mpsimFile)
-  end if
   ! Open the log file (unless -nolog option)
   if (logType /= 0) then
     open(unit=logUnit, file=mplogFile, status='replace', form='formatted', access='sequential')
   else
     logUnit = -logUnit
+  end if
+  ! If simulation file name not on command line, prompt user for name
+  if (mpsimFile == "") then
+    call ulog('Prompt for the name of the MODPATH-RW simulation file.', logUnit)
+    call PromptSimulationFile(mpsimFile)
   end if
 #ifdef _OPENMP
   ! Get the number of threads for the parallel region
