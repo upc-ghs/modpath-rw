@@ -18,7 +18,6 @@ contains
   
   subroutine get_compiler_txt(txt)
   character(len=5000), intent(inout) :: txt
-  !character(len=90), intent(inout) :: txt
         
     ! -- set variables
 #ifdef __GFORTRAN__ 

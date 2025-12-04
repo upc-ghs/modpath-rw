@@ -23,7 +23,7 @@ sources = files(
   'Solute.f90',
   'Observation.f90',
   'ParticleTrackingOptions.f90',
-  'compilerversion.fpp',
+  'compilerversion.F90',
   'openspec.f90',
   'Particle.f90',
   'utl7.f',
