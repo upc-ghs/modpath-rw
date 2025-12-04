@@ -100,7 +100,7 @@ program MPathRW
   character(len=132) message
   character(len=20) version
   character(len=100) terminationMessage
-  character(len=90) compilerVersionText
+  character(len=5000) compilerVersionText
   logical :: isTimeSeriesPoint, timeseriesRecordWritten
   doubleprecision, dimension(:,:), allocatable :: activeParticleCoordinates
   doubleprecision, dimension(:), allocatable   :: activeParticleMasses
@@ -183,7 +183,7 @@ program MPathRW
   ! Compiler 
   call get_compiler_txt(compilerVersionText)
   write(*,'(a,a)') 'MODPATH-RW version ', version
-  write(*,'(a)') compilerVersionText
+  write(*,'(a)') trim(adjustl(compilerVersionText))
   write(*,*)
   ! Parse the command line for simulation file name, log file name, and options
   call ParseCommandLine(mpsimFile, mplogFile, logType, & 
