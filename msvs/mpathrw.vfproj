@@ -2,112 +2,123 @@
 <VisualStudioProject ProjectCreator="Intel Fortran" Keyword="Console Application" Version="11.0" ProjectIdGuid="{10902516-7FC1-4639-B57F-8F0F8EAC6E84}">
 	<Platforms>
 		<Platform Name="Win32"/>
-		<Platform Name="x64"/></Platforms>
+		<Platform Name="x64"/>
+	</Platforms>
 	<Configurations>
-		<Configuration Name="Debug|Win32">
-				<Tool Name="VFFortranCompilerTool" SuppressStartupBanner="true" DebugInformationFormat="debugEnabled" Optimization="optimizeDisabled" WarnInterfaces="true" Traceback="true" BoundsCheck="true" StackFrameCheck="true" RuntimeLibrary="rtMultiThreadedDebugDLL"/>
-				<Tool Name="VFLinkerTool" LinkIncremental="linkIncrementalNo" SuppressStartupBanner="true" GenerateDebugInformation="true" SubSystem="subSystemConsole"/>
-				<Tool Name="VFResourceCompilerTool"/>
-				<Tool Name="VFMidlTool" SuppressStartupBanner="true"/>
-				<Tool Name="VFCustomBuildTool"/>
-				<Tool Name="VFPreLinkEventTool"/>
-				<Tool Name="VFPreBuildEventTool"/>
-				<Tool Name="VFPostBuildEventTool"/>
-				<Tool Name="VFManifestTool" SuppressStartupBanner="true"/></Configuration>
-		<Configuration Name="Debug|x64">
-				<Tool Name="VFFortranCompilerTool" SuppressStartupBanner="true" DebugInformationFormat="debugEnabled" Optimization="optimizeDisabled" WarnInterfaces="true" Traceback="true" BoundsCheck="true" StackFrameCheck="true" RuntimeLibrary="rtMultiThreadedDebugDLL"/>
-				<Tool Name="VFLinkerTool" LinkIncremental="linkIncrementalNo" SuppressStartupBanner="true" GenerateDebugInformation="true" SubSystem="subSystemConsole"/>
-				<Tool Name="VFResourceCompilerTool"/>
-				<Tool Name="VFMidlTool" SuppressStartupBanner="true" TargetEnvironment="midlTargetAMD64"/>
-				<Tool Name="VFCustomBuildTool"/>
-				<Tool Name="VFPreLinkEventTool"/>
-				<Tool Name="VFPreBuildEventTool"/>
-				<Tool Name="VFPostBuildEventTool"/>
-				<Tool Name="VFManifestTool" SuppressStartupBanner="true"/></Configuration>
-		<Configuration Name="Release|Win32" OutputDirectory="../wbin">
-				<Tool Name="VFFortranCompilerTool" SuppressStartupBanner="true" HeapArrays="0" Preprocess="preprocessYes" OpenMP="OpenMPParallelCode" FloatingPointExceptionHandling="fpe0" Traceback="true"/>
-				<Tool Name="VFLinkerTool" LinkIncremental="linkIncrementalNo" SuppressStartupBanner="true" SubSystem="subSystemConsole"/>
-				<Tool Name="VFResourceCompilerTool"/>
-				<Tool Name="VFMidlTool" SuppressStartupBanner="true"/>
-				<Tool Name="VFCustomBuildTool"/>
-				<Tool Name="VFPreLinkEventTool"/>
-				<Tool Name="VFPreBuildEventTool"/>
-				<Tool Name="VFPostBuildEventTool"/>
-				<Tool Name="VFManifestTool" SuppressStartupBanner="true"/></Configuration>
-		<Configuration Name="Release|x64" OutputDirectory="../wbin">
-				<Tool Name="VFFortranCompilerTool" SuppressStartupBanner="true" HeapArrays="0" Preprocess="preprocessYes" OpenMP="OpenMPParallelCode" FloatingPointExceptionHandling="fpe0" Traceback="true"/>
-				<Tool Name="VFLinkerTool" LinkIncremental="linkIncrementalNo" SuppressStartupBanner="true" SubSystem="subSystemConsole"/>
-				<Tool Name="VFResourceCompilerTool"/>
-				<Tool Name="VFMidlTool" SuppressStartupBanner="true" TargetEnvironment="midlTargetAMD64"/>
-				<Tool Name="VFCustomBuildTool"/>
-				<Tool Name="VFPreLinkEventTool"/>
-				<Tool Name="VFPreBuildEventTool"/>
-				<Tool Name="VFPostBuildEventTool"/>
-				<Tool Name="VFManifestTool" SuppressStartupBanner="true"/></Configuration></Configurations>
+		<Configuration Name="Debug|Win32" UseCompiler="ifortCompiler">
+			<Tool Name="VFFortranCompilerTool" SuppressStartupBanner="true" DebugInformationFormat="debugEnabled" Optimization="optimizeDisabled" WarnInterfaces="true" Traceback="true" BoundsCheck="true" StackFrameCheck="true" RuntimeLibrary="rtMultiThreadedDebugDLL"/>
+			<Tool Name="VFLinkerTool" LinkIncremental="linkIncrementalNo" SuppressStartupBanner="true" GenerateDebugInformation="true" SubSystem="subSystemConsole"/>
+			<Tool Name="VFResourceCompilerTool"/>
+			<Tool Name="VFMidlTool" SuppressStartupBanner="true"/>
+			<Tool Name="VFCustomBuildTool"/>
+			<Tool Name="VFPreLinkEventTool"/>
+			<Tool Name="VFPreBuildEventTool"/>
+			<Tool Name="VFPostBuildEventTool"/>
+			<Tool Name="VFManifestTool" SuppressStartupBanner="true"/>
+		</Configuration>
+		<Configuration Name="Debug|x64" UseCompiler="ifortCompiler">
+			<Tool Name="VFFortranCompilerTool" SuppressStartupBanner="true" DebugInformationFormat="debugEnabled" Optimization="optimizeDisabled" WarnInterfaces="true" Traceback="true" BoundsCheck="true" StackFrameCheck="true" RuntimeLibrary="rtMultiThreadedDebugDLL"/>
+			<Tool Name="VFLinkerTool" LinkIncremental="linkIncrementalNo" SuppressStartupBanner="true" GenerateDebugInformation="true" SubSystem="subSystemConsole"/>
+			<Tool Name="VFResourceCompilerTool"/>
+			<Tool Name="VFMidlTool" SuppressStartupBanner="true" TargetEnvironment="midlTargetAMD64"/>
+			<Tool Name="VFCustomBuildTool"/>
+			<Tool Name="VFPreLinkEventTool"/>
+			<Tool Name="VFPreBuildEventTool"/>
+			<Tool Name="VFPostBuildEventTool"/>
+			<Tool Name="VFManifestTool" SuppressStartupBanner="true"/>
+		</Configuration>
+		<Configuration Name="Release|Win32" UseCompiler="ifortCompiler" OutputDirectory="../wbin">
+			<Tool Name="VFFortranCompilerTool" SuppressStartupBanner="true" HeapArrays="0" Preprocess="preprocessYes" OpenMP="OpenMPParallelCode" FloatingPointExceptionHandling="fpe0" Traceback="true"/>
+			<Tool Name="VFLinkerTool" LinkIncremental="linkIncrementalNo" SuppressStartupBanner="true" SubSystem="subSystemConsole"/>
+			<Tool Name="VFResourceCompilerTool"/>
+			<Tool Name="VFMidlTool" SuppressStartupBanner="true"/>
+			<Tool Name="VFCustomBuildTool"/>
+			<Tool Name="VFPreLinkEventTool"/>
+			<Tool Name="VFPreBuildEventTool"/>
+			<Tool Name="VFPostBuildEventTool"/>
+			<Tool Name="VFManifestTool" SuppressStartupBanner="true"/>
+		</Configuration>
+		<Configuration Name="Release|x64" UseCompiler="ifxCompiler" OutputDirectory="../wbin">
+			<Tool Name="VFFortranCompilerTool" SuppressStartupBanner="true" HeapArrays="0" Preprocess="preprocessYes" OpenMP="OpenMPParallelCode" FloatingPointExceptionHandling="fpe0" Traceback="true"/>
+			<Tool Name="VFLinkerTool" LinkIncremental="linkIncrementalNo" SuppressStartupBanner="true" SubSystem="subSystemConsole"/>
+			<Tool Name="VFResourceCompilerTool"/>
+			<Tool Name="VFMidlTool" SuppressStartupBanner="true" TargetEnvironment="midlTargetAMD64"/>
+			<Tool Name="VFCustomBuildTool"/>
+			<Tool Name="VFPreLinkEventTool"/>
+			<Tool Name="VFPreBuildEventTool"/>
+			<Tool Name="VFPostBuildEventTool"/>
+			<Tool Name="VFManifestTool" SuppressStartupBanner="true"/>
+		</Configuration>
+	</Configurations>
 	<Files>
 		<Filter Name="Header Files" Filter="fi;fd;h;inc"/>
 		<Filter Name="Resource Files" Filter="rc;ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe"/>
 		<Filter Name="Source Files" Filter="f90;for;f;fpp;ftn;def;odl;idl">
-		<File RelativePath="..\src\BudgetListItem.f90"/>
-		<File RelativePath="..\src\BudgetReader.f90"/>
-		<File RelativePath="..\src\BudgetRecordHeader.f90"/>
-		<File RelativePath="..\src\compilerversion.fpp"/>
-		<File RelativePath="..\src\lib\gpkde\Constants.f90"/>
-		<File RelativePath="..\src\Coordinate.f90"/>
-		<File RelativePath="..\src\DispersionData.f90"/>
-		<File RelativePath="..\src\FlowModelData.f90"/>
-		<File RelativePath="..\src\GeoReference.f90"/>
-		<File RelativePath="..\src\GlobalData.f90"/>
-		<File RelativePath="..\src\lib\gpkde\GridCell.f90"/>
-		<File RelativePath="..\src\GridLocation.f90"/>
-		<File RelativePath="..\src\GridLocationList.f90"/>
-		<File RelativePath="..\src\lib\gpkde\GridProjectedKDE.F90"/>
-		<File RelativePath="..\src\HeadReader.f90"/>
-		<File RelativePath="..\src\HeadRecordHeader.f90"/>
-		<File RelativePath="..\src\lib\gpkde\Histogram.f90"/>
-		<File RelativePath="..\src\lib\gpkde\KernelMultiGaussian.f90"/>
-		<File RelativePath="..\src\lib\finterp\linear_interpolation_module.F90"/>
-		<File RelativePath="..\src\ModflowGrid.f90"/>
-		<File RelativePath="..\src\ModflowRectangularGrid.f90"/>
-		<File RelativePath="..\src\ModpathBasicData.f90"/>
-		<File RelativePath="..\src\ModpathCellData.f90"/>
-		<File RelativePath="..\src\ModpathCellDataContainer.f90"/>
-		<File RelativePath="..\src\ModpathSimulationData.f90"/>
-		<File RelativePath="..\src\ModpathSubCellData.f90"/>
-		<File RelativePath="..\src\ModpathUnstructuredBasicData.f90"/>
-		<File RelativePath="..\src\MPathRW.F90"/>
-		<File RelativePath="..\src\Observation.f90"/>
-		<File RelativePath="..\src\openspec.f90"/>
-		<File RelativePath="..\src\openspec.inc"/>
-		<File RelativePath="..\src\Particle.f90"/>
-		<File RelativePath="..\src\ParticleCoordinate.f90"/>
-		<File RelativePath="..\src\ParticleCoordinateList.f90"/>
-		<File RelativePath="..\src\ParticleGroup.f90"/>
-		<File RelativePath="..\src\ParticleLocation.f90"/>
-		<File RelativePath="..\src\ParticleLocationList.f90"/>
-		<File RelativePath="..\src\ParticleLocationPtr.f90"/>
-		<File RelativePath="..\src\ParticleManager.F90"/>
-		<File RelativePath="..\src\ParticlePath.f90"/>
-		<File RelativePath="..\src\ParticleTrackingEngine.f90"/>
-		<File RelativePath="..\src\ParticleTrackingOptions.f90"/>
-		<File RelativePath="..\src\lib\gpkde\Precision.F90"/>
-		<File RelativePath="..\src\RectangularGridDis.f90"/>
-		<File RelativePath="..\src\RectangularGridDisMf6.f90"/>
-		<File RelativePath="..\src\RectangularGridDisuMf6.f90"/>
-		<File RelativePath="..\src\RectangularGridDisuMfusg.f90"/>
-		<File RelativePath="..\src\RectangularGridDisvMf6.f90"/>
-		<File RelativePath="..\src\lib\rngzig\rng_par_zig.f90"/>
-		<File RelativePath="..\src\Solute.f90"/>
-		<File RelativePath="..\src\StartingLocationReader.f90"/>
-		<File RelativePath="..\src\TimeDiscretizationData.f90"/>
-		<File RelativePath="..\src\TrackCell.f90"/>
-		<File RelativePath="..\src\TrackCellOptions.f90"/>
-		<File RelativePath="..\src\TrackCellResult.f90"/>
-		<File RelativePath="..\src\TrackPathResult.f90"/>
-		<File RelativePath="..\src\TrackSubCell.F90"/>
-		<File RelativePath="..\src\TrackSubCellResult.f90"/>
-		<File RelativePath="..\src\TransportModelData.f90"/>
-		<File RelativePath="..\src\UtilMisc.f90"/>
-		<File RelativePath="..\src\utl7.f"/>
-		<File RelativePath="..\src\utl8.f90"/></Filter></Files>
-	<Globals/></VisualStudioProject>
+			<File RelativePath="..\src\BudgetListItem.f90"/>
+			<File RelativePath="..\src\BudgetReader.f90"/>
+			<File RelativePath="..\src\BudgetRecordHeader.f90"/>
+			<File RelativePath="..\src\compilerversion.F90"/>
+			<File RelativePath="..\src\lib\gpkde\Constants.f90">
+			</File>
+			<File RelativePath="..\src\Coordinate.f90"/>
+			<File RelativePath="..\src\DispersionData.f90"/>
+			<File RelativePath="..\src\FlowModelData.f90"/>
+			<File RelativePath="..\src\GeoReference.f90"/>
+			<File RelativePath="..\src\GlobalData.f90"/>
+			<File RelativePath="..\src\lib\gpkde\GridCell.f90"/>
+			<File RelativePath="..\src\GridLocation.f90"/>
+			<File RelativePath="..\src\GridLocationList.f90"/>
+			<File RelativePath="..\src\lib\gpkde\GridProjectedKDE.F90"/>
+			<File RelativePath="..\src\HeadReader.f90"/>
+			<File RelativePath="..\src\HeadRecordHeader.f90"/>
+			<File RelativePath="..\src\lib\gpkde\Histogram.f90"/>
+			<File RelativePath="..\src\lib\gpkde\KernelMultiGaussian.f90"/>
+			<File RelativePath="..\src\lib\finterp\linear_interpolation_module.F90"/>
+			<File RelativePath="..\src\ModflowGrid.f90"/>
+			<File RelativePath="..\src\ModflowRectangularGrid.f90"/>
+			<File RelativePath="..\src\ModpathBasicData.f90"/>
+			<File RelativePath="..\src\ModpathCellData.f90"/>
+			<File RelativePath="..\src\ModpathCellDataContainer.f90"/>
+			<File RelativePath="..\src\ModpathSimulationData.f90"/>
+			<File RelativePath="..\src\ModpathSubCellData.f90"/>
+			<File RelativePath="..\src\ModpathUnstructuredBasicData.f90"/>
+			<File RelativePath="..\src\MPathRW.F90"/>
+			<File RelativePath="..\src\Observation.f90"/>
+			<File RelativePath="..\src\openspec.f90">
+			</File>
+			<File RelativePath="..\src\openspec.inc"/>
+			<File RelativePath="..\src\Particle.f90"/>
+			<File RelativePath="..\src\ParticleCoordinate.f90"/>
+			<File RelativePath="..\src\ParticleCoordinateList.f90"/>
+			<File RelativePath="..\src\ParticleGroup.f90"/>
+			<File RelativePath="..\src\ParticleLocation.f90"/>
+			<File RelativePath="..\src\ParticleLocationList.f90"/>
+			<File RelativePath="..\src\ParticleLocationPtr.f90"/>
+			<File RelativePath="..\src\ParticleManager.F90"/>
+			<File RelativePath="..\src\ParticlePath.f90"/>
+			<File RelativePath="..\src\ParticleTrackingEngine.f90"/>
+			<File RelativePath="..\src\ParticleTrackingOptions.f90"/>
+			<File RelativePath="..\src\lib\gpkde\Precision.F90"/>
+			<File RelativePath="..\src\RectangularGridDis.f90"/>
+			<File RelativePath="..\src\RectangularGridDisMf6.f90"/>
+			<File RelativePath="..\src\RectangularGridDisuMf6.f90"/>
+			<File RelativePath="..\src\RectangularGridDisuMfusg.f90"/>
+			<File RelativePath="..\src\RectangularGridDisvMf6.f90"/>
+			<File RelativePath="..\src\lib\rngzig\rng_par_zig.f90"/>
+			<File RelativePath="..\src\Solute.f90"/>
+			<File RelativePath="..\src\StartingLocationReader.f90"/>
+			<File RelativePath="..\src\TimeDiscretizationData.f90"/>
+			<File RelativePath="..\src\TrackCell.f90"/>
+			<File RelativePath="..\src\TrackCellOptions.f90"/>
+			<File RelativePath="..\src\TrackCellResult.f90"/>
+			<File RelativePath="..\src\TrackPathResult.f90"/>
+			<File RelativePath="..\src\TrackSubCell.F90"/>
+			<File RelativePath="..\src\TrackSubCellResult.f90"/>
+			<File RelativePath="..\src\TransportModelData.f90"/>
+			<File RelativePath="..\src\UtilMisc.f90"/>
+			<File RelativePath="..\src\utl7.f"/>
+			<File RelativePath="..\src\utl8.f90"/>
+		</Filter>
+	</Files>
+	<Globals/>
+</VisualStudioProject>
