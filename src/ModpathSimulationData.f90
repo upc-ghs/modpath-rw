@@ -1979,7 +1979,7 @@ contains
       select case( compiler ) 
       case('GFORTRAN')
         trackingOptions%randomGenFunction = 1 
-      case('IFORT')
+      case('INTEL')
         trackingOptions%randomGenFunction = 2 
       case default
         trackingOptions%randomGenFunction = 2 
@@ -1994,7 +1994,7 @@ contains
         select case( compiler ) 
         case('GFORTRAN')
           trackingOptions%randomGenFunction = 1 
-        case('IFORT')
+        case('INTEL')
           trackingOptions%randomGenFunction = 2 
         case default
           trackingOptions%randomGenFunction = 2 
