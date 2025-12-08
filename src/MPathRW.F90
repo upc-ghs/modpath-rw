@@ -226,7 +226,7 @@ program MPathRW
   open(unit=mplistUnit, file=mplistFile, status='replace', form='formatted', access='sequential')
   
   write(mplistUnit,'(1x/a,a)') 'MODPATH-RW Version ', version
-  write(mplistUnit,'(a)') compilerVersionText
+  write(mplistUnit,'(a)') trim(adjustl(compilerVersionText))
   write(mplistUnit, *)
   write(mplistUnit, '(a)') 'This program has been developed and published by the Hydrogeology'
   write(mplistUnit, '(a)') 'Group (GHS), Universitat Politècnica de Catalunya (UPC). It is free'
