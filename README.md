@@ -139,7 +139,7 @@ MIT License
 
 #### ***Related publications***
 
-[Pérez-Illanes R., Fernàndez-Garcia, D., Muniruzzaman, M., Rolle, M. 2026, A Lagrangian Approach for Simulating Multispecies Ionic Solute Transport in Porous Media: Random Walk Particles with Electrostatic Coupling, Advances in Water Resources, doi: 10.1016/j.advwatres.2026.105356.](https://doi.org/10.1016/j.advwatres.2026.105356)
+[Pérez-Illanes R., Fernàndez-Garcia, D., Muniruzzaman, M., Rolle, M., 2026, A Lagrangian Approach for Simulating Multispecies Ionic Solute Transport in Porous Media: Random Walk Particles with Electrostatic Coupling, Advances in Water Resources, doi: 10.1016/j.advwatres.2026.105356.](https://doi.org/10.1016/j.advwatres.2026.105356)
 
 [Pérez-Illanes R., Fernàndez-Garcia, D., 2024, A General Purpose Parallel Fortran Code for Grid Projected Concentration Reconstruction from Multidimensional Particle Distributions, Environmental Modelling & Software, doi: 10.1016/j.envsoft.2024.106008.](https://doi.org/10.1016/j.envsoft.2024.106008)
 
